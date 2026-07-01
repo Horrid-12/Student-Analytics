@@ -49,7 +49,13 @@ class AnalysisResult:
 
 
 def get_github_token() -> str:
-    return os.getenv("GITHUB_TOKEN", "")
+    token = os.getenv("GITHUB_TOKEN", "")
+    try:
+        if st is not None:
+            token = token or st.secrets.get("GITHUB_TOKEN", "")
+    except Exception:
+        pass
+    return token or ""
 
 
 def build_headers(token: str | None) -> dict[str, str]:
