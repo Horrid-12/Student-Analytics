@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+.venv/
+.uv-cache/
+.uv-python/
+.env
+.streamlit/secrets.toml
