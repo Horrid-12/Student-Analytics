@@ -786,10 +786,25 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[object, bool
         type=["xlsx"],
         label_visibility="collapsed",
     )
+
+    # BUG-014 fix: derive sample max from actual uploaded row count
+    row_count = 735  # fallback when no file is uploaded yet
+    if uploaded_file is not None:
+        try:
+            import pandas as pd
+            peek_df = pd.read_excel(uploaded_file)
+            row_count = max(len(peek_df), 1)
+            uploaded_file.seek(0)  # reset so downstream code can read it again
+        except Exception:
+            row_count = 735
+
     sample_enabled = controls[1].checkbox("Sample", value=False)
     sample_size = None
     if sample_enabled:
-        sample_size = controls[2].number_input("Rows", min_value=1, max_value=735, value=50, step=1)
+        sample_size = controls[2].number_input(
+            "Rows", min_value=1, max_value=row_count,
+            value=min(50, row_count), step=1,
+        )
     else:
         controls[2].markdown("<div style='height: 38px'></div>", unsafe_allow_html=True)
     run_button = controls[3].button("Run Analysis", type="primary", use_container_width=True)

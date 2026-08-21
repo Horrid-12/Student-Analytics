@@ -20,6 +20,7 @@ Bug IDs: `B001`, `B002`, … referenced across commits (`fix(B003): ...`).
 - [ ] B002 Repositories truncated at 100 per student — paginate `/repos` via `Link` header
 
 **Bug log:** _(append `- [ ] B### description (file:line)` here)_
+- [x] B014 Sample-size max hardcoded to 735 — now derived from uploaded Excel row count (app.py:789–806)
 
 ---
 
