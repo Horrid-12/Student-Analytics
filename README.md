@@ -12,6 +12,9 @@ This Streamlit app analyzes GitHub student data from an uploaded Excel sheet and
 ## Local run
 
 ```bash
+cd Github-website-
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
