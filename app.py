@@ -306,7 +306,7 @@ def render_donut_chart(data: pd.DataFrame) -> None:
 
 def render_bar_chart(data: pd.DataFrame, x: str, y: str, color: str = ACCENT, height: int = 285) -> None:
     if data.empty:
-        st.info("No data available.")
+        st.info("No chart data to display yet — run an analysis first.")
         return
     chart = (
         alt.Chart(data)
@@ -323,7 +323,7 @@ def render_bar_chart(data: pd.DataFrame, x: str, y: str, color: str = ACCENT, he
 
 def render_area_chart(data: pd.DataFrame, x: str, y: str, color: str = PURPLE) -> None:
     if data.empty:
-        st.info("No data available.")
+        st.info("No distribution data to display yet — run an analysis first.")
         return
     chart = (
         alt.Chart(data)
@@ -353,7 +353,7 @@ def render_area_chart(data: pd.DataFrame, x: str, y: str, color: str = PURPLE) -
 
 def render_heatmap(data: pd.DataFrame) -> None:
     if data.empty:
-        st.info("No division data available.")
+        st.info("No division or batch data found. Check that your Excel file has Division and Batch columns.")
         return
     chart = (
         alt.Chart(data)
@@ -558,7 +558,7 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
 
     st.markdown('<div class="panel"><div class="panel-title"><h3>Repository Summary</h3><span>Recent repositories</span></div>', unsafe_allow_html=True)
     if repos.empty:
-        st.info("No repositories found for this student.")
+        st.info("No repositories were fetched for this student. They may have no public repositories, or repository fetching was skipped during analysis.")
     else:
         languages = repos["Language"].fillna("Unknown").value_counts().head(5).reset_index()
         languages.columns = ["Language", "Repositories"]
@@ -743,7 +743,7 @@ def render_leaderboards(result) -> None:
     with cols[3]:
         st.markdown('<div class="panel"><div class="panel-title"><h3>Top Languages</h3><span>Repository frequency</span></div>', unsafe_allow_html=True)
         if repo_df.empty:
-            st.info("No language data available.")
+            st.info("No repository language data available. Run an analysis to populate this panel.")
         else:
             languages = repo_df["Language"].fillna("Unknown").value_counts().head(10)
             for rank, (language, count) in enumerate(languages.items(), start=1):
@@ -1023,7 +1023,7 @@ if file_hash and st.session_state.analysis_file_hash not in (None, file_hash):
 
 if run_button:
     if uploaded_file is None:
-        st.warning("Upload Excel to begin analysis.")
+        st.warning("Please upload a student roster Excel file (.xlsx) before running the analysis.")
     else:
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -1051,7 +1051,7 @@ if run_button:
             )
             elapsed = time.perf_counter() - start
             progress_bar.progress(1.0)
-            status_text.write("Dashboard Ready")
+            status_text.write("✓ Analysis complete — navigate to any page to explore results.")
             run_log = result.log
             st.session_state.analysis_result = result
             st.session_state.analysis_elapsed = elapsed
@@ -1064,9 +1064,9 @@ if run_button:
                     reset_text = datetime.fromtimestamp(int(exc.reset_epoch)).strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     reset_text = "later"
-            st.error(f"GitHub API rate limit reached. Try again at {reset_text}.")
+            st.error(f"GitHub API rate limit reached — too many requests were made in a short time. Please wait and try again at {reset_text}.")
         except Exception as exc:
-            st.error(str(exc))
+            st.error(f"An unexpected error occurred during analysis. Details: {str(exc)}")
         render_log(run_log)
 
 result = st.session_state.analysis_result
