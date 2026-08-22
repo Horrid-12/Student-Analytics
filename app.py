@@ -468,7 +468,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
         metric_card("Repositories Found", format_number(len(repo_df)), "Fetched repository metadata", "repo", "rgba(59,130,246,0.72)")
     with metric_cols[1]:
         avg_repos = dashboard_df["Repository_Count"].mean() if not dashboard_df.empty else 0
-        metric_card("Average Repository Count", f"{avg_repos:.1f}", "Per validated student", "chart", "rgba(34,197,94,0.66)")
+        metric_card("Average Repository Count", f"{avg_repos:.1f}", "Public repos per validated student", "chart", "rgba(34,197,94,0.66)")
     with metric_cols[2]:
         avg_followers = dashboard_df["Followers"].mean() if not dashboard_df.empty else 0
         metric_card("Average Followers", f"{avg_followers:.1f}", "GitHub social signal", "users", "rgba(245,158,11,0.65)")
@@ -504,7 +504,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
         followers_distribution = dashboard_df["Followers"].value_counts().sort_index().reset_index()
         followers_distribution.columns = ["Followers", "Students"]
     with chart_cols[0]:
-        st.markdown('<div class="panel"><div class="panel-title"><h3>Repository Count Distribution</h3><span>Students by repo count</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel"><div class="panel-title"><h3>Public Repository Count Distribution</h3><span>Students grouped by public repo count</span></div>', unsafe_allow_html=True)
         render_area_chart(repo_distribution, "Repository Count:Q", "Students:Q", ACCENT)
         st.markdown("</div>", unsafe_allow_html=True)
     with chart_cols[1]:
@@ -519,7 +519,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
             .sum()
             .reset_index()
         )
-    st.markdown('<div class="panel"><div class="panel-title"><h3>Division-wise Repository Statistics</h3><span>Repository totals by academic group</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title"><h3>Public Repositories by Division and Batch</h3><span>Total public repo count per group</span></div>', unsafe_allow_html=True)
     render_heatmap(heatmap)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -720,19 +720,19 @@ def leaderboard_card(rank: int, title: str, score: str, badge: str) -> None:
 def render_leaderboards(result) -> None:
     dashboard_df = result.dashboard_df
     repo_df = result.repo_df
-    st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Identify top contributors and dominant technology patterns.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Compare public repository counts and GitHub follower counts across students.</p></div>', unsafe_allow_html=True)
     if dashboard_df.empty:
         render_empty_state()
         return
     cols = st.columns(4)
     sections = [
-        ("Top Repository Owners", dashboard_df.sort_values("Repository_Count", ascending=False).head(10), "Repository_Count"),
+        ("Most Public Repositories", dashboard_df.sort_values("Repository_Count", ascending=False).head(10), "Repository_Count"),
         (
             "Most-Followed GitHub Profiles",
             dashboard_df.sort_values("Followers", ascending=False).head(10),
             "Followers",
         ),
-        ("Top Public Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"),
+        ("Most GitHub-Reported Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"),
     ]
     for col, (title, data, score_col) in zip(cols[:3], sections):
         with col:
