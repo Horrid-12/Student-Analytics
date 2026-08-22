@@ -43,7 +43,7 @@
 | 3     | ✅ BUG-014 | Make sample-size maximum dynamic          | 🟢 1/5     |
 | 4     | ✅ BUG-036 | Do not automatically select first student | 🟢 1/5     |
 | 5     | BUG-039    | Show table record counts                  | 🟢 1/5     |
-| 6     | BUG-029    | Rework followers leaderboard wording      | 🟢 1/5     |
+| 6     | ✅ BUG-029 | Rework followers leaderboard wording      | 🟢 1/5     |
 | 7     | BUG-030    | Rework repository-count wording           | 🟢 1/5     |
 | 8     | BUG-035    | Simplify student selection                | 🟢 2/5     |
 | 9     | BUG-037    | Make student selection unique             | 🟢 2/5     |
@@ -53,6 +53,7 @@
 | 13    | ✅ BUG-050 | Broken Light Mode                         | 🟢 1/5     |
 
 > **Fix Proofs:**
+> - **BUG-029**: Renamed the followers leaderboard to “Most-Followed GitHub Profiles” so it clearly reports social popularity, not student contribution or performance.
 > - **BUG-049**: Root cause: Navigation router blocked all page views when `analysis_result` was None. Fixed by allowing Settings and empty states to render independently of roster dataset analysis.
 > - **BUG-050**: Root cause: Hardcoded inline CSS styles and conflicting native Streamlit theme header backgrounds broke Light mode and caused severe contrast issues. Fixed by externalizing styles to `style.css`, implementing dynamic CSS variable theming (Light/Dark), setting `stHeader` transparent, applying global Inter font, and streamlining the centerpiece upload layout.
 

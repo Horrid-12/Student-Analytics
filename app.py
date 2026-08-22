@@ -733,7 +733,11 @@ def render_leaderboards(result) -> None:
     cols = st.columns(4)
     sections = [
         ("Top Repository Owners", dashboard_df.sort_values("Repository_Count", ascending=False).head(10), "Repository_Count"),
-        ("Top Followers", dashboard_df.sort_values("Followers", ascending=False).head(10), "Followers"),
+        (
+            "Most-Followed GitHub Profiles",
+            dashboard_df.sort_values("Followers", ascending=False).head(10),
+            "Followers",
+        ),
         ("Top Public Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"),
     ]
     for col, (title, data, score_col) in zip(cols[:3], sections):
