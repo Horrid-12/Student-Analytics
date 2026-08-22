@@ -363,7 +363,7 @@ Progress Tracking
 |   1 | BUG-013 Live label                |     🟢     | Streamlit      |
 |   2 | BUG-010 Language naming           |     🟢     | Python         |
 |   3 | BUG-014 Sample limit              |     🟢     | Streamlit      |
-|   4 | BUG-036 First-student selection   |     🟢     | Streamlit      |
+|   4 | ✅ BUG-036 First-student selection |     🟢     | Streamlit      |
 |   5 | BUG-039 Record counts             |     🟢     | Streamlit      |
 |   6 | BUG-041 Status messages           |     🟢     | Streamlit      |
 |   7 | BUG-023 Excel normalization       |     🟢     | Pandas         |
