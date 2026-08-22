@@ -50,7 +50,7 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 
 ## Phase 4 — Codebase Improvement
 
-- [ ] 4.1 Pin dependencies in `requirements.txt`
+- [x] 4.1 Pin dependencies in `requirements.txt` — pinned to proven venv set (streamlit 1.62.0, pandas 3.0.5, requests 2.34.2, openpyxl 3.1.5, altair 6.2.2) + `pyarrow<25` guard (known Linux segfault, apache/arrow#50471) while debugging cloud deploy failure
 - [ ] 4.2 Delete dead `check_rate_limit()` (services.py:109); merge duplicate token loaders into services.py
 - [ ] 4.3 Split `app.py` into modules — **see 4.3a–g below (team plan)**
 - [ ] 4.4 Add pytest for `services.py` (extract_username edge cases, aggregation semantics, rate-limit detection) — no network mocks beyond requests

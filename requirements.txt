@@ -1,5 +1,8 @@
-streamlit
-pandas
-requests
-openpyxl
-altair
+streamlit==1.62.0
+pandas==3.0.5
+requests==2.34.2
+openpyxl==3.1.5
+altair==6.2.2
+
+# Linux-only segfault in pyarrow 25 (apache/arrow#50471) — flagged by Streamlit Cloud
+pyarrow<25
