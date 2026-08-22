@@ -42,11 +42,11 @@
 | 2     | ✅ BUG-010 | Rename misleading “Primary Language”      | 🟢 1/5     |
 | 3     | ✅ BUG-014 | Make sample-size maximum dynamic          | 🟢 1/5     |
 | 4     | ✅ BUG-036 | Do not automatically select first student | 🟢 1/5     |
-| 5     | BUG-039    | Show table record counts                  | 🟢 1/5     |
+| 5     | ✅ BUG-039 | Show table record counts                  | 🟢 1/5     |
 | 6     | ✅ BUG-029 | Rework followers leaderboard wording      | 🟢 1/5     |
-| 7     | BUG-030    | Rework repository-count wording           | 🟢 1/5     |
-| 8     | BUG-035    | Simplify student selection                | 🟢 2/5     |
-| 9     | BUG-037    | Make student selection unique             | 🟢 2/5     |
+| 7     | ✅ BUG-030 | Rework repository-count wording           | 🟢 1/5     |
+| 8     | ✅ BUG-035 | Simplify student selection                | 🟢 2/5     |
+| 9     | ✅ BUG-037 | Make student selection unique             | 🟢 2/5     |
 | 10    | BUG-041    | Improve system-status messages            | 🟢 2/5     |
 | 11    | BUG-042    | Add Complete/Partial/Failed states        | 🟢 2/5     |
 | 12    | ✅ BUG-049 | Sidebars not Working                      | 🟢 1/5     |
@@ -56,6 +56,10 @@
 > - **BUG-029**: Renamed the followers leaderboard to “Most-Followed GitHub Profiles” so it clearly reports social popularity, not student contribution or performance.
 > - **BUG-049**: Root cause: Navigation router blocked all page views when `analysis_result` was None. Fixed by allowing Settings and empty states to render independently of roster dataset analysis.
 > - **BUG-050**: Root cause: Hardcoded inline CSS styles and conflicting native Streamlit theme header backgrounds broke Light mode and caused severe contrast issues. Fixed by externalizing styles to `style.css`, implementing dynamic CSS variable theming (Light/Dark), setting `stHeader` transparent, applying global Inter font, and streamlining the centerpiece upload layout.
+> - **BUG-039**: Added `st.caption(...)` below each of the four data tables (Students, Repositories, Issues, Verification) showing "Showing X of Y" counts so users always know how many records are visible versus how many match their filters.
+> - **BUG-030**: Replaced misleading labels ("Top Repository Owners", "Top Public Repos", "Identify top contributors") with honest descriptions ("Most Public Repositories", "Most GitHub-Reported Repos", "Compare public repository counts and GitHub follower counts across students") across the Leaderboards and Overview pages.
+> - **BUG-035**: Removed the redundant `st.selectbox("Open student profile", ...)` name-based dropdown and its conflict-avoidance priority logic. Student selection now uses only the table row-click, which is unambiguous and simpler. Empty-state hint text updated accordingly.
+> - **BUG-037**: Resolved as a direct consequence of BUG-035. The original bug was that the name-based dropdown could silently select the wrong student when two students shared the same name. Since BUG-035 removed that dropdown entirely, selection now works by row index (`.iloc[row_index]`), which is immune to duplicate names — clicking a specific row always fetches exactly that student's data regardless of what their name is.
 
 ### Learn
 
@@ -370,7 +374,7 @@ Progress Tracking
 |   2 | BUG-010 Language naming           |     🟢     | Python         |
 |   3 | BUG-014 Sample limit              |     🟢     | Streamlit      |
 |   4 | ✅ BUG-036 First-student selection |     🟢     | Streamlit      |
-|   5 | BUG-039 Record counts             |     🟢     | Streamlit      |
+|   5 | ✅ BUG-039 Record counts          |     🟢     | Streamlit      |
 |   6 | BUG-041 Status messages           |     🟢     | Streamlit      |
 |   7 | BUG-023 Excel normalization       |     🟢     | Pandas         |
 |   8 | BUG-006 Duplicate missing issues  |     🟢     | Python         |
