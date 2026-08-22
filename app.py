@@ -833,7 +833,6 @@ def metric_card(label: str, value: str, trend: str, icon: str, glow: str) -> Non
         <div class="metric-card" style="--glow: {glow};">
             <div class="metric-top">
                 <div class="metric-icon">{icon_svg(icon)}</div>
-                <span class="badge-blue">Live</span>
             </div>
             <div class="metric-value">{escape(value)}</div>
             <div class="metric-label">{escape(label)}</div>
