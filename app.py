@@ -25,590 +25,6 @@ DANGER = "#EF4444"
 PURPLE = "#8B5CF6"
 
 
-def inject_theme() -> None:
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
-        :root {
-            --bg: #09090B;
-            --sidebar: #111114;
-            --card: #18181B;
-            --card-soft: #1F1F24;
-            --border: #2A2A30;
-            --text: #FFFFFF;
-            --muted: #A1A1AA;
-            --blue: #3B82F6;
-            --green: #22C55E;
-            --amber: #F59E0B;
-            --red: #EF4444;
-            --purple: #8B5CF6;
-        }
-
-        html, body, [class*="css"] {
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            font-size: 15px;
-            line-height: 1.45;
-        }
-
-        .stApp {
-            background: var(--bg);
-            color: var(--text);
-        }
-
-        [data-testid="stSidebar"] {
-            background: #111114;
-            border-right: 1px solid var(--border);
-            width: 260px !important;
-        }
-
-        [data-testid="stSidebar"] * {
-            color: var(--text);
-        }
-
-        [data-testid="stSidebar"] .stRadio label {
-            color: var(--muted);
-            font-size: 15px;
-            font-weight: 650;
-        }
-
-        [data-testid="stSidebar"] [role="radiogroup"] > label {
-            padding: 11px 12px;
-            border-radius: 12px;
-            margin-bottom: 5px;
-            transition: 180ms ease;
-        }
-
-        [data-testid="stSidebar"] [role="radiogroup"] > label:hover {
-            background: rgba(255, 255, 255, 0.04);
-        }
-
-        [data-testid="stSidebar"] [role="radiogroup"] > label[data-checked="true"] {
-            background: rgba(59, 130, 246, 0.13);
-            border: 1px solid rgba(59, 130, 246, 0.26);
-        }
-
-        .main .block-container {
-            max-width: 1600px;
-            padding: 22px 32px 42px;
-            margin: 0 auto;
-        }
-
-        [data-testid="stHorizontalBlock"] {
-            gap: 0.9rem;
-        }
-
-        h1, h2, h3 {
-            letter-spacing: 0;
-        }
-
-        .platform-brand {
-            display: flex;
-            align-items: center;
-            gap: 13px;
-            padding: 12px 2px 20px;
-        }
-
-        .brand-mark {
-            width: 42px;
-            height: 42px;
-            display: grid;
-            place-items: center;
-            border-radius: 12px;
-            background: #222225;
-            border: 1px solid var(--border);
-            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
-        }
-
-        .brand-title {
-            font-size: 16px;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-
-        .brand-subtitle {
-            color: var(--muted);
-            font-size: 13px;
-            margin-top: 4px;
-        }
-
-        .sidebar-footer {
-            margin-top: 24px;
-            padding: 13px;
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            background: rgba(24, 24, 27, 0.72);
-        }
-
-        .status-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            color: var(--muted);
-            font-size: 14px;
-            margin: 8px 0;
-        }
-
-        .badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border-radius: 999px;
-            padding: 5px 10px;
-            font-size: 13px;
-            font-weight: 600;
-            border: 1px solid var(--border);
-            white-space: nowrap;
-        }
-
-        .badge-green { color: #86EFAC; background: rgba(34, 197, 94, 0.10); border-color: rgba(34, 197, 94, 0.25); }
-        .badge-amber { color: #FCD34D; background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.25); }
-        .badge-red { color: #FCA5A5; background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
-        .badge-blue { color: #93C5FD; background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.25); }
-        .badge-purple { color: #C4B5FD; background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
-
-        .external-link-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            min-height: 42px;
-            padding: 0 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(34, 197, 94, 0.28);
-            color: #86EFAC !important;
-            background: rgba(34, 197, 94, 0.10);
-            font-size: 15px;
-            font-weight: 750;
-            text-decoration: none !important;
-            transition: 180ms ease;
-        }
-
-        .external-link-button:hover {
-            border-color: rgba(34, 197, 94, 0.48);
-            background: rgba(34, 197, 94, 0.15);
-        }
-
-        .external-link-button svg {
-            width: 17px;
-            height: 17px;
-        }
-
-        .topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 15px 17px;
-            margin-bottom: 18px;
-            border: 1px solid rgba(42, 42, 48, 0.9);
-            border-radius: 18px;
-            background: rgba(17, 17, 20, 0.78);
-            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
-        }
-
-        .topbar-title {
-            font-size: 24px;
-            font-weight: 800;
-            line-height: 1.15;
-        }
-
-        .topbar-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 9px;
-            align-items: center;
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .faculty-avatar {
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            display: grid;
-            place-items: center;
-            color: #FFFFFF;
-            background: var(--blue);
-            font-size: 14px;
-            font-weight: 800;
-        }
-
-        .hero {
-            margin: 2px 0 18px;
-        }
-
-        .hero h1 {
-            font-size: 36px;
-            line-height: 1.1;
-            margin: 0;
-            font-weight: 800;
-        }
-
-        .hero p {
-            color: var(--muted);
-            font-size: 16px;
-            margin: 7px 0 0;
-        }
-
-        .metric-card, .panel, .empty-state, .profile-panel {
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            background: #18181B;
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
-        }
-
-        .metric-card {
-            min-height: 146px;
-            padding: 16px;
-            position: relative;
-            overflow: hidden;
-            transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-        }
-
-        .metric-card:hover {
-            border-color: rgba(59, 130, 246, 0.45);
-        }
-
-        .metric-card::after {
-            display: none;
-        }
-
-        .metric-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            position: relative;
-            z-index: 1;
-        }
-
-        .metric-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            display: grid;
-            place-items: center;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .metric-value {
-            position: relative;
-            z-index: 1;
-            font-size: 46px;
-            line-height: 1;
-            font-weight: 800;
-            margin-top: 15px;
-        }
-
-        .metric-label {
-            position: relative;
-            z-index: 1;
-            color: var(--muted);
-            font-size: 16px;
-            font-weight: 700;
-            margin-top: 7px;
-        }
-
-        .metric-trend {
-            position: relative;
-            z-index: 1;
-            color: #C7D2FE;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 9px;
-        }
-
-        .panel {
-            padding: 15px;
-            margin-bottom: 16px;
-        }
-
-        .panel-title {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .panel-title h3 {
-            font-size: 22px;
-            margin: 0;
-            font-weight: 800;
-        }
-
-        .panel-title span {
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .pipeline {
-            display: grid;
-            gap: 7px;
-        }
-
-        .pipeline-step {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text);
-            font-size: 15px;
-            padding: 8px 10px;
-            border-radius: 12px;
-            border: 1px solid rgba(42, 42, 48, 0.8);
-            background: rgba(255, 255, 255, 0.025);
-        }
-
-        .dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--green);
-            box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.10);
-        }
-
-        .progress-shell {
-            height: 11px;
-            border-radius: 999px;
-            background: #27272A;
-            overflow: hidden;
-            margin: 11px 0 9px;
-        }
-
-        .progress-bar {
-            height: 100%;
-            width: 100%;
-            border-radius: inherit;
-            background: var(--blue);
-        }
-
-
-
-        .system-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-        }
-
-        .system-item {
-            padding: 10px 11px;
-            border-radius: 14px;
-            border: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.025);
-        }
-
-        .system-label {
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .system-value {
-            color: var(--text);
-            font-size: 17px;
-            font-weight: 700;
-            margin-top: 3px;
-        }
-
-        .empty-state {
-            min-height: 380px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 34px;
-        }
-
-        .empty-illustration {
-            width: 86px;
-            height: 86px;
-            margin: 0 auto 20px;
-            border-radius: 26px;
-            display: grid;
-            place-items: center;
-            color: #FFFFFF;
-            background: rgba(59, 130, 246, 0.82);
-            box-shadow: 0 24px 70px rgba(59, 130, 246, 0.20);
-        }
-
-        .empty-state h2 {
-            margin: 0;
-            font-size: 26px;
-        }
-
-        .empty-state p {
-            color: var(--muted);
-            margin: 8px 0 0;
-            font-size: 16px;
-        }
-
-        .profile-panel {
-            padding: 15px;
-            position: sticky;
-            top: 20px;
-        }
-
-        .profile-header {
-            display: flex;
-            gap: 13px;
-            align-items: center;
-            margin-bottom: 13px;
-        }
-
-        .profile-header img {
-            width: 68px;
-            height: 68px;
-            border-radius: 18px;
-            border: 1px solid var(--border);
-        }
-
-        .profile-name {
-            font-size: 20px;
-            font-weight: 800;
-        }
-
-        .profile-sub {
-            color: var(--muted);
-            font-size: 14px;
-            margin-top: 3px;
-        }
-
-        .repo-card {
-            padding: 13px;
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            background: rgba(24, 24, 27, 0.88);
-            transition: 180ms ease;
-            min-height: 118px;
-        }
-
-        .repo-card:hover {
-            border-color: rgba(59, 130, 246, 0.45);
-        }
-
-        .repo-name {
-            font-weight: 700;
-            font-size: 16px;
-            margin-bottom: 8px;
-        }
-
-        .repo-meta {
-            color: var(--muted);
-            font-size: 14px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 9px;
-            margin-top: 9px;
-        }
-
-        .leader-card {
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            background: #18181B;
-            margin-bottom: 8px;
-        }
-
-        .leader-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .leader-rank {
-            width: 30px;
-            height: 30px;
-            display: grid;
-            place-items: center;
-            border-radius: 10px;
-            background: rgba(59, 130, 246, 0.12);
-            color: #BFDBFE;
-            font-weight: 800;
-            font-size: 13px;
-        }
-
-        .leader-title {
-            flex: 1;
-            font-size: 15px;
-            font-weight: 700;
-        }
-
-        .leader-score {
-            font-size: 22px;
-            font-weight: 800;
-        }
-
-        .stButton > button, .stDownloadButton > button, [data-testid="stFileUploader"] button {
-            border-radius: 12px !important;
-            border: 1px solid var(--border) !important;
-            background: #1F1F24 !important;
-            color: var(--text) !important;
-            font-weight: 700 !important;
-            font-size: 15px !important;
-            min-height: 42px !important;
-            padding: 0 16px !important;
-            transition: 180ms ease !important;
-        }
-
-        .stButton > button:hover, .stDownloadButton > button:hover, [data-testid="stFileUploader"] button:hover {
-            border-color: rgba(59, 130, 246, 0.6) !important;
-        }
-
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stNumberInput input {
-            border-radius: 12px !important;
-            border-color: var(--border) !important;
-            background: #111114 !important;
-            color: var(--text) !important;
-            font-size: 15px !important;
-            min-height: 42px !important;
-        }
-
-        [data-testid="stDataFrame"] {
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            overflow: hidden;
-            font-size: 15px;
-        }
-
-        [data-testid="stDataFrame"] * {
-            font-size: 15px !important;
-            line-height: 1.4 !important;
-        }
-
-        [data-testid="stDataFrame"] [role="columnheader"] * {
-            font-size: 14px !important;
-            font-weight: 800 !important;
-            color: var(--text) !important;
-        }
-
-        [data-testid="stDataFrame"] [role="row"] {
-            min-height: 38px !important;
-        }
-
-        .stAlert {
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            background: rgba(24, 24, 27, 0.94);
-            font-size: 15px;
-        }
-
-        @media (max-width: 1100px) {
-            .topbar {
-                align-items: flex-start;
-                flex-direction: column;
-            }
-            .system-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def icon_svg(name: str) -> str:
     icons = {
         "github": """
@@ -736,60 +152,58 @@ def render_sidebar(token_present: bool) -> str:
     return page
 
 
-def render_topbar(last_analysis: str, token_present: bool) -> tuple[object, bool, bool, int | None]:
-    status = "Healthy" if token_present else "Needs token"
-    status_class = "badge-green" if token_present else "badge-amber"
-    st.markdown(
-        f"""
-        <div class="topbar">
-            <div>
-                <div class="topbar-title">GitHub Student Analytics Platform</div>
-                <div class="topbar-meta">
-                    <span>{datetime.now().strftime("%A, %d %B %Y")}</span>
-                    <span>Last analysis: {escape(last_analysis)}</span>
-                    <span class="{status_class}">GitHub API {status}</span>
-                    <span class="badge-blue">Dark mode</span>
+def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, int | None]:
+    with st.container():
+        st.markdown('''
+            <style>
+            div[data-testid="stVerticalBlock"]:has(> div > div > div > .topbar-target) {
+                border: 1px solid var(--border);
+                border-radius: 18px;
+                background: var(--card);
+                box-shadow: 0 18px 45px var(--shadow);
+                padding: 12px 20px;
+                margin-bottom: 20px;
+            }
+            </style>
+            <div class="topbar-target"></div>
+        ''', unsafe_allow_html=True)
+        
+        cols = st.columns([3.8, 1.0, 1.3, 1.0, 1.2], vertical_alignment="center", gap="small")
+        
+        with cols[0]:
+            st.markdown(f'''
+                <div style="display: flex; flex-direction: column; justify-content: center;">
+                    <div class="topbar-title" style="font-size: 19px; font-weight: 800; line-height: 1.2;">GitHub Student Analytics Platform</div>
+                    <div class="topbar-meta" style="margin-top: 3px; font-size: 13px;">
+                        <span>{datetime.now().strftime("%A, %d %B %Y")}</span>
+                        <span>&bull;</span>
+                        <span>Last analysis: {escape(last_analysis)}</span>
+                    </div>
                 </div>
-            </div>
-            <div class="topbar-meta">
-                <span class="badge-purple">Faculty</span>
-                <div class="faculty-avatar">FM</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    controls = st.columns([4, 1.15, 1.15, 1.15, 1.0])
-    uploaded_file = controls[0].file_uploader(
-        "Excel Upload",
-        type=["xlsx"],
-        label_visibility="collapsed",
-    )
-
-    # BUG-014 fix: derive sample max from actual uploaded row count
-    row_count = 735  # fallback when no file is uploaded yet
-    if uploaded_file is not None:
-        try:
-            import pandas as pd
-            peek_df = pd.read_excel(uploaded_file)
-            row_count = max(len(peek_df), 1)
-            uploaded_file.seek(0)  # reset so downstream code can read it again
-        except Exception:
-            row_count = 735
-
-    sample_enabled = controls[1].checkbox("Custom Value", value=False)
-    sample_size = None
-    if sample_enabled:
-        sample_size = controls[2].number_input(
-            "Rows", min_value=1, max_value=row_count,
-            value=min(50, row_count), step=1,
-        )
-    else:
-        controls[2].markdown("<div style='height: 38px'></div>", unsafe_allow_html=True)
-    run_button = controls[3].button("Run Analysis", type="primary", use_container_width=True)
-    refresh_button = controls[4].button("Refresh", use_container_width=True)
-    return uploaded_file, run_button, refresh_button, int(sample_size) if sample_size else None
+            ''', unsafe_allow_html=True)
+        
+        with cols[1]:
+            sample_size = None
+            with st.popover("Limits", use_container_width=True):
+                sample_enabled = st.checkbox("Custom Value", value=False)
+                if sample_enabled:
+                    sample_size = st.number_input("Rows", min_value=1, max_value=735, value=50, step=1)
+                    
+        with cols[2]:
+            run_button = st.button("Run Analysis", use_container_width=True, type="primary")
+        
+        with cols[3]:
+            refresh_button = st.button("Refresh", use_container_width=True)
+            
+        with cols[4]:
+            st.markdown('''
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+                    <span class="badge-purple">Faculty</span>
+                    <div class="faculty-avatar">FM</div>
+                </div>
+            ''', unsafe_allow_html=True)
+            
+    return run_button, refresh_button, int(sample_size) if sample_size else None
 
 
 def render_empty_state() -> None:
@@ -992,6 +406,7 @@ def render_system_status(result, elapsed: float, last_analysis: str) -> None:
                 <div class="system-item"><div class="system-label">Last Updated</div><div class="system-value">{escape(last_analysis)}</div></div>
             </div>
         </div>
+
         """,
         unsafe_allow_html=True,
     )
@@ -1437,21 +852,133 @@ def render_verification(result, last_analysis: str) -> None:
 
 def render_settings(token_present: bool, file_hash: str | None) -> None:
     st.markdown('<div class="hero"><h1>Settings</h1><p>Runtime configuration for the internal analytics platform.</p></div>', unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('''
+            <style>
+            div[data-testid="stVerticalBlock"]:has(.appearance-target) {
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                background: var(--card);
+                padding: 15px;
+                box-shadow: 0 18px 40px var(--shadow);
+                margin-bottom: 16px;
+                transition: 180ms ease;
+            }
+            div[data-testid="stVerticalBlock"]:has(.appearance-target):hover {
+                border-color: rgba(59, 130, 246, 0.45);
+            }
+            </style>
+            <div class="appearance-target"></div>
+            <div class="panel-title"><h3>Appearance</h3><span>Customize UI</span></div>
+        ''', unsafe_allow_html=True)
+        theme_choice = st.radio("App Theme", ["Dark", "Light"], index=0 if st.session_state.get("theme", "Dark") == "Dark" else 1, horizontal=True, label_visibility="collapsed")
+        if theme_choice != st.session_state.get("theme"):
+            st.session_state.theme = theme_choice
+            st.rerun()
+
     st.markdown(
-        f"""
+        f'''
         <div class="panel">
             <div class="panel-title"><h3>Application Status</h3><span>Current runtime</span></div>
             <div class="system-grid">
                 <div class="system-item"><div class="system-label">GitHub Token</div><div class="system-value">{"Available" if token_present else "Missing"}</div></div>
                 <div class="system-item"><div class="system-label">Faculty Mode</div><div class="system-value">Enabled</div></div>
                 <div class="system-item"><div class="system-label">Uploaded File Hash</div><div class="system-value">{escape(file_hash[:12] if file_hash else "None")}</div></div>
-                <div class="system-item"><div class="system-label">Theme</div><div class="system-value">Dark Enterprise</div></div>
             </div>
         </div>
-        """,
+        ''',
         unsafe_allow_html=True,
     )
 
+def inject_theme() -> None:
+    theme = st.session_state.get("theme", "Dark")
+    
+    if theme == "Dark":
+        vars_css = '''
+            --bg: #09090B;
+            --sidebar: #111114;
+            --card: #18181B;
+            --card-soft: #1F1F24;
+            --border: #2A2A30;
+            --text: #FFFFFF;
+            --muted: #A1A1AA;
+            --blue: #3B82F6;
+            --green: #22C55E;
+            --amber: #F59E0B;
+            --red: #EF4444;
+            --purple: #8B5CF6;
+            --hover-bg: rgba(255, 255, 255, 0.04);
+            --subtle-bg: rgba(255, 255, 255, 0.025);
+            --icon-bg: rgba(255, 255, 255, 0.06);
+            --icon-border: rgba(255, 255, 255, 0.08);
+            --shadow: rgba(0, 0, 0, 0.24);
+            --shadow-strong: rgba(0, 0, 0, 0.35);
+            --topbar-bg: rgba(17, 17, 20, 0.78);
+            --topbar-border: rgba(42, 42, 48, 0.9);
+            --sidebar-footer-bg: rgba(24, 24, 27, 0.72);
+            --repo-card-bg: rgba(24, 24, 27, 0.88);
+            --alert-bg: rgba(24, 24, 27, 0.94);
+            --progress-shell: #27272A;
+            --metric-trend: #C7D2FE;
+            --leader-rank-bg: rgba(59, 130, 246, 0.12);
+            --leader-rank-color: #BFDBFE;
+            --badge-green-color: #86EFAC;
+            --badge-amber-color: #FCD34D;
+            --badge-red-color: #FCA5A5;
+            --badge-blue-color: #93C5FD;
+            --badge-purple-color: #C4B5FD;
+            --ext-link-color: #86EFAC;
+        '''
+    else:
+        vars_css = '''
+            --bg: #F8FAFC;
+            --sidebar: #F1F5F9;
+            --card: #FFFFFF;
+            --card-soft: #F1F5F9;
+            --border: #CBD5E1;
+            --text: #0F172A;
+            --muted: #64748B;
+            --hover-bg: rgba(0, 0, 0, 0.04);
+            --subtle-bg: rgba(0, 0, 0, 0.02);
+            --icon-bg: rgba(0, 0, 0, 0.05);
+            --icon-border: rgba(0, 0, 0, 0.15);
+            --shadow: rgba(0, 0, 0, 0.06);
+            --shadow-strong: rgba(0, 0, 0, 0.12);
+            --topbar-bg: rgba(255, 255, 255, 0.95);
+            --topbar-border: #CBD5E1;
+            --sidebar-footer-bg: rgba(241, 245, 249, 0.72);
+            --repo-card-bg: rgba(255, 255, 255, 0.88);
+            --alert-bg: rgba(255, 255, 255, 0.94);
+            --progress-shell: #E2E8F0;
+            --metric-trend: #3B82F6;
+            --leader-rank-bg: rgba(59, 130, 246, 0.10);
+            --leader-rank-color: #1D4ED8;
+            --badge-green-color: #15803D;
+            --badge-amber-color: #B45309;
+            --badge-red-color: #DC2626;
+            --badge-blue-color: #2563EB;
+            --badge-purple-color: #7C3AED;
+            --ext-link-color: #15803D;
+        '''
+
+    try:
+        with open("style.css", "r", encoding="utf-8") as f:
+            external_css = f.read()
+    except:
+        external_css = ""
+
+    st.markdown(
+        f'''
+        <style>
+        :root {{
+            {vars_css}
+        }}
+        {external_css}
+        </style>
+        ''',
+        unsafe_allow_html=True,
+    )
 
 inject_theme()
 
@@ -1459,18 +986,30 @@ token = get_token()
 token_present = bool(token)
 page = render_sidebar(token_present)
 
+if "theme" not in st.session_state:
+        st.session_state.theme = "Dark"
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
     st.session_state.analysis_elapsed = 0.0
     st.session_state.analysis_file_hash = None
     st.session_state.last_analysis_time = "Never"
 
-uploaded_file, run_button, refresh_button, sample_size = render_topbar(
-    st.session_state.last_analysis_time,
-    token_present,
-)
+result = st.session_state.analysis_result
+uploaded_file = None
+
+if page != "Settings":
+    run_button, refresh_button, sample_size = render_topbar(
+        st.session_state.last_analysis_time,
+        token_present,
+    )
+    if result is None:
+        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx"], label_visibility="collapsed")
+else:
+    run_button, refresh_button, sample_size = False, False, None
 
 if refresh_button:
+    st.session_state.analysis_result = None
+    st.session_state.analysis_file_hash = None
     st.rerun()
 
 file_bytes = uploaded_file.getvalue() if uploaded_file is not None else None
@@ -1536,7 +1075,7 @@ result = st.session_state.analysis_result
 if page == "Settings":
     render_settings(token_present, st.session_state.analysis_file_hash)
 elif result is None:
-    render_empty_state()
+    pass
 else:
     if page == "Overview":
         render_overview(result, st.session_state.analysis_elapsed, st.session_state.last_analysis_time)

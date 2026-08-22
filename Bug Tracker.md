@@ -36,20 +36,25 @@
 
 **Stack:** Python + Streamlit
 
-| Order | Bug     | Problem                                   | Difficulty |
-| ----: | ------- | ----------------------------------------- | :--------: |
-|     1 | ✅ BUG-013 | Remove misleading “Live” labels           |   🟢 1/5   |
-|     2 | ✅ BUG-010 | Rename misleading “Primary Language”      |   🟢 1/5   |
-|     3 | ✅ BUG-014 | Make sample-size maximum dynamic          |   🟢 1/5   |
-|     4 | ✅ BUG-036 | Do not automatically select first student |   🟢 1/5   |
-|     5 | BUG-039 | Show table record counts                  |   🟢 1/5   |
-|     6 | BUG-029 | Rework followers leaderboard wording      |   🟢 1/5   |
-|     7 | BUG-030 | Rework repository-count wording           |   🟢 1/5   |
-|     8 | BUG-035 | Simplify student selection                |   🟢 2/5   |
-|     9 | BUG-037 | Make student selection unique             |   🟢 2/5   |
-|    10 | BUG-041 | Improve system-status messages            |   🟢 2/5   |
-|    11 | BUG-042 | Add Complete/Partial/Failed states        |   🟢 2/5   |
-|    12 | BUG-049 | Reported: deployed UI shows a single page — no sidebar nav, no Settings page, no auth screen. Needs repro on a local run first (`streamlit run app.py`); local code contains all 7 sidebar pages, so may be stale deploy or CSS hiding the sidebar |   🟢 1/5   |
+| Order | Bug        | Problem                                   | Difficulty |
+|------:|------------|-------------------------------------------|:----------:|
+| 1     | ✅ BUG-013 | Remove misleading “Live” labels           | 🟢 1/5     |
+| 2     | ✅ BUG-010 | Rename misleading “Primary Language”      | 🟢 1/5     |
+| 3     | ✅ BUG-014 | Make sample-size maximum dynamic          | 🟢 1/5     |
+| 4     | ✅ BUG-036 | Do not automatically select first student | 🟢 1/5     |
+| 5     | BUG-039    | Show table record counts                  | 🟢 1/5     |
+| 6     | BUG-029    | Rework followers leaderboard wording      | 🟢 1/5     |
+| 7     | BUG-030    | Rework repository-count wording           | 🟢 1/5     |
+| 8     | BUG-035    | Simplify student selection                | 🟢 2/5     |
+| 9     | BUG-037    | Make student selection unique             | 🟢 2/5     |
+| 10    | BUG-041    | Improve system-status messages            | 🟢 2/5     |
+| 11    | BUG-042    | Add Complete/Partial/Failed states        | 🟢 2/5     |
+| 12    | ✅ BUG-049 | Sidebars not Working                      | 🟢 1/5     |
+| 13    | ✅ BUG-050 | Broken Light Mode                         | 🟢 1/5     |
+
+> **Fix Proofs:**
+> - **BUG-049**: Root cause: Navigation router blocked all page views when `analysis_result` was None. Fixed by allowing Settings and empty states to render independently of roster dataset analysis.
+> - **BUG-050**: Root cause: Hardcoded inline CSS styles and conflicting native Streamlit theme header backgrounds broke Light mode and caused severe contrast issues. Fixed by externalizing styles to `style.css`, implementing dynamic CSS variable theming (Light/Dark), setting `stHeader` transparent, applying global Inter font, and streamlining the centerpiece upload layout.
 
 ### Learn
 
