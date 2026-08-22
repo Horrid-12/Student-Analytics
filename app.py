@@ -642,21 +642,13 @@ def render_students(result) -> None:
         export_b.download_button("Export Excel", dataframe_to_excel(export_df), "github_students.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.markdown("</div>", unsafe_allow_html=True)
     with right:
-        student_names = filtered["Student Name"].fillna("Unknown").astype(str).tolist()
-        if student_names:
-            profile_placeholder = "— Select a student —"
-            selected = st.selectbox("Open student profile", [profile_placeholder] + student_names)
-            if not table_event.selection.rows and selected != profile_placeholder:
-                matches = filtered[filtered["Student Name"].astype(str) == selected]
-                if not matches.empty:
-                    selected_student = matches.iloc[0]
         if selected_student is not None:
             render_student_profile(selected_student, result.repo_df)
         else:
             st.markdown(
                 '<div class="empty-state"><div><div class="empty-illustration">'
                 + icon_svg("users")
-                + '</div><h2>No Student Selected</h2><p>Click a row in the table or pick a name from the dropdown to open a profile.</p></div></div>',
+                + '</div><h2>No Student Selected</h2><p>Click a row in the table to open a student profile.</p></div></div>',
                 unsafe_allow_html=True,
             )
 
