@@ -71,6 +71,9 @@ You know it worked when your prompt starts with `(.venv)`.
 ### 3. Install dependencies
 
 ```bash
+cd Github-website-
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 

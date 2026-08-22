@@ -833,7 +833,6 @@ def metric_card(label: str, value: str, trend: str, icon: str, glow: str) -> Non
         <div class="metric-card" style="--glow: {glow};">
             <div class="metric-top">
                 <div class="metric-icon">{icon_svg(icon)}</div>
-                <span class="badge-blue">Live</span>
             </div>
             <div class="metric-value">{escape(value)}</div>
             <div class="metric-label">{escape(label)}</div>
@@ -1151,7 +1150,7 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
                 <div class="system-item"><div class="system-label">Followers</div><div class="system-value">{format_number(student.get("Followers", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Following</div><div class="system-value">{format_number(student.get("Following", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Repositories</div><div class="system-value">{format_number(student.get("Repository_Count", 0))}</div></div>
-                <div class="system-item"><div class="system-label">Primary Language</div><div class="system-value">{escape(student.get("Primary_Language", "Unknown"))}</div></div>
+                <div class="system-item"><div class="system-label">Most Common Repo Language</div><div class="system-value">{escape(student.get("Primary_Language", "Unknown"))}</div></div>
             </div>
             <div style="margin-top: 14px;">
                 <div class="system-label" style="margin-bottom: 8px;">GitHub Profile</div>
@@ -1236,14 +1235,16 @@ def render_students(result) -> None:
                 "Avatar_URL": st.column_config.ImageColumn("Avatar", width="small"),
                 "GitHub Profile": st.column_config.LinkColumn("GitHub Profile", display_text="↗ Open Profile"),
                 "Profile_URL": st.column_config.LinkColumn("GitHub"),
+                "Primary_Language": st.column_config.TextColumn("Most Common Language"),
             },
         )
         if table_event.selection.rows:
             selected_student = filtered.head(page_size).reset_index(drop=True).iloc[table_event.selection.rows[0]]
         export_cols = [column for column in display_cols if column != "Avatar_URL"]
         export_a, export_b = st.columns(2)
-        export_a.download_button("Export CSV", filtered[export_cols].to_csv(index=False).encode("utf-8"), "github_students.csv", "text/csv")
-        export_b.download_button("Export Excel", dataframe_to_excel(filtered[export_cols]), "github_students.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        export_df = filtered[export_cols].rename(columns={"Primary_Language": "Most Common Language"})
+        export_a.download_button("Export CSV", export_df.to_csv(index=False).encode("utf-8"), "github_students.csv", "text/csv")
+        export_b.download_button("Export Excel", dataframe_to_excel(export_df), "github_students.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.markdown("</div>", unsafe_allow_html=True)
     with right:
         student_names = filtered["Student Name"].fillna("Unknown").astype(str).tolist()
