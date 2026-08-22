@@ -633,6 +633,7 @@ def render_students(result) -> None:
                 "Primary_Language": st.column_config.TextColumn("Most Common Language"),
             },
         )
+        st.caption(f"Showing {len(display_df)} of {len(filtered)} student{'s' if len(filtered) != 1 else ''}")
         if table_event.selection.rows:
             selected_student = filtered.head(page_size).reset_index(drop=True).iloc[table_event.selection.rows[0]]
         export_cols = [column for column in display_cols if column != "Avatar_URL"]
@@ -676,6 +677,7 @@ def render_repositories(result) -> None:
             hide_index=True,
             column_config={"Repository URL": st.column_config.LinkColumn("Repository URL", display_text="↗ Open Repository")},
         )
+        st.caption(f"{len(filtered)} {'repository' if len(filtered) == 1 else 'repositories'}")
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
@@ -763,6 +765,7 @@ def render_issues(result) -> None:
     filtered["Action"] = "Faculty follow-up"
     st.markdown('<div class="panel"><div class="panel-title"><h3>Students Requiring Attention</h3><span>Warning badges and action queue</span></div>', unsafe_allow_html=True)
     st.dataframe(filtered, hide_index=True, use_container_width=True)
+    st.caption(f"{len(filtered)} student{'s' if len(filtered) != 1 else ''} requiring attention")
     st.download_button("Export Issues CSV", filtered.to_csv(index=False).encode("utf-8"), "github_invalid_issues.csv", "text/csv")
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -837,6 +840,7 @@ def render_verification(result, last_analysis: str) -> None:
             "GitHub Profile": st.column_config.LinkColumn("GitHub Profile", display_text="✔ Open Profile"),
         },
     )
+    st.caption(f"Showing {min(page_size, len(filtered))} of {len(filtered)} {'record' if len(filtered) == 1 else 'records'}")
     st.download_button(
         "Export Verification CSV",
         filtered.to_csv(index=False).encode("utf-8"),
