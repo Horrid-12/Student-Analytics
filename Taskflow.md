@@ -21,6 +21,9 @@ Bug IDs: `B001`, `B002`, … referenced across commits (`fix(B003): ...`).
 
 **Bug log:** _(append `- [ ] B### description (file:line)` here)_
 - [x] B014 Sample-size max hardcoded to 735 — now derived from uploaded Excel row count (app.py:789–806)
+- [x] B013 Misleading "Live" badge removed from metric cards (app.py, metric_card)
+- [x] B010 "Primary Language" renamed to "Most Common (Repo) Language" in profile card, table header, and exports
+- [x] B036 First student no longer auto-selected; profile panel shows placeholder hint until user picks someone (app.py:1207, students page right column)
 
 ---
 

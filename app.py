@@ -1204,7 +1204,7 @@ def render_students(result) -> None:
     filtered = apply_value_filter(filtered, "Batch", batch)
     filtered["Status"] = "Connected"
     filtered["GitHub Profile"] = filtered["GitHub_Username"].apply(github_profile_url)
-    selected_student = filtered.iloc[0] if not filtered.empty else None
+    selected_student = None
 
     left, right = st.columns([1.55, 0.85])
     with left:
@@ -1249,11 +1249,21 @@ def render_students(result) -> None:
     with right:
         student_names = filtered["Student Name"].fillna("Unknown").astype(str).tolist()
         if student_names:
-            selected = st.selectbox("Open student profile", student_names)
-            if not table_event.selection.rows:
-                selected_student = filtered[filtered["Student Name"].astype(str) == selected].iloc[0]
+            profile_placeholder = "— Select a student —"
+            selected = st.selectbox("Open student profile", [profile_placeholder] + student_names)
+            if not table_event.selection.rows and selected != profile_placeholder:
+                matches = filtered[filtered["Student Name"].astype(str) == selected]
+                if not matches.empty:
+                    selected_student = matches.iloc[0]
         if selected_student is not None:
             render_student_profile(selected_student, result.repo_df)
+        else:
+            st.markdown(
+                '<div class="empty-state"><div><div class="empty-illustration">'
+                + icon_svg("users")
+                + '</div><h2>No Student Selected</h2><p>Click a row in the table or pick a name from the dropdown to open a profile.</p></div></div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_repositories(result) -> None:
