@@ -1,33 +1,28 @@
 # Taskflow — Roadmap
 
 Work top-to-bottom; phases are sequential. Mark `[x]` when done, `[~]` while in progress.
-Bug IDs: `B001`, `B002`, … referenced across commits (`fix(B003): ...`).
+All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages reference them (`fix(BUG-013): ...`).
 
 ---
 
-## Phase 1 — Bug Fixes (~90 known)
+## Phase 1 — Bug Fixes (~48 known: BUG-001–049)
 
-> Source list pending. Log every bug below before fixing; verify each fix by running the app
-> (upload roster xlsx, tick "Sample", Run Analysis) — there is no test suite yet.
+> All bug details, status, and fix-proof live in **`Bug Tracker.md`** (`BUG-###` ids). Work them in
+> the tracker's phase order; verify each fix by running the app (upload roster xlsx, tick "Sample",
+> Run Analysis) — there is no test suite yet.
 
-- [ ] 1.1 Collect and triage all ~90 reported bugs into the log below (severity: P0 crash/data-loss, P1 wrong output, P2 UI, P3 polish)
+- [ ] 1.1 Triage the `Bug Tracker.md` backlog (severity: P0 crash/data-loss, P1 wrong output, P2 UI, P3 polish)
 - [ ] 1.2 Fix P0s
 - [ ] 1.3 Fix P1s
 - [ ] 1.4 Fix P2/P3s
 
-**Known bugs (from ANALYSIS.md):**
-- [ ] B001 Transient network errors silently mark students "Invalid" (services.py:189, 242) — distinguish error vs invalid, retry once
-- [ ] B002 Repositories truncated at 100 per student — paginate `/repos` via `Link` header
-
-**Bug log:** _(append `- [ ] B### description (file:line)` here)_
-- [x] B014 Sample-size max hardcoded to 735 — now derived from uploaded Excel row count (app.py:789–806)
-- [x] B013 Misleading "Live" badge removed from metric cards (app.py, metric_card)
-- [x] B010 "Primary Language" renamed to "Most Common (Repo) Language" in profile card, table header, and exports
-- [x] B036 First student no longer auto-selected; profile panel shows placeholder hint until user picks someone (app.py:1207, students page right column)
+**Fixed so far (recorded in Bug Tracker.md):** BUG-013, BUG-010, BUG-014, BUG-036
 
 ---
 
 ## Phase 2 — UI Overhaul
+
+> Re-scoped 2026-08-22: Option A (full rewrite) confirmed — these items now act as **acceptance criteria for the new frontend**, not Streamlit work. Avoid deep Streamlit UI investment until then.
 
 - [ ] 2.1 Consistent loading/empty/error states across all 7 pages (reuse `.empty-state`)
 - [ ] 2.2 Mobile/responsive pass (topbar wraps, tables overflow, metric grid collapses)
@@ -39,6 +34,8 @@ Bug IDs: `B001`, `B002`, … referenced across commits (`fix(B003): ...`).
 ---
 
 ## Phase 3 — Authentication Panel (Google OAuth, college-mail-only)
+
+> Requirement unchanged; implementation moves to the NEW stack (Phase 6 rewrite). Items below stay as the spec.
 
 > Requirement: users must sign in with Google and only college-domain addresses allowed.
 
@@ -58,7 +55,7 @@ Bug IDs: `B001`, `B002`, … referenced across commits (`fix(B003): ...`).
 - [ ] 4.3 Split `app.py` into modules — **see 4.3a–g below (team plan)**
 - [ ] 4.4 Add pytest for `services.py` (extract_username edge cases, aggregation semantics, rate-limit detection) — no network mocks beyond requests
 - [ ] 4.5 Add ruff (lint+format) config and CI workflow running lint + tests
-- [ ] 4.6 Add retry/backoff for transient GitHub API failures (pairs with B001)
+- [ ] 4.6 Add retry/backoff for transient GitHub API failures (pairs with BUG-002)
 
 ### 4.3 File-split plan (4-person team)
 
@@ -122,17 +119,21 @@ ui/
 
 ---
 
-## Phase 6 — Vercel Migration (decision pending)
+## Phase 6 — Vercel Migration
 
-> ⚠️ Open decision: Streamlit is a persistent WebSocket server and does NOT run on Vercel's
-> serverless model. "Switch to Vercel" implies one of:
+> **Decision (2026-08-22): Option A — full rewrite.** Streamlit cannot run on Vercel's serverless
+> model, and the current frontend is reported non-functional (BUG-049), so rebuilding the UI in a
+> Vercel-native stack beats patching Streamlit.
+>
+> Carries over regardless of stack: `services.py` logic (GitHub API calls, aggregation), the fixed
+> Excel schema contract, and the Phase 3 auth requirement (Google OAuth + college-domain allowlist).
 
 | Option | Scope | Trade-off |
 |---|---|---|
-| A. Full rewrite | Next.js/React frontend + Python API routes on Vercel | Biggest effort; auth + charts reimplemented |
+| A. Full rewrite ✅ | Next.js/React frontend + Python API routes on Vercel | Biggest effort; auth + charts reimplemented |
 | B. Hybrid | Static landing/dashboard shell on Vercel; Streamlit app stays on Streamlit Cloud (or a VM) behind subdomain | Fastest; two surfaces to maintain |
 | C. Stay put | Keep Streamlit Cloud only | No migration |
 
-- [ ] 6.1 Pick option A/B/C and record rationale here
+- [x] 6.1 Pick option A/B/C and record rationale here
 - [ ] 6.2 Draft migration plan for chosen option (data flow, auth port from Phase 3, chart library)
 - [ ] 6.3 Execute migration; keep Streamlit app runnable until parity verified

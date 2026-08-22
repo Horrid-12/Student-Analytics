@@ -1,6 +1,6 @@
 # Student Progress Analytics — Beginner-Friendly Bug Backlog
 
-**Repository:** `Whitedevil-0702/Github-website-`  
+**Repository:** `Horrid-12/Student-Analytics`  
 **Assumption:** The team is around 12 years old, new to programming, and needs a slow learning curve.
 
 > **Core rule:** Fix correctness first, then build intelligence. Do not add advanced AI, databases, or complex integrations before the existing analytics are trustworthy.
@@ -38,10 +38,10 @@
 
 | Order | Bug     | Problem                                   | Difficulty |
 | ----: | ------- | ----------------------------------------- | :--------: |
-|     1 | BUG-013 | Remove misleading “Live” labels           |   🟢 1/5   |
-|     2 | BUG-010 | Rename misleading “Primary Language”      |   🟢 1/5   |
-|     3 | BUG-014 | Make sample-size maximum dynamic          |   🟢 1/5   |
-|     4 | BUG-036 | Do not automatically select first student |   🟢 1/5   |
+|     1 | ✅ BUG-013 | Remove misleading “Live” labels           |   🟢 1/5   |
+|     2 | ✅ BUG-010 | Rename misleading “Primary Language”      |   🟢 1/5   |
+|     3 | ✅ BUG-014 | Make sample-size maximum dynamic          |   🟢 1/5   |
+|     4 | ✅ BUG-036 | Do not automatically select first student |   🟢 1/5   |
 |     5 | BUG-039 | Show table record counts                  |   🟢 1/5   |
 |     6 | BUG-029 | Rework followers leaderboard wording      |   🟢 1/5   |
 |     7 | BUG-030 | Rework repository-count wording           |   🟢 1/5   |
@@ -49,6 +49,7 @@
 |     9 | BUG-037 | Make student selection unique             |   🟢 2/5   |
 |    10 | BUG-041 | Improve system-status messages            |   🟢 2/5   |
 |    11 | BUG-042 | Add Complete/Partial/Failed states        |   🟢 2/5   |
+|    12 | BUG-049 | Reported: deployed UI shows a single page — no sidebar nav, no Settings page, no auth screen. Needs repro on a local run first (`streamlit run app.py`); local code contains all 7 sidebar pages, so may be stale deploy or CSS hiding the sidebar |   🟢 1/5   |
 
 ### Learn
 
