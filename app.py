@@ -53,15 +53,12 @@ def inject_theme() -> None:
         }
 
         .stApp {
-            background:
-                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 28rem),
-                radial-gradient(circle at top right, rgba(139, 92, 246, 0.10), transparent 28rem),
-                var(--bg);
+            background: var(--bg);
             color: var(--text);
         }
 
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #111114 0%, #0D0D10 100%);
+            background: #111114;
             border-right: 1px solid var(--border);
             width: 260px !important;
         }
@@ -119,7 +116,7 @@ def inject_theme() -> None:
             display: grid;
             place-items: center;
             border-radius: 12px;
-            background: linear-gradient(135deg, #2A2A30, #18181B);
+            background: #222225;
             border: 1px solid var(--border);
             box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
         }
@@ -189,7 +186,6 @@ def inject_theme() -> None:
         }
 
         .external-link-button:hover {
-            transform: translateY(-1px);
             border-color: rgba(34, 197, 94, 0.48);
             background: rgba(34, 197, 94, 0.15);
         }
@@ -209,7 +205,6 @@ def inject_theme() -> None:
             border: 1px solid rgba(42, 42, 48, 0.9);
             border-radius: 18px;
             background: rgba(17, 17, 20, 0.78);
-            backdrop-filter: blur(18px);
             box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
         }
 
@@ -235,7 +230,7 @@ def inject_theme() -> None:
             display: grid;
             place-items: center;
             color: #FFFFFF;
-            background: linear-gradient(135deg, var(--blue), var(--purple));
+            background: var(--blue);
             font-size: 14px;
             font-weight: 800;
         }
@@ -260,7 +255,7 @@ def inject_theme() -> None:
         .metric-card, .panel, .empty-state, .profile-panel {
             border: 1px solid var(--border);
             border-radius: 16px;
-            background: linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(17, 17, 20, 0.96));
+            background: #18181B;
             box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
         }
 
@@ -273,20 +268,11 @@ def inject_theme() -> None:
         }
 
         .metric-card:hover {
-            transform: translateY(-2px);
             border-color: rgba(59, 130, 246, 0.45);
-            box-shadow: 0 24px 55px rgba(0, 0, 0, 0.34);
         }
 
         .metric-card::after {
-            content: "";
-            position: absolute;
-            inset: auto -20% -45% 20%;
-            height: 110px;
-            border-radius: 999px;
-            background: var(--glow);
-            filter: blur(34px);
-            opacity: 0.52;
+            display: none;
         }
 
         .metric-top {
@@ -395,14 +381,10 @@ def inject_theme() -> None:
             height: 100%;
             width: 100%;
             border-radius: inherit;
-            background: linear-gradient(90deg, var(--blue), var(--green));
-            animation: breathe 2s ease-in-out infinite;
+            background: var(--blue);
         }
 
-        @keyframes breathe {
-            0%, 100% { opacity: 0.72; }
-            50% { opacity: 1; }
-        }
+
 
         .system-grid {
             display: grid;
@@ -446,7 +428,7 @@ def inject_theme() -> None:
             display: grid;
             place-items: center;
             color: #FFFFFF;
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.82), rgba(139, 92, 246, 0.78));
+            background: rgba(59, 130, 246, 0.82);
             box-shadow: 0 24px 70px rgba(59, 130, 246, 0.20);
         }
 
@@ -502,7 +484,6 @@ def inject_theme() -> None:
         }
 
         .repo-card:hover {
-            transform: translateY(-2px);
             border-color: rgba(59, 130, 246, 0.45);
         }
 
@@ -525,7 +506,7 @@ def inject_theme() -> None:
             padding: 12px;
             border: 1px solid var(--border);
             border-radius: 16px;
-            background: linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(17, 17, 20, 0.96));
+            background: #18181B;
             margin-bottom: 8px;
         }
 
@@ -562,7 +543,7 @@ def inject_theme() -> None:
         .stButton > button, .stDownloadButton > button, [data-testid="stFileUploader"] button {
             border-radius: 12px !important;
             border: 1px solid var(--border) !important;
-            background: linear-gradient(180deg, #27272A, #18181B) !important;
+            background: #1F1F24 !important;
             color: var(--text) !important;
             font-weight: 700 !important;
             font-size: 15px !important;
@@ -573,7 +554,6 @@ def inject_theme() -> None:
 
         .stButton > button:hover, .stDownloadButton > button:hover, [data-testid="stFileUploader"] button:hover {
             border-color: rgba(59, 130, 246, 0.6) !important;
-            transform: translateY(-1px);
         }
 
         .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stNumberInput input {
@@ -798,7 +778,7 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[object, bool
         except Exception:
             row_count = 735
 
-    sample_enabled = controls[1].checkbox("Sample", value=False)
+    sample_enabled = controls[1].checkbox("Custom Value", value=False)
     sample_size = None
     if sample_enabled:
         sample_size = controls[2].number_input(
@@ -1552,7 +1532,10 @@ if run_button:
 
 result = st.session_state.analysis_result
 
-if result is None:
+# Settings page does not require analysis results — always accessible
+if page == "Settings":
+    render_settings(token_present, st.session_state.analysis_file_hash)
+elif result is None:
     render_empty_state()
 else:
     if page == "Overview":
@@ -1567,5 +1550,4 @@ else:
         render_issues(result)
     elif page == "Verification":
         render_verification(result, st.session_state.last_analysis_time)
-    else:
-        render_settings(token_present, st.session_state.analysis_file_hash)
+

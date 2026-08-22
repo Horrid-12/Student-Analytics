@@ -8,7 +8,7 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 ## Phase 1 — Bug Fixes (~48 known: BUG-001–049)
 
 > All bug details, status, and fix-proof live in **`Bug Tracker.md`** (`BUG-###` ids). Work them in
-> the tracker's phase order; verify each fix by running the app (upload roster xlsx, tick "Sample",
+> the tracker's phase order; verify each fix by running the app (upload roster xlsx, tick "Custom Value",
 > Run Analysis) — there is no test suite yet.
 
 - [ ] 1.1 Triage the `Bug Tracker.md` backlog (severity: P0 crash/data-loss, P1 wrong output, P2 UI, P3 polish)

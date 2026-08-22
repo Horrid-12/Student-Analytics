@@ -104,7 +104,7 @@ Opens at http://localhost:8501. The server auto-reloads whenever you save a file
 ## Using the app (daily workflow)
 
 1. Upload the roster `.xlsx` using the sidebar uploader (the bundled `Foundation Of Programming-GitHub Link (Responses) (2).xlsx` works)
-2. **Tick "Sample" first** if you're just testing — it limits rows processed and saves your API quota
+2. **Tick "Custom Value" first** if you're just testing — it limits rows processed and saves your API quota
 3. Click **Run Analysis** and wait (a full roster takes several minutes — it's calling GitHub once per student, twice with repos)
 4. Explore the pages via the left sidebar
 
