@@ -1063,7 +1063,7 @@ if file_hash and st.session_state.analysis_file_hash not in (None, file_hash):
 
 if run_button:
     if uploaded_file is None:
-        st.warning("Please upload a student roster Excel file (.xlsx) before running the analysis.")
+        st.warning("Please upload a student roster file (.xlsx, .xls or .csv) before running the analysis.")
     else:
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -1083,8 +1083,12 @@ if run_button:
             status_text.write(label)
 
         try:
+            # BUG-053: keep the original filename on the buffer — load_excel
+            # dispatches xlsx/xls/csv by extension and a bare BytesIO has no name.
+            roster_buffer = io.BytesIO(file_bytes)
+            roster_buffer.name = uploaded_file.name
             result = run_analysis(
-                io.BytesIO(file_bytes),
+                roster_buffer,
                 token,
                 sample_size,
                 progress_callback,
