@@ -62,6 +62,7 @@
 > - **BUG-037**: Resolved as a direct consequence of BUG-035. The original bug was that the name-based dropdown could silently select the wrong student when two students shared the same name. Since BUG-035 removed that dropdown entirely, selection now works by row index (`.iloc[row_index]`), which is immune to duplicate names — clicking a specific row always fetches exactly that student's data regardless of what their name is.
 > - **BUG-041**: Rewrote 9 vague status/error messages across app.py (commit 50a98f8): chart empty-states now say why they're empty and what to do, run-without-upload warning names the expected file type, rate-limit error explains the cause plus retry time, unexpected errors get a friendly wrapper with details.
 > - **BUG-042**: Analysis runs now report Complete / Partial / Failed instead of always claiming success. Root cause: `validate_users` filed network/API failures as "invalid users". Fixed by making `get_user` three-state (valid / not-found-404 / API-error), collecting `error_users` separately in `services.py`, deriving `AnalysisResult.status`, and rendering a green/yellow/red banner with counts in app.py after each run.
+> - **BUG-007**: Duplicate GitHub usernames are now detected and reported instead of silently dropped. `build_duplicate_issues()` (services.py) flags every submission sharing a username — case-insensitively, since GitHub treats `Rahul` and `rahul` as the same account — with `Issue = "Duplicate username"`; rows flow into the Follow-up Queue and the run log announces the count.
 
 ### Learn
 
@@ -81,7 +82,7 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 | Order | Bug     | Problem                                     | Difficulty |
 | ----: | ------- | ------------------------------------------- | :--------: |
 |    12 | BUG-006 | Prevent duplicate missing-user issues       |   🟢 2/5   |
-|    13 | BUG-007 | Detect duplicate GitHub usernames           |   🟢 2/5   |
+|    13 | ✅ BUG-007 | Detect duplicate GitHub usernames           |   🟢 2/5   |
 |    14 | BUG-026 | Detect duplicate students                   |   🟢 2/5   |
 |    15 | BUG-023 | Normalize Excel column names                |   🟢 2/5   |
 |    16 | BUG-027 | Distinguish missing data from zero activity |   🟡 3/5   |
@@ -380,7 +381,7 @@ Progress Tracking
 |   6 | BUG-041 Status messages           |     🟢     | Streamlit      |
 |   7 | BUG-023 Excel normalization       |     🟢     | Pandas         |
 |   8 | BUG-006 Duplicate missing issues  |     🟢     | Python         |
-|   9 | BUG-007 Duplicate usernames       |     🟢     | Pandas         |
+|   9 | ✅ BUG-007 Duplicate usernames       |     🟢     | Pandas         |
 |  10 | BUG-026 Duplicate students        |     🟢     | Pandas         |
 |  11 | BUG-005 Username parser           |     🟡     | Python/API     |
 |  12 | BUG-002 API error handling        |     🟡     | Python/API     |

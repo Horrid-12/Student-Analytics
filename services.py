@@ -328,6 +328,21 @@ def build_dashboard_df(df: pd.DataFrame, github_stats: pd.DataFrame, repo_df: pd
     ]
 
 
+def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
+    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    extracted = df[df["GitHub_Username"].notna()]
+    if extracted.empty:
+        return pd.DataFrame(columns=columns)
+    lowered = extracted["GitHub_Username"].astype(str).str.lower()
+    counts = lowered.value_counts()
+    duplicate_names = counts[counts > 1].index
+    duplicates = extracted[lowered.isin(duplicate_names)].copy()
+    if duplicates.empty:
+        return pd.DataFrame(columns=columns)
+    duplicates["Issue"] = "Duplicate username"
+    return duplicates[columns]
+
+
 def build_invalid_issues(
     df: pd.DataFrame,
     invalid_format_df: pd.DataFrame,
@@ -400,6 +415,12 @@ def run_analysis(
 
     dashboard_df = build_dashboard_df(df, github_stats, repo_df)
     invalid_issues_df = build_invalid_issues(df, invalid_format_df, invalid_users)
+    duplicate_issues_df = build_duplicate_issues(df)
+    if not duplicate_issues_df.empty:
+        log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
+        invalid_issues_df = (
+            pd.concat([invalid_issues_df, duplicate_issues_df], ignore_index=True).drop_duplicates()
+        )
     log.append("Building analytics...")
     log.append("Complete")
 
