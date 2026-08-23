@@ -343,6 +343,27 @@ def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
     return duplicates[columns]
 
 
+def build_duplicate_student_issues(df: pd.DataFrame) -> pd.DataFrame:
+    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+    valid_name = df["Student Name"].notna() & df["Student Name"].astype(str).str.strip().ne("")
+    identity = (
+        df["Student Name"].astype(str).str.strip().str.lower()
+        + "|"
+        + df["Division"].astype(str).str.strip().str.lower()
+        + "|"
+        + df["Batch"].astype(str).str.strip().str.lower()
+    ).where(valid_name)
+    counts = identity.value_counts()
+    duplicate_ids = counts[counts > 1].index
+    duplicates = df[identity.isin(duplicate_ids)].copy()
+    if duplicates.empty:
+        return pd.DataFrame(columns=columns)
+    duplicates["Issue"] = "Duplicate student"
+    return duplicates[columns]
+
+
 def build_invalid_issues(df: pd.DataFrame, invalid_users: Iterable[str]) -> pd.DataFrame:
     columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     if df.empty:
@@ -418,6 +439,12 @@ def run_analysis(
         log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_issues_df], ignore_index=True).drop_duplicates()
+        )
+    duplicate_student_issues_df = build_duplicate_student_issues(df)
+    if not duplicate_student_issues_df.empty:
+        log.append(f"Detected {len(duplicate_student_issues_df)} duplicate student submission(s)")
+        invalid_issues_df = (
+            pd.concat([invalid_issues_df, duplicate_student_issues_df], ignore_index=True).drop_duplicates()
         )
     log.append("Building analytics...")
     log.append("Complete")

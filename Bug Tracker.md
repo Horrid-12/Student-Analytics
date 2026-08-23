@@ -37,22 +37,23 @@
 **Stack:** Python + Streamlit
 
 | Order | Bug        | Problem                                   | Difficulty |
-|------:|------------|-------------------------------------------|:----------:|
-| 1     | ✅ BUG-013 | Remove misleading “Live” labels           | 🟢 1/5     |
-| 2     | ✅ BUG-010 | Rename misleading “Primary Language”      | 🟢 1/5     |
-| 3     | ✅ BUG-014 | Make sample-size maximum dynamic          | 🟢 1/5     |
-| 4     | ✅ BUG-036 | Do not automatically select first student | 🟢 1/5     |
-| 5     | ✅ BUG-039 | Show table record counts                  | 🟢 1/5     |
-| 6     | ✅ BUG-029 | Rework followers leaderboard wording      | 🟢 1/5     |
-| 7     | ✅ BUG-030 | Rework repository-count wording           | 🟢 1/5     |
-| 8     | ✅ BUG-035 | Simplify student selection                | 🟢 2/5     |
-| 9     | ✅ BUG-037 | Make student selection unique             | 🟢 2/5     |
-| 10    | ✅ BUG-041 | Improve system-status messages            | 🟢 2/5     |
-| 11    | ✅ BUG-042 | Add Complete/Partial/Failed states        | 🟢 2/5     |
-| 12    | ✅ BUG-049 | Sidebars not Working                      | 🟢 1/5     |
-| 13    | ✅ BUG-050 | Broken Light Mode                         | 🟢 1/5     |
+| ----: | ---------- | ----------------------------------------- | :--------: |
+|     1 | ✅ BUG-013 | Remove misleading “Live” labels           |   🟢 1/5   |
+|     2 | ✅ BUG-010 | Rename misleading “Primary Language”      |   🟢 1/5   |
+|     3 | ✅ BUG-014 | Make sample-size maximum dynamic          |   🟢 1/5   |
+|     4 | ✅ BUG-036 | Do not automatically select first student |   🟢 1/5   |
+|     5 | ✅ BUG-039 | Show table record counts                  |   🟢 1/5   |
+|     6 | ✅ BUG-029 | Rework followers leaderboard wording      |   🟢 1/5   |
+|     7 | ✅ BUG-030 | Rework repository-count wording           |   🟢 1/5   |
+|     8 | ✅ BUG-035 | Simplify student selection                |   🟢 2/5   |
+|     9 | ✅ BUG-037 | Make student selection unique             |   🟢 2/5   |
+|    10 | ✅ BUG-041 | Improve system-status messages            |   🟢 2/5   |
+|    11 | ✅ BUG-042 | Add Complete/Partial/Failed states        |   🟢 2/5   |
+|    12 | ✅ BUG-049 | Sidebars not Working                      |   🟢 1/5   |
+|    13 | ✅ BUG-050 | Broken Light Mode                         |   🟢 1/5   |
 
 > **Fix Proofs:**
+>
 > - **BUG-029**: Renamed the followers leaderboard to “Most-Followed GitHub Profiles” so it clearly reports social popularity, not student contribution or performance.
 > - **BUG-049**: Root cause: Navigation router blocked all page views when `analysis_result` was None. Fixed by allowing Settings and empty states to render independently of roster dataset analysis.
 > - **BUG-050**: Root cause: Hardcoded inline CSS styles and conflicting native Streamlit theme header backgrounds broke Light mode and caused severe contrast issues. Fixed by externalizing styles to `style.css`, implementing dynamic CSS variable theming (Light/Dark), setting `stHeader` transparent, applying global Inter font, and streamlining the centerpiece upload layout.
@@ -64,6 +65,7 @@
 > - **BUG-042**: Analysis runs now report Complete / Partial / Failed instead of always claiming success. Root cause: `validate_users` filed network/API failures as "invalid users". Fixed by making `get_user` three-state (valid / not-found-404 / API-error), collecting `error_users` separately in `services.py`, deriving `AnalysisResult.status`, and rendering a green/yellow/red banner with counts in app.py after each run.
 > - **BUG-007**: Duplicate GitHub usernames are now detected and reported instead of silently dropped. `build_duplicate_issues()` (services.py) flags every submission sharing a username — case-insensitively, since GitHub treats `Rahul` and `rahul` as the same account — with `Issue = "Duplicate username"`; rows flow into the Follow-up Queue and the run log announces the count.
 > - **BUG-006**: Students were double-reported in the Follow-up Queue (e.g., an empty GitHub cell produced both "Invalid format" and "Missing username" rows; a messy link that still yielded a failing username produced both "Invalid format" and "Failed validation"). `build_invalid_issues()` was rewritten to classify each row exactly once via priority: Missing username → Failed GitHub validation → Invalid format, dropping the redundant `invalid_format_df` parameter. Verified offline plus live test with sabotaged roster rows.
+> - **BUG-026**: The same student appearing in multiple roster rows (e.g., resubmitted form with a second GitHub account) silently double-counted followers/repos on leaderboards. `build_duplicate_student_issues()` (services.py) now flags every row sharing a normalized Student Name + Division + Batch combination (case/whitespace-insensitive, blank names exempt) with `Issue = "Duplicate student"`; rows surface in the Follow-up Queue and the run log reports the count. Verified offline plus live test with a twin row using a different GitHub link.
 
 ### Learn
 
@@ -80,16 +82,16 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 
 ## 4. Phase 2 — Python + Pandas
 
-| Order | Bug     | Problem                                     | Difficulty |
-| ----: | ------- | ------------------------------------------- | :--------: |
+| Order | Bug        | Problem                                     | Difficulty |
+| ----: | ---------- | ------------------------------------------- | :--------: |
 |    12 | ✅ BUG-006 | Prevent duplicate missing-user issues       |   🟢 2/5   |
 |    13 | ✅ BUG-007 | Detect duplicate GitHub usernames           |   🟢 2/5   |
-|    14 | BUG-026 | Detect duplicate students                   |   🟢 2/5   |
-|    15 | BUG-023 | Normalize Excel column names                |   🟢 2/5   |
-|    16 | BUG-027 | Distinguish missing data from zero activity |   🟡 3/5   |
-|    17 | BUG-009 | Keep repository counts consistent           |   🟡 3/5   |
-|    18 | BUG-016 | Validate repository ownership               |   🟡 3/5   |
-|    19 | BUG-015 | Properly use submitted repository links     |   🟡 3/5   |
+|    14 | ✅ BUG-026 | Detect duplicate students                   |   🟢 2/5   |
+|    15 | BUG-023    | Normalize Excel column names                |   🟢 2/5   |
+|    16 | BUG-027    | Distinguish missing data from zero activity |   🟡 3/5   |
+|    17 | BUG-009    | Keep repository counts consistent           |   🟡 3/5   |
+|    18 | BUG-016    | Validate repository ownership               |   🟡 3/5   |
+|    19 | BUG-015    | Properly use submitted repository links     |   🟡 3/5   |
 
 Learn DataFrame filtering, merging, duplicates, missing values, validation, and error messages.
 
@@ -372,49 +374,49 @@ Progress Tracking
 
 ## 15. Complete Ordered Backlog
 
-|   # | Task                              | Difficulty | Technology     |
-| --: | --------------------------------- | :--------: | -------------- |
-|   1 | BUG-013 Live label                |     🟢     | Streamlit      |
-|   2 | BUG-010 Language naming           |     🟢     | Python         |
-|   3 | BUG-014 Sample limit              |     🟢     | Streamlit      |
-|   4 | ✅ BUG-036 First-student selection |     🟢     | Streamlit      |
-|   5 | ✅ BUG-039 Record counts          |     🟢     | Streamlit      |
-|   6 | BUG-041 Status messages           |     🟢     | Streamlit      |
-|   7 | BUG-023 Excel normalization       |     🟢     | Pandas         |
-|   8 | ✅ BUG-006 Duplicate missing issues  |     🟢     | Python         |
-|   9 | ✅ BUG-007 Duplicate usernames       |     🟢     | Pandas         |
-|  10 | BUG-026 Duplicate students        |     🟢     | Pandas         |
-|  11 | BUG-005 Username parser           |     🟡     | Python/API     |
-|  12 | BUG-002 API error handling        |     🟡     | Python/API     |
-|  13 | BUG-003 Fetch-error tracking      |     🟡     | GitHub API     |
-|  14 | BUG-004 API health                |     🟡     | GitHub API     |
-|  15 | BUG-011 Real refresh              |     🟡     | Streamlit/API  |
-|  16 | BUG-012 Cache handling            |     🟡     | Streamlit      |
-|  17 | BUG-001 GitHub pagination         |     🟠     | GitHub API     |
-|  18 | BUG-008 Stable student identity   |     🟡     | Pandas         |
-|  19 | BUG-024 PRN identity              |     🟡     | Data modelling |
-|  20 | BUG-009 Repository consistency    |     🟡     | Python/Pandas  |
-|  21 | BUG-027 Missing-data states       |     🟡     | Pandas         |
-|  22 | BUG-017 Commit analytics          |     🟡     | GitHub API     |
-|  23 | BUG-031 Account-age normalization |     🟡     | Python         |
-|  24 | BUG-032 Year benchmarking         |     🟡     | Pandas         |
-|  25 | BUG-018 PR analytics              |     🟠     | GitHub API     |
-|  26 | BUG-019 GitHub Issues             |     🟠     | GitHub API     |
-|  27 | BUG-033 Repository quality        |     🟠     | Python/API     |
-|  28 | BUG-040 Faculty workflow          |     🟠     | Streamlit/Data |
-|  29 | BUG-047 Split architecture        |     🟠     | Python         |
-|  30 | BUG-048 Service architecture      |     🟠     | Python         |
-|  31 | BUG-022 Database                  |     🔴     | PostgreSQL     |
-|  32 | BUG-020 Historical analytics      |     🔴     | PostgreSQL     |
-|  33 | BUG-021 Persistent analysis runs  |     🔴     | PostgreSQL     |
-|  34 | BUG-043 Authentication            |     🔴     | Auth           |
-|  35 | BUG-044 RBAC                      |     🔴     | Auth/DB        |
-|  36 | BUG-046 Audit logs                |     🔴     | Database       |
-|  37 | Skill intelligence                |     🔴     | Analytics      |
-|  38 | Academic integration              |     🔴     | Database/API   |
-|  39 | Coding-platform integrations      |     🔴     | APIs           |
-|  40 | Predictive analytics              |     🔴     | Statistics/ML  |
-|  41 | AI recommendations                |     🔴     | AI/ML          |
+|   # | Task                                | Difficulty | Technology     |
+| --: | ----------------------------------- | :--------: | -------------- |
+|   1 | BUG-013 Live label                  |     🟢     | Streamlit      |
+|   2 | BUG-010 Language naming             |     🟢     | Python         |
+|   3 | BUG-014 Sample limit                |     🟢     | Streamlit      |
+|   4 | ✅ BUG-036 First-student selection  |     🟢     | Streamlit      |
+|   5 | ✅ BUG-039 Record counts            |     🟢     | Streamlit      |
+|   6 | BUG-041 Status messages             |     🟢     | Streamlit      |
+|   7 | BUG-023 Excel normalization         |     🟢     | Pandas         |
+|   8 | ✅ BUG-006 Duplicate missing issues |     🟢     | Python         |
+|   9 | ✅ BUG-007 Duplicate usernames      |     🟢     | Pandas         |
+|  10 | ✅ BUG-026 Duplicate students        |     🟢     | Pandas         |
+|  11 | BUG-005 Username parser             |     🟡     | Python/API     |
+|  12 | BUG-002 API error handling          |     🟡     | Python/API     |
+|  13 | BUG-003 Fetch-error tracking        |     🟡     | GitHub API     |
+|  14 | BUG-004 API health                  |     🟡     | GitHub API     |
+|  15 | BUG-011 Real refresh                |     🟡     | Streamlit/API  |
+|  16 | BUG-012 Cache handling              |     🟡     | Streamlit      |
+|  17 | BUG-001 GitHub pagination           |     🟠     | GitHub API     |
+|  18 | BUG-008 Stable student identity     |     🟡     | Pandas         |
+|  19 | BUG-024 PRN identity                |     🟡     | Data modelling |
+|  20 | BUG-009 Repository consistency      |     🟡     | Python/Pandas  |
+|  21 | BUG-027 Missing-data states         |     🟡     | Pandas         |
+|  22 | BUG-017 Commit analytics            |     🟡     | GitHub API     |
+|  23 | BUG-031 Account-age normalization   |     🟡     | Python         |
+|  24 | BUG-032 Year benchmarking           |     🟡     | Pandas         |
+|  25 | BUG-018 PR analytics                |     🟠     | GitHub API     |
+|  26 | BUG-019 GitHub Issues               |     🟠     | GitHub API     |
+|  27 | BUG-033 Repository quality          |     🟠     | Python/API     |
+|  28 | BUG-040 Faculty workflow            |     🟠     | Streamlit/Data |
+|  29 | BUG-047 Split architecture          |     🟠     | Python         |
+|  30 | BUG-048 Service architecture        |     🟠     | Python         |
+|  31 | BUG-022 Database                    |     🔴     | PostgreSQL     |
+|  32 | BUG-020 Historical analytics        |     🔴     | PostgreSQL     |
+|  33 | BUG-021 Persistent analysis runs    |     🔴     | PostgreSQL     |
+|  34 | BUG-043 Authentication              |     🔴     | Auth           |
+|  35 | BUG-044 RBAC                        |     🔴     | Auth/DB        |
+|  36 | BUG-046 Audit logs                  |     🔴     | Database       |
+|  37 | Skill intelligence                  |     🔴     | Analytics      |
+|  38 | Academic integration                |     🔴     | Database/API   |
+|  39 | Coding-platform integrations        |     🔴     | APIs           |
+|  40 | Predictive analytics                |     🔴     | Statistics/ML  |
+|  41 | AI recommendations                  |     🔴     | AI/ML          |
 
 ## 16. Suggested Learning Timeline
 

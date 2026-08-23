@@ -16,7 +16,7 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 - [ ] 1.3 Fix P1s
 - [ ] 1.4 Fix P2/P3s
 
-**Fixed so far (recorded in Bug Tracker.md):** BUG-013, BUG-010, BUG-014, BUG-036, BUG-029, BUG-030, BUG-035, BUG-037, BUG-039, BUG-041, BUG-042, BUG-049, BUG-050, BUG-007, BUG-006
+**Fixed so far (recorded in Bug Tracker.md):** BUG-013, BUG-010, BUG-014, BUG-036, BUG-029, BUG-030, BUG-035, BUG-037, BUG-039, BUG-041, BUG-042, BUG-049, BUG-050, BUG-007, BUG-006, BUG-026
 
 ---
 
