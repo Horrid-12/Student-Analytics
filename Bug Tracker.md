@@ -63,6 +63,7 @@
 > - **BUG-041**: Rewrote 9 vague status/error messages across app.py (commit 50a98f8): chart empty-states now say why they're empty and what to do, run-without-upload warning names the expected file type, rate-limit error explains the cause plus retry time, unexpected errors get a friendly wrapper with details.
 > - **BUG-042**: Analysis runs now report Complete / Partial / Failed instead of always claiming success. Root cause: `validate_users` filed network/API failures as "invalid users". Fixed by making `get_user` three-state (valid / not-found-404 / API-error), collecting `error_users` separately in `services.py`, deriving `AnalysisResult.status`, and rendering a green/yellow/red banner with counts in app.py after each run.
 > - **BUG-007**: Duplicate GitHub usernames are now detected and reported instead of silently dropped. `build_duplicate_issues()` (services.py) flags every submission sharing a username — case-insensitively, since GitHub treats `Rahul` and `rahul` as the same account — with `Issue = "Duplicate username"`; rows flow into the Follow-up Queue and the run log announces the count.
+> - **BUG-006**: Students were double-reported in the Follow-up Queue (e.g., an empty GitHub cell produced both "Invalid format" and "Missing username" rows; a messy link that still yielded a failing username produced both "Invalid format" and "Failed validation"). `build_invalid_issues()` was rewritten to classify each row exactly once via priority: Missing username → Failed GitHub validation → Invalid format, dropping the redundant `invalid_format_df` parameter. Verified offline plus live test with sabotaged roster rows.
 
 ### Learn
 
@@ -81,7 +82,7 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 
 | Order | Bug     | Problem                                     | Difficulty |
 | ----: | ------- | ------------------------------------------- | :--------: |
-|    12 | BUG-006 | Prevent duplicate missing-user issues       |   🟢 2/5   |
+|    12 | ✅ BUG-006 | Prevent duplicate missing-user issues       |   🟢 2/5   |
 |    13 | ✅ BUG-007 | Detect duplicate GitHub usernames           |   🟢 2/5   |
 |    14 | BUG-026 | Detect duplicate students                   |   🟢 2/5   |
 |    15 | BUG-023 | Normalize Excel column names                |   🟢 2/5   |
@@ -380,7 +381,7 @@ Progress Tracking
 |   5 | ✅ BUG-039 Record counts          |     🟢     | Streamlit      |
 |   6 | BUG-041 Status messages           |     🟢     | Streamlit      |
 |   7 | BUG-023 Excel normalization       |     🟢     | Pandas         |
-|   8 | BUG-006 Duplicate missing issues  |     🟢     | Python         |
+|   8 | ✅ BUG-006 Duplicate missing issues  |     🟢     | Python         |
 |   9 | ✅ BUG-007 Duplicate usernames       |     🟢     | Pandas         |
 |  10 | BUG-026 Duplicate students        |     🟢     | Pandas         |
 |  11 | BUG-005 Username parser           |     🟡     | Python/API     |

@@ -343,30 +343,28 @@ def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
     return duplicates[columns]
 
 
-def build_invalid_issues(
-    df: pd.DataFrame,
-    invalid_format_df: pd.DataFrame,
-    invalid_users: Iterable[str],
-) -> pd.DataFrame:
-    format_issues = invalid_format_df[
-        ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
-    ].copy()
+def build_invalid_issues(df: pd.DataFrame, invalid_users: Iterable[str]) -> pd.DataFrame:
+    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
 
-    failed = df[df["GitHub_Username"].isin([u for u in invalid_users if u])].copy()
-    if not failed.empty:
-        failed["Issue"] = "Failed GitHub validation"
-        failed = failed[
-            ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
-        ]
+    invalid_set = {str(user).strip().lower() for user in invalid_users if user and not pd.isna(user)}
+    usernames = df["GitHub_Username"]
+    has_username = usernames.notna() & usernames.astype(str).str.strip().ne("")
+    lowered = usernames.where(has_username).astype(str).str.strip().str.lower()
+    link_has_github = df[GITHUB_COL].astype(str).str.contains("github.com/", na=False)
 
-    missing = df[df["GitHub_Username"].isna()].copy()
-    if not missing.empty:
-        missing["Issue"] = "Missing username"
-        missing = missing[
-            ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
-        ]
+    failed = has_username & lowered.isin(invalid_set)
+    bad_format = has_username & ~failed & ~link_has_github
 
-    return pd.concat([format_issues, failed, missing], ignore_index=True).drop_duplicates()
+    issue = pd.Series("", index=df.index)
+    issue[~has_username] = "Missing username"
+    issue[failed] = "Failed GitHub validation"
+    issue[bad_format] = "Invalid format"
+
+    flagged = df[issue != ""].copy()
+    flagged["Issue"] = issue[issue != ""]
+    return flagged[columns]
 
 
 def run_analysis(
@@ -414,7 +412,7 @@ def run_analysis(
     log.append(f"Fetched repositories - {len(repo_df)} found")
 
     dashboard_df = build_dashboard_df(df, github_stats, repo_df)
-    invalid_issues_df = build_invalid_issues(df, invalid_format_df, invalid_users)
+    invalid_issues_df = build_invalid_issues(df, invalid_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
         log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
