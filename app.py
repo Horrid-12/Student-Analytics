@@ -1043,7 +1043,7 @@ if page != "Settings":
         token_present,
     )
     if result is None:
-        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx"], label_visibility="collapsed")
+        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
 else:
     run_button, refresh_button, sample_size = False, False, None
 

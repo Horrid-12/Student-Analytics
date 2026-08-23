@@ -43,7 +43,7 @@ Excel upload → services.run_analysis() → AnalysisResult (dataclass) → sess
 ### Medium
 
 3. **Silent failure → false "Invalid" labels** — in `validate_users`/`fetch_repository_data`, any non-rate-limit exception marks the student invalid (services.py:189, 242). A transient network error permanently mislabels a student in the follow-up queue.
-4. **Repos truncated at 100** — `per_page=100` with no pagination; students with >100 repos get silently undercounted.
+4. ~~**Repos truncated at 100**~~ — FIXED (BUG-001): listings now paginate until a short page; verified against a 1140-repo account.
 5. **Duplicated token logic** — `get_token()` (app.py:673) and `get_github_token()` (services.py:51) are near-identical.
 6. **Dead code** — `check_rate_limit()` (services.py:109) is unused after the refactor to `check_rate_limit_parts`.
 7. **XSRF protection disabled** in `.streamlit/config.toml` — low risk for a read-only dashboard, but worth knowing.

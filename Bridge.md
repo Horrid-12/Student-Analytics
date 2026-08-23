@@ -52,9 +52,13 @@ Hand-written JS ≈ 50–100 lines of glue; HTMX interactions are HTML attribute
 - Aggregation semantics — `Repository_Count` = repos grouped by username; `Primary_Language` =
   mode of non-null languages, fallback `"Unknown"`; duplicate usernames dropped after merging.
 - Excel schema — `EXCEL_COLUMNS` headers byte-exact, including the trailing space in
-  `"GitHub : Repository 3 Link : "`.
+  `"GitHub : Repository 3 Link : "`; only `REQUIRED_EXCEL_COLUMNS` (six non-repo columns) are
+  enforced. The three "Repository N Link" columns are legacy: tolerated + header-normalized if
+  present, never used (BUG-015). Port note: Postgres `students` stores profile username only —
+  no submitted repo links, no schema columns for them.
 - GitHub API — validate via `GET /users/{username}`; repos via
-  `GET /users/{username}/repos?per_page=100` with `timeout=15`, skipping non-200/non-list;
+  `GET /users/{username}/repos?per_page=100` **paginated until a short page** (loop-guard ceiling
+  ~2000 repos, 0.1 s pacing between pages) with `timeout=15`, skipping non-200/non-list;
   rate-limit problems surface as friendly errors using `X-RateLimit-*` headers.
 - Docs workflow — Bug Tracker `BUG-###` ids with ✅ convention; Taskflow ticking rules.
 

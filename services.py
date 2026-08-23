@@ -25,6 +25,19 @@ EXCEL_COLUMNS = [
     "GitHub : Repository 3 Link : ",
 ]
 
+# BUG-015 decision: the three "Repository N Link" columns are legacy form fields.
+# They are tolerated and header-normalized if present, but NOT required and NOT
+# used anywhere — analytics derive solely from the GitHub profile link plus the
+# live API fetch.
+REQUIRED_EXCEL_COLUMNS = [
+    "Timestamp",
+    "PRN No",
+    "Student Name",
+    "Division",
+    "Batch",
+    "Actual GitHub Account Link:",
+]
+
 GITHUB_COL = "Actual GitHub Account Link:"
 GITHUB_API_BASE = "https://api.github.com"
 STUDENT_ID_COL = "Student_ID"
@@ -85,7 +98,7 @@ def build_headers(token: str | None) -> dict[str, str]:
 
 
 def validate_excel_schema(df: pd.DataFrame) -> None:
-    missing = [column for column in EXCEL_COLUMNS if column not in df.columns]
+    missing = [column for column in REQUIRED_EXCEL_COLUMNS if column not in df.columns]
     if missing:
         raise ValueError("Missing required columns: " + ", ".join(missing))
 
@@ -156,7 +169,16 @@ def normalize_excel_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_excel(uploaded_file) -> pd.DataFrame:
-    df = pd.read_excel(uploaded_file)
+    # BUG-052: accept .xlsx, .xls and .csv rosters. Explicit engines because a
+    # Streamlit UploadedFile is a nameless buffer pandas cannot type-infer.
+    name = getattr(uploaded_file, "name", None) or str(uploaded_file)
+    lower = name.lower()
+    if lower.endswith(".csv"):
+        df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
+    elif lower.endswith(".xlsx"):
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
+    else:
+        df = pd.read_excel(uploaded_file, engine="xlrd")
     df = normalize_excel_headers(df)
     validate_excel_schema(df)
     return df
@@ -261,17 +283,27 @@ def get_user(username: str, token: str | None) -> tuple[bool, dict, bool, str]:
 
 
 def get_repos(username: str, token: str | None) -> tuple[list[dict], bool]:
-    status_code, response_headers, repos = _cached_get_json(
-        f"{GITHUB_API_BASE}/users/{username}/repos?per_page=100",
-        token,
-        timeout=15,
-    )
-    check_rate_limit_parts(status_code, response_headers)
-    if status_code != 200:
-        return [], False
-    if not isinstance(repos, list):
-        return [], False
-    return repos, True
+    """Walk every page of a user's public repos until a short page ends the listing."""
+    all_repos = []
+    page = 1
+    while True:
+        status_code, response_headers, repos = _cached_get_json(
+            f"{GITHUB_API_BASE}/users/{username}/repos?per_page=100&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(repos, list):
+            # All-or-nothing: any failed page marks the whole listing unavailable.
+            return [], False
+        all_repos.extend(repos)
+        if len(repos) < 100:
+            break  # short (or empty) page means we just fetched the last one
+        if page >= 20:  # BUG-001: loop guard — ~2000-repo ceiling stops pathological runs
+            break
+        page += 1
+        time.sleep(0.1)  # BUG-001: pace multi-page fetches; request bursts trigger secondary limits
+    return all_repos, True
 
 
 def validate_users(
@@ -589,7 +621,7 @@ def run_analysis(
     if count_mismatches:
         log.append(
             f"{len(count_mismatches)} student record(s) show a different fetched repository count than their "
-            "profile reports (profiles count hidden/private repos and listing caps at 100)"
+            "profile reports (profiles also count hidden/private repos that public listings cannot see)"
         )
     log.append("Building analytics...")
     log.append("Complete")

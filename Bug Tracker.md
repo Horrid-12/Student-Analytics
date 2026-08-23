@@ -98,10 +98,16 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 |    15 | ✅ BUG-023 | Normalize Excel column names                |   🟢 2/5   |
 |    16 | ✅ BUG-027 | Distinguish missing data from zero activity |   🟡 3/5   |
 |    17 | ✅ BUG-009 | Keep repository counts consistent           |   🟡 3/5   |
-|    18 | BUG-016    | Validate repository ownership               |   🟡 3/5   | (I Think We should Wait Before Fixing this one ~Swar)
-|    19 | BUG-015    | Properly use submitted repository links     |   🟡 3/5   |
-
+|    18 | ✅ BUG-016 | Validate repository ownership               |   🟡 3/5   | (I Think We should Wait Before Fixing this one ~Swar)
+|    19 | ✅ BUG-015 | Properly use submitted repository links     |   🟡 3/5   |
+|    20 | ✅ BUG-052 | No Option to Upload .csv Files              |             |
 Learn DataFrame filtering, merging, duplicates, missing values, validation, and error messages.
+
+> **Fix Proofs:**
+>
+> - **BUG-015**: Resolution by product decision (2026-08-23): submitted Repository 1/2/3 links are dropped from the product — analytics derive solely from the GitHub profile link plus the live API fetch. Code change: `validate_excel_schema` now enforces `REQUIRED_EXCEL_COLUMNS` (the six non-repo columns); the repo-link trio stays in `EXCEL_COLUMNS` for header normalization only and is ignored everywhere else. Verified with synthetic rosters through `load_excel` (4/4 PASS): roster WITH the trio loads; roster WITHOUT it now loads (previously would fail schema check); a roster missing `Student Name` still raises `ValueError` naming the column; messy-spelled optional headers (`github :repository 2 link :`) still normalize to canonical form. Postgres note for Phase 2 step 2.6: the `students` table stores NO submitted repo links — profile username only.
+> - **BUG-016**: Closed as moot, superseded by the BUG-015 decision (2026-08-23). With submitted repo links dropped from the product there is nothing left to cross-check: repos are fetched directly from `/users/{username}/repos`, so ownership is inherent to the data source. Residual risk — a student submitting someone else's *profile* URL — cannot be verified automatically without college-side PRN↔identity data; noted as possible future hardening, out of scope for V1.
+> - **BUG-052** (covers .csv AND .xls): Reproduced: uploader was `type=["xlsx"]` (app.py) so the browser picker blocked every other format before app code ran, and `load_excel` called `pd.read_excel()` unconditionally — a CSV that somehow got through would die with a cryptic parser error. Fixed by widening the picker to `["xlsx", "xls", "csv"]`, dispatching in `load_excel` on the uploaded file's name (`.csv` → `read_csv` with `utf-8-sig` BOM handling; `.xlsx` → openpyxl; `.xls` → xlrd via explicit engines since a Streamlit buffer has no inferable extension), and adding `xlrd==2.0.2` to requirements.txt. Verified end-to-end through the production path (buffered upload with `.name`, 4/4 PASS): xlsx roster loads; CSV with UTF-8 BOM + messy optional header loads with headers normalized and PRN intact; real legacy .xls (BIFF, generated via xlwt test-fixture only) loads via xlrd; malformed CSV raises ValueError caught by the existing friendly handler (app.py generic error box). Regression suites all green after the change: BUG-001 harness 7/7, BUG-015 synthetic-roster suite, import/AST sanity.
 
 ## 5. Phase 3 — GitHub API Fundamentals
 
@@ -137,7 +143,7 @@ What is an API?
 
 ## 6. Phase 4 — GitHub Pagination
 
-### BUG-001 — Missing GitHub Repository Pagination
+### ✅ BUG-001 — Missing GitHub Repository Pagination
 
 **Difficulty:** 🟠 4/5  
 **Stack:** Python + GitHub REST API + JSON + loops
@@ -157,6 +163,10 @@ Stop when no more data exists
 ```
 
 Treat this as a standalone mini-project.
+
+> **Fix Proofs:**
+>
+> - **BUG-001**: Root cause: `get_repos` only requested a single page (up to 100 repositories), resulting in undercounting for prolific users. Fixed by introducing a `while True` loop that increments a `page` parameter, terminating when a fetched page has fewer than 100 repos; a 20-page loop guard and 0.1 s inter-page pacing were added during review. Verified offline with a synthetic-page harness (7/7 PASS): 100+37 → 137 in 2 calls; exact multiple 100+100+[] → 200 in 3 calls; single short page 42 in 1 call; failure on page 1 → unavailable; mid-run failure on page 2 → all-or-nothing unavailable; loop guard stopped at exactly 20 pages / 2000 repos; rate limit still halts the run mid-pagination. Verified live: `sindresorhus` profile reports 1140 public repos, paginated fetch returned exactly 1140 across 12 pages.
 
 ## 7. Phase 5 — Student Identity and Data Modelling
 
@@ -406,7 +416,7 @@ Progress Tracking
 |  14 | BUG-004 API health                  |     🟡     | GitHub API     |
 |  15 | BUG-011 Real refresh                |     🟡     | Streamlit/API  |
 |  16 | ✅ BUG-012 Cache handling              |     🟡     | Streamlit      |
-|  17 | BUG-001 GitHub pagination           |     🟠     | GitHub API     |
+|  17 | ✅ BUG-001 GitHub pagination           |     🟠     | GitHub API     |
 |  18 | ✅ BUG-008 Stable student identity     |     🟡     | Pandas         |
 |  19 | ✅ BUG-024 PRN identity                |     🟡     | Data modelling |
 |  20 | ✅ BUG-009 Repository consistency    |     🟡     | Python/Pandas  |
@@ -508,7 +518,7 @@ Then make it fast.
 
 ## 18. Definition of Done for V1
 
-- [ ] GitHub pagination works.
+- [x] GitHub pagination works.
 - [ ] API failures are never mislabeled as invalid users.
 - [ ] Repository-fetch failures are visible.
 - [ ] Duplicate GitHub accounts are detected.
