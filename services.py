@@ -101,7 +101,7 @@ def extract_username(text):
 
 
 def _header_key(name) -> str:
-    return re.sub(r"[\s_:]+$", "", re.sub(r"\s+", "", str(name))).lower()
+    return re.sub(r"[\s_:.;]+$", "", re.sub(r"\s+", "", str(name))).lower()
 
 
 def normalize_excel_headers(df: pd.DataFrame) -> pd.DataFrame:
