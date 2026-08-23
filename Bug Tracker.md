@@ -47,8 +47,8 @@
 | 7     | ✅ BUG-030 | Rework repository-count wording           | 🟢 1/5     |
 | 8     | ✅ BUG-035 | Simplify student selection                | 🟢 2/5     |
 | 9     | ✅ BUG-037 | Make student selection unique             | 🟢 2/5     |
-| 10    | BUG-041    | Improve system-status messages            | 🟢 2/5     |
-| 11    | BUG-042    | Add Complete/Partial/Failed states        | 🟢 2/5     |
+| 10    | ✅ BUG-041 | Improve system-status messages            | 🟢 2/5     |
+| 11    | ✅ BUG-042 | Add Complete/Partial/Failed states        | 🟢 2/5     |
 | 12    | ✅ BUG-049 | Sidebars not Working                      | 🟢 1/5     |
 | 13    | ✅ BUG-050 | Broken Light Mode                         | 🟢 1/5     |
 
@@ -60,6 +60,8 @@
 > - **BUG-030**: Replaced misleading labels ("Top Repository Owners", "Top Public Repos", "Identify top contributors") with honest descriptions ("Most Public Repositories", "Most GitHub-Reported Repos", "Compare public repository counts and GitHub follower counts across students") across the Leaderboards and Overview pages.
 > - **BUG-035**: Removed the redundant `st.selectbox("Open student profile", ...)` name-based dropdown and its conflict-avoidance priority logic. Student selection now uses only the table row-click, which is unambiguous and simpler. Empty-state hint text updated accordingly.
 > - **BUG-037**: Resolved as a direct consequence of BUG-035. The original bug was that the name-based dropdown could silently select the wrong student when two students shared the same name. Since BUG-035 removed that dropdown entirely, selection now works by row index (`.iloc[row_index]`), which is immune to duplicate names — clicking a specific row always fetches exactly that student's data regardless of what their name is.
+> - **BUG-041**: Rewrote 9 vague status/error messages across app.py (commit 50a98f8): chart empty-states now say why they're empty and what to do, run-without-upload warning names the expected file type, rate-limit error explains the cause plus retry time, unexpected errors get a friendly wrapper with details.
+> - **BUG-042**: Analysis runs now report Complete / Partial / Failed instead of always claiming success. Root cause: `validate_users` filed network/API failures as "invalid users". Fixed by making `get_user` three-state (valid / not-found-404 / API-error), collecting `error_users` separately in `services.py`, deriving `AnalysisResult.status`, and rendering a green/yellow/red banner with counts in app.py after each run.
 
 ### Learn
 

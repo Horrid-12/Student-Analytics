@@ -1051,7 +1051,23 @@ if run_button:
             )
             elapsed = time.perf_counter() - start
             progress_bar.progress(1.0)
-            status_text.write("✓ Analysis complete — navigate to any page to explore results.")
+            checked_total = len(result.valid_users) + len(result.invalid_users)
+            if result.status == "Complete":
+                status_text.write("✓ Analysis complete — navigate to any page to explore results.")
+                st.success(f"Analysis Complete — all {checked_total} submitted accounts were checked successfully.")
+            elif result.status == "Partial":
+                status_text.write("⚠ Analysis finished with problems.")
+                st.warning(
+                    f"Analysis Partial — {len(result.valid_users)} account(s) validated, but "
+                    f"{len(result.error_users)} could not be checked due to GitHub API or network errors. "
+                    "Re-run later to fill the gaps."
+                )
+            else:
+                status_text.write("✗ Analysis failed.")
+                st.error(
+                    f"Analysis Failed — none of the {len(result.error_users)} account(s) could be checked due to "
+                    "GitHub API or network errors. Check your connection or token, then try again."
+                )
             run_log = result.log
             st.session_state.analysis_result = result
             st.session_state.analysis_elapsed = elapsed

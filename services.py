@@ -45,7 +45,16 @@ class AnalysisResult:
     invalid_format_df: pd.DataFrame
     valid_users: list[str]
     invalid_users: list[str]
+    error_users: list[str]
     log: list[str]
+
+    @property
+    def status(self) -> str:
+        if not self.error_users:
+            return "Complete"
+        if not self.valid_users:
+            return "Failed"
+        return "Partial"
 
 
 def get_github_token() -> str:
@@ -135,15 +144,15 @@ def check_rate_limit_parts(status_code: int, headers: dict) -> None:
         raise RateLimitError(headers.get("X-RateLimit-Reset"))
 
 
-def get_user(username: str, token: str | None) -> tuple[bool, dict]:
+def get_user(username: str, token: str | None) -> tuple[bool, dict, bool]:
     status_code, response_headers, payload = _cached_get_json(
         f"{GITHUB_API_BASE}/users/{username}",
         token,
     )
     check_rate_limit_parts(status_code, response_headers)
-    if status_code != 200 or not isinstance(payload, dict):
-        return False, {}
-    return True, payload
+    if status_code == 200 and isinstance(payload, dict):
+        return True, payload, False
+    return False, {}, status_code != 404
 
 
 def get_repos(username: str, token: str | None) -> list[dict]:
@@ -164,9 +173,10 @@ def validate_users(
     usernames: Iterable[str],
     token: str | None,
     progress_callback: Callable[[int, int, str], None] | None = None,
-) -> tuple[list[str], list[str], dict[str, dict]]:
+) -> tuple[list[str], list[str], list[str], dict[str, dict]]:
     valid_users: list[str] = []
     invalid_users: list[str] = []
+    error_users: list[str] = []
     user_payloads: dict[str, dict] = {}
     username_list = list(usernames)
 
@@ -177,21 +187,23 @@ def validate_users(
                 progress_callback(index, len(username_list), "")
             continue
         try:
-            is_valid, payload = get_user(username, token)
+            is_valid, payload, is_error = get_user(username, token)
             if is_valid:
                 valid_users.append(username)
                 user_payloads[username] = payload
+            elif is_error:
+                error_users.append(username)
             else:
                 invalid_users.append(username)
             time.sleep(0.1)
         except RateLimitError:
             raise
         except Exception:
-            invalid_users.append(username)
+            error_users.append(username)
         if progress_callback:
             progress_callback(index, len(username_list), username)
 
-    return valid_users, invalid_users, user_payloads
+    return valid_users, invalid_users, error_users, user_payloads
 
 
 def build_github_stats(valid_users: Iterable[str], payloads: dict[str, dict]) -> pd.DataFrame:
@@ -363,12 +375,14 @@ def run_analysis(
         if progress_callback:
             progress_callback("validate", index, total, username)
 
-    valid_users, invalid_users, user_payloads = validate_users(
+    valid_users, invalid_users, error_users, user_payloads = validate_users(
         usernames,
         token,
         validation_progress,
     )
-    log.append(f"Validated accounts - {len(valid_users)} valid, {len(invalid_users)} invalid")
+    log.append(
+        f"Validated accounts - {len(valid_users)} valid, {len(invalid_users)} invalid, {len(error_users)} API errors"
+    )
 
     github_stats = build_github_stats(valid_users, user_payloads)
     log.append("Fetched user stats")
@@ -398,5 +412,6 @@ def run_analysis(
         invalid_format_df=invalid_format_df,
         valid_users=valid_users,
         invalid_users=invalid_users,
+        error_users=error_users,
         log=log,
     )
