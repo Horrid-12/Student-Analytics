@@ -98,7 +98,7 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 |    15 | ✅ BUG-023 | Normalize Excel column names                |   🟢 2/5   |
 |    16 | ✅ BUG-027 | Distinguish missing data from zero activity |   🟡 3/5   |
 |    17 | ✅ BUG-009 | Keep repository counts consistent           |   🟡 3/5   |
-|    18 | BUG-016    | Validate repository ownership               |   🟡 3/5   |
+|    18 | BUG-016    | Validate repository ownership               |   🟡 3/5   | (I Think We should Wait Before Fixing this one ~Swar)
 |    19 | BUG-015    | Properly use submitted repository links     |   🟡 3/5   |
 
 Learn DataFrame filtering, merging, duplicates, missing values, validation, and error messages.
