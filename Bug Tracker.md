@@ -74,6 +74,9 @@
 
 > - **BUG-008**: Student records now carry a normalized `Student_ID`, so identity stays stable even when a GitHub username changes. Student-facing tables, profiles, leaderboards, and verification searches display the ID.
 > - **BUG-024**: The PRN / Student ID is now the primary identity key. Duplicate-student detection and dashboard de-duplication use the ID instead of combining name, division, and batch.
+> - **BUG-025**: The stable Student ID remains attached to the current GitHub username, so a username change does not create a second student record. The current username is shown in student, profile, leaderboard, and verification views.
+> - **BUG-031**: GitHub account age is calculated from `created_at`. Repository activity is also shown as repos per account-year, making older and newer accounts easier to compare fairly.
+> - **BUG-032**: Each submission timestamp is normalized into an `Academic_Year` and `Semester`, using January-June as Semester 1 and July-December as Semester 2. Blank or invalid dates safely show `Unknown`.
 
 ### Learn
 
@@ -181,9 +184,9 @@ Treat this as a standalone mini-project.
 | ----: | ------- | -------------------------------------- | :--------: |
 |    26 | ✅ BUG-008 | Use stable student identity            |   🟡 3/5   |
 |    27 | ✅ BUG-024 | Use PRN/student ID as primary identity |   🟡 3/5   |
-|    28 | BUG-025 | Track GitHub username changes          |   🟠 4/5   |
-|    29 | BUG-031 | Normalize by GitHub account age        |   🟡 3/5   |
-|    30 | BUG-032 | Add year/semester normalization        |   🟡 3/5   |
+|    28 | ✅ BUG-025 | Track GitHub username changes          |   🟠 4/5   |
+|    29 | ✅ BUG-031 | Normalize by GitHub account age        |   🟡 3/5   |
+|    30 | ✅ BUG-032 | Add year/semester normalization        |   🟡 3/5   |
 
 Target model:
 
@@ -200,8 +203,8 @@ GitHub Account
 | Order | Bug     | Problem                                    | Difficulty |
 | ----: | ------- | ------------------------------------------ | :--------: |
 |    31 | BUG-017 | Add commit/activity analytics              |   🟡 3/5   |
-|    32 | BUG-031 | Account-age normalization                  |   🟡 3/5   |
-|    33 | BUG-032 | Year/semester benchmarking                 |   🟡 3/5   |
+|    32 | ✅ BUG-031 | Account-age normalization                  |   🟡 3/5   |
+|    33 | ✅ BUG-032 | Year/semester benchmarking                 |   🟡 3/5   |
 |    34 | BUG-034 | Give stars/forks proper context            |   🟡 3/5   |
 |    35 | BUG-028 | Replace repository-count performance proxy |   🟠 4/5   |
 |    36 | BUG-033 | Add repository-quality analysis            |   🟠 4/5   |
@@ -429,8 +432,8 @@ Progress Tracking
 |  20 | ✅ BUG-009 Repository consistency    |     🟡     | Python/Pandas  |
 |  21 | ✅ BUG-027 Missing-data states       |     🟡     | Pandas         |
 |  22 | BUG-017 Commit analytics            |     🟡     | GitHub API     |
-|  23 | BUG-031 Account-age normalization   |     🟡     | Python         |
-|  24 | BUG-032 Year benchmarking           |     🟡     | Pandas         |
+|  23 | ✅ BUG-031 Account-age normalization   |     🟡     | Python         |
+|  24 | ✅ BUG-032 Year benchmarking           |     🟡     | Pandas         |
 |  25 | BUG-018 PR analytics                |     🟠     | GitHub API     |
 |  26 | BUG-019 GitHub Issues               |     🟠     | GitHub API     |
 |  27 | BUG-033 Repository quality          |     🟠     | Python/API     |

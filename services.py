@@ -152,6 +152,20 @@ def normalize_student_id(value):
     return text
 
 
+def add_academic_periods(df: pd.DataFrame) -> pd.DataFrame:
+    """Add consistent academic year and semester labels from form timestamps."""
+    result = df.copy()
+    timestamp = pd.to_datetime(result.get("Timestamp"), errors="coerce")
+    result["Academic_Year"] = timestamp.apply(
+        lambda value: f"{value.year}-{str(value.year + 1)[-2:]}" if pd.notna(value) else "Unknown"
+    )
+    result["Semester"] = timestamp.apply(
+        lambda value: "Semester 1" if pd.notna(value) and value.month <= 6
+        else ("Semester 2" if pd.notna(value) else "Unknown")
+    )
+    return result
+
+
 def _header_key(name) -> str:
     return re.sub(r"[\s_:.;]+$", "", re.sub(r"\s+", "", str(name))).lower()
 
@@ -185,9 +199,10 @@ def load_excel(uploaded_file) -> pd.DataFrame:
 
 
 def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    prepared = df.copy()
+    prepared = add_academic_periods(df)
     prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
     prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
+    prepared["Submitted_GitHub_Username"] = prepared["GitHub_Username"]
     invalid_format = prepared[
         ~prepared[GITHUB_COL].astype(str).str.contains("github.com/", na=False)
     ].copy()
@@ -355,13 +370,20 @@ def build_github_stats(valid_users: Iterable[str], payloads: dict[str, dict]) ->
     rows = []
     for username in valid_users:
         data = payloads.get(username, {})
+        created = pd.to_datetime(data.get("created_at"), errors="coerce", utc=True)
+        age_years = max((pd.Timestamp.now(tz="UTC") - created).days / 365.25, 0.01) if pd.notna(created) else None
+        current_username = str(data.get("login") or username)
         rows.append(
             {
-                "GitHub_Username": username,
+                "Submitted_GitHub_Username": username,
+                "GitHub_Username": current_username,
                 "Public_Repos": data.get("public_repos", 0),
                 "Followers": data.get("followers", 0),
                 "Following": data.get("following", 0),
                 "Account_Created": data.get("created_at", ""),
+                "Account_Age_Years": age_years,
+                "Followers_Per_Account_Year": round(data.get("followers", 0) / age_years, 2) if age_years else None,
+                "Following_Per_Account_Year": round(data.get("following", 0) / age_years, 2) if age_years else None,
                 "Profile_URL": data.get("html_url", ""),
                 "Avatar_URL": data.get("avatar_url", ""),
             }
@@ -421,12 +443,20 @@ def build_dashboard_df(
                 "Student Name",
                 "Division",
                 "Batch",
+                "Academic_Year",
+                "Semester",
                 "GitHub_Username",
+                "Submitted_GitHub_Username",
                 "Public_Repos",
                 "Repository_Count",
                 "Repo_Fetch_Status",
                 "Followers",
                 "Following",
+                "Account_Age_Years",
+                "Repos_Per_Account_Year",
+                "Followers_Per_Account_Year",
+                "Following_Per_Account_Year",
+                "Username_Changed",
                 "Primary_Language",
                 "Avatar_URL",
                 "Profile_URL",
@@ -456,18 +486,31 @@ def build_dashboard_df(
     student_info = df[
         [
             STUDENT_ID_COL,
-            "GitHub_Username",
+            "Submitted_GitHub_Username",
             "Student Name",
             "Division",
             "Batch",
+            "Academic_Year",
+            "Semester",
         ]
     ].copy()
 
     student_info = student_info.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
-    dashboard_df = dashboard_df.merge(student_info, on="GitHub_Username", how="left")
+    dashboard_df = dashboard_df.merge(
+        student_info,
+        on="Submitted_GitHub_Username",
+        how="left",
+    )
     dashboard_df = dashboard_df.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
     dashboard_df["Repository_Count"] = dashboard_df["Repository_Count"].fillna(0).astype(int)
+    dashboard_df["Repos_Per_Account_Year"] = (
+        dashboard_df["Repository_Count"] / dashboard_df["Account_Age_Years"].fillna(1).clip(lower=0.01)
+    ).round(2)
     dashboard_df["Primary_Language"] = dashboard_df["Primary_Language"].fillna("Unknown")
+    dashboard_df["Username_Changed"] = (
+        dashboard_df["Submitted_GitHub_Username"].fillna("").str.lower()
+        != dashboard_df["GitHub_Username"].fillna("").str.lower()
+    )
     dashboard_df["Repo_Fetch_Status"] = [
         "Unavailable" if str(name).strip().lower() in unavailable_set else "Loaded"
         for name in dashboard_df["GitHub_Username"]
@@ -479,12 +522,20 @@ def build_dashboard_df(
             "Student Name",
             "Division",
             "Batch",
+            "Academic_Year",
+            "Semester",
             "GitHub_Username",
+            "Submitted_GitHub_Username",
+            "Username_Changed",
             "Public_Repos",
             "Repository_Count",
             "Repo_Fetch_Status",
             "Followers",
             "Following",
+            "Account_Age_Years",
+            "Repos_Per_Account_Year",
+            "Followers_Per_Account_Year",
+            "Following_Per_Account_Year",
             "Primary_Language",
             "Avatar_URL",
             "Profile_URL",
