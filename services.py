@@ -48,14 +48,18 @@ class AnalysisResult:
     error_users: list[str]
     repo_unavailable_users: list[str]
     log: list[str]
+    # Keep the analysis outcome as data on every result.  The UI receives this
+    # object, so an explicit field is safer than asking the UI to calculate it.
+    status: str
 
-    @property
-    def status(self) -> str:
-        if not self.error_users:
-            return "Complete"
-        if not self.valid_users:
-            return "Failed"
-        return "Partial"
+
+def determine_analysis_status(valid_users: list[str], error_users: list[str]) -> str:
+    """Return the user-facing outcome for one completed analysis run."""
+    if not error_users:
+        return "Complete"
+    if not valid_users:
+        return "Failed"
+    return "Partial"
 
 
 def get_github_token() -> str:
@@ -513,4 +517,5 @@ def run_analysis(
         error_users=error_users,
         repo_unavailable_users=repo_unavailable_users,
         log=log,
+        status=determine_analysis_status(valid_users, error_users),
     )

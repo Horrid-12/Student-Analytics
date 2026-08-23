@@ -51,12 +51,14 @@
 |    11 | ✅ BUG-042 | Add Complete/Partial/Failed states        |   🟢 2/5   |
 |    12 | ✅ BUG-049 | Sidebars not Working                      |   🟢 1/5   |
 |    13 | ✅ BUG-050 | Broken Light Mode                         |   🟢 1/5   |
+|    14 | ✅ BUG-051 | Analysis result has no status             |   🟢 2/5   |
 
 > **Fix Proofs:**
 >
 > - **BUG-029**: Renamed the followers leaderboard to “Most-Followed GitHub Profiles” so it clearly reports social popularity, not student contribution or performance.
 > - **BUG-049**: Root cause: Navigation router blocked all page views when `analysis_result` was None. Fixed by allowing Settings and empty states to render independently of roster dataset analysis.
 > - **BUG-050**: Root cause: Hardcoded inline CSS styles and conflicting native Streamlit theme header backgrounds broke Light mode and caused severe contrast issues. Fixed by externalizing styles to `style.css`, implementing dynamic CSS variable theming (Light/Dark), setting `stHeader` transparent, applying global Inter font, and streamlining the centerpiece upload layout.
+> - **BUG-051**: The analysis page could crash after fetching repositories with `AnalysisResult object has no attribute status`. The page expected every analysis result to contain a `status`, but the result object's shape could differ between running versions of the app. Fixed by saving `status` as an explicit field when `AnalysisResult` is created and by giving the page a safe fallback calculation for older result objects. The page now shows Complete, Partial, or Failed instead of crashing.
 > - **BUG-039**: Added `st.caption(...)` below each of the four data tables (Students, Repositories, Issues, Verification) showing "Showing X of Y" counts so users always know how many records are visible versus how many match their filters.
 > - **BUG-030**: Replaced misleading labels ("Top Repository Owners", "Top Public Repos", "Identify top contributors") with honest descriptions ("Most Public Repositories", "Most GitHub-Reported Repos", "Compare public repository counts and GitHub follower counts across students") across the Leaderboards and Overview pages.
 > - **BUG-035**: Removed the redundant `st.selectbox("Open student profile", ...)` name-based dropdown and its conflict-avoidance priority logic. Student selection now uses only the table row-click, which is unambiguous and simpler. Empty-state hint text updated accordingly.

@@ -1056,10 +1056,20 @@ if run_button:
             elapsed = time.perf_counter() - start
             progress_bar.progress(1.0)
             checked_total = len(result.valid_users) + len(result.invalid_users)
-            if result.status == "Complete":
+            # A result saved by an earlier running version of the app may not
+            # have ``status`` yet. Calculate a safe fallback so that an
+            # otherwise successful analysis is never turned into a crash.
+            result_status = getattr(
+                result,
+                "status",
+                "Failed" if not result.valid_users and result.error_users
+                else "Partial" if result.error_users
+                else "Complete",
+            )
+            if result_status == "Complete":
                 status_text.write("✓ Analysis complete — navigate to any page to explore results.")
                 st.success(f"Analysis Complete — all {checked_total} submitted accounts were checked successfully.")
-            elif result.status == "Partial":
+            elif result_status == "Partial":
                 status_text.write("⚠ Analysis finished with problems.")
                 st.warning(
                     f"Analysis Partial — {len(result.valid_users)} account(s) validated, but "
