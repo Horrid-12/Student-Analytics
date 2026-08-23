@@ -99,8 +99,25 @@ def extract_username(text):
     return None
 
 
+def _header_key(name) -> str:
+    return re.sub(r"[\s_:]+$", "", re.sub(r"\s+", "", str(name))).lower()
+
+
+def normalize_excel_headers(df: pd.DataFrame) -> pd.DataFrame:
+    lookup = {_header_key(column): column for column in EXCEL_COLUMNS}
+    renamed: dict[str, str] = {}
+    claimed: set[str] = set()
+    for column in df.columns:
+        key = _header_key(column)
+        if key in lookup and lookup[key] not in claimed:
+            renamed[column] = lookup[key]
+            claimed.add(lookup[key])
+    return df.rename(columns=renamed)
+
+
 def load_excel(uploaded_file) -> pd.DataFrame:
     df = pd.read_excel(uploaded_file)
+    df = normalize_excel_headers(df)
     validate_excel_schema(df)
     return df
 
