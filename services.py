@@ -46,6 +46,7 @@ class AnalysisResult:
     valid_users: list[str]
     invalid_users: list[str]
     error_users: list[str]
+    repo_unavailable_users: list[str]
     log: list[str]
 
     @property
@@ -172,7 +173,7 @@ def get_user(username: str, token: str | None) -> tuple[bool, dict, bool]:
     return False, {}, status_code != 404
 
 
-def get_repos(username: str, token: str | None) -> list[dict]:
+def get_repos(username: str, token: str | None) -> tuple[list[dict], bool]:
     status_code, response_headers, repos = _cached_get_json(
         f"{GITHUB_API_BASE}/users/{username}/repos?per_page=100",
         token,
@@ -180,10 +181,10 @@ def get_repos(username: str, token: str | None) -> list[dict]:
     )
     check_rate_limit_parts(status_code, response_headers)
     if status_code != 200:
-        return []
+        return [], False
     if not isinstance(repos, list):
-        return []
-    return repos
+        return [], False
+    return repos, True
 
 
 def validate_users(
@@ -245,14 +246,17 @@ def fetch_repository_data(
     valid_usernames: Iterable[str],
     token: str | None,
     progress_callback: Callable[[int, int, str], None] | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[str]]:
     repo_data = []
+    unavailable_users: list[str] = []
     usernames = list(pd.Series(list(valid_usernames)).dropna().unique())
     total_users = len(usernames)
 
     for index, username in enumerate(usernames, start=1):
         try:
-            repos = get_repos(username, token)
+            repos, fetched_ok = get_repos(username, token)
+            if not fetched_ok:
+                unavailable_users.append(username)
             for repo in repos:
                 repo_data.append(
                     {
@@ -269,14 +273,20 @@ def fetch_repository_data(
         except RateLimitError:
             raise
         except Exception:
-            pass
+            unavailable_users.append(username)
         if progress_callback:
             progress_callback(index, total_users, username)
 
-    return pd.DataFrame(repo_data)
+    return pd.DataFrame(repo_data), unavailable_users
 
 
-def build_dashboard_df(df: pd.DataFrame, github_stats: pd.DataFrame, repo_df: pd.DataFrame) -> pd.DataFrame:
+def build_dashboard_df(
+    df: pd.DataFrame,
+    github_stats: pd.DataFrame,
+    repo_df: pd.DataFrame,
+    unavailable_users: Iterable[str] = (),
+) -> pd.DataFrame:
+    unavailable_set = {str(user).strip().lower() for user in unavailable_users}
     if github_stats.empty:
         return pd.DataFrame(
             columns=[
@@ -286,6 +296,7 @@ def build_dashboard_df(df: pd.DataFrame, github_stats: pd.DataFrame, repo_df: pd
                 "GitHub_Username",
                 "Public_Repos",
                 "Repository_Count",
+                "Repo_Fetch_Status",
                 "Followers",
                 "Following",
                 "Primary_Language",
@@ -327,6 +338,10 @@ def build_dashboard_df(df: pd.DataFrame, github_stats: pd.DataFrame, repo_df: pd
     dashboard_df = dashboard_df.drop_duplicates(subset=["GitHub_Username"])
     dashboard_df["Repository_Count"] = dashboard_df["Repository_Count"].fillna(0).astype(int)
     dashboard_df["Primary_Language"] = dashboard_df["Primary_Language"].fillna("Unknown")
+    dashboard_df["Repo_Fetch_Status"] = [
+        "Unavailable" if str(name).strip().lower() in unavailable_set else "Loaded"
+        for name in dashboard_df["GitHub_Username"]
+    ]
 
     return dashboard_df[
         [
@@ -336,6 +351,7 @@ def build_dashboard_df(df: pd.DataFrame, github_stats: pd.DataFrame, repo_df: pd
             "GitHub_Username",
             "Public_Repos",
             "Repository_Count",
+            "Repo_Fetch_Status",
             "Followers",
             "Following",
             "Primary_Language",
@@ -442,11 +458,13 @@ def run_analysis(
         if progress_callback:
             progress_callback("repos", index, total, username)
 
-    repo_df = fetch_repository_data(
+    repo_df, repo_unavailable_users = fetch_repository_data(
         github_stats["GitHub_Username"] if not github_stats.empty else [],
         token,
         repo_progress,
     )
+    if repo_unavailable_users:
+        log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
     log.append(f"Fetched repositories - {len(repo_df)} found")
 
     dashboard_df = build_dashboard_df(df, github_stats, repo_df)
@@ -476,5 +494,6 @@ def run_analysis(
         valid_users=valid_users,
         invalid_users=invalid_users,
         error_users=error_users,
+        repo_unavailable_users=repo_unavailable_users,
         log=log,
     )

@@ -615,6 +615,7 @@ def render_students(result) -> None:
             "Following",
             "Public_Repos",
             "Repository_Count",
+            "Repo_Fetch_Status",
             "Primary_Language",
             "Status",
             "Profile_URL",
@@ -631,6 +632,7 @@ def render_students(result) -> None:
                 "GitHub Profile": st.column_config.LinkColumn("GitHub Profile", display_text="↗ Open Profile"),
                 "Profile_URL": st.column_config.LinkColumn("GitHub"),
                 "Primary_Language": st.column_config.TextColumn("Most Common Language"),
+                "Repo_Fetch_Status": st.column_config.TextColumn("Repo Data"),
             },
         )
         st.caption(f"Showing {len(display_df)} of {len(filtered)} student{'s' if len(filtered) != 1 else ''}")
