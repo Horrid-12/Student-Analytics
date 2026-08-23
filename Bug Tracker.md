@@ -66,6 +66,9 @@
 > - **BUG-007**: Duplicate GitHub usernames are now detected and reported instead of silently dropped. `build_duplicate_issues()` (services.py) flags every submission sharing a username — case-insensitively, since GitHub treats `Rahul` and `rahul` as the same account — with `Issue = "Duplicate username"`; rows flow into the Follow-up Queue and the run log announces the count.
 > - **BUG-006**: Students were double-reported in the Follow-up Queue (e.g., an empty GitHub cell produced both "Invalid format" and "Missing username" rows; a messy link that still yielded a failing username produced both "Invalid format" and "Failed validation"). `build_invalid_issues()` was rewritten to classify each row exactly once via priority: Missing username → Failed GitHub validation → Invalid format, dropping the redundant `invalid_format_df` parameter. Verified offline plus live test with sabotaged roster rows.
 > - **BUG-026**: The same student appearing in multiple roster rows (e.g., resubmitted form with a second GitHub account) silently double-counted followers/repos on leaderboards. `build_duplicate_student_issues()` (services.py) now flags every row sharing a normalized Student Name + Division + Batch combination (case/whitespace-insensitive, blank names exempt) with `Issue = "Duplicate student"`; rows surface in the Follow-up Queue and the run log reports the count. Verified offline plus live test with a twin row using a different GitHub link.
+> - **BUG-023**: Excel loading now tolerates messy header spelling before enforcing the canonical schema: `_header_key()` ignores case, all whitespace, underscores, and trailing `:`/`.`/`;` punctuation when matching columns (e.g., `PRN No.` or `GitHub :Repository 2 Link:` map correctly). Unknown extra columns pass through untouched; genuinely missing required columns still fail validation with a clear error.
+> - **BUG-027**: Zero activity is no longer indistinguishable from missing data. `get_repos` reports success separately from its payload, `fetch_repository_data` collects accounts whose repo listing could not be retrieved, and `build_dashboard_df` adds a `Repo_Fetch_Status` column (`Loaded` / `Unavailable`) shown in the Students table; unavailable accounts are also logged during the run.
+> - **BUG-009**: The Students table now labels the two repo counts explicitly — "Public Repos (Profile)" vs "Repos Found (Fetched)" — instead of presenting them as interchangeable. `find_repo_count_mismatches()` flags only accounts whose data was actually loaded, and the run log confesses how many profile-vs-fetched discrepancies exist (profiles count hidden repos; listing caps at 100).
 
 ### Learn
 
@@ -87,9 +90,9 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 |    12 | ✅ BUG-006 | Prevent duplicate missing-user issues       |   🟢 2/5   |
 |    13 | ✅ BUG-007 | Detect duplicate GitHub usernames           |   🟢 2/5   |
 |    14 | ✅ BUG-026 | Detect duplicate students                   |   🟢 2/5   |
-|    15 | BUG-023    | Normalize Excel column names                |   🟢 2/5   |
-|    16 | BUG-027    | Distinguish missing data from zero activity |   🟡 3/5   |
-|    17 | BUG-009    | Keep repository counts consistent           |   🟡 3/5   |
+|    15 | ✅ BUG-023 | Normalize Excel column names                |   🟢 2/5   |
+|    16 | ✅ BUG-027 | Distinguish missing data from zero activity |   🟡 3/5   |
+|    17 | ✅ BUG-009 | Keep repository counts consistent           |   🟡 3/5   |
 |    18 | BUG-016    | Validate repository ownership               |   🟡 3/5   |
 |    19 | BUG-015    | Properly use submitted repository links     |   🟡 3/5   |
 
@@ -382,7 +385,7 @@ Progress Tracking
 |   4 | ✅ BUG-036 First-student selection  |     🟢     | Streamlit      |
 |   5 | ✅ BUG-039 Record counts            |     🟢     | Streamlit      |
 |   6 | BUG-041 Status messages             |     🟢     | Streamlit      |
-|   7 | BUG-023 Excel normalization         |     🟢     | Pandas         |
+|   7 | ✅ BUG-023 Excel normalization      |     🟢     | Pandas         |
 |   8 | ✅ BUG-006 Duplicate missing issues |     🟢     | Python         |
 |   9 | ✅ BUG-007 Duplicate usernames      |     🟢     | Pandas         |
 |  10 | ✅ BUG-026 Duplicate students        |     🟢     | Pandas         |
@@ -395,8 +398,8 @@ Progress Tracking
 |  17 | BUG-001 GitHub pagination           |     🟠     | GitHub API     |
 |  18 | BUG-008 Stable student identity     |     🟡     | Pandas         |
 |  19 | BUG-024 PRN identity                |     🟡     | Data modelling |
-|  20 | BUG-009 Repository consistency      |     🟡     | Python/Pandas  |
-|  21 | BUG-027 Missing-data states         |     🟡     | Pandas         |
+|  20 | ✅ BUG-009 Repository consistency    |     🟡     | Python/Pandas  |
+|  21 | ✅ BUG-027 Missing-data states       |     🟡     | Pandas         |
 |  22 | BUG-017 Commit analytics            |     🟡     | GitHub API     |
 |  23 | BUG-031 Account-age normalization   |     🟡     | Python         |
 |  24 | BUG-032 Year benchmarking           |     🟡     | Pandas         |
