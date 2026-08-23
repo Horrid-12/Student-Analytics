@@ -106,9 +106,12 @@ Do not start with databases, authentication, AI, Docker, or machine learning.
 |    20 | ✅ BUG-052 | No Option to Upload .csv Files              |             |
 |    21 | ✅ BUG-053 | Filename lost between upload and analysis   |             |
 |    22 | BUG-054    | Verification page crashes (KeyError)        |   🟢 2/5    | Reported from production 2026-08-23, unfixed
+|    23 | BUG-055    | Academic calendar convention unconfirmed    |   🟢 1/5    | Team decision pending (2026-08-23)
 Learn DataFrame filtering, merging, duplicates, missing values, validation, and error messages.
 
-> **Open — diagnosed (BUG-054):**
+> **Open — diagnosed (unfixed):**
+>
+> - **BUG-055**: Open question for the team, no code changed yet. BUG-032's implementation (documented in its proof) maps January–June → `Semester 1` and July–December → `Semester 2`, and always labels the academic year as `<submission year>-(next year)`. If the college runs the standard July-start academic year, both are inverted: a Jul–Dec submission should be Semester 1 (odd term), a Jan–Jun submission should be Semester 2 (even term), and a March 2026 submission belongs to AY `2025-26`, not `2026-27`. Concrete reproduction via `add_academic_periods`: `2025-11-20` → currently `Semester 2 / AY 2025-26`; `2026-03-10` → currently `Semester 1 / AY 2026-27`. Decision needed from whoever owns the course timetable; if July-start is confirmed, flip the semester mapping and shift the AY boundary (Jan–Jun submissions roll back to the previous AY).
 >
 > - **BUG-054**: Every visit to the Verification page after a successful analysis crashes with a redacted Streamlit error; logs show `KeyError: 'GitHub_Username'` at `build_validation_audit_df` (app.py:812), raised via `render_verification` (app.py:839). Root cause: the merge at app.py:798 joins `source_df[["Student_ID", "Student Name", "Division", "GitHub_Username"]]` with `dashboard_df[["Student_ID", "GitHub_Username", ...]]` on `"Student_ID"` — both sides carry `GitHub_Username` as a NON-key column, so pandas silently renames them to `GitHub_Username_x` / `GitHub_Username_y`, and plain `audit["GitHub_Username"]` no longer exists for the `.apply()` calls at :812–:813. Corroborating detail: app.py:252 already guards `if "GitHub_Username" in result.source_df.columns` elsewhere — this function never got equivalent handling. Fix direction: take `GitHub_Username` from exactly one side of the merge (explicit column selection), keep the empty-dashboard placeholder path safe. Reproduction: run analysis → open Verification page.
 
