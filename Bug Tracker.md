@@ -109,12 +109,18 @@ Learn DataFrame filtering, merging, duplicates, missing values, validation, and 
 
 | Order | Bug     | Problem                               | Difficulty |
 | ----: | ------- | ------------------------------------- | :--------: |
-|    20 | BUG-005 | Make username parsing consistent      |   🟡 3/5   |
-|    21 | BUG-002 | Correct API error classification      |   🟡 3/5   |
+|    20 | ✅ BUG-005 | Make username parsing consistent      |   🟡 3/5   |
+|    21 | ✅ BUG-002 | Correct API error classification      |   🟡 3/5   |
 |    22 | BUG-004 | Make API health accurate              |   🟡 3/5   |
 |    23 | BUG-003 | Track repository-fetch errors         |   🟡 3/5   |
 |    24 | BUG-011 | Make Refresh actually refresh data    |   🟡 3/5   |
-|    25 | BUG-012 | Improve cache visibility/invalidation |   🟡 3/5   |
+|    25 | ✅ BUG-012 | Improve cache visibility/invalidation |   🟡 3/5   |
+
+> **Fix Proofs:**
+>
+> - **BUG-005**: Root cause: `extract_username` regex captured query strings/fragments, kept trailing punctuation, and a fallback captured garbage strings from non-GitHub URLs. Fixed by stripping query/fragments before matching, restricting capture to `[A-Za-z0-9_-]`, and rejecting non-GitHub fallback URLs.
+> - **BUG-002**: Root cause: API error handling didn't use timeout for `get_user`, missed `403 + Retry-After` secondary rate limits, and lumped all failures together. Fixed by adding `timeout=15`, tracking error kinds (timeout/auth/server/network), and adding a single 1s retry for transient timeout/5xx errors.
+> - **BUG-012**: Root cause: Caching prevented knowing if API calls were fresh, and there was no way to force a refresh. Fixed by adding hit/miss counters tracked in `st.session_state` outside vs inside `_cached_get_json_inner`, and adding a Clear API Cache button to the Settings page.
 
 ### Learn
 
@@ -394,12 +400,12 @@ Progress Tracking
 |   8 | ✅ BUG-006 Duplicate missing issues |     🟢     | Python         |
 |   9 | ✅ BUG-007 Duplicate usernames      |     🟢     | Pandas         |
 |  10 | ✅ BUG-026 Duplicate students        |     🟢     | Pandas         |
-|  11 | BUG-005 Username parser             |     🟡     | Python/API     |
-|  12 | BUG-002 API error handling          |     🟡     | Python/API     |
+|  11 | ✅ BUG-005 Username parser             |     🟡     | Python/API     |
+|  12 | ✅ BUG-002 API error handling          |     🟡     | Python/API     |
 |  13 | BUG-003 Fetch-error tracking        |     🟡     | GitHub API     |
 |  14 | BUG-004 API health                  |     🟡     | GitHub API     |
 |  15 | BUG-011 Real refresh                |     🟡     | Streamlit/API  |
-|  16 | BUG-012 Cache handling              |     🟡     | Streamlit      |
+|  16 | ✅ BUG-012 Cache handling              |     🟡     | Streamlit      |
 |  17 | BUG-001 GitHub pagination           |     🟠     | GitHub API     |
 |  18 | ✅ BUG-008 Stable student identity     |     🟡     | Pandas         |
 |  19 | ✅ BUG-024 PRN identity                |     🟡     | Data modelling |

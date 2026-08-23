@@ -9,7 +9,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from services import RateLimitError, run_analysis
+from services import RateLimitError, clear_api_cache, run_analysis
 
 
 st.set_page_config(
@@ -908,6 +908,28 @@ def render_settings(token_present: bool, file_hash: str | None) -> None:
         ''',
         unsafe_allow_html=True,
     )
+
+    # BUG-012: API Cache visibility
+    total_calls = st.session_state.get("api_call_total", 0)
+    fresh_calls = st.session_state.get("api_call_fresh", 0)
+    cached_calls = max(total_calls - fresh_calls, 0)
+    cache_label = f"{total_calls} total ({cached_calls} served from cache)" if total_calls > 0 else "No calls yet"
+
+    st.markdown(
+        f'''
+        <div class="panel">
+            <div class="panel-title"><h3>API Cache</h3><span>GitHub API request cache (1h TTL)</span></div>
+            <div class="system-grid">
+                <div class="system-item"><div class="system-label">API Calls</div><div class="system-value">{escape(cache_label)}</div></div>
+                <div class="system-item"><div class="system-label">Fresh Fetches</div><div class="system-value">{fresh_calls}</div></div>
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
+    if st.button("Clear API Cache", help="Next analysis will refetch everything from GitHub"):
+        clear_api_cache()
+        st.success("API cache cleared — next analysis will make fresh requests.")
 
 def inject_theme() -> None:
     theme = st.session_state.get("theme", "Dark")

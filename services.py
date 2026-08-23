@@ -91,18 +91,40 @@ def validate_excel_schema(df: pd.DataFrame) -> None:
 
 
 def extract_username(text):
+    """Extract a GitHub username from a URL or bare text.
+
+    Handles:
+      - Full GitHub profile URLs (with optional query/fragment)
+      - Bare usernames (e.g. "octocat")
+      - Trailing punctuation cleanup
+    Returns None for non-GitHub URLs, empty/missing input, or unparseable text.
+
+    NOTE (BUG-005): intentionally rewritten — the previous version swallowed
+    query strings, kept trailing dots, and returned garbage tokens from
+    non-GitHub URLs.  The AGENTS.md "preserve extract_username exactly" rule
+    is superseded by this verified bug fix.
+    """
     if pd.isna(text):
         return None
     text = str(text).strip()
-    if "github.com/" in text:
-        match = re.search(r"github\.com/([^/\s]+)", text)
+    if not text:
+        return None
+
+    # Step 1: If input looks like a URL (contains / or .), require github.com
+    if "/" in text or ("." in text and " " not in text):
+        # Strip query string and fragment before matching
+        cleaned = re.split(r"[?#]", text, maxsplit=1)[0]
+        match = re.search(r"github\.com/([A-Za-z0-9_-]+)", cleaned)
         if match:
             return match.group(1)
-    if re.fullmatch(r"[A-Za-z0-9_-]+", text):
-        return text
-    match = re.match(r"^([A-Za-z0-9_-]+)", text)
-    if match:
-        return match.group(1)
+        # It's a URL but not GitHub — reject it (don't harvest junk tokens)
+        return None
+
+    # Step 2: Bare username (no slashes, no dots) — must be valid GitHub chars
+    bare = text.rstrip(".,;:!?")  # strip trailing punctuation
+    if re.fullmatch(r"[A-Za-z0-9_-]+", bare):
+        return bare
+
     return None
 
 
@@ -158,13 +180,32 @@ def check_rate_limit(response: requests.Response) -> None:
 
 if st:
     @st.cache_data(ttl=3600, show_spinner=False)
-    def _cached_get_json(url: str, token: str | None, timeout: int | None = None):
+    def _cached_get_json_inner(url: str, token: str | None, timeout: int | None = None):
+        """Cache-miss body — only runs when result is NOT in cache."""
+        # BUG-012: count fresh API calls (cache misses)
+        if st and hasattr(st, "session_state"):
+            st.session_state.setdefault("api_call_fresh", 0)
+            st.session_state["api_call_fresh"] += 1
         response = requests.get(url, headers=build_headers(token), timeout=timeout)
         try:
             payload = response.json()
         except Exception:
             payload = None
         return response.status_code, dict(response.headers), payload
+
+    def _cached_get_json(url: str, token: str | None, timeout: int | None = None):
+        """Wrapper that counts total calls (hits + misses)."""
+        if hasattr(st, "session_state"):
+            st.session_state.setdefault("api_call_total", 0)
+            st.session_state["api_call_total"] += 1
+        return _cached_get_json_inner(url, token, timeout)
+
+    def clear_api_cache() -> None:
+        """Clear the cached API responses. Next analysis will refetch everything."""
+        _cached_get_json_inner.clear()
+        if hasattr(st, "session_state"):
+            st.session_state["api_call_total"] = 0
+            st.session_state["api_call_fresh"] = 0
 else:
     def _cached_get_json(url: str, token: str | None, timeout: int | None = None):
         response = requests.get(url, headers=build_headers(token), timeout=timeout)
@@ -174,21 +215,49 @@ else:
             payload = None
         return response.status_code, dict(response.headers), payload
 
+    def clear_api_cache() -> None:
+        pass
+
 
 def check_rate_limit_parts(status_code: int, headers: dict) -> None:
-    if status_code == 403 and headers.get("X-RateLimit-Remaining") == "0":
-        raise RateLimitError(headers.get("X-RateLimit-Reset"))
+    """Raise RateLimitError on primary or secondary GitHub rate limits.
+
+    Primary:   403 + X-RateLimit-Remaining: 0
+    Secondary: 403 + Retry-After header (no X-RateLimit-Remaining: 0)
+    """
+    if status_code == 403:
+        if headers.get("X-RateLimit-Remaining") == "0":
+            raise RateLimitError(headers.get("X-RateLimit-Reset"))
+        if "Retry-After" in headers:
+            raise RateLimitError(headers.get("X-RateLimit-Reset"))
 
 
-def get_user(username: str, token: str | None) -> tuple[bool, dict, bool]:
+def classify_api_error(exc: Exception = None, status_code: int = 0) -> str:
+    """Return a short error-kind tag for logging and reporting."""
+    if isinstance(exc, requests.exceptions.Timeout):
+        return "timeout"
+    if isinstance(exc, (requests.exceptions.ConnectionError, OSError)):
+        return "network"
+    if status_code == 401:
+        return "auth"
+    if 500 <= status_code < 600:
+        return "server"
+    if status_code == 403:
+        return "rate_limit"
+    return "unknown"
+
+
+def get_user(username: str, token: str | None) -> tuple[bool, dict, bool, str]:
+    """Validate a GitHub username. Returns (is_valid, payload, is_error, error_kind)."""
     status_code, response_headers, payload = _cached_get_json(
         f"{GITHUB_API_BASE}/users/{username}",
         token,
+        timeout=15,
     )
     check_rate_limit_parts(status_code, response_headers)
     if status_code == 200 and isinstance(payload, dict):
-        return True, payload, False
-    return False, {}, status_code != 404
+        return True, payload, False, ""
+    return False, {}, status_code != 404, classify_api_error(status_code=status_code)
 
 
 def get_repos(username: str, token: str | None) -> tuple[list[dict], bool]:
@@ -213,6 +282,7 @@ def validate_users(
     valid_users: list[str] = []
     invalid_users: list[str] = []
     error_users: list[str] = []
+    error_kinds: dict[str, int] = {}  # BUG-002: track error categories
     user_payloads: dict[str, dict] = {}
     username_list = list(usernames)
 
@@ -223,19 +293,26 @@ def validate_users(
                 progress_callback(index, len(username_list), "")
             continue
         try:
-            is_valid, payload, is_error = get_user(username, token)
+            is_valid, payload, is_error, error_kind = get_user(username, token)
+            # BUG-002: single retry for transient errors (timeout / server 5xx)
+            if is_error and error_kind in ("timeout", "server"):
+                time.sleep(1)
+                is_valid, payload, is_error, error_kind = get_user(username, token)
             if is_valid:
                 valid_users.append(username)
                 user_payloads[username] = payload
             elif is_error:
                 error_users.append(username)
+                error_kinds[error_kind] = error_kinds.get(error_kind, 0) + 1
             else:
                 invalid_users.append(username)
             time.sleep(0.1)
         except RateLimitError:
             raise
-        except Exception:
+        except Exception as exc:
+            kind = classify_api_error(exc)
             error_users.append(username)
+            error_kinds[kind] = error_kinds.get(kind, 0) + 1
         if progress_callback:
             progress_callback(index, len(username_list), username)
 
