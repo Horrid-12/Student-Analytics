@@ -25,7 +25,7 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 - [ ] 1.3 Fix P1s
 - [ ] 1.4 Fix P2/P3s tagged `port`; waive the rest
 
-**Fixed so far (recorded in Bug Tracker.md):** BUG-013, BUG-010, BUG-014, BUG-036, BUG-049, BUG-050, BUG-005, BUG-002, BUG-012, BUG-001, BUG-015, BUG-016, BUG-052, BUG-053, BUG-025, BUG-031, BUG-032
+**Fixed so far (recorded in Bug Tracker.md):** BUG-013, BUG-010, BUG-014, BUG-036, BUG-049, BUG-050, BUG-005, BUG-002, BUG-012, BUG-001, BUG-015, BUG-016, BUG-052, BUG-053, BUG-025, BUG-031, BUG-032, BUG-055
 
 ---
 

@@ -153,15 +153,25 @@ def normalize_student_id(value):
 
 
 def add_academic_periods(df: pd.DataFrame) -> pd.DataFrame:
-    """Add consistent academic year and semester labels from form timestamps."""
+    """Add consistent academic year and semester labels from form timestamps.
+
+    Academic year runs July-June (BUG-055): July-December is Semester 1 of
+    <year>-(next year); January-June is Semester 2 of <previous year>-<year>.
+    """
     result = df.copy()
     timestamp = pd.to_datetime(result.get("Timestamp"), errors="coerce")
     result["Academic_Year"] = timestamp.apply(
-        lambda value: f"{value.year}-{str(value.year + 1)[-2:]}" if pd.notna(value) else "Unknown"
+        lambda value: (
+            f"{(value.year if value.month >= 7 else value.year - 1)}-"
+            f"{str((value.year if value.month >= 7 else value.year - 1) + 1)[-2:]}"
+        )
+        if pd.notna(value)
+        else "Unknown"
     )
     result["Semester"] = timestamp.apply(
-        lambda value: "Semester 1" if pd.notna(value) and value.month <= 6
-        else ("Semester 2" if pd.notna(value) else "Unknown")
+        lambda value: ("Semester 1" if value.month >= 7 else "Semester 2")
+        if pd.notna(value)
+        else "Unknown"
     )
     return result
 
