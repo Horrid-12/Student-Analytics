@@ -361,6 +361,17 @@ def build_dashboard_df(
     ]
 
 
+def find_repo_count_mismatches(dashboard_df: pd.DataFrame) -> list[str]:
+    if dashboard_df.empty or "Repo_Fetch_Status" not in dashboard_df.columns:
+        return []
+    loaded = dashboard_df[dashboard_df["Repo_Fetch_Status"] == "Loaded"]
+    mismatched = loaded[
+        loaded["Public_Repos"].fillna(0).astype(int)
+        != loaded["Repository_Count"].fillna(0).astype(int)
+    ]
+    return mismatched["GitHub_Username"].astype(str).tolist()
+
+
 def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
     columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     extracted = df[df["GitHub_Username"].notna()]
@@ -467,7 +478,7 @@ def run_analysis(
         log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
     log.append(f"Fetched repositories - {len(repo_df)} found")
 
-    dashboard_df = build_dashboard_df(df, github_stats, repo_df)
+    dashboard_df = build_dashboard_df(df, github_stats, repo_df, repo_unavailable_users)
     invalid_issues_df = build_invalid_issues(df, invalid_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
@@ -480,6 +491,12 @@ def run_analysis(
         log.append(f"Detected {len(duplicate_student_issues_df)} duplicate student submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_student_issues_df], ignore_index=True).drop_duplicates()
+        )
+    count_mismatches = find_repo_count_mismatches(dashboard_df)
+    if count_mismatches:
+        log.append(
+            f"{len(count_mismatches)} account(s) show a different fetched repository count than their "
+            "profile reports (profiles count hidden/private repos and listing caps at 100)"
         )
     log.append("Building analytics...")
     log.append("Complete")
