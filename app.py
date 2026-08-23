@@ -525,6 +525,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
 
 
 def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
+    student_id = student.get("Student_ID", "")
     username = student.get("GitHub_Username", "")
     repos = repo_df[repo_df["Username"] == username].copy() if not repo_df.empty else pd.DataFrame()
     avatar = escape(student.get("Avatar_URL", ""))
@@ -538,10 +539,14 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
                 <div>
                     <div class="profile-name">{name}</div>
                     <div class="profile-sub">{escape(student.get("Division", ""))} / {escape(student.get("Batch", ""))}</div>
-                    <div style="margin-top: 8px;"><span class="badge-blue">{escape(username)}</span></div>
+                    <div style="margin-top: 8px;">
+                        <span class="badge-purple">ID {escape(student_id)}</span>
+                        <span class="badge-blue">{escape(username)}</span>
+                    </div>
                 </div>
             </div>
             <div class="system-grid">
+                <div class="system-item"><div class="system-label">Student ID</div><div class="system-value">{escape(student_id)}</div></div>
                 <div class="system-item"><div class="system-label">Followers</div><div class="system-value">{format_number(student.get("Followers", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Following</div><div class="system-value">{format_number(student.get("Following", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Repositories</div><div class="system-value">{format_number(student.get("Repository_Count", 0))}</div></div>
@@ -589,12 +594,12 @@ def render_students(result) -> None:
 
     st.markdown('<div class="hero"><h1>Student Explorer</h1><p>Search, filter, and inspect validated GitHub student profiles.</p></div>', unsafe_allow_html=True)
     controls = st.columns([2, 1, 1, 1])
-    query = controls[0].text_input("Search", placeholder="Name, username, language")
+    query = controls[0].text_input("Search", placeholder="Name, ID, username, language")
     division = controls[1].selectbox("Division", ["All"] + sorted(df["Division"].dropna().astype(str).unique()))
     batch = controls[2].selectbox("Batch", ["All"] + sorted(df["Batch"].dropna().astype(str).unique()))
     page_size = controls[3].selectbox("Rows", [15, 25, 50, 100], index=1)
 
-    filtered = filter_text(df, query, ["Student Name", "GitHub_Username", "Primary_Language"])
+    filtered = filter_text(df, query, ["Student_ID", "Student Name", "GitHub_Username", "Primary_Language"])
     filtered = apply_value_filter(filtered, "Division", division)
     filtered = apply_value_filter(filtered, "Batch", batch)
     filtered["Status"] = "Connected"
@@ -606,6 +611,7 @@ def render_students(result) -> None:
         st.markdown('<div class="panel"><div class="panel-title"><h3>Students</h3><span>Validated GitHub accounts</span></div>', unsafe_allow_html=True)
         display_cols = [
             "Avatar_URL",
+            "Student_ID",
             "Student Name",
             "Division",
             "Batch",
@@ -629,6 +635,7 @@ def render_students(result) -> None:
             selection_mode="single-row",
             column_config={
                 "Avatar_URL": st.column_config.ImageColumn("Avatar", width="small"),
+                "Student_ID": st.column_config.TextColumn("Student ID"),
                 "GitHub Profile": st.column_config.LinkColumn("GitHub Profile", display_text="↗ Open Profile"),
                 "Profile_URL": st.column_config.LinkColumn("GitHub"),
                 "Primary_Language": st.column_config.TextColumn("Most Common Language"),
@@ -742,7 +749,11 @@ def render_leaderboards(result) -> None:
         with col:
             st.markdown(f'<div class="panel"><div class="panel-title"><h3>{escape(title)}</h3><span>Top 10</span></div>', unsafe_allow_html=True)
             for rank, (_, row) in enumerate(data.iterrows(), start=1):
-                leaderboard_card(rank, row.get("Student Name", "Unknown"), format_number(row.get(score_col, 0)), row.get("GitHub_Username", ""))
+                display_title = row.get("Student Name", "Unknown")
+                student_id = row.get("Student_ID", "")
+                if pd.notna(student_id) and str(student_id).strip():
+                    display_title = f"{display_title} ({student_id})"
+                leaderboard_card(rank, display_title, format_number(row.get(score_col, 0)), row.get("GitHub_Username", ""))
             st.markdown("</div>", unsafe_allow_html=True)
     with cols[3]:
         st.markdown('<div class="panel"><div class="panel-title"><h3>Top Languages</h3><span>Repository frequency</span></div>', unsafe_allow_html=True)
@@ -777,15 +788,16 @@ def render_issues(result) -> None:
 def build_validation_audit_df(result, last_analysis: str) -> pd.DataFrame:
     source = result.source_df.copy()
     stats_cols = [
+        "Student_ID",
         "GitHub_Username",
         "Repository_Count",
         "Followers",
         "Following",
     ]
     stats = result.dashboard_df[stats_cols].copy() if not result.dashboard_df.empty else pd.DataFrame(columns=stats_cols)
-    audit = source[["Student Name", "Division", "GitHub_Username"]].merge(
+    audit = source[["Student_ID", "Student Name", "Division", "GitHub_Username"]].merge(
         stats,
-        on="GitHub_Username",
+        on="Student_ID",
         how="left",
     )
     valid_users = set(result.valid_users)
@@ -805,6 +817,7 @@ def build_validation_audit_df(result, last_analysis: str) -> pd.DataFrame:
     audit["Last Updated"] = last_analysis
     return audit[
         [
+            "Student_ID",
             "Student Name",
             "Division",
             "GitHub_Username",
@@ -825,10 +838,10 @@ def render_verification(result, last_analysis: str) -> None:
     )
     audit = build_validation_audit_df(result, last_analysis)
     controls = st.columns([2, 1, 1])
-    query = controls[0].text_input("Search verification records", placeholder="Student name or GitHub username")
+    query = controls[0].text_input("Search verification records", placeholder="Student name, ID or GitHub username")
     status = controls[1].selectbox("Validation Status", ["All"] + sorted(audit["Validation Status"].dropna().unique()))
     page_size = controls[2].selectbox("Rows", [25, 50, 100, 250], index=1)
-    filtered = filter_text(audit, query, ["Student Name", "GitHub_Username", "Division"])
+    filtered = filter_text(audit, query, ["Student_ID", "Student Name", "GitHub_Username", "Division"])
     filtered = apply_value_filter(filtered, "Validation Status", status)
 
     st.markdown(
@@ -840,6 +853,7 @@ def render_verification(result, last_analysis: str) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
+            "Student_ID": st.column_config.TextColumn("Student ID"),
             "GitHub_Username": st.column_config.TextColumn("GitHub Username"),
             "GitHub Profile": st.column_config.LinkColumn("GitHub Profile", display_text="✔ Open Profile"),
         },

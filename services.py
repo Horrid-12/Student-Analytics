@@ -27,6 +27,8 @@ EXCEL_COLUMNS = [
 
 GITHUB_COL = "Actual GitHub Account Link:"
 GITHUB_API_BASE = "https://api.github.com"
+STUDENT_ID_COL = "Student_ID"
+PRN_COL = "PRN No"
 
 
 class RateLimitError(RuntimeError):
@@ -104,6 +106,17 @@ def extract_username(text):
     return None
 
 
+def normalize_student_id(value):
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if re.fullmatch(r"\d+\.0", text):
+        text = text[:-2]
+    return text
+
+
 def _header_key(name) -> str:
     return re.sub(r"[\s_:.;]+$", "", re.sub(r"\s+", "", str(name))).lower()
 
@@ -129,6 +142,7 @@ def load_excel(uploaded_file) -> pd.DataFrame:
 
 def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     prepared = df.copy()
+    prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
     prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
     invalid_format = prepared[
         ~prepared[GITHUB_COL].astype(str).str.contains("github.com/", na=False)
@@ -294,6 +308,7 @@ def build_dashboard_df(
     if github_stats.empty:
         return pd.DataFrame(
             columns=[
+                STUDENT_ID_COL,
                 "Student Name",
                 "Division",
                 "Batch",
@@ -331,6 +346,7 @@ def build_dashboard_df(
 
     student_info = df[
         [
+            STUDENT_ID_COL,
             "GitHub_Username",
             "Student Name",
             "Division",
@@ -338,8 +354,9 @@ def build_dashboard_df(
         ]
     ].copy()
 
+    student_info = student_info.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
     dashboard_df = dashboard_df.merge(student_info, on="GitHub_Username", how="left")
-    dashboard_df = dashboard_df.drop_duplicates(subset=["GitHub_Username"])
+    dashboard_df = dashboard_df.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
     dashboard_df["Repository_Count"] = dashboard_df["Repository_Count"].fillna(0).astype(int)
     dashboard_df["Primary_Language"] = dashboard_df["Primary_Language"].fillna("Unknown")
     dashboard_df["Repo_Fetch_Status"] = [
@@ -349,6 +366,7 @@ def build_dashboard_df(
 
     return dashboard_df[
         [
+            STUDENT_ID_COL,
             "Student Name",
             "Division",
             "Batch",
@@ -373,11 +391,12 @@ def find_repo_count_mismatches(dashboard_df: pd.DataFrame) -> list[str]:
         loaded["Public_Repos"].fillna(0).astype(int)
         != loaded["Repository_Count"].fillna(0).astype(int)
     ]
-    return mismatched["GitHub_Username"].astype(str).tolist()
+    identity_col = STUDENT_ID_COL if STUDENT_ID_COL in mismatched.columns else "GitHub_Username"
+    return mismatched[identity_col].astype(str).tolist()
 
 
 def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
-    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    columns = [STUDENT_ID_COL, "Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     extracted = df[df["GitHub_Username"].notna()]
     if extracted.empty:
         return pd.DataFrame(columns=columns)
@@ -392,17 +411,10 @@ def build_duplicate_issues(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_duplicate_student_issues(df: pd.DataFrame) -> pd.DataFrame:
-    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    columns = [STUDENT_ID_COL, "Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     if df.empty:
         return pd.DataFrame(columns=columns)
-    valid_name = df["Student Name"].notna() & df["Student Name"].astype(str).str.strip().ne("")
-    identity = (
-        df["Student Name"].astype(str).str.strip().str.lower()
-        + "|"
-        + df["Division"].astype(str).str.strip().str.lower()
-        + "|"
-        + df["Batch"].astype(str).str.strip().str.lower()
-    ).where(valid_name)
+    identity = df[STUDENT_ID_COL].where(df[STUDENT_ID_COL].notna() & df[STUDENT_ID_COL].astype(str).str.strip().ne(""))
     counts = identity.value_counts()
     duplicate_ids = counts[counts > 1].index
     duplicates = df[identity.isin(duplicate_ids)].copy()
@@ -413,7 +425,7 @@ def build_duplicate_student_issues(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_invalid_issues(df: pd.DataFrame, invalid_users: Iterable[str]) -> pd.DataFrame:
-    columns = ["Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
+    columns = [STUDENT_ID_COL, "Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     if df.empty:
         return pd.DataFrame(columns=columns)
 
@@ -499,7 +511,7 @@ def run_analysis(
     count_mismatches = find_repo_count_mismatches(dashboard_df)
     if count_mismatches:
         log.append(
-            f"{len(count_mismatches)} account(s) show a different fetched repository count than their "
+            f"{len(count_mismatches)} student record(s) show a different fetched repository count than their "
             "profile reports (profiles count hidden/private repos and listing caps at 100)"
         )
     log.append("Building analytics...")

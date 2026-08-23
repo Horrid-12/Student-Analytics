@@ -72,6 +72,9 @@
 > - **BUG-027**: Zero activity is no longer indistinguishable from missing data. `get_repos` reports success separately from its payload, `fetch_repository_data` collects accounts whose repo listing could not be retrieved, and `build_dashboard_df` adds a `Repo_Fetch_Status` column (`Loaded` / `Unavailable`) shown in the Students table; unavailable accounts are also logged during the run.
 > - **BUG-009**: The Students table now labels the two repo counts explicitly — "Public Repos (Profile)" vs "Repos Found (Fetched)" — instead of presenting them as interchangeable. `find_repo_count_mismatches()` flags only accounts whose data was actually loaded, and the run log confesses how many profile-vs-fetched discrepancies exist (profiles count hidden repos; listing caps at 100).
 
+> - **BUG-008**: Student records now carry a normalized `Student_ID`, so identity stays stable even when a GitHub username changes. Student-facing tables, profiles, leaderboards, and verification searches display the ID.
+> - **BUG-024**: The PRN / Student ID is now the primary identity key. Duplicate-student detection and dashboard de-duplication use the ID instead of combining name, division, and batch.
+
 ### Learn
 
 ```text
@@ -153,8 +156,8 @@ Treat this as a standalone mini-project.
 
 | Order | Bug     | Problem                                | Difficulty |
 | ----: | ------- | -------------------------------------- | :--------: |
-|    26 | BUG-008 | Use stable student identity            |   🟡 3/5   |
-|    27 | BUG-024 | Use PRN/student ID as primary identity |   🟡 3/5   |
+|    26 | ✅ BUG-008 | Use stable student identity            |   🟡 3/5   |
+|    27 | ✅ BUG-024 | Use PRN/student ID as primary identity |   🟡 3/5   |
 |    28 | BUG-025 | Track GitHub username changes          |   🟠 4/5   |
 |    29 | BUG-031 | Normalize by GitHub account age        |   🟡 3/5   |
 |    30 | BUG-032 | Add year/semester normalization        |   🟡 3/5   |
@@ -398,8 +401,8 @@ Progress Tracking
 |  15 | BUG-011 Real refresh                |     🟡     | Streamlit/API  |
 |  16 | BUG-012 Cache handling              |     🟡     | Streamlit      |
 |  17 | BUG-001 GitHub pagination           |     🟠     | GitHub API     |
-|  18 | BUG-008 Stable student identity     |     🟡     | Pandas         |
-|  19 | BUG-024 PRN identity                |     🟡     | Data modelling |
+|  18 | ✅ BUG-008 Stable student identity     |     🟡     | Pandas         |
+|  19 | ✅ BUG-024 PRN identity                |     🟡     | Data modelling |
 |  20 | ✅ BUG-009 Repository consistency    |     🟡     | Python/Pandas  |
 |  21 | ✅ BUG-027 Missing-data states       |     🟡     | Pandas         |
 |  22 | BUG-017 Commit analytics            |     🟡     | GitHub API     |
