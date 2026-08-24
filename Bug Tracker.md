@@ -15,9 +15,9 @@ This is the single source of truth for correctness work. One row represents one 
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 40 |
+| Fixed / moved | 43 |
 | Open | 0 |
-| Planned | 14 |
+| Planned | 11 |
 | Last audit | 2026-08-24 |
 
 🗓️ Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
@@ -33,13 +33,10 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-021 | 🗓️ Planned | Storage | Analysis timestamp is session-only | Store analysis runs |
 | BUG-022 | 🗓️ Planned | Storage | No database | Design schema after V1 validation |
 | BUG-028 | 🗓️ Planned | Analytics | Repository count is a weak performance proxy | Replace with transparent activity measures |
-| BUG-040 | 🗓️ Planned | Workflow | No persistent faculty follow-up workflow | Add assignment and resolution state |
 | BUG-043 | 🗓️ Planned | Security | No faculty authentication | Add authentication before institutional deployment |
 | BUG-044 | 🗓️ Planned | Security | No role-based access control | Define Admin/Faculty/Student roles |
 | BUG-045 | 🗓️ Planned | Security | No institutional data access control | Add authorization boundaries |
 | BUG-046 | 🗓️ Planned | Security | No audit trail | Persist access and change events |
-| BUG-047 | 🗓️ Planned | Architecture | `app.py` is too large | Split pages after behavior stabilizes |
-| BUG-048 | 🗓️ Planned | Architecture | UI and business logic are tightly coupled | Extract UI-independent services |
 
 ## Fixed and moved
 
@@ -76,6 +73,7 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-036 | ✅ Fixed | UI | No student is selected automatically. |
 | BUG-037 | ✅ Fixed | UI | Row-based selection remains unambiguous for duplicate names. |
 | BUG-039 | ✅ Fixed | UI | Filtered and total record counts are shown below data tables. |
+| BUG-040 | ✅ Fixed | Workflow | Follow-up rows now support session-persistent status, owner, and notes, with CSV export for handoff. |
 | BUG-041 | ✅ Fixed | UI | Status and error messages explain the cause and next action. |
 | BUG-042 | ✅ Fixed | GitHub API | Runs distinguish `Complete`, `Partial`, and `Failed`; API errors are not mislabeled as invalid users. |
 | BUG-049 | ✅ Fixed | UI | Settings and empty states work before an analysis is run. |
@@ -85,6 +83,8 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-053 | ✅ Fixed | Excel | Uploaded filenames are preserved when wrapping files in `BytesIO`. |
 | BUG-054 | ✅ Fixed | Verification | Audit merges no longer duplicate `GitHub_Username`; the source column remains authoritative. |
 | BUG-055 | ✅ Fixed | Analytics | July–December is Semester 1 of the current-next academic year; January–June is Semester 2 of previous-current year. |
+| BUG-047 | ✅ Fixed | Architecture | Shared formatting, filtering, and export helpers moved from `app.py` to `ui_helpers.py`. |
+| BUG-048 | ✅ Fixed | Architecture | Follow-up workflow shaping is now in `services.py`; the UI edits/render state while service code owns data transformation. |
 
 ## Verification checklist
 

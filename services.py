@@ -641,6 +641,32 @@ def build_invalid_issues(
     return flagged[columns]
 
 
+def build_followup_workflow_df(
+    issues: pd.DataFrame,
+    workflow_state: dict[str, dict[str, str]] | None = None,
+) -> pd.DataFrame:
+    """Combine detected issues with editable faculty follow-up state.
+
+    State is keyed by stable student ID, issue, and username so reruns do not
+    accidentally transfer notes or assignments to a different submission.
+    """
+    columns = ["Student_ID", "Student Name", "Division", "GitHub_Username", "Issue", "Status", "Owner", "Notes"]
+    if issues.empty:
+        return pd.DataFrame(columns=columns)
+    state = workflow_state or {}
+    result = issues.copy()
+
+    def key(row) -> str:
+        return "|".join(str(row.get(column, "") or "") for column in ("Student_ID", "Issue", "GitHub_Username"))
+
+    keys = result.apply(key, axis=1)
+    result["_Workflow_Key"] = keys
+    result["Status"] = [state.get(item, {}).get("Status", "Open") for item in keys]
+    result["Owner"] = [state.get(item, {}).get("Owner", "") for item in keys]
+    result["Notes"] = [state.get(item, {}).get("Notes", "") for item in keys]
+    return result.reindex(columns=columns + ["_Workflow_Key"])
+
+
 def run_analysis(
     uploaded_file,
     token: str | None,

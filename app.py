@@ -1,5 +1,4 @@
 import hashlib
-import html
 import io
 import os
 import time
@@ -9,7 +8,13 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from services import RateLimitError, clear_api_cache, run_analysis
+from services import (
+    RateLimitError,
+    build_followup_workflow_df,
+    clear_api_cache,
+    run_analysis,
+)
+from ui_helpers import apply_value_filter, dataframe_to_excel, escape, filter_text, format_number, github_profile_url
 
 
 st.set_page_config(
@@ -45,18 +50,6 @@ def icon_svg(name: str) -> str:
     return icons.get(name, icons["activity"])
 
 
-def escape(value) -> str:
-    if pd.isna(value):
-        return ""
-    return html.escape(str(value))
-
-
-def github_profile_url(username) -> str:
-    if pd.isna(username) or not str(username).strip():
-        return ""
-    return f"https://github.com/{str(username).strip()}"
-
-
 def github_button(url: str, label: str) -> str:
     if not url:
         return '<span class="badge-amber">Unavailable</span>'
@@ -73,48 +66,6 @@ def get_token() -> str:
     except Exception:
         pass
     return token or ""
-
-
-def dataframe_to_excel(df: pd.DataFrame) -> bytes:
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False)
-    return output.getvalue()
-
-
-def filter_text(df: pd.DataFrame, query: str, columns: list[str]) -> pd.DataFrame:
-    if not query:
-        return df
-    mask = pd.Series(False, index=df.index)
-    for column in columns:
-        if column in df.columns:
-            mask = mask | df[column].astype(str).str.contains(
-                query,
-                case=False,
-                na=False,
-                regex=False,
-            )
-    return df[mask]
-
-
-def apply_value_filter(df: pd.DataFrame, column: str, value: str) -> pd.DataFrame:
-    if value == "All" or column not in df.columns:
-        return df
-    return df[df[column].astype(str) == value]
-
-
-def format_number(value) -> str:
-    try:
-        numeric = float(value)
-    except Exception:
-        return str(value)
-    if numeric >= 1_000_000:
-        return f"{numeric / 1_000_000:.1f}M"
-    if numeric >= 1_000:
-        return f"{numeric / 1_000:.1f}K"
-    if numeric.is_integer():
-        return f"{int(numeric):,}"
-    return f"{numeric:.1f}"
 
 
 def render_sidebar(token_present: bool) -> str:
@@ -804,7 +755,7 @@ def render_leaderboards(result) -> None:
 
 def render_issues(result) -> None:
     issues = result.invalid_issues_df.copy()
-    st.markdown('<div class="hero"><h1>Follow-up Queue</h1><p>Students requiring attention for invalid, missing, or failed GitHub submissions.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero"><h1>Follow-up Queue</h1><p>Track ownership, status, and notes for submissions requiring attention.</p></div>', unsafe_allow_html=True)
     if issues.empty:
         st.markdown(
             '<div class="empty-state"><div><div class="empty-illustration">' + icon_svg("check") + '</div><h2>No Follow-up Required</h2><p>All visible submissions passed validation.</p></div></div>',
@@ -813,11 +764,34 @@ def render_issues(result) -> None:
         return
     issue_filter = st.selectbox("Issue type", ["All"] + sorted(issues["Issue"].dropna().astype(str).unique()))
     filtered = apply_value_filter(issues, "Issue", issue_filter)
-    filtered["Action"] = "Faculty follow-up"
-    st.markdown('<div class="panel"><div class="panel-title"><h3>Students Requiring Attention</h3><span>Warning badges and action queue</span></div>', unsafe_allow_html=True)
-    st.dataframe(filtered, hide_index=True, use_container_width=True)
+    workflow = build_followup_workflow_df(
+        filtered,
+        st.session_state.setdefault("followup_workflow", {}),
+    )
+    st.markdown('<div class="panel"><div class="panel-title"><h3>Students Requiring Attention</h3><span>Editable faculty workflow</span></div>', unsafe_allow_html=True)
+    edited = st.data_editor(
+        workflow,
+        hide_index=True,
+        use_container_width=True,
+        disabled=["Student_ID", "Student Name", "Division", "GitHub_Username", "Issue", "_Workflow_Key"],
+        column_config={
+            "Status": st.column_config.SelectboxColumn("Status", options=["Open", "In progress", "Resolved"], required=True),
+            "_Workflow_Key": None,
+        },
+        key="followup_editor",
+    )
+    if st.button("Save Follow-up Changes", type="primary"):
+        state = st.session_state.setdefault("followup_workflow", {})
+        for row in edited.to_dict("records"):
+            state[row["_Workflow_Key"]] = {
+                "Status": row.get("Status", "Open"),
+                "Owner": row.get("Owner", ""),
+                "Notes": row.get("Notes", ""),
+            }
+        st.success("Follow-up changes saved for this session.")
     st.caption(f"{len(filtered)} student{'s' if len(filtered) != 1 else ''} requiring attention")
-    st.download_button("Export Issues CSV", filtered.to_csv(index=False).encode("utf-8"), "github_invalid_issues.csv", "text/csv")
+    export_df = edited.drop(columns=["_Workflow_Key"], errors="ignore")
+    st.download_button("Export Follow-up CSV", export_df.to_csv(index=False).encode("utf-8"), "github_followup_queue.csv", "text/csv")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
