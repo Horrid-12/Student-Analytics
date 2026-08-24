@@ -143,7 +143,7 @@ Rule of thumb: **if it talks to the internet or does math, it belongs in `servic
 | Symptom | Fix |
 |---|---|
 | `ModuleNotFoundError: No module named 'pandas'` | You forgot to activate the venv — run the activate command again, then `pip install -r requirements.txt` |
-| `Missing required columns: ...` on upload | Wrong Excel file — the roster must have the exact expected headers (see `EXCEL_COLUMNS` in `services.py`) |
+| `Missing required columns: ...` on upload | Wrong Excel file — the roster must contain the required roster fields listed in `REQUIRED_EXCEL_COLUMNS` in `services.py`; legacy Repository 1/2/3 link columns are optional |
 | "GitHub API rate limit reached" | Your 60/hr quota ran out — set up a token (step 4 above), or wait for the reset time shown in the error |
 | Port 8501 already in use | `streamlit run app.py --server.port 8502` |
 | App breaks after pulling someone's changes | `pip install -r requirements.txt` again — deps may have changed |
