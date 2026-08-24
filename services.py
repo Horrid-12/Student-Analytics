@@ -1,4 +1,3 @@
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -57,7 +56,6 @@ class AnalysisResult:
     repo_df: pd.DataFrame
     dashboard_df: pd.DataFrame
     invalid_issues_df: pd.DataFrame
-    invalid_format_df: pd.DataFrame
     valid_users: list[str]
     invalid_users: list[str]
     error_users: list[str]
@@ -75,16 +73,6 @@ def determine_analysis_status(valid_users: list[str], error_users: list[str]) ->
     if not valid_users:
         return "Failed"
     return "Partial"
-
-
-def get_github_token() -> str:
-    token = os.getenv("GITHUB_TOKEN", "")
-    try:
-        if st is not None:
-            token = token or st.secrets.get("GITHUB_TOKEN", "")
-    except Exception:
-        pass
-    return token or ""
 
 
 def build_headers(token: str | None) -> dict[str, str]:
@@ -127,7 +115,7 @@ def extract_username(text):
     if "/" in text or ("." in text and " " not in text):
         # Strip query string and fragment before matching
         cleaned = re.split(r"[?#]", text, maxsplit=1)[0]
-        match = re.search(r"github\.com/([A-Za-z0-9_-]+)", cleaned)
+        match = re.search(r"github\.com/([A-Za-z0-9_-]+)", cleaned, flags=re.IGNORECASE)
         if match:
             return match.group(1)
         # It's a URL but not GitHub — reject it (don't harvest junk tokens)
@@ -214,15 +202,12 @@ def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
     prepared["Submitted_GitHub_Username"] = prepared["GitHub_Username"]
     invalid_format = prepared[
-        ~prepared[GITHUB_COL].astype(str).str.contains("github.com/", na=False)
+        ~prepared[GITHUB_COL].astype(str).str.contains(
+            "github.com/", case=False, na=False, regex=False
+        )
     ].copy()
     invalid_format["Issue"] = "Invalid format"
     return prepared, invalid_format
-
-
-def check_rate_limit(response: requests.Response) -> None:
-    if response.status_code == 403 and response.headers.get("X-RateLimit-Remaining") == "0":
-        raise RateLimitError(response.headers.get("X-RateLimit-Reset"))
 
 
 if st:
@@ -339,7 +324,6 @@ def validate_users(
     valid_users: list[str] = []
     invalid_users: list[str] = []
     error_users: list[str] = []
-    error_kinds: dict[str, int] = {}  # BUG-002: track error categories
     user_payloads: dict[str, dict] = {}
     username_list = list(usernames)
 
@@ -360,16 +344,13 @@ def validate_users(
                 user_payloads[username] = payload
             elif is_error:
                 error_users.append(username)
-                error_kinds[error_kind] = error_kinds.get(error_kind, 0) + 1
             else:
                 invalid_users.append(username)
             time.sleep(0.1)
         except RateLimitError:
             raise
-        except Exception as exc:
-            kind = classify_api_error(exc)
+        except Exception:
             error_users.append(username)
-            error_kinds[kind] = error_kinds.get(kind, 0) + 1
         if progress_callback:
             progress_callback(index, len(username_list), username)
 
@@ -594,23 +575,32 @@ def build_duplicate_student_issues(df: pd.DataFrame) -> pd.DataFrame:
     return duplicates[columns]
 
 
-def build_invalid_issues(df: pd.DataFrame, invalid_users: Iterable[str]) -> pd.DataFrame:
+def build_invalid_issues(
+    df: pd.DataFrame,
+    invalid_users: Iterable[str],
+    error_users: Iterable[str] = (),
+) -> pd.DataFrame:
     columns = [STUDENT_ID_COL, "Student Name", "Division", "Batch", GITHUB_COL, "GitHub_Username", "Issue"]
     if df.empty:
         return pd.DataFrame(columns=columns)
 
     invalid_set = {str(user).strip().lower() for user in invalid_users if user and not pd.isna(user)}
+    error_set = {str(user).strip().lower() for user in error_users if user and not pd.isna(user)}
     usernames = df["GitHub_Username"]
     has_username = usernames.notna() & usernames.astype(str).str.strip().ne("")
     lowered = usernames.where(has_username).astype(str).str.strip().str.lower()
-    link_has_github = df[GITHUB_COL].astype(str).str.contains("github.com/", na=False)
+    link_has_github = df[GITHUB_COL].astype(str).str.contains(
+        "github.com/", case=False, na=False, regex=False
+    )
 
     failed = has_username & lowered.isin(invalid_set)
-    bad_format = has_username & ~failed & ~link_has_github
+    api_error = has_username & ~failed & lowered.isin(error_set)
+    bad_format = has_username & ~failed & ~api_error & ~link_has_github
 
     issue = pd.Series("", index=df.index)
     issue[~has_username] = "Missing username"
     issue[failed] = "Failed GitHub validation"
+    issue[api_error] = "GitHub API error"
     issue[bad_format] = "Invalid format"
 
     flagged = df[issue != ""].copy()
@@ -630,7 +620,7 @@ def run_analysis(
         df = df.head(sample_size).copy()
     log.append(f"Loaded Excel - {len(df)} rows")
 
-    df, invalid_format_df = prepare_students(df)
+    df, _ = prepare_students(df)
     log.append("Extracted usernames")
 
     usernames = df["GitHub_Username"].tolist()
@@ -665,7 +655,7 @@ def run_analysis(
     log.append(f"Fetched repositories - {len(repo_df)} found")
 
     dashboard_df = build_dashboard_df(df, github_stats, repo_df, repo_unavailable_users)
-    invalid_issues_df = build_invalid_issues(df, invalid_users)
+    invalid_issues_df = build_invalid_issues(df, invalid_users, error_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
         log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
@@ -693,7 +683,6 @@ def run_analysis(
         repo_df=repo_df,
         dashboard_df=dashboard_df,
         invalid_issues_df=invalid_issues_df,
-        invalid_format_df=invalid_format_df,
         valid_users=valid_users,
         invalid_users=invalid_users,
         error_users=error_users,

@@ -392,14 +392,15 @@ def render_pipeline_card(result) -> None:
 
 
 def render_system_status(result, elapsed: float, last_analysis: str) -> None:
+    api_status = "Healthy" if not result.error_users and not result.repo_unavailable_users else "Issues detected"
     st.markdown(
         f"""
         <div class="panel">
             <div class="panel-title"><h3>System Status</h3><span>Operational snapshot</span></div>
             <div class="system-grid">
-                <div class="system-item"><div class="system-label">GitHub API</div><div class="system-value">Healthy</div></div>
+                <div class="system-item"><div class="system-label">GitHub API</div><div class="system-value">{api_status}</div></div>
                 <div class="system-item"><div class="system-label">Excel</div><div class="system-value">Loaded</div></div>
-                <div class="system-item"><div class="system-label">Analysis</div><div class="system-value">Completed</div></div>
+                <div class="system-item"><div class="system-label">Analysis</div><div class="system-value">{escape(getattr(result, 'status', 'Complete'))}</div></div>
                 <div class="system-item"><div class="system-label">Rows Processed</div><div class="system-value">{len(result.source_df):,}</div></div>
                 <div class="system-item"><div class="system-label">Repositories Found</div><div class="system-value">{len(result.repo_df):,}</div></div>
                 <div class="system-item"><div class="system-label">Execution Time</div><div class="system-value">{elapsed:.1f}s</div></div>
@@ -803,7 +804,6 @@ def build_validation_audit_df(result, last_analysis: str) -> pd.DataFrame:
     source = result.source_df.copy()
     stats_cols = [
         "Student_ID",
-        "GitHub_Username",
         "Repository_Count",
         "Followers",
         "Following",
@@ -814,12 +814,12 @@ def build_validation_audit_df(result, last_analysis: str) -> pd.DataFrame:
         on="Student_ID",
         how="left",
     )
-    valid_users = set(result.valid_users)
+    valid_users = {str(username).strip().lower() for username in result.valid_users}
 
     def validation_status(username) -> str:
         if pd.isna(username) or not str(username).strip():
             return "Missing"
-        if username in valid_users:
+        if str(username).strip().lower() in valid_users:
             return "Verified"
         return "Invalid"
 
@@ -1019,7 +1019,7 @@ def inject_theme() -> None:
     try:
         with open("style.css", "r", encoding="utf-8") as f:
             external_css = f.read()
-    except:
+    except OSError:
         external_css = ""
 
     st.markdown(
@@ -1062,8 +1062,11 @@ else:
     run_button, refresh_button, sample_size = False, False, None
 
 if refresh_button:
+    clear_api_cache()
     st.session_state.analysis_result = None
     st.session_state.analysis_file_hash = None
+    st.session_state.analysis_elapsed = 0.0
+    st.session_state.last_analysis_time = "Never"
     st.rerun()
 
 file_bytes = uploaded_file.getvalue() if uploaded_file is not None else None
