@@ -15,9 +15,9 @@ This is the single source of truth for correctness work. One row represents one 
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 43 |
+| Fixed / moved | 48 |
 | Open | 0 |
-| Planned | 11 |
+| Planned | 6 |
 | Last audit | 2026-08-24 |
 
 🗓️ Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
@@ -26,13 +26,8 @@ This is the single source of truth for correctness work. One row represents one 
 
 | ID | Status | Area | Problem | Next action |
 |---|---|---|---|---|
-| BUG-017 | 🗓️ Planned | Analytics | No commit/activity analytics | Define transparent activity metrics |
 | BUG-018 | 🗓️ Planned | GitHub API | No pull-request analytics | Add paginated PR collection |
 | BUG-019 | 🗓️ Planned | GitHub API | No Issues analytics | Add paginated Issues collection |
-| BUG-020 | 🗓️ Planned | Storage | No historical analytics | Requires persistence first |
-| BUG-021 | 🗓️ Planned | Storage | Analysis timestamp is session-only | Store analysis runs |
-| BUG-022 | 🗓️ Planned | Storage | No database | Design schema after V1 validation |
-| BUG-028 | 🗓️ Planned | Analytics | Repository count is a weak performance proxy | Replace with transparent activity measures |
 | BUG-043 | 🗓️ Planned | Security | No faculty authentication | Add authentication before institutional deployment |
 | BUG-044 | 🗓️ Planned | Security | No role-based access control | Define Admin/Faculty/Student roles |
 | BUG-045 | 🗓️ Planned | Security | No institutional data access control | Add authorization boundaries |
@@ -85,6 +80,11 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-055 | ✅ Fixed | Analytics | July–December is Semester 1 of the current-next academic year; January–June is Semester 2 of previous-current year. |
 | BUG-047 | ✅ Fixed | Architecture | Shared formatting, filtering, and export helpers moved from `app.py` to `ui_helpers.py`. |
 | BUG-048 | ✅ Fixed | Architecture | Follow-up workflow shaping is now in `services.py`; the UI edits/render state while service code owns data transformation. |
+| BUG-017 | ✅ Fixed | Analytics | `Active_Repositories` counts repos updated within the last 180 days using already-fetched metadata (no extra API calls); shown in the Students table and profile cards (commit 5228e87). |
+| BUG-020 | ✅ Fixed | Storage | History page charts valid accounts and active repositories across recorded runs and lists every run; shows an honest empty state until two runs exist. |
+| BUG-021 | ✅ Fixed | Storage | Every completed analysis writes its UTC timestamp, status, account/repo counts, average quality score, elapsed time, and file hash to SQLite; Settings shows the persisted last recorded run across restarts. |
+| BUG-022 | ✅ Fixed | Storage | `storage.py` adds a stdlib-SQLite `analysis_runs` schema (`init_db` / `record_analysis_run` / `load_run_history`) with graceful failure handling; the DB file is gitignored. |
+| BUG-028 | ✅ Fixed | Analytics | Leaderboards now lead with "Most Active Repos (6m)" ranked by `Active_Repositories`; volume and self-reported boards keep clear labels, and runs missing the column fall back to the legacy layout. |
 
 ## Verification checklist
 

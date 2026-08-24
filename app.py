@@ -14,6 +14,7 @@ from services import (
     clear_api_cache,
     run_analysis,
 )
+from storage import init_db, last_recorded_run, load_run_history, record_analysis_run
 from ui_helpers import apply_value_filter, dataframe_to_excel, escape, filter_text, format_number, github_profile_url
 
 
@@ -84,7 +85,7 @@ def render_sidebar(token_present: bool) -> str:
         )
         page = st.radio(
             "Navigation",
-            ["Overview", "Students", "Repositories", "Leaderboards", "Issues", "Verification", "Settings"],
+            ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"],
             label_visibility="collapsed",
             key="sidebar_nav",
         )
@@ -721,21 +722,28 @@ def leaderboard_card(rank: int, title: str, score: str, badge: str) -> None:
 def render_leaderboards(result) -> None:
     dashboard_df = result.dashboard_df
     repo_df = result.repo_df
-    st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Compare public repository counts and GitHub follower counts across students.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Compare recent activity, public repository counts, and GitHub follower counts across students.</p></div>', unsafe_allow_html=True)
     if dashboard_df.empty:
         render_empty_state()
         return
-    cols = st.columns(4)
-    sections = [
-        ("Most Public Repositories", dashboard_df.sort_values("Repository_Count", ascending=False).head(10), "Repository_Count"),
+    has_activity = "Active_Repositories" in dashboard_df.columns
+    # BUG-028: recency leads — the activity ranking is presented before volume proxies.
+    sections = []
+    if has_activity:
+        sections.append(
+            ("Most Active Repos (6m)", dashboard_df.sort_values("Active_Repositories", ascending=False).head(10), "Active_Repositories")
+        )
+    sections.append(("Most Public Repositories", dashboard_df.sort_values("Repository_Count", ascending=False).head(10), "Repository_Count"))
+    sections.append(
         (
             "Most-Followed GitHub Profiles",
             dashboard_df.sort_values("Followers", ascending=False).head(10),
             "Followers",
-        ),
-        ("Most GitHub-Reported Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"),
-    ]
-    for col, (title, data, score_col) in zip(cols[:3], sections):
+        )
+    )
+    sections.append(("Most GitHub-Reported Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"))
+    cols = st.columns(4)
+    for col, (title, data, score_col) in zip(cols[:4], sections[:4]):
         with col:
             st.markdown(f'<div class="panel"><div class="panel-title"><h3>{escape(title)}</h3><span>Top 10</span></div>', unsafe_allow_html=True)
             for rank, (_, row) in enumerate(data.iterrows(), start=1):
@@ -745,7 +753,12 @@ def render_leaderboards(result) -> None:
                     display_title = f"{display_title} ({student_id})"
                 leaderboard_card(rank, display_title, format_number(row.get(score_col, 0)), row.get("GitHub_Username", ""))
             st.markdown("</div>", unsafe_allow_html=True)
-    with cols[3]:
+    if has_activity:
+        language_cols = st.columns(2)
+        language_slot = language_cols[0]
+    else:
+        language_slot = cols[3]
+    with language_slot:
         st.markdown('<div class="panel"><div class="panel-title"><h3>Top Languages</h3><span>Repository frequency</span></div>', unsafe_allow_html=True)
         if repo_df.empty:
             st.info("No repository language data available. Run an analysis to populate this panel.")
@@ -795,6 +808,76 @@ def render_issues(result) -> None:
     st.caption(f"{len(filtered)} student{'s' if len(filtered) != 1 else ''} requiring attention")
     export_df = edited.drop(columns=["_Workflow_Key"], errors="ignore")
     st.download_button("Export Follow-up CSV", export_df.to_csv(index=False).encode("utf-8"), "github_followup_queue.csv", "text/csv")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_history() -> None:
+    st.markdown('<div class="hero"><h1>Analysis History</h1><p>Trends across every recorded analysis run, stored locally in SQLite.</p></div>', unsafe_allow_html=True)
+    history = load_run_history()
+    if history.empty:
+        st.markdown(
+            '<div class="empty-state"><div><div class="empty-illustration">'
+            + icon_svg("chart")
+            + '</div><h2>No Recorded Runs Yet</h2><p>History starts accumulating from your next completed analysis.</p></div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    history["run_timestamp"] = pd.to_datetime(history["run_timestamp"], errors="coerce")
+    if len(history) >= 2:
+        trend_long = history.melt(
+            id_vars="run_timestamp",
+            value_vars=["valid_accounts", "active_repos"],
+            var_name="Metric",
+            value_name="Count",
+        )
+        trend_long["Metric"] = trend_long["Metric"].map(
+            {"valid_accounts": "Valid Accounts", "active_repos": "Active Repos"}
+        )
+        chart = (
+            alt.Chart(trend_long)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("run_timestamp:T", axis=alt.Axis(labelColor="#A1A1AA", titleColor="#A1A1AA", labelFontSize=14, titleFontSize=15), title=None),
+                y=alt.Y("Count:Q", axis=alt.Axis(labelColor="#A1A1AA", titleColor="#A1A1AA", labelFontSize=14, titleFontSize=15)),
+                color=alt.Color("Metric:N", legend=alt.Legend(labelColor="#A1A1AA", titleColor="#FFFFFF", labelFontSize=14, titleFontSize=15)),
+                tooltip=["Metric", "Count"],
+            )
+            .properties(height=260)
+        )
+        st.markdown('<div class="panel"><div class="panel-title"><h3>Trends Over Time</h3><span>Per recorded run</span></div>', unsafe_allow_html=True)
+        st.altair_chart(chart_readability(chart), use_container_width=True, theme=None)
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("One run recorded so far — trends appear after a second completed analysis.")
+
+    display = history.rename(
+        columns={
+            "id": "Run #",
+            "run_timestamp": "Run Timestamp",
+            "status": "Status",
+            "total_students": "Students",
+            "valid_accounts": "Valid",
+            "invalid_accounts": "Invalid",
+            "error_accounts": "API Errors",
+            "repos_found": "Repos Found",
+            "active_repos": "Active Repos",
+            "avg_quality_score": "Avg Quality",
+            "elapsed_seconds": "Seconds",
+            "source_file_hash": "File Hash",
+        }
+    ).sort_values("Run #", ascending=False)
+    st.markdown('<div class="panel"><div class="panel-title"><h3>Recorded Runs</h3><span>Newest first</span></div>', unsafe_allow_html=True)
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Avg Quality": st.column_config.NumberColumn("Avg Quality", format="%.1f"),
+            "Seconds": st.column_config.NumberColumn("Seconds", format="%.1f"),
+        },
+    )
+    st.caption(f"{len(history)} run{'s' if len(history) != 1 else ''} recorded")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -882,6 +965,7 @@ def render_verification(result, last_analysis: str) -> None:
 
 def render_settings(token_present: bool, file_hash: str | None) -> None:
     st.markdown('<div class="hero"><h1>Settings</h1><p>Runtime configuration for the internal analytics platform.</p></div>', unsafe_allow_html=True)
+    last_run = last_recorded_run()
     
     with st.container():
         st.markdown('''
@@ -915,6 +999,7 @@ def render_settings(token_present: bool, file_hash: str | None) -> None:
                 <div class="system-item"><div class="system-label">GitHub Token</div><div class="system-value">{"Available" if token_present else "Missing"}</div></div>
                 <div class="system-item"><div class="system-label">Faculty Mode</div><div class="system-value">Enabled</div></div>
                 <div class="system-item"><div class="system-label">Uploaded File Hash</div><div class="system-value">{escape(file_hash[:12] if file_hash else "None")}</div></div>
+                <div class="system-item"><div class="system-label">Last Recorded Run (DB)</div><div class="system-value">{escape((last_run or {}).get("run_timestamp") or "No runs recorded yet")}</div></div>
             </div>
         </div>
         ''',
@@ -1045,6 +1130,7 @@ if "analysis_result" not in st.session_state:
     st.session_state.analysis_elapsed = 0.0
     st.session_state.analysis_file_hash = None
     st.session_state.last_analysis_time = "Never"
+    init_db()
 
 result = st.session_state.analysis_result
 uploaded_file = None
@@ -1142,6 +1228,26 @@ if run_button:
             st.session_state.analysis_elapsed = elapsed
             st.session_state.analysis_file_hash = file_hash
             st.session_state.last_analysis_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # BUG-021: persist the run snapshot; storage failures never fail the analysis
+            active_total = (
+                int(result.dashboard_df["Active_Repositories"].sum())
+                if not result.dashboard_df.empty and "Active_Repositories" in result.dashboard_df.columns
+                else 0
+            )
+            quality_scores = result.repo_df.get("Repository_Quality_Score") if not result.repo_df.empty else None
+            avg_quality = float(quality_scores.dropna().mean()) if quality_scores is not None and not quality_scores.dropna().empty else None
+            record_analysis_run(
+                status=result_status,
+                total_students=len(result.source_df),
+                valid_accounts=len(result.valid_users),
+                invalid_accounts=len(result.invalid_users),
+                error_accounts=len(result.error_users),
+                repos_found=len(result.repo_df),
+                active_repos=active_total,
+                avg_quality_score=avg_quality,
+                elapsed_seconds=elapsed,
+                source_file_hash=file_hash,
+            )
         except RateLimitError as exc:
             reset_text = "later"
             if exc.reset_epoch:
@@ -1156,9 +1262,11 @@ if run_button:
 
 result = st.session_state.analysis_result
 
-# Settings page does not require analysis results — always accessible
+# Settings and History pages do not require analysis results — always accessible
 if page == "Settings":
     render_settings(token_present, st.session_state.analysis_file_hash)
+elif page == "History":
+    render_history()
 elif result is None:
     pass
 else:
