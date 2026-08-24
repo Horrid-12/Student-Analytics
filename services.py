@@ -60,6 +60,8 @@ class AnalysisResult:
     invalid_users: list[str]
     error_users: list[str]
     repo_unavailable_users: list[str]
+    contributions_df: pd.DataFrame
+    contrib_unavailable_users: list[str]
     log: list[str]
     # Keep the analysis outcome as data on every result.  The UI receives this
     # object, so an explicit field is safer than asking the UI to calculate it.
@@ -316,6 +318,112 @@ def get_repos(username: str, token: str | None) -> tuple[list[dict], bool]:
     return all_repos, True
 
 
+SEARCH_PAGE_GUARD = 10  # search results are hard-capped at 1000 items anyway
+
+
+def get_search_contributions(username: str, kind: str, token: str | None) -> tuple[list[dict], bool]:
+    """Collect a user's pull requests or issues via the GitHub Search API.
+
+    BUG-018/BUG-019: ``kind`` is "pr" or "issue"; queries are paginated until a
+    short page ends the listing, mirroring get_repos pacing and guards. The
+    Search API has its own stricter rate limit than the core API, so failures
+    are reported per-user instead of crashing the analysis.
+    """
+    query = f"author%3A{username}+type%3A{kind}"
+    items: list[dict] = []
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            f"{GITHUB_API_BASE}/search/issues?q={query}&per_page=100&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            return [], False
+        batch = payload["items"]
+        items.extend(batch)
+        if len(batch) < 100:
+            break
+        if page >= SEARCH_PAGE_GUARD:
+            break
+        page += 1
+        time.sleep(0.2)
+    return items, True
+
+
+def _repository_owner(item: dict) -> str | None:
+    repository_url = item.get("repository_url") or ""
+    parts = [part for part in repository_url.split("/repos/") if part]
+    if not parts or "/" not in parts[-1]:
+        return None
+    return parts[-1].split("/", 1)[0].lower() or None
+
+
+def summarize_user_contributions(username: str, prs: list[dict], issues: list[dict]) -> dict:
+    lowered = username.lower()
+    external_prs = sum(
+        1 for item in prs
+        if (owner := _repository_owner(item)) is not None and owner != lowered
+    )
+    return {
+        "Username": username,
+        "Pull_Requests": len(prs),
+        "Open_PRs": sum(1 for item in prs if item.get("state") == "open"),
+        "Closed_PRs": sum(1 for item in prs if item.get("state") == "closed"),
+        "Issues_Opened": len(issues),
+        "Open_Issues": sum(1 for item in issues if item.get("state") == "open"),
+        "External_PRs": external_prs,
+    }
+
+
+def fetch_contribution_data(
+    valid_usernames: Iterable[str],
+    token: str | None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Aggregate PR and issue activity per account (BUG-018/BUG-019).
+
+    Returns (per-account summary frame, accounts whose searches failed). A
+    failed search marks that account's contribution data unavailable rather
+    than silently reporting zero activity.
+    """
+    summaries: list[dict] = []
+    unavailable_users: list[str] = []
+    usernames = list(pd.Series(list(valid_usernames)).dropna().unique())
+    total_users = len(usernames)
+
+    for index, username in enumerate(usernames, start=1):
+        try:
+            prs, prs_ok = get_search_contributions(username, "pr", token)
+            issues, issues_ok = get_search_contributions(username, "issue", token)
+            if not (prs_ok and issues_ok):
+                unavailable_users.append(username)
+            else:
+                summaries.append(summarize_user_contributions(username, prs, issues))
+        except RateLimitError:
+            raise
+        except Exception:
+            unavailable_users.append(username)
+        finally:
+            # Report progress even for accounts whose searches failed, so the
+            # UI bar never appears to stall.
+            if progress_callback:
+                progress_callback(index, total_users, username)
+            time.sleep(0.15)  # Search API limits are tighter than the core API
+
+    contrib_columns = [
+        "Username",
+        "Pull_Requests",
+        "Open_PRs",
+        "Closed_PRs",
+        "Issues_Opened",
+        "Open_Issues",
+        "External_PRs",
+    ]
+    return pd.DataFrame(summaries, columns=contrib_columns), unavailable_users
+
+
 def validate_users(
     usernames: Iterable[str],
     token: str | None,
@@ -458,8 +566,13 @@ def build_dashboard_df(
     github_stats: pd.DataFrame,
     repo_df: pd.DataFrame,
     unavailable_users: Iterable[str] = (),
+    contributions_df: pd.DataFrame | None = None,
+    contrib_unavailable_users: Iterable[str] = (),
 ) -> pd.DataFrame:
     unavailable_set = {str(user).strip().lower() for user in unavailable_users}
+    contrib_unavailable_set = {str(user).strip().lower() for user in contrib_unavailable_users}
+    if contributions_df is None or contributions_df.empty:
+        contributions_df = pd.DataFrame(columns=["Username"])
     if github_stats.empty:
         return pd.DataFrame(
             columns=[
@@ -475,6 +588,13 @@ def build_dashboard_df(
                 "Repository_Count",
                 "Active_Repositories",
                 "Repo_Fetch_Status",
+                "Pull_Requests",
+                "Open_PRs",
+                "Closed_PRs",
+                "Issues_Opened",
+                "Open_Issues",
+                "External_PRs",
+                "Contrib_Fetch_Status",
                 "Followers",
                 "Following",
                 "Account_Age_Years",
@@ -517,6 +637,17 @@ def build_dashboard_df(
     dashboard_df = dashboard_df.merge(language_count, on="Username", how="left")
     dashboard_df = dashboard_df.merge(active_repos, on="Username", how="left")
 
+    # BUG-018/019: merge contribution summaries; rename the key so it cannot
+    # collide with the "Username" column already produced by the repo merges.
+    contrib_merge = contributions_df.rename(columns={"Username": "_Contrib_User"})
+    dashboard_df = dashboard_df.merge(
+        contrib_merge,
+        left_on="GitHub_Username",
+        right_on="_Contrib_User",
+        how="left",
+    )
+    dashboard_df = dashboard_df.drop(columns=["_Contrib_User"], errors="ignore")
+
     student_info = df[
         [
             STUDENT_ID_COL,
@@ -550,6 +681,14 @@ def build_dashboard_df(
         "Unavailable" if str(name).strip().lower() in unavailable_set else "Loaded"
         for name in dashboard_df["GitHub_Username"]
     ]
+    for column in ("Pull_Requests", "Open_PRs", "Closed_PRs", "Issues_Opened", "Open_Issues", "External_PRs"):
+        if column not in dashboard_df.columns:
+            dashboard_df[column] = 0
+        dashboard_df[column] = dashboard_df[column].fillna(0).astype(int)
+    dashboard_df["Contrib_Fetch_Status"] = [
+        "Unavailable" if str(name).strip().lower() in contrib_unavailable_set else "Loaded"
+        for name in dashboard_df["GitHub_Username"]
+    ]
 
     return dashboard_df[
         [
@@ -566,6 +705,13 @@ def build_dashboard_df(
             "Repository_Count",
             "Active_Repositories",
             "Repo_Fetch_Status",
+            "Pull_Requests",
+            "Open_PRs",
+            "Closed_PRs",
+            "Issues_Opened",
+            "Open_Issues",
+            "External_PRs",
+            "Contrib_Fetch_Status",
             "Followers",
             "Following",
             "Account_Age_Years",
@@ -725,7 +871,32 @@ def run_analysis(
         log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
     log.append(f"Fetched repositories - {len(repo_df)} found")
 
-    dashboard_df = build_dashboard_df(df, github_stats, repo_df, repo_unavailable_users)
+    def contrib_progress(index: int, total: int, username: str) -> None:
+        if progress_callback:
+            progress_callback("contributions", index, total, username)
+
+    contributions_df, contrib_unavailable_users = fetch_contribution_data(
+        github_stats["GitHub_Username"] if not github_stats.empty else [],
+        token,
+        contrib_progress,
+    )
+    if contrib_unavailable_users:
+        log.append(
+            f"PR/issue data unavailable for {len(contrib_unavailable_users)} account(s) — the GitHub Search API "
+            "has a strict per-minute limit; add a GITHUB_TOKEN to improve reliability"
+        )
+    total_prs = int(contributions_df["Pull_Requests"].sum()) if not contributions_df.empty else 0
+    total_issues = int(contributions_df["Issues_Opened"].sum()) if not contributions_df.empty else 0
+    log.append(f"Collected contributions - {total_prs} pull request(s), {total_issues} issue(s)")
+
+    dashboard_df = build_dashboard_df(
+        df,
+        github_stats,
+        repo_df,
+        repo_unavailable_users,
+        contributions_df,
+        contrib_unavailable_users,
+    )
     invalid_issues_df = build_invalid_issues(df, invalid_users, error_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
@@ -758,6 +929,8 @@ def run_analysis(
         invalid_users=invalid_users,
         error_users=error_users,
         repo_unavailable_users=repo_unavailable_users,
+        contributions_df=contributions_df,
+        contrib_unavailable_users=contrib_unavailable_users,
         log=log,
         status=determine_analysis_status(valid_users, error_users),
     )

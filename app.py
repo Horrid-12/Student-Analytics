@@ -590,6 +590,10 @@ def render_students(result) -> None:
             "Public_Repos",
             "Repository_Count",
             "Active_Repositories",
+            "Pull_Requests",
+            "Open_PRs",
+            "Issues_Opened",
+            "External_PRs",
             "Account_Age_Years",
             "Repos_Per_Account_Year",
             "Followers_Per_Account_Year",
@@ -600,7 +604,10 @@ def render_students(result) -> None:
             "Status",
             "Profile_URL",
         ]
-        display_df = filtered[display_cols].head(page_size).reset_index(drop=True)
+        # Results saved by an older app version may lack newer dashboard
+        # columns; filter to what exists so a stale session cannot crash.
+        available_cols = [column for column in display_cols if column in filtered.columns]
+        display_df = filtered[available_cols].head(page_size).reset_index(drop=True)
         table_event = st.dataframe(
             display_df,
             use_container_width=True,
@@ -619,6 +626,10 @@ def render_students(result) -> None:
                 "Public_Repos": st.column_config.TextColumn("Public Repos (Profile)"),
                 "Repository_Count": st.column_config.TextColumn("Repos Found (Fetched)"),
                 "Active_Repositories": st.column_config.NumberColumn("Active Repos (6m)"),
+                "Pull_Requests": st.column_config.NumberColumn("Pull Requests"),
+                "Open_PRs": st.column_config.NumberColumn("PRs Open"),
+                "Issues_Opened": st.column_config.NumberColumn("Issues Opened"),
+                "External_PRs": st.column_config.NumberColumn("PRs to Others' Repos"),
                 "Account_Age_Years": st.column_config.NumberColumn("GitHub Account Age (Years)", format="%.1f"),
                 "Repos_Per_Account_Year": st.column_config.NumberColumn("Repos per Account-Year", format="%.2f"),
                 "Followers_Per_Account_Year": st.column_config.NumberColumn("Followers per Account-Year", format="%.2f"),
@@ -629,7 +640,7 @@ def render_students(result) -> None:
         st.caption(f"Showing {len(display_df)} of {len(filtered)} student{'s' if len(filtered) != 1 else ''}")
         if table_event.selection.rows:
             selected_student = filtered.head(page_size).reset_index(drop=True).iloc[table_event.selection.rows[0]]
-        export_cols = [column for column in display_cols if column != "Avatar_URL"]
+        export_cols = [column for column in available_cols if column != "Avatar_URL"]
         export_a, export_b = st.columns(2)
         export_df = filtered[export_cols].rename(columns={"Primary_Language": "Most Common Language"})
         export_a.download_button("Export CSV", export_df.to_csv(index=False).encode("utf-8"), "github_students.csv", "text/csv")
@@ -1177,6 +1188,9 @@ if run_button:
             if stage == "validate":
                 fraction = index / total * 0.55
                 label = f"Validating accounts ({index}/{total}): {username}"
+            elif stage == "contributions":
+                fraction = 0.95 + (index / total * 0.03)
+                label = f"Collecting pull requests & issues ({index}/{total}): {username}"
             else:
                 fraction = 0.55 + (index / total * 0.4)
                 label = f"Fetching repositories ({index}/{total}): {username}"
