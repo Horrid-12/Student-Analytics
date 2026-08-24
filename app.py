@@ -513,6 +513,7 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
                 <div class="system-item"><div class="system-label">Followers</div><div class="system-value">{format_number(student.get("Followers", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Following</div><div class="system-value">{format_number(student.get("Following", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Repositories</div><div class="system-value">{format_number(student.get("Repository_Count", 0))}</div></div>
+                <div class="system-item"><div class="system-label">Active Repos (6m)</div><div class="system-value">{format_number(student.get("Active_Repositories", 0))}</div></div>
                 <div class="system-item"><div class="system-label">Most Common Repo Language</div><div class="system-value">{escape(student.get("Primary_Language", "Unknown"))}</div></div>
             </div>
             <div style="margin-top: 14px;">
@@ -587,6 +588,7 @@ def render_students(result) -> None:
             "Following",
             "Public_Repos",
             "Repository_Count",
+            "Active_Repositories",
             "Account_Age_Years",
             "Repos_Per_Account_Year",
             "Followers_Per_Account_Year",
@@ -615,6 +617,7 @@ def render_students(result) -> None:
                 "Repo_Fetch_Status": st.column_config.TextColumn("Repo Data"),
                 "Public_Repos": st.column_config.TextColumn("Public Repos (Profile)"),
                 "Repository_Count": st.column_config.TextColumn("Repos Found (Fetched)"),
+                "Active_Repositories": st.column_config.NumberColumn("Active Repos (6m)"),
                 "Account_Age_Years": st.column_config.NumberColumn("GitHub Account Age (Years)", format="%.1f"),
                 "Repos_Per_Account_Year": st.column_config.NumberColumn("Repos per Account-Year", format="%.2f"),
                 "Followers_Per_Account_Year": st.column_config.NumberColumn("Followers per Account-Year", format="%.2f"),
