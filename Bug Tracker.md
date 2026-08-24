@@ -52,7 +52,7 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-013 | ✅ Fixed | UI | Misleading live-data labels were removed. |
 | BUG-014 | ✅ Fixed | UI | Sample-size controls are available through the Limits popover and constrain analysis rows. |
 | BUG-015 | ✅ Fixed | Excel / Analytics | Repository 1/2/3 links are optional legacy columns and are not used; analytics use the profile link and live API data. Verified with rosters both containing and omitting those columns. |
-| BUG-016 | ↪️ Moved | Product decision | Repository ownership cross-checking is moot after BUG-015 removed submitted repo links. |
+| BUG-016 | ✅ Fixed | Product decision | Repository ownership validation is not applicable: BUG-015 removed submitted repository links, and all repository data is fetched directly from the validated GitHub profile. |
 | BUG-023 | ✅ Fixed | Excel | Header normalization handles case, whitespace, underscores, and trailing punctuation. |
 | BUG-024 | ✅ Fixed | Identity | PRN / Student ID is the primary identity key for de-duplication. |
 | BUG-025 | ✅ Fixed | Identity | Submitted and current GitHub usernames are both retained, so username changes remain visible. |
