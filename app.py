@@ -14,7 +14,7 @@ from services import (
     clear_api_cache,
     run_analysis,
 )
-from storage import init_db, last_recorded_run, load_run_history, record_analysis_run
+from storage import init_db, last_recorded_run, load_audit_events, load_run_history, log_event, record_analysis_run
 from ui_helpers import apply_value_filter, dataframe_to_excel, escape, filter_text, format_number, github_profile_url
 
 
@@ -29,6 +29,43 @@ SUCCESS = "#22C55E"
 WARNING = "#F59E0B"
 DANGER = "#EF4444"
 PURPLE = "#8B5CF6"
+
+
+def configured_password_hash() -> str | None:
+    """BUG-043: SHA-256 hex of the faculty password, or None when unconfigured."""
+    try:
+        auth_section = st.secrets.get("AUTH", {})
+        configured = auth_section.get("FACULTY_PASSWORD_SHA256", "") if auth_section else ""
+    except Exception:
+        configured = ""
+    return (configured or "").strip().lower() or None
+
+
+def require_faculty_login() -> None:
+    expected = configured_password_hash()
+    if expected is None:
+        st.warning(
+            "🔓 Authentication is not configured — the dashboard is open. "
+            "Add `[AUTH]` / `FACULTY_PASSWORD_SHA256` to `.streamlit/secrets.toml` before sharing student data."
+        )
+        return
+    if st.session_state.get("faculty_authenticated"):
+        return
+    st.markdown('<div class="hero"><h1>Faculty Access</h1><p>This dashboard contains student data and requires sign-in.</p></div>', unsafe_allow_html=True)
+    with st.form("faculty_login"):
+        password = st.text_input("Access password", type="password")
+        if st.form_submit_button("Unlock dashboard", use_container_width=True):
+            if hashlib.sha256(password.encode("utf-8")).hexdigest() == expected:
+                st.session_state["faculty_authenticated"] = True
+                log_event("login_success")
+                st.rerun()
+            else:
+                log_event("login_failed")
+                st.error("Incorrect password. Ask your administrator for access.")
+    st.stop()
+
+
+require_faculty_login()
 
 
 def icon_svg(name: str) -> str:
@@ -889,6 +926,23 @@ def render_history() -> None:
         },
     )
     st.caption(f"{len(history)} run{'s' if len(history) != 1 else ''} recorded")
+
+    # BUG-046: surface the security audit trail alongside run history.
+    with st.expander("Security audit trail (recent events)", expanded=False):
+        events = load_audit_events()
+        if events.empty:
+            st.caption("No audit events yet — sign-ins and analyses will appear here.")
+        else:
+            st.dataframe(
+                events,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "event_timestamp": st.column_config.TextColumn("Time (UTC)"),
+                    "event_type": st.column_config.TextColumn("Event"),
+                    "detail": st.column_config.TextColumn("Detail"),
+                },
+            )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1262,6 +1316,7 @@ if run_button:
                 elapsed_seconds=elapsed,
                 source_file_hash=file_hash,
             )
+            log_event("analysis_run", f"status={result_status}; rows={checked_total}")
         except RateLimitError as exc:
             reset_text = "later"
             if exc.reset_epoch:

@@ -17,22 +17,32 @@ import pandas as pd
 
 DB_PATH = Path(__file__).resolve().parent / "analytics_history.db"
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS analysis_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_timestamp TEXT NOT NULL,
-    status TEXT NOT NULL,
-    total_students INTEGER,
-    valid_accounts INTEGER,
-    invalid_accounts INTEGER,
-    error_accounts INTEGER,
-    repos_found INTEGER,
-    active_repos INTEGER,
-    avg_quality_score REAL,
-    elapsed_seconds REAL,
-    source_file_hash TEXT
-);
-"""
+_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS analysis_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_timestamp TEXT NOT NULL,
+        status TEXT NOT NULL,
+        total_students INTEGER,
+        valid_accounts INTEGER,
+        invalid_accounts INTEGER,
+        error_accounts INTEGER,
+        repos_found INTEGER,
+        active_repos INTEGER,
+        avg_quality_score REAL,
+        elapsed_seconds REAL,
+        source_file_hash TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_timestamp TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        detail TEXT
+    )
+    """,
+)
 
 _INSERT = """
 INSERT INTO analysis_runs (
@@ -47,12 +57,18 @@ def _connect() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH, timeout=5)
 
 
+def _init_schema(conn: sqlite3.Connection) -> None:
+    """Create every table. sqlite3.execute() allows one statement per call."""
+    for statement in _SCHEMA:
+        conn.execute(statement)
+
+
 def init_db() -> bool:
     """Create the schema if needed. Returns True when the database is usable."""
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)
+                _init_schema(conn)
         return True
     except (sqlite3.Error, OSError):
         return False
@@ -75,7 +91,7 @@ def record_analysis_run(
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)  # self-heal if the file was deleted mid-session
+                _init_schema(conn)  # self-heal if the file was deleted mid-session
                 conn.execute(
                     _INSERT,
                     (
@@ -117,3 +133,33 @@ def last_recorded_run() -> dict | None:
         return dict(row) if row else None
     except (sqlite3.Error, OSError):
         return None
+
+
+def log_event(event_type: str, detail: str = "") -> bool:
+    """Append one security/audit event (BUG-046). Never crashes the caller."""
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _init_schema(conn)  # self-heal pre-existing databases
+                conn.execute(
+                    "INSERT INTO audit_log (event_timestamp, event_type, detail) VALUES (?, ?, ?)",
+                    (timestamp, event_type, detail),
+                )
+        return True
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def load_audit_events(limit: int = 200) -> pd.DataFrame:
+    """Return the most recent audit events, newest first; empty frame on failure."""
+    try:
+        with closing(_connect()) as conn:
+            return pd.read_sql_query(
+                "SELECT event_timestamp, event_type, detail FROM audit_log "
+                "ORDER BY id DESC LIMIT ?",
+                conn,
+                params=(int(limit),),
+            )
+    except (sqlite3.Error, OSError):
+        return pd.DataFrame(columns=["event_timestamp", "event_type", "detail"])
