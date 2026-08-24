@@ -28,10 +28,10 @@ This is the single source of truth for correctness work. One row represents one 
 |---|---|---|---|---|
 | BUG-018 | ✅ Fixed | GitHub API | No pull-request analytics | Paginated Search API collection with per-account PR counts |
 | BUG-019 | ✅ Fixed | GitHub API | No Issues analytics | Paginated Search API collection with per-account issue counts |
-| BUG-043 | 🗓️ Planned | Security | No faculty authentication | Add authentication before institutional deployment |
+| BUG-043 | ✅ Fixed | Security | No faculty authentication | SHA-256 password gate from secrets; open-with-warning when unconfigured |
 | BUG-044 | 🗓️ Planned | Security | No role-based access control | Define Admin/Faculty/Student roles |
 | BUG-045 | 🗓️ Planned | Security | No institutional data access control | Add authorization boundaries |
-| BUG-046 | 🗓️ Planned | Security | No audit trail | Persist access and change events |
+| BUG-046 | ✅ Fixed | Security | No audit trail | SQLite `audit_log` records logins and analysis runs; viewable on History page |
 
 ## Fixed and moved
 
