@@ -281,6 +281,27 @@ def classify_api_error(exc: Exception = None, status_code: int = 0) -> str:
     return "unknown"
 
 
+def resolve_role(
+    password_sha256: str | None,
+    configured: dict,
+) -> str | None:
+    """BUG-044: map a submitted password hash to its role.
+
+    Checks ADMIN, then FACULTY, then STUDENT hashes from the ``[AUTH]``
+    secrets section; returns None when no configured hash matches. Roles are
+    checked most-privileged first so an identical password cannot silently
+    downgrade to the least powerful role.
+    """
+    candidate = (password_sha256 or "").strip().lower()
+    if not candidate:
+        return None
+    for role in ("admin", "faculty", "student"):
+        expected = str(configured.get(f"{role.upper()}_PASSWORD_SHA256") or "").strip().lower()
+        if expected and candidate == expected:
+            return role
+    return None
+
+
 def get_user(username: str, token: str | None) -> tuple[bool, dict, bool, str]:
     """Validate a GitHub username. Returns (is_valid, payload, is_error, error_kind)."""
     status_code, response_headers, payload = _cached_get_json(

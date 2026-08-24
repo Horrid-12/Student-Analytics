@@ -12,6 +12,7 @@ from services import (
     RateLimitError,
     build_followup_workflow_df,
     clear_api_cache,
+    resolve_role,
     run_analysis,
 )
 from storage import init_db, last_recorded_run, load_audit_events, load_run_history, log_event, record_analysis_run
@@ -31,36 +32,61 @@ DANGER = "#EF4444"
 PURPLE = "#8B5CF6"
 
 
-def configured_password_hash() -> str | None:
-    """BUG-043: SHA-256 hex of the faculty password, or None when unconfigured."""
+def configured_auth() -> dict:
+    """BUG-043/044: the [AUTH] secrets section as a plain dict (empty when unset)."""
     try:
-        auth_section = st.secrets.get("AUTH", {})
-        configured = auth_section.get("FACULTY_PASSWORD_SHA256", "") if auth_section else ""
+        section = st.secrets.get("AUTH", {})
+        return dict(section) if section else {}
     except Exception:
-        configured = ""
-    return (configured or "").strip().lower() or None
+        return {}
+
+
+FULL_PAGES = ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
+STUDENT_PAGES = ["Overview", "Leaderboards"]
+AUTH_KEYS = ("ADMIN_PASSWORD_SHA256", "FACULTY_PASSWORD_SHA256", "STUDENT_PASSWORD_SHA256")
+
+
+def current_role() -> str:
+    return st.session_state.get("auth_role", "faculty")
+
+
+def can_manage() -> bool:
+    """BUG-045: faculty, admin and the unconfigured dev mode manage data; students only view."""
+    return current_role() in ("admin", "faculty", "open")
+
+
+def visible_pages() -> list[str]:
+    return STUDENT_PAGES if current_role() == "student" else FULL_PAGES
 
 
 def require_faculty_login() -> None:
-    expected = configured_password_hash()
-    if expected is None:
+    auth = configured_auth()
+    if not any(str(auth.get(key) or "").strip() for key in AUTH_KEYS):
+        st.session_state.setdefault("auth_role", "open")
+        st.session_state.setdefault("auth_user", "anonymous")
         st.warning(
             "🔓 Authentication is not configured — the dashboard is open. "
             "Add `[AUTH]` / `FACULTY_PASSWORD_SHA256` to `.streamlit/secrets.toml` before sharing student data."
         )
         return
-    if st.session_state.get("faculty_authenticated"):
+    if st.session_state.get("auth_role"):
         return
     st.markdown('<div class="hero"><h1>Faculty Access</h1><p>This dashboard contains student data and requires sign-in.</p></div>', unsafe_allow_html=True)
     with st.form("faculty_login"):
+        display_name = st.text_input("Your name (recorded in the audit log)", value="")
         password = st.text_input("Access password", type="password")
         if st.form_submit_button("Unlock dashboard", use_container_width=True):
-            if hashlib.sha256(password.encode("utf-8")).hexdigest() == expected:
-                st.session_state["faculty_authenticated"] = True
-                log_event("login_success")
+            digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
+            role = resolve_role(digest, auth)
+            who = display_name.strip() or "unnamed"
+            if role:
+                st.session_state["auth_role"] = role
+                st.session_state["auth_user"] = who
+                log_event("login_success", f"user={who}; role={role}")
+                st.session_state.pop("sidebar_nav", None)  # role may see fewer pages
                 st.rerun()
             else:
-                log_event("login_failed")
+                log_event("login_failed", f"user={who}")
                 st.error("Incorrect password. Ask your administrator for access.")
     st.stop()
 
@@ -122,17 +148,25 @@ def render_sidebar(token_present: bool) -> str:
         )
         page = st.radio(
             "Navigation",
-            ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"],
+            visible_pages(),
             label_visibility="collapsed",
             key="sidebar_nav",
         )
+        if current_role() != "open":
+            st.caption(f"Signed in as {st.session_state.get('auth_user', 'unnamed')} ({current_role()})")
+            if st.button("Lock dashboard", use_container_width=True):
+                log_event("logout", f"user={st.session_state.get('auth_user', 'unnamed')}")
+                for key in ("auth_role", "auth_user", "sidebar_nav"):
+                    st.session_state.pop(key, None)
+                st.rerun()
         connection = "Connected" if token_present else "Token missing"
         badge_class = "badge-green" if token_present else "badge-amber"
+        role_badge = {"admin": "Admin", "faculty": "Faculty", "student": "Student", "open": "Open (no auth)"}[current_role()]
         st.markdown(
             f"""
             <div class="sidebar-footer">
                 <div class="status-row"><span>GitHub</span><span class="{badge_class}">{connection}</span></div>
-                <div class="status-row"><span>Mode</span><span class="badge-purple">Faculty</span></div>
+                <div class="status-row"><span>Mode</span><span class="badge-purple">{role_badge}</span></div>
                 <div class="status-row"><span>Version</span><span>v1.0.0</span></div>
             </div>
             """,
@@ -791,15 +825,20 @@ def render_leaderboards(result) -> None:
     )
     sections.append(("Most GitHub-Reported Repos", dashboard_df.sort_values("Public_Repos", ascending=False).head(10), "Public_Repos"))
     cols = st.columns(4)
+    # BUG-045: students see rankings without names, IDs or usernames.
+    anonymize = current_role() == "student"
     for col, (title, data, score_col) in zip(cols[:4], sections[:4]):
         with col:
             st.markdown(f'<div class="panel"><div class="panel-title"><h3>{escape(title)}</h3><span>Top 10</span></div>', unsafe_allow_html=True)
             for rank, (_, row) in enumerate(data.iterrows(), start=1):
-                display_title = row.get("Student Name", "Unknown")
-                student_id = row.get("Student_ID", "")
-                if pd.notna(student_id) and str(student_id).strip():
-                    display_title = f"{display_title} ({student_id})"
-                leaderboard_card(rank, display_title, format_number(row.get(score_col, 0)), row.get("GitHub_Username", ""))
+                if anonymize:
+                    leaderboard_card(rank, f"Student {rank}", format_number(row.get(score_col, 0)), "identity hidden")
+                else:
+                    display_title = row.get("Student Name", "Unknown")
+                    student_id = row.get("Student_ID", "")
+                    if pd.notna(student_id) and str(student_id).strip():
+                        display_title = f"{display_title} ({student_id})"
+                    leaderboard_card(rank, display_title, format_number(row.get(score_col, 0)), row.get("GitHub_Username", ""))
             st.markdown("</div>", unsafe_allow_html=True)
     if has_activity:
         language_cols = st.columns(2)
@@ -927,22 +966,23 @@ def render_history() -> None:
     )
     st.caption(f"{len(history)} run{'s' if len(history) != 1 else ''} recorded")
 
-    # BUG-046: surface the security audit trail alongside run history.
-    with st.expander("Security audit trail (recent events)", expanded=False):
-        events = load_audit_events()
-        if events.empty:
-            st.caption("No audit events yet — sign-ins and analyses will appear here.")
-        else:
-            st.dataframe(
-                events,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "event_timestamp": st.column_config.TextColumn("Time (UTC)"),
-                    "event_type": st.column_config.TextColumn("Event"),
-                    "detail": st.column_config.TextColumn("Detail"),
-                },
-            )
+    # BUG-046: surface the security audit trail alongside run history (admin only — BUG-044).
+    if current_role() in ("admin", "open"):
+        with st.expander("Security audit trail (recent events)", expanded=False):
+            events = load_audit_events()
+            if events.empty:
+                st.caption("No audit events yet — sign-ins and analyses will appear here.")
+            else:
+                st.dataframe(
+                    events,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "event_timestamp": st.column_config.TextColumn("Time (UTC)"),
+                        "event_type": st.column_config.TextColumn("Event"),
+                        "detail": st.column_config.TextColumn("Detail"),
+                    },
+                )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1316,7 +1356,11 @@ if run_button:
                 elapsed_seconds=elapsed,
                 source_file_hash=file_hash,
             )
-            log_event("analysis_run", f"status={result_status}; rows={checked_total}")
+            log_event(
+                "analysis_run",
+                f"status={result_status}; rows={checked_total}; "
+                f"user={st.session_state.get('auth_user', 'unnamed')}; role={current_role()}",
+            )
         except RateLimitError as exc:
             reset_text = "later"
             if exc.reset_epoch:
