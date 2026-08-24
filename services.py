@@ -473,6 +473,7 @@ def build_dashboard_df(
                 "Submitted_GitHub_Username",
                 "Public_Repos",
                 "Repository_Count",
+                "Active_Repositories",
                 "Repo_Fetch_Status",
                 "Followers",
                 "Following",
@@ -490,6 +491,7 @@ def build_dashboard_df(
     if repo_df.empty:
         repo_count = pd.DataFrame(columns=["Username", "Repository_Count"])
         language_count = pd.DataFrame(columns=["Username", "Primary_Language"])
+        active_repos = pd.DataFrame(columns=["Username", "Active_Repositories"])
     else:
         repo_count = repo_df.groupby("Username").size().reset_index(name="Repository_Count")
         language_count = (
@@ -498,6 +500,13 @@ def build_dashboard_df(
             .agg(lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else None)
             .reset_index(name="Primary_Language")
         )
+        # BUG-017: activity analytics without per-commit API calls — a repo counts
+        # as active when its Updated timestamp falls within the last 180 days.
+        updated_dates = pd.to_datetime(repo_df["Updated"], errors="coerce", utc=True)
+        recent_repos = repo_df[
+            updated_dates >= pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=180)
+        ]
+        active_repos = recent_repos.groupby("Username").size().reset_index(name="Active_Repositories")
 
     dashboard_df = github_stats.merge(
         repo_count,
@@ -506,6 +515,7 @@ def build_dashboard_df(
         how="left",
     )
     dashboard_df = dashboard_df.merge(language_count, on="Username", how="left")
+    dashboard_df = dashboard_df.merge(active_repos, on="Username", how="left")
 
     student_info = df[
         [
@@ -527,6 +537,7 @@ def build_dashboard_df(
     )
     dashboard_df = dashboard_df.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
     dashboard_df["Repository_Count"] = dashboard_df["Repository_Count"].fillna(0).astype(int)
+    dashboard_df["Active_Repositories"] = dashboard_df["Active_Repositories"].fillna(0).astype(int)
     dashboard_df["Repos_Per_Account_Year"] = (
         dashboard_df["Repository_Count"] / dashboard_df["Account_Age_Years"].fillna(1).clip(lower=0.01)
     ).round(2)
@@ -553,6 +564,7 @@ def build_dashboard_df(
             "Username_Changed",
             "Public_Repos",
             "Repository_Count",
+            "Active_Repositories",
             "Repo_Fetch_Status",
             "Followers",
             "Following",
