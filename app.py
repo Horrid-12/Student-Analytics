@@ -476,6 +476,17 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
     with metric_cols[3]:
         metric_card("Most Used Language", most_used_language, "Mode across repositories", "spark", "rgba(139,92,246,0.70)")
 
+    metric_cols = st.columns(3)
+    with metric_cols[0]:
+        total_stars = repo_df["Stars"].fillna(0).sum() if not repo_df.empty else 0
+        metric_card("Community Interest", format_number(total_stars), "Total repository stars", "chart", "rgba(245,158,11,0.65)")
+    with metric_cols[1]:
+        total_forks = repo_df["Forks"].fillna(0).sum() if not repo_df.empty else 0
+        metric_card("Reuse Signals", format_number(total_forks), "Total repository forks", "repo", "rgba(34,197,94,0.66)")
+    with metric_cols[2]:
+        avg_quality = repo_df["Repository_Quality_Score"].mean() if not repo_df.empty else 0
+        metric_card("Quality Signals", f"{avg_quality:.1f}/100", "Metadata and maintenance heuristic", "check", "rgba(139,92,246,0.70)")
+
     status_cols = st.columns([1.1, 1])
     with status_cols[0]:
         render_pipeline_card(result)
@@ -576,8 +587,9 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
                     <div class="repo-name">{escape(repo.get("Repository", ""))}</div>
                     <span class="badge-purple">{escape(repo.get("Language", "Unknown"))}</span>
                     <div class="repo-meta">
-                        <span>Stars {format_number(repo.get("Stars", 0))}</span>
-                        <span>Forks {format_number(repo.get("Forks", 0))}</span>
+                        <span>Interest {format_number(repo.get("Stars", 0))} stars</span>
+                        <span>Reuse {format_number(repo.get("Forks", 0))} forks</span>
+                        <span>{escape(repo.get("Quality_Band", "Unknown"))} · {format_number(repo.get("Repository_Quality_Score", 0))}/100</span>
                         <span>Updated {escape(repo.get("Updated", ""))}</span>
                     </div>
                 </div>
@@ -698,7 +710,15 @@ def render_repositories(result) -> None:
     if view == "Table":
         st.markdown('<div class="panel"><div class="panel-title"><h3>Repositories</h3><span>Sortable metadata table</span></div>', unsafe_allow_html=True)
         st.dataframe(
-            filtered[["Repository", "Username", "Language", "Stars", "Forks", "Created", "Updated", "Repository URL"]],
+            filtered[["Repository", "Username", "Language", "Stars", "Forks", "Repository_Quality_Score", "Quality_Band", "Maintenance_Status", "Created", "Updated", "Repository URL"]].rename(
+                columns={
+                    "Stars": "Stars (Community Interest)",
+                    "Forks": "Forks (Reuse Signal)",
+                    "Repository_Quality_Score": "Quality Signals (0-100)",
+                    "Quality_Band": "Quality Band",
+                    "Maintenance_Status": "Maintenance",
+                }
+            ),
             use_container_width=True,
             hide_index=True,
             column_config={"Repository URL": st.column_config.LinkColumn("Repository URL", display_text="↗ Open Repository")},
@@ -717,8 +737,9 @@ def render_repositories(result) -> None:
                     <span class="badge-blue">{escape(repo.get("Username", ""))}</span>
                     <span class="badge-purple">{escape(repo.get("Language", "Unknown"))}</span>
                     <div class="repo-meta">
-                        <span>Stars {format_number(repo.get("Stars", 0))}</span>
-                        <span>Forks {format_number(repo.get("Forks", 0))}</span>
+                        <span>Interest {format_number(repo.get("Stars", 0))} stars</span>
+                        <span>Reuse {format_number(repo.get("Forks", 0))} forks</span>
+                        <span>{escape(repo.get("Quality_Band", "Unknown"))} · {format_number(repo.get("Repository_Quality_Score", 0))}/100</span>
                         <span>Updated {escape(repo.get("Updated", ""))}</span>
                     </div>
                     <div style="margin-top: 12px;">{github_button(repo.get("Repository_URL", ""), "Open Repository")}</div>

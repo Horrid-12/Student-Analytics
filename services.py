@@ -405,6 +405,8 @@ def fetch_repository_data(
                         "Language": repo.get("language"),
                         "Stars": repo.get("stargazers_count"),
                         "Forks": repo.get("forks_count"),
+                        "Description": repo.get("description"),
+                        "License": (repo.get("license") or {}).get("spdx_id"),
                         "Created": repo.get("created_at"),
                         "Updated": repo.get("updated_at"),
                         "Repository_URL": repo.get("html_url"),
@@ -417,7 +419,38 @@ def fetch_repository_data(
         if progress_callback:
             progress_callback(index, total_users, username)
 
-    return pd.DataFrame(repo_data), unavailable_users
+    return add_repository_quality_metrics(pd.DataFrame(repo_data)), unavailable_users
+
+
+def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
+    """Add explainable metadata and maintenance signals to repository data.
+
+    The score intentionally excludes stars and forks so popularity is not
+    presented as code quality. It measures documentation, metadata, licensing,
+    and recent maintenance only.
+    """
+    result = repo_df.copy()
+    if result.empty:
+        return result
+
+    updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
+    age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
+    description_score = result["Description"].fillna("").astype(str).str.strip().ne("").astype(int) * 30
+    language_score = result["Language"].notna().astype(int) * 20
+    license_score = result["License"].fillna("").astype(str).str.strip().ne("").astype(int) * 15
+    maintenance_score = age_days.map(
+        lambda days: 35 if pd.notna(days) and days <= 180 else 20 if pd.notna(days) and days <= 365 else 10 if pd.notna(days) and days <= 730 else 0
+    )
+    result["Maintenance_Status"] = age_days.map(
+        lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
+    ).fillna("Unknown")
+    result["Repository_Quality_Score"] = (
+        description_score + language_score + license_score + maintenance_score
+    ).astype(int)
+    result["Quality_Band"] = result["Repository_Quality_Score"].map(
+        lambda score: "Strong signals" if score >= 75 else "Developing" if score >= 50 else "Needs attention"
+    )
+    return result
 
 
 def build_dashboard_df(

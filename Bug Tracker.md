@@ -15,9 +15,9 @@ This is the single source of truth for correctness work. One row represents one 
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 38 |
+| Fixed / moved | 40 |
 | Open | 0 |
-| Planned | 16 |
+| Planned | 14 |
 | Last audit | 2026-08-24 |
 
 🗓️ Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
@@ -33,8 +33,6 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-021 | 🗓️ Planned | Storage | Analysis timestamp is session-only | Store analysis runs |
 | BUG-022 | 🗓️ Planned | Storage | No database | Design schema after V1 validation |
 | BUG-028 | 🗓️ Planned | Analytics | Repository count is a weak performance proxy | Replace with transparent activity measures |
-| BUG-033 | 🗓️ Planned | Analytics | No repository-quality analysis | Define quality signals |
-| BUG-034 | 🗓️ Planned | Analytics | Stars/forks lack contextual interpretation | Add explanatory metrics |
 | BUG-040 | 🗓️ Planned | Workflow | No persistent faculty follow-up workflow | Add assignment and resolution state |
 | BUG-043 | 🗓️ Planned | Security | No faculty authentication | Add authentication before institutional deployment |
 | BUG-044 | 🗓️ Planned | Security | No role-based access control | Define Admin/Faculty/Student roles |
@@ -72,6 +70,8 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-030 | ✅ Fixed | UI | Repository leaderboard wording describes counts without claiming performance. |
 | BUG-031 | ✅ Fixed | Analytics | Account age and repos-per-account-year are calculated. |
 | BUG-032 | ✅ Fixed | Analytics | Academic year and semester use the July-start convention; invalid dates become `Unknown`. |
+| BUG-033 | ✅ Fixed | Analytics | Repositories now receive a 0–100 quality-signals score based only on description, language, license, and maintenance recency, with an explanatory quality band. |
+| BUG-034 | ✅ Fixed | Analytics | Stars are labeled as community interest and forks as reuse signals; raw counts are shown as context, never as a quality or performance score. |
 | BUG-035 | ✅ Fixed | UI | Redundant name-based profile selection was removed. |
 | BUG-036 | ✅ Fixed | UI | No student is selected automatically. |
 | BUG-037 | ✅ Fixed | UI | Row-based selection remains unambiguous for duplicate names. |
