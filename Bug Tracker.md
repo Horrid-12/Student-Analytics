@@ -86,6 +86,31 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-022 | ✅ Fixed | Storage | `storage.py` adds a stdlib-SQLite `analysis_runs` schema (`init_db` / `record_analysis_run` / `load_run_history`) with graceful failure handling; the DB file is gitignored. |
 | BUG-028 | ✅ Fixed | Analytics | Leaderboards now lead with "Most Active Repos (6m)" ranked by `Active_Repositories`; volume and self-reported boards keep clear labels, and runs missing the column fall back to the legacy layout. |
 
+## UI/UX Audit
+
+| ID | Status | Area | Problem | Next action |
+|---|---|---|---|---|
+| BUG-056 | 🗓️ Planned | UI | "Custom Value" checkbox is confusing | Replace with a simpler sample-size number input |
+| BUG-057 | 🗓️ Planned | UX | UI is too blocky and cluttered | Add spacing, reduce visual density, use cards/whitespace |
+| BUG-058 | 🗓️ Planned | UX | Graphs are too generic | Richer chart types, better styling, context labels |
+| BUG-059 | 🗓️ Planned | UX | Buttons are too generic | Consistent primary/secondary button styles |
+| BUG-060 | 🗓️ Planned | UX | Sidebar is ugly | Sidebar redesign — icons, grouping, visual hierarchy |
+| BUG-061 | 🗓️ Planned | UX | No use of + Icon Next the Spreadsheet Upload | 
+| BUG-062 | 🗓️ Planned | UX | Graph styles are inconsistent across pages | Unified chart theme and sizing |
+| BUG-063 | 🗓️ Planned | Feature | No live run logs | Stream analysis progress as a scrollable log during analysis |
+| BUG-064 | 🗓️ Planned | UI | "Unknown Language" label is unclear | Rename "Unknown" to "Misc" in language breakdown charts |
+| BUG-065 | 🗓️ Planned | UI | Redundant "Language" footer under top Languages | Remove the caption under the Languages chart |
+| BUG-066 | 🗓️ Planned | UI | Topbar not needed on History, Leaderboards, Repos, Students, Issues | Remove topbar from those pages; keep only on Overview |
+| BUG-067 | 🗓️ Planned | UI | Students, Repos, and Leaderboards lack polish | Better empty-state messages + simplified alternate views |
+| BUG-068 | 🗓️ Planned | UI | No way to refresh History graph | Add refresh button or auto-update after new analysis |
+| BUG-069 | 🗓️ Planned | UI | Sidebar has no collapsed mode | Add mini/collapsed sidebar with icons only |
+| BUG-070 | 🗓️ Planned | UI | Table row count is hardcoded | Make row count dynamic based on actual data |
+| BUG-071 | 🗓️ Planned | UI | "Last analysis" timestamp is misleading | Show actual last-completed analysis time, not session time |
+| BUG-072 | 🗓️ Planned | UI | Switching pages cancels upload | Preserve upload state across page navigation |
+| BUG-073 | 🗓️ Planned | UI | "Refresh" button name is confusing | Rename to "Reset" |
+| BUG-074 | 🗓️ Planned | Analytics | No Academic Year filter | Filter dashboard by academic year and semester |
+| BUG-075 | 🗓️ Planned | UI | "Open Links" button is unnecessary | Remove the button |
+
 ## Verification checklist
 
 - Run `python -m py_compile app.py services.py`.
