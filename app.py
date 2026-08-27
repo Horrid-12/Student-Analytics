@@ -175,6 +175,16 @@ def render_sidebar(token_present: bool) -> str:
     return page
 
 
+def friendly_timestamp(value: str) -> str:
+    if not value or value == "Never":
+        return "No completed analysis yet"
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.strftime("%d %b %Y at %I:%M %p")
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, int | None]:
     with st.container():
         st.markdown('''
@@ -200,7 +210,7 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, 
                     <div class="topbar-meta" style="margin-top: 3px; font-size: 13px;">
                         <span>{datetime.now().strftime("%A, %d %B %Y")}</span>
                         <span>&bull;</span>
-                        <span>Last analysis: {escape(last_analysis)}</span>
+                        <span>Last completed analysis: {escape(friendly_timestamp(last_analysis))}</span>
                     </div>
                 </div>
             ''', unsafe_allow_html=True)
@@ -213,7 +223,7 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, 
             run_button = st.button("Run Analysis", use_container_width=True, type="primary")
         
         with cols[3]:
-            refresh_button = st.button("Refresh", use_container_width=True)
+            refresh_button = st.button("Reset", use_container_width=True)
             
         with cols[4]:
             st.markdown('''
@@ -456,14 +466,9 @@ def render_validation_summary_card(result) -> None:
         """,
         unsafe_allow_html=True,
     )
-    if st.button("Open GitHub Links", use_container_width=True):
-        st.session_state.sidebar_nav = "Verification"
-        st.rerun()
-
-
 def render_overview(result, elapsed: float, last_analysis: str) -> None:
-    dashboard_df = result.dashboard_df
-    repo_df = result.repo_df
+    dashboard_df = result.dashboard_df.copy()
+    repo_df = result.repo_df.copy()
     total_students = len(result.source_df)
     valid_accounts = len(result.valid_users)
     invalid_accounts = len(result.invalid_users)
@@ -635,15 +640,21 @@ def render_students(result) -> None:
         return
 
     st.markdown('<div class="hero"><h1>Student Explorer</h1><p>Search, filter, and inspect validated GitHub student profiles.</p></div>', unsafe_allow_html=True)
-    controls = st.columns([2, 1, 1, 1])
+    controls = st.columns([2, 1, 1, 1, 1, 1])
     query = controls[0].text_input("Search", placeholder="Name, ID, username, language")
     division = controls[1].selectbox("Division", ["All"] + sorted(df["Division"].dropna().astype(str).unique()))
     batch = controls[2].selectbox("Batch", ["All"] + sorted(df["Batch"].dropna().astype(str).unique()))
-    page_size = controls[3].selectbox("Rows", [15, 25, 50, 100], index=1)
+    academic_year = controls[3].selectbox("Academic Year", ["All"] + sorted(df["Academic_Year"].dropna().astype(str).unique()))
+    semester = controls[4].selectbox("Semester", ["All"] + sorted(df["Semester"].dropna().astype(str).unique()))
 
     filtered = filter_text(df, query, ["Student_ID", "Student Name", "GitHub_Username", "Primary_Language"])
     filtered = apply_value_filter(filtered, "Division", division)
     filtered = apply_value_filter(filtered, "Batch", batch)
+    filtered = apply_value_filter(filtered, "Academic_Year", academic_year)
+    filtered = apply_value_filter(filtered, "Semester", semester)
+    row_options = sorted({size for size in (15, 25, 50, 100, len(filtered)) if size > 0})
+    default_row_index = row_options.index(min(25, max(row_options))) if row_options else 0
+    page_size = controls[5].selectbox("Rows", row_options or [0], index=default_row_index)
     filtered["Status"] = "Connected"
     filtered["GitHub Profile"] = filtered["GitHub_Username"].apply(github_profile_url)
     selected_student = None
@@ -741,10 +752,11 @@ def render_repositories(result) -> None:
         render_empty_state("No repositories yet", "Run an analysis to fetch public repositories and view repository details.")
         return
     repo_df["Language"] = repo_df["Language"].fillna("Unknown")
-    controls = st.columns([2, 1, 1])
+    controls = st.columns([2, 1, 1, 1, 1, 1])
     query = controls[0].text_input("Search repositories", placeholder="Repository name or owner")
     language = controls[1].selectbox("Language", ["All"] + sorted(repo_df["Language"].dropna().astype(str).unique()))
     view = controls[2].selectbox("View", ["Cards", "Table"])
+    repo_rows = controls[3].selectbox("Rows", [15, 30, 50, 100], index=1)
     filtered = filter_text(repo_df, query, ["Username", "Repository", "Language"])
     filtered = apply_value_filter(filtered, "Language", language)
     filtered["Repository URL"] = filtered["Repository_URL"]
@@ -770,7 +782,7 @@ def render_repositories(result) -> None:
         return
 
     cols = st.columns(3)
-    for index, (_, repo) in enumerate(filtered.head(30).iterrows()):
+    for index, (_, repo) in enumerate(filtered.head(repo_rows).iterrows()):
         with cols[index % 3]:
             st.markdown(
                 f"""
@@ -808,11 +820,23 @@ def leaderboard_card(rank: int, title: str, score: str, badge: str = "") -> None
 
 
 def render_leaderboards(result) -> None:
-    dashboard_df = result.dashboard_df
-    repo_df = result.repo_df
+    dashboard_df = result.dashboard_df.copy()
+    repo_df = result.repo_df.copy()
     st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Compare recent activity, public repository counts, and GitHub follower counts across students.</p></div>', unsafe_allow_html=True)
     if dashboard_df.empty:
         render_empty_state("No leaderboard data yet", "Run an analysis to compare students and repository activity.")
+        return
+    filter_cols = st.columns(4)
+    division = filter_cols[0].selectbox("Division", ["All"] + sorted(dashboard_df["Division"].dropna().astype(str).unique()))
+    batch = filter_cols[1].selectbox("Batch", ["All"] + sorted(dashboard_df["Batch"].dropna().astype(str).unique()))
+    academic_year = filter_cols[2].selectbox("Academic Year", ["All"] + sorted(dashboard_df["Academic_Year"].dropna().astype(str).unique()))
+    semester = filter_cols[3].selectbox("Semester", ["All"] + sorted(dashboard_df["Semester"].dropna().astype(str).unique()))
+    for column, value in (("Division", division), ("Batch", batch), ("Academic_Year", academic_year), ("Semester", semester)):
+        dashboard_df = apply_value_filter(dashboard_df, column, value)
+    if "Username" in repo_df.columns and "GitHub_Username" in dashboard_df.columns:
+        repo_df = repo_df[repo_df["Username"].isin(dashboard_df["GitHub_Username"])]
+    if dashboard_df.empty:
+        st.info("No students match the selected filters.")
         return
     has_activity = "Active_Repositories" in dashboard_df.columns
     # BUG-028: recency leads — the activity ranking is presented before volume proxies.
@@ -1112,7 +1136,7 @@ def render_settings(token_present: bool, file_hash: str | None) -> None:
                 <div class="system-item"><div class="system-label">GitHub Token</div><div class="system-value">{"Available" if token_present else "Missing"}</div></div>
                 <div class="system-item"><div class="system-label">Faculty Mode</div><div class="system-value">Enabled</div></div>
                 <div class="system-item"><div class="system-label">Uploaded File Hash</div><div class="system-value">{escape(file_hash[:12] if file_hash else "None")}</div></div>
-                <div class="system-item"><div class="system-label">Last Recorded Run (DB)</div><div class="system-value">{escape((last_run or {}).get("run_timestamp") or "No runs recorded yet")}</div></div>
+                <div class="system-item"><div class="system-label">Last Recorded Run (DB)</div><div class="system-value">{escape(friendly_timestamp((last_run or {}).get("run_timestamp") or "Never"))}</div></div>
             </div>
         </div>
         ''',
@@ -1224,6 +1248,7 @@ def inject_theme() -> None:
         :root {{
             {vars_css}
         }}
+        [data-testid="stFileUploader"] button[aria-label*="Add"] {{ display: none !important; }}
         {external_css}
         </style>
         ''',
@@ -1242,8 +1267,12 @@ if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
     st.session_state.analysis_elapsed = 0.0
     st.session_state.analysis_file_hash = None
-    st.session_state.last_analysis_time = "Never"
     init_db()
+    previous_run = last_recorded_run()
+    st.session_state.last_analysis_time = previous_run.get("run_timestamp", "Never") if previous_run else "Never"
+if "uploaded_file_bytes" not in st.session_state:
+    st.session_state.uploaded_file_bytes = None
+    st.session_state.uploaded_file_name = ""
 
 result = st.session_state.analysis_result
 uploaded_file = None
@@ -1251,7 +1280,13 @@ uploaded_file = None
 if page == "Overview":
     run_button, refresh_button, sample_size = render_topbar(st.session_state.last_analysis_time, token_present)
     if result is None:
-        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
+        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed", key="roster_upload")
+        if uploaded_file is not None:
+            st.session_state.uploaded_file_bytes = uploaded_file.getvalue()
+            st.session_state.uploaded_file_name = uploaded_file.name
+    if uploaded_file is None and st.session_state.uploaded_file_bytes:
+        uploaded_file = io.BytesIO(st.session_state.uploaded_file_bytes)
+        uploaded_file.name = st.session_state.uploaded_file_name
 else:
     run_button, refresh_button, sample_size = False, False, None
 
@@ -1351,7 +1386,8 @@ if run_button:
             st.session_state.analysis_result = result
             st.session_state.analysis_elapsed = elapsed
             st.session_state.analysis_file_hash = file_hash
-            st.session_state.last_analysis_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            recorded_run = last_recorded_run()
+            st.session_state.last_analysis_time = recorded_run.get("run_timestamp", "Never") if recorded_run else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             # BUG-021: persist the run snapshot; storage failures never fail the analysis
             active_total = (
                 int(result.dashboard_df["Active_Repositories"].sum())

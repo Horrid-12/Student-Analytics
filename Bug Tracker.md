@@ -103,12 +103,12 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-066 | ✅ Fixed | UI | Topbar not needed on History, Leaderboards, Repos, Students, Issues | Topbar and analysis controls now appear only on Overview. |
 | BUG-067 | ✅ Fixed | UI | Students, Repos, and Leaderboards lack polish | Added page-specific empty-state titles and guidance. |
 | BUG-068 | ✅ Fixed | UI | No way to refresh History graph | Added a Refresh history control that reloads the latest runs. |
-| BUG-070 | 🗓️ Planned | UI | Table row count is hardcoded | Make row count dynamic based on actual data |
-| BUG-071 | 🗓️ Planned | UI | "Last analysis" timestamp is misleading | Show actual last-completed analysis time, not session time |
-| BUG-072 | 🗓️ Planned | UI | Switching pages cancels upload | Preserve upload state across page navigation |
-| BUG-073 | 🗓️ Planned | UI | "Refresh" button name is confusing | Rename to "Reset" |
-| BUG-074 | 🗓️ Planned | Analytics | No Academic Year filter | Filter dashboard by academic year and semester |
-| BUG-075 | 🗓️ Planned | UI | "Open Links" button is unnecessary | Remove the button |
+| BUG-070 | ✅ Fixed | UI | Table row count is hardcoded | Added selectable row counts to repository cards; existing tables use their available-data counts. |
+| BUG-071 | ✅ Fixed | UI | "Last analysis" timestamp is misleading | Last analysis now loads from the most recently recorded completed run. |
+| BUG-072 | ✅ Fixed | UI | Switching pages cancels upload | Uploaded roster bytes and filename are preserved across page navigation. |
+| BUG-073 | ✅ Fixed | UI | "Refresh" button name is confusing | Renamed the topbar control to "Reset". |
+| BUG-074 | ✅ Fixed | Analytics | No Academic Year filter | Added Academic Year and Semester filters alongside cohort filters on Students and Leaderboards; Overview remains uncluttered. |
+| BUG-075 | ✅ Fixed | UI | "Open Links" button is unnecessary | Removed the Open GitHub Links button. |
 
 ## Verification checklist
 
