@@ -206,11 +206,8 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, 
             ''', unsafe_allow_html=True)
         
         with cols[1]:
-            sample_size = None
             with st.popover("Limits", use_container_width=True):
-                sample_enabled = st.checkbox("Custom Value", value=False)
-                if sample_enabled:
-                    sample_size = st.number_input("Rows", min_value=1, max_value=735, value=50, step=1)
+                sample_size = st.number_input("Sample rows (0 = all)", min_value=0, max_value=735, value=0, step=1, help="Analyze only the first N roster rows, or enter 0 to use the full roster.")
                     
         with cols[2]:
             run_button = st.button("Run Analysis", use_container_width=True, type="primary")
@@ -267,6 +264,13 @@ def render_log(log_lines: list[str]) -> None:
     for line in log_lines:
         st.markdown(f'<div class="pipeline-step"><span class="dot"></span>{escape(line)}</div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_live_log(log_lines: list[str]) -> None:
+    if not log_lines:
+        return
+    items = "".join(f'<div class="pipeline-step"><span class="dot"></span>{escape(line)}</div>' for line in log_lines)
+    st.markdown(f'<div class="panel"><div class="panel-title"><h3>Run Log</h3><span>Live pipeline events</span></div><div class="run-log-scroll">{items}</div></div>', unsafe_allow_html=True)
 
 
 def account_status_df(result) -> pd.DataFrame:
@@ -465,7 +469,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
     submission_rate = (valid_accounts / total_students * 100) if total_students else 0
     most_used_language = "Unknown"
     if not repo_df.empty:
-        most_used_language = str(repo_df["Language"].fillna("Unknown").mode().iloc[0])
+        most_used_language = str(repo_df["Language"].fillna("Misc").mode().iloc[0])
 
     st.markdown(
         """
@@ -524,7 +528,7 @@ def render_overview(result, elapsed: float, last_analysis: str) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
     with chart_cols[1]:
         st.markdown('<div class="panel"><div class="panel-title"><h3>Programming Language Distribution</h3><span>Top 10 languages</span></div>', unsafe_allow_html=True)
-        language_counts = repo_df["Language"].fillna("Unknown").value_counts().head(10).reset_index() if not repo_df.empty else pd.DataFrame()
+        language_counts = repo_df["Language"].fillna("Misc").value_counts().head(10).reset_index() if not repo_df.empty else pd.DataFrame()
         if not language_counts.empty:
             language_counts.columns = ["Language", "Repositories"]
         render_bar_chart(language_counts, "Language:N", "Repositories:Q", ACCENT)
@@ -601,7 +605,7 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
     if repos.empty:
         st.info("No repositories were fetched for this student. They may have no public repositories, or repository fetching was skipped during analysis.")
     else:
-        languages = repos["Language"].fillna("Unknown").value_counts().head(5).reset_index()
+        languages = repos["Language"].fillna("Misc").value_counts().head(5).reset_index()
         languages.columns = ["Language", "Repositories"]
         render_bar_chart(languages, "Language:N", "Repositories:Q", SUCCESS, 180)
         for _, repo in repos.sort_values("Updated", ascending=False).head(5).iterrows():
@@ -846,11 +850,11 @@ def render_leaderboards(result) -> None:
     else:
         language_slot = cols[3]
     with language_slot:
-        st.markdown('<div class="panel"><div class="panel-title"><h3>Top Languages</h3><span>Repository frequency</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel"><div class="panel-title"><h3>Top Languages</h3></div>', unsafe_allow_html=True)
         if repo_df.empty:
             st.info("No repository language data available. Run an analysis to populate this panel.")
         else:
-            languages = repo_df["Language"].fillna("Unknown").value_counts().head(10)
+            languages = repo_df["Language"].fillna("Misc").value_counts().head(10)
             for rank, (language, count) in enumerate(languages.items(), start=1):
                 leaderboard_card(rank, language, format_number(count), "Language")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -1246,7 +1250,11 @@ if page != "Settings":
         token_present,
     )
     if result is None:
-        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
+        upload_cols = st.columns([0.35, 5], vertical_alignment="center", gap="small")
+        with upload_cols[0]:
+            st.markdown('<div class="upload-plus" aria-hidden="true">＋</div>', unsafe_allow_html=True)
+        with upload_cols[1]:
+            uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
 else:
     run_button, refresh_button, sample_size = False, False, None
 
@@ -1274,7 +1282,15 @@ if run_button:
         progress_bar = st.progress(0)
         status_text = st.empty()
         run_log: list[str] = []
+        log_placeholder = st.empty()
         start = time.perf_counter()
+
+        def show_live_log(message: str) -> None:
+            run_log.append(message)
+            with log_placeholder.container():
+                render_live_log(run_log)
+
+        show_live_log("Starting analysis...")
 
         def progress_callback(stage: str, index: int, total: int, username: str) -> None:
             if total <= 0:
@@ -1290,6 +1306,7 @@ if run_button:
                 label = f"Fetching repositories ({index}/{total}): {username}"
             progress_bar.progress(min(fraction, 0.98))
             status_text.write(label)
+            show_live_log(label)
 
         try:
             # BUG-053: keep the original filename on the buffer — load_excel
@@ -1332,6 +1349,8 @@ if run_button:
                     "GitHub API or network errors. Check your connection or token, then try again."
                 )
             run_log = result.log
+            with log_placeholder.container():
+                render_live_log(run_log)
             st.session_state.analysis_result = result
             st.session_state.analysis_elapsed = elapsed
             st.session_state.analysis_file_hash = file_hash
@@ -1371,7 +1390,7 @@ if run_button:
             st.error(f"GitHub API rate limit reached — too many requests were made in a short time. Please wait and try again at {reset_text}.")
         except Exception as exc:
             st.error(f"An unexpected error occurred during analysis. Details: {str(exc)}")
-        render_log(run_log)
+        # The live log remains visible after the run completes.
 
 result = st.session_state.analysis_result
 
