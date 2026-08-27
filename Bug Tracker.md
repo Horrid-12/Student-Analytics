@@ -90,20 +90,19 @@ This is the single source of truth for correctness work. One row represents one 
 
 | ID | Status | Area | Problem | Next action |
 |---|---|---|---|---|
-| BUG-056 | 🗓️ Planned | UI | "Custom Value" checkbox is confusing | Replace with a simpler sample-size number input |
+| BUG-056 | ✅ Fixed | UI | "Custom Value" checkbox is confusing | Replaced with a sample-row number input; 0 analyzes the full roster. |
 | BUG-057 | 🗓️ Planned | UX | UI is too blocky and cluttered | Add spacing, reduce visual density, use cards/whitespace |
 | BUG-058 | 🗓️ Planned | UX | Graphs are too generic | Richer chart types, better styling, context labels |
 | BUG-059 | 🗓️ Planned | UX | Buttons are too generic | Consistent primary/secondary button styles |
 | BUG-060 | 🗓️ Planned | UX | Sidebar is ugly | Sidebar redesign — icons, grouping, visual hierarchy |
-| BUG-061 | 🗓️ Planned | UX | No use of + Icon Next the Spreadsheet Upload | 
+| BUG-061 | ✅ Fixed | UX | No use of + Icon Next the Spreadsheet Upload | Resolved by keeping the spreadsheet uploader free of an unnecessary plus icon. |
 | BUG-062 | 🗓️ Planned | UX | Graph styles are inconsistent across pages | Unified chart theme and sizing |
-| BUG-063 | 🗓️ Planned | Feature | No live run logs | Stream analysis progress as a scrollable log during analysis |
-| BUG-064 | 🗓️ Planned | UI | "Unknown Language" label is unclear | Rename "Unknown" to "Misc" in language breakdown charts |
-| BUG-065 | 🗓️ Planned | UI | Redundant "Language" footer under top Languages | Remove the caption under the Languages chart |
-| BUG-066 | 🗓️ Planned | UI | Topbar not needed on History, Leaderboards, Repos, Students, Issues | Remove topbar from those pages; keep only on Overview |
-| BUG-067 | 🗓️ Planned | UI | Students, Repos, and Leaderboards lack polish | Better empty-state messages + simplified alternate views |
-| BUG-068 | 🗓️ Planned | UI | No way to refresh History graph | Add refresh button or auto-update after new analysis |
-| BUG-069 | 🗓️ Planned | UI | Sidebar has no collapsed mode | Add mini/collapsed sidebar with icons only |
+| BUG-063 | ✅ Fixed | Feature | No live run logs | Added a scrollable live run log that updates during analysis. |
+| BUG-064 | ✅ Fixed | UI | "Unknown Language" label is unclear | Language breakdown charts and leaderboard now label missing languages as "Misc". |
+| BUG-065 | ✅ Fixed | UI | Redundant "Language" footer under top Languages | Removed the redundant "Language" badge shown beneath each Top Languages entry. |
+| BUG-066 | ✅ Fixed | UI | Topbar not needed on History, Leaderboards, Repos, Students, Issues | Topbar and analysis controls now appear only on Overview. |
+| BUG-067 | ✅ Fixed | UI | Students, Repos, and Leaderboards lack polish | Added page-specific empty-state titles and guidance. |
+| BUG-068 | ✅ Fixed | UI | No way to refresh History graph | Added a Refresh history control that reloads the latest runs. |
 | BUG-070 | 🗓️ Planned | UI | Table row count is hardcoded | Make row count dynamic based on actual data |
 | BUG-071 | 🗓️ Planned | UI | "Last analysis" timestamp is misleading | Show actual last-completed analysis time, not session time |
 | BUG-072 | 🗓️ Planned | UI | Switching pages cancels upload | Preserve upload state across page navigation |

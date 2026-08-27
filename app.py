@@ -207,7 +207,7 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, 
         
         with cols[1]:
             with st.popover("Limits", use_container_width=True):
-                sample_size = st.number_input("Sample rows (0 = all)", min_value=0, max_value=735, value=0, step=1, help="Analyze only the first N roster rows, or enter 0 to use the full roster.")
+                sample_size = st.number_input("Custom value", min_value=0, max_value=735, value=0, step=1, help="Enter the number of roster rows to analyze, or 0 to use the full roster.")
                     
         with cols[2]:
             run_button = st.button("Run Analysis", use_container_width=True, type="primary")
@@ -226,14 +226,14 @@ def render_topbar(last_analysis: str, token_present: bool) -> tuple[bool, bool, 
     return run_button, refresh_button, int(sample_size) if sample_size else None
 
 
-def render_empty_state() -> None:
+def render_empty_state(title: str = "No Excel Uploaded", message: str = "Upload Excel to begin analysis.") -> None:
     st.markdown(
         f"""
         <div class="empty-state">
             <div>
                 <div class="empty-illustration">{icon_svg("upload")}</div>
-                <h2>No Excel Uploaded</h2>
-                <p>Upload Excel to begin analysis.</p>
+                <h2>{escape(title)}</h2>
+                <p>{escape(message)}</p>
             </div>
         </div>
         """,
@@ -266,11 +266,12 @@ def render_log(log_lines: list[str]) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_live_log(log_lines: list[str]) -> None:
+def render_live_log(log_lines: list[str], expanded: bool = True) -> None:
     if not log_lines:
         return
     items = "".join(f'<div class="pipeline-step"><span class="dot"></span>{escape(line)}</div>' for line in log_lines)
-    st.markdown(f'<div class="panel"><div class="panel-title"><h3>Run Log</h3><span>Live pipeline events</span></div><div class="run-log-scroll">{items}</div></div>', unsafe_allow_html=True)
+    with st.expander("Run Log", expanded=expanded):
+        st.markdown(f'<div class="run-log-scroll">{items}</div>', unsafe_allow_html=True)
 
 
 def account_status_df(result) -> pd.DataFrame:
@@ -630,7 +631,7 @@ def render_student_profile(student: pd.Series, repo_df: pd.DataFrame) -> None:
 def render_students(result) -> None:
     df = result.dashboard_df.copy()
     if df.empty:
-        render_empty_state()
+        render_empty_state("No student data yet", "Upload a roster and run an analysis to populate the Students view.")
         return
 
     st.markdown('<div class="hero"><h1>Student Explorer</h1><p>Search, filter, and inspect validated GitHub student profiles.</p></div>', unsafe_allow_html=True)
@@ -737,7 +738,7 @@ def render_repositories(result) -> None:
     repo_df = result.repo_df.copy()
     st.markdown('<div class="hero"><h1>Repository Explorer</h1><p>Browse repository metadata collected from validated GitHub profiles.</p></div>', unsafe_allow_html=True)
     if repo_df.empty:
-        render_empty_state()
+        render_empty_state("No repositories yet", "Run an analysis to fetch public repositories and view repository details.")
         return
     repo_df["Language"] = repo_df["Language"].fillna("Unknown")
     controls = st.columns([2, 1, 1])
@@ -790,13 +791,14 @@ def render_repositories(result) -> None:
             )
 
 
-def leaderboard_card(rank: int, title: str, score: str, badge: str) -> None:
+def leaderboard_card(rank: int, title: str, score: str, badge: str = "") -> None:
+    badge_markup = f'<br><span class="badge-blue">{escape(badge)}</span>' if badge else ""
     st.markdown(
         f"""
         <div class="leader-card">
             <div class="leader-row">
                 <div class="leader-rank">{rank}</div>
-                <div class="leader-title">{escape(title)}<br><span class="badge-blue">{escape(badge)}</span></div>
+                <div class="leader-title">{escape(title)}{badge_markup}</div>
                 <div class="leader-score">{escape(score)}</div>
             </div>
         </div>
@@ -810,7 +812,7 @@ def render_leaderboards(result) -> None:
     repo_df = result.repo_df
     st.markdown('<div class="hero"><h1>Leaderboards</h1><p>Compare recent activity, public repository counts, and GitHub follower counts across students.</p></div>', unsafe_allow_html=True)
     if dashboard_df.empty:
-        render_empty_state()
+        render_empty_state("No leaderboard data yet", "Run an analysis to compare students and repository activity.")
         return
     has_activity = "Active_Repositories" in dashboard_df.columns
     # BUG-028: recency leads — the activity ranking is presented before volume proxies.
@@ -856,7 +858,7 @@ def render_leaderboards(result) -> None:
         else:
             languages = repo_df["Language"].fillna("Misc").value_counts().head(10)
             for rank, (language, count) in enumerate(languages.items(), start=1):
-                leaderboard_card(rank, language, format_number(count), "Language")
+                leaderboard_card(rank, language, format_number(count))
         st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -904,6 +906,8 @@ def render_issues(result) -> None:
 
 def render_history() -> None:
     st.markdown('<div class="hero"><h1>Analysis History</h1><p>Trends across every recorded analysis run, stored locally in SQLite.</p></div>', unsafe_allow_html=True)
+    if st.button("Refresh history", type="secondary"):
+        st.rerun()
     history = load_run_history()
     if history.empty:
         st.markdown(
@@ -1244,17 +1248,10 @@ if "analysis_result" not in st.session_state:
 result = st.session_state.analysis_result
 uploaded_file = None
 
-if page != "Settings":
-    run_button, refresh_button, sample_size = render_topbar(
-        st.session_state.last_analysis_time,
-        token_present,
-    )
+if page == "Overview":
+    run_button, refresh_button, sample_size = render_topbar(st.session_state.last_analysis_time, token_present)
     if result is None:
-        upload_cols = st.columns([0.35, 5], vertical_alignment="center", gap="small")
-        with upload_cols[0]:
-            st.markdown('<div class="upload-plus" aria-hidden="true">＋</div>', unsafe_allow_html=True)
-        with upload_cols[1]:
-            uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
+        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed")
 else:
     run_button, refresh_button, sample_size = False, False, None
 
@@ -1288,7 +1285,7 @@ if run_button:
         def show_live_log(message: str) -> None:
             run_log.append(message)
             with log_placeholder.container():
-                render_live_log(run_log)
+                render_live_log(run_log, expanded=True)
 
         show_live_log("Starting analysis...")
 
@@ -1350,7 +1347,7 @@ if run_button:
                 )
             run_log = result.log
             with log_placeholder.container():
-                render_live_log(run_log)
+                render_live_log(run_log, expanded=False)
             st.session_state.analysis_result = result
             st.session_state.analysis_elapsed = elapsed
             st.session_state.analysis_file_hash = file_hash

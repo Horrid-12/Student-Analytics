@@ -348,19 +348,6 @@ h1, h2, h3 {
     background: var(--blue);
 }
 
-.upload-plus {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    color: var(--accent);
-    font-size: 28px;
-    line-height: 1;
-}
-
 .run-log-scroll {
     max-height: 220px;
     overflow-y: auto;
