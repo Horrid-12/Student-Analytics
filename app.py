@@ -96,11 +96,18 @@ require_faculty_login()
 
 def icon_svg(name: str) -> str:
     icons = {
-        "github": """
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/>
-            </svg>
-        """,
+        "github": '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>',
+        "overview": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',
+        "students": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        "repositories": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>',
+        "leaderboards": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
+        "history": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
+        "issues": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>',
+        "verification": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+        "settings": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
+        "search": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+        "chevron_right": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+        "chevrons_up_down": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>',
         "users": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m22 21-3-3m0 0a4 4 0 1 0-5.66-5.66A4 4 0 0 0 19 18Z"/></svg>',
         "check": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>',
         "alert": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
@@ -111,7 +118,7 @@ def icon_svg(name: str) -> str:
         "upload": '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>',
         "external": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
     }
-    return icons.get(name, icons["activity"])
+    return icons.get(name, icons.get("activity", ""))
 
 
 def github_button(url: str, label: str) -> str:
@@ -134,44 +141,115 @@ def get_token() -> str:
 
 def render_sidebar(token_present: bool) -> str:
     with st.sidebar:
+        # Guarantee radio bullet removal and clean sidebar item display directly in sidebar
         st.markdown(
-            f"""
-            <div class="platform-brand">
-                <div class="brand-mark">{icon_svg("github")}</div>
-                <div>
-                    <div class="brand-title">GitHub Student<br>Analytics Platform</div>
-                    <div class="brand-subtitle">Faculty intelligence suite</div>
-                </div>
-            </div>
-            """,
+            '''<style>
+/* 1. Eradicate first-child (radio circle) and ALL its inner elements (incl. Streamlit 1.62 react-aria nested bullet) */
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label[data-testid="stRadioOption"] > span + div > div > div:first-child,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label[data-testid="stRadioOption"] > span + div > div > div:first-child *,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child *,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label input[type="radio"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    pointer-events: none !important;
+}
+
+/* 2. Guarantee second-child (text label) and its children are displayed */
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:last-child,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:last-child * {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+}
+</style>''',
             unsafe_allow_html=True,
         )
+
+        # 1. Shadcn-style Header / Workspace Switcher (0-indented HTML to prevent code-block parsing)
+        st.markdown(
+            f'''<div class="shadcn-brand-header">
+<div class="brand-avatar-box">{icon_svg("github")}</div>
+<div class="brand-info">
+<div class="brand-team">GitHub Platform</div>
+<div class="brand-edition">Faculty Workspace</div>
+</div>
+<div class="brand-switcher">{icon_svg("chevrons_up_down")}</div>
+</div>
+<div class="sidebar-section-label">Main Navigation</div>''',
+            unsafe_allow_html=True,
+        )
+
+        pages = [p for p in visible_pages() if p != "Settings"]
+        if st.session_state.get("sidebar_nav") not in pages:
+            st.session_state.pop("sidebar_nav", None)  # stale value (e.g. Settings) must not break the radio
+
+        # Render clean radio navigation
         page = st.radio(
             "Navigation",
-            visible_pages(),
+            pages,
             label_visibility="collapsed",
             key="sidebar_nav",
         )
-        if current_role() != "open":
-            st.caption(f"Signed in as {st.session_state.get('auth_user', 'unnamed')} ({current_role()})")
-            if st.button("Lock dashboard", use_container_width=True):
+
+        # Dynamic role footer / user account
+        auth_role = current_role()
+        role_label = {"admin": "Admin", "faculty": "Faculty", "student": "Student"}.get(auth_role)
+        user_name = st.session_state.get("auth_user", "Faculty Member")
+        initials = "".join([part[0].upper() for part in user_name.split() if part][:2]) or "FM"
+
+        connection_status = "Connected" if token_present else "No Token"
+        status_dot = '<span class="status-dot-active"></span>' if token_present else '<span class="status-dot-warning"></span>'
+
+        # Settings lives in the footer card (BUG-079) — HTML <a> gear link inside the card
+        role_suffix = f' &bull; {role_label}' if role_label else ''
+        if auth_role == "student":
+            st.markdown(
+                f'''<div class="sidebar-user-footer">
+<div class="user-avatar-pill">{initials}</div>
+<div class="user-details">
+<div class="user-name">{escape(user_name)}</div>
+<div class="user-role-line">{status_dot}<span>{connection_status}{role_suffix}</span></div>
+</div>
+</div>''',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'''<div class="sidebar-user-footer">
+<div class="user-avatar-pill">{initials}</div>
+<div class="user-details">
+<div class="user-name">{escape(user_name)}</div>
+<div class="user-role-line">{status_dot}<span>{connection_status}{role_suffix}</span></div>
+</div>
+<a class="sidebar-gear-link" href="?page=Settings" title="Settings">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+</a>
+</div>''',
+                unsafe_allow_html=True,
+            )
+
+        if auth_role != "open":
+            if st.button("Sign out / Lock", use_container_width=True):
                 log_event("logout", f"user={st.session_state.get('auth_user', 'unnamed')}")
                 for key in ("auth_role", "auth_user", "sidebar_nav"):
                     st.session_state.pop(key, None)
                 st.rerun()
-        connection = "Connected" if token_present else "Token missing"
-        badge_class = "badge-green" if token_present else "badge-amber"
-        role_badge = {"admin": "Admin", "faculty": "Faculty", "student": "Student", "open": "Open (no auth)"}[current_role()]
-        st.markdown(
-            f"""
-            <div class="sidebar-footer">
-                <div class="status-row"><span>GitHub</span><span class="{badge_class}">{connection}</span></div>
-                <div class="status-row"><span>Mode</span><span class="badge-purple">{role_badge}</span></div>
-                <div class="status-row"><span>Version</span><span>v1.0.0</span></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
     return page
 
 
@@ -249,6 +327,38 @@ def render_empty_state(title: str = "No Excel Uploaded", message: str = "Upload 
         """,
         unsafe_allow_html=True,
     )
+
+
+PAGE_PLACEHOLDERS = {
+    "Students": ("users", "Student Explorer", "Search, filter, and inspect validated GitHub student profiles."),
+    "Repositories": ("repo", "Repositories", "Browse every public repository in the roster with language and activity details."),
+    "Leaderboards": ("activity", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students."),
+    "Issues": ("alert", "Open Issues", "Review open issues and technical debt across student repositories."),
+    "Verification": ("check", "Verification", "Confirm each GitHub account, review validation results, and export per-student status."),
+}
+
+
+def render_page_placeholder(page: str) -> None:
+    icon, title, message = PAGE_PLACEHOLDERS.get(page, PAGE_PLACEHOLDERS["Students"])
+    illustration = icon_svg(icon)
+    for old, new in (('width="21"', 'width="42"'), ('width="20"', 'width="42"'), ('height="21"', 'height="42"'), ('height="20"', 'height="42"')):
+        illustration = illustration.replace(old, new)
+    st.markdown(
+        f"""
+        <div class="empty-state">
+            <div>
+                <div class="empty-illustration">{illustration}</div>
+                <h2>{escape(title)}</h2>
+                <p>{escape(message)}</p>
+                <p style="margin-top: 14px; font-size: 14px;">This view populates after you upload a roster and run an analysis on the Overview page.</p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("Go to Overview", type="primary", use_container_width=True):
+        st.session_state.page_nav_target = "Overview"
+        st.rerun()
 
 
 def metric_card(label: str, value: str, trend: str, icon: str, glow: str) -> None:
@@ -1237,7 +1347,8 @@ def inject_theme() -> None:
         '''
 
     try:
-        with open("style.css", "r", encoding="utf-8") as f:
+        css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
+        with open(css_path, "r", encoding="utf-8") as f:
             external_css = f.read()
     except OSError:
         external_css = ""
@@ -1259,7 +1370,25 @@ inject_theme()
 
 token = get_token()
 token_present = bool(token)
+# BUG-079: Settings is no longer a radio option — the gear <a> link sets ?page=Settings.
+# The override persists until the user leaves via the radio or a page CTA, so widget
+# interactions on Settings (e.g. the theme toggle) don't bounce back to the old page.
+if st.query_params.get("page") == "Settings":
+    st.session_state["sidebar_override"] = True
+    st.session_state["sidebar_nav_saved"] = st.session_state.get("sidebar_nav", "Overview")
+    st.query_params.clear()
+nav_target = st.session_state.pop("page_nav_target", None)
+if nav_target:
+    st.session_state.sidebar_nav = nav_target
+    st.session_state.pop("sidebar_override", None)  # explicit nav leaves Settings
+    st.session_state.pop("sidebar_nav_saved", None)
 page = render_sidebar(token_present)
+if st.session_state.get("sidebar_override"):
+    if page == st.session_state.get("sidebar_nav_saved"):
+        page = "Settings"  # radio still on the pre-Settings page — keep showing Settings
+    else:
+        st.session_state.pop("sidebar_override", None)  # user picked another radio page
+        st.session_state.pop("sidebar_nav_saved", None)
 
 if "theme" not in st.session_state:
         st.session_state.theme = "Dark"
@@ -1280,10 +1409,34 @@ uploaded_file = None
 if page == "Overview":
     run_button, refresh_button, sample_size = render_topbar(st.session_state.last_analysis_time, token_present)
     if result is None:
-        uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed", key="roster_upload")
-        if uploaded_file is not None:
-            st.session_state.uploaded_file_bytes = uploaded_file.getvalue()
-            st.session_state.uploaded_file_name = uploaded_file.name
+        if st.session_state.uploaded_file_bytes:
+            uploaded_file = io.BytesIO(st.session_state.uploaded_file_bytes)
+            uploaded_file.name = st.session_state.uploaded_file_name
+            st.markdown(
+                f"""
+                <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="metric-icon">{icon_svg("repo")}</div>
+                        <div>
+                            <div class="metric-label" style="margin:0;font-size:14px;">Roster loaded</div>
+                            <div style="font-weight:700;font-size:15px;">{escape(st.session_state.uploaded_file_name)}</div>
+                        </div>
+                    </div>
+                    <span class="badge badge-green">Ready to run</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Change file", use_container_width=True):
+                st.session_state.uploaded_file_bytes = None
+                st.session_state.uploaded_file_name = ""
+                st.session_state.pop("roster_upload", None)
+                st.rerun()
+        else:
+            uploaded_file = st.file_uploader("Excel Upload", type=["xlsx", "xls", "csv"], label_visibility="collapsed", key="roster_upload")
+            if uploaded_file is not None:
+                st.session_state.uploaded_file_bytes = uploaded_file.getvalue()
+                st.session_state.uploaded_file_name = uploaded_file.name
     if uploaded_file is None and st.session_state.uploaded_file_bytes:
         uploaded_file = io.BytesIO(st.session_state.uploaded_file_bytes)
         uploaded_file.name = st.session_state.uploaded_file_name
@@ -1433,7 +1586,8 @@ if page == "Settings":
 elif page == "History":
     render_history()
 elif result is None:
-    pass
+    if page in PAGE_PLACEHOLDERS:
+        render_page_placeholder(page)
 else:
     if page == "Overview":
         render_overview(result, st.session_state.analysis_elapsed, st.session_state.last_analysis_time)

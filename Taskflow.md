@@ -22,35 +22,41 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 
 ### Quick wins (< 15 min each)
 
-- [ ] 2.1 Rename "Unknown" to "Misc" in language breakdown charts — BUG-064
-- [ ] 2.2 Remove redundant "Language" footer under top Languages chart — BUG-065
-- [ ] 2.3 Rename "Refresh" button to "Reset" — BUG-073
-- [ ] 2.4 Remove "Open Links" button — BUG-075
-- [ ] 2.5 Fix misleading "Last analysis" timestamp — BUG-071
+- [x] 2.1 Rename "Unknown" to "Misc" in language breakdown charts — BUG-064
+- [x] 2.2 Remove redundant "Language" footer under top Languages chart — BUG-065
+- [x] 2.3 Rename "Refresh" button to "Reset" — BUG-073
+- [x] 2.4 Remove "Open Links" button — BUG-075
+- [x] 2.5 Fix misleading "Last analysis" timestamp — BUG-071
 
 ### Small features (< 2 hours each)
 
-- [ ] 2.6 Replace "Custom Value" checkbox with a simpler sample-size number input — BUG-056
-- [ ] 2.7 Remove topbar from History, Leaderboards, Repos, Students, Issues; keep on Overview — BUG-066
-- [ ] 2.8 Add refresh button for History graph — BUG-068
-- [ ] 2.9 Make table row count dynamic based on actual data — BUG-070
-- [ ] 2.10 Preserve upload state across page navigation — BUG-072
-- [ ] 2.11 Add Academic Year / Semester filter to dashboard — BUG-074
+- [x] 2.6 Replace "Custom Value" checkbox with a simpler sample-size number input — BUG-056
+- [x] 2.7 Remove topbar from History, Leaderboards, Repos, Students, Issues; keep on Overview — BUG-066
+- [x] 2.8 Add refresh button for History graph — BUG-068
+- [x] 2.9 Make table row count dynamic based on actual data — BUG-070
+- [x] 2.10 Preserve upload state across page navigation — BUG-072
+- [x] 2.11 Add Academic Year / Semester filter to dashboard — BUG-074
 
 ### Medium features (half-day each)
 
-- [ ] 2.12 Live run logs — stream analysis progress as a scrollable log during analysis — BUG-063
-- [ ] 2.13 Better empty states + simplified alternate views for Students, Repos, Leaderboards — BUG-067
-- [ ] 2.14 Add mini/collapsed sidebar mode with icons only — BUG-069
+- [x] 2.12 Live run logs — stream analysis progress as a scrollable log during analysis — BUG-063
+- [x] 2.13 Better empty states + simplified alternate views for Students, Repos, Leaderboards — BUG-067
+- [x] 2.14 Placeholder cards on Students / Repositories / Leaderboards / Issues / Verification before any run (was fully blank) — BUG-076
+- [x] 2.15 Upload no longer resets when switching pages — persisted "Roster loaded" card replaces the empty dropzone on return — BUG-077
+- [ ] 2.16 Mini/collapsed sidebar mode with icons only
+  - [x] 2.16a Remove radio bullets + highlight selected page text (react-aria selectors for Streamlit 1.62) — BUG-078
+  - [x] 2.16b Move Settings out of the nav radio into an account-card gear link (inline `<a>` in the card HTML, `?page=Settings` query dispatch) — BUG-079
+  - [x] 2.16c Settings link navigations persist across reruns (theme toggle no longer bounces back to the front page) — BUG-080
+  - [x] 2.16d Kill sidebar dead space: account card pinned to the bottom edge (flex column on `stSidebarUserContent` + `margin-top: auto` on the footer card's markdown), brand header stays at top
 
 ### Big features (1–3 days each)
 
-- [ ] 2.15 Add + icon next to the spreadsheet upload — BUG-061
-- [ ] 2.16 UI spacing and visual density overhaul — BUG-057
-- [ ] 2.17 Buttons: consistent primary/secondary styling — BUG-059
-- [ ] 2.18 Sidebar redesign — icons, grouping, visual hierarchy — BUG-060
-- [ ] 2.19 Graphs: richer chart types, better styling, context labels — BUG-058
-- [ ] 2.20 Graphs: unified chart theme and sizing across pages — BUG-062
+- [x] 2.17 Add + icon next to the spreadsheet upload — resolved as "keep uploader clean, no plus icon" — BUG-061
+- [ ] 2.18 UI spacing and visual density overhaul — BUG-057
+- [ ] 2.19 Buttons: consistent primary/secondary styling — BUG-059
+- [ ] 2.20 Sidebar redesign — icons, grouping, visual hierarchy — BUG-060
+- [ ] 2.21 Graphs: richer chart types, better styling, context labels — BUG-058
+- [ ] 2.22 Graphs: unified chart theme and sizing across pages — BUG-062
 
 ---
 
