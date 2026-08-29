@@ -1,4 +1,6 @@
 {
+  "framework": null,
+  "installCommand": "pip install -r requirements.txt",
   "functions": {
     "api/index.py": {
       "memory": 1024,
