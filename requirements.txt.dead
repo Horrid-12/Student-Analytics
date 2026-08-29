@@ -1,0 +1,20 @@
+streamlit==1.62.0
+pandas==3.0.5
+requests==2.34.2
+openpyxl==3.1.5
+altair==6.2.2
+xlrd==2.0.2
+
+# Linux-only segfault in pyarrow 25 (apache/arrow#50471) — flagged by Streamlit Cloud
+pyarrow<25
+
+# New FastAPI stack (Phase 3 — Vercel installs requirements.txt; merged 2026-08-29,
+# frozen Streamlit pins kept so the legacy live app still boots until 3.10 removes them)
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+jinja2==3.1.6
+mangum==0.22.0
+plotly==6.1.1
+httpx==0.28.1
+upstash-redis==1.8.0
+python-multipart==0.0.32
