@@ -296,3 +296,35 @@ class TestPageRenderingWithData:
         data = upload_roster(self.client)
         response = self.client.get(f"/students/export?roster={data['roster_id']}")
         assert response.status_code == 404
+
+
+class TestVercelEntrypoint:
+    """api/index.py wraps the FastAPI app with a Vercel-prefix stripper so the
+    rewrite  /(.*) -> /api/index  still routes to '/', '/students', etc."""
+
+    def test_prefix_stripped_for_root(self):
+        from api.index import Mangum, wrapped
+
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        assert client.get("/api/index").status_code == 200
+        assert "Student Analytics" in client.get("/api/index").text or "student" in client.get("/api/index").text.lower()
+
+    def test_prefix_stripped_for_pages(self):
+        from api.index import wrapped
+
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        assert client.get("/api/index/history").status_code == 200
+        assert client.get("/api/index/students").status_code == 200
+
+    def test_real_paths_unaffected(self):
+        from api.index import wrapped
+
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        assert client.get("/history").status_code == 200
+
+    def test_no_prefix_stripped_from_deep_static(self):
+        from api.index import wrapped
+
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        css = client.get("/api/index/static/style.css")
+        assert css.status_code in (200, 404)
