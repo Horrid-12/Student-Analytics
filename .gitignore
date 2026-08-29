@@ -10,3 +10,4 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 analytics_history.db
+.vercel

@@ -46,4 +46,5 @@ class _StripVercelPrefix:
 
 
 wrapped = _StripVercelPrefix(fastapi_app)
-handler = Mangum(wrapped)
+app = Mangum(wrapped)
+handler = app
