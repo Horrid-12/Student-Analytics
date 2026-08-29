@@ -328,3 +328,11 @@ class TestVercelEntrypoint:
         client = TestClient(wrapped, raise_server_exceptions=False)
         css = client.get("/api/index/static/style.css")
         assert css.status_code in (200, 404)
+
+    def test_py_function_path_forms(self):
+        from api.index import wrapped
+
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        assert client.get("/api/index.py").status_code == 200
+        assert client.get("/api/index.py/history").status_code == 200
+        assert client.get("/api/history").status_code == 200
