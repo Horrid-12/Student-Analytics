@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "macros/charts.html" as mc %}
+{% block title %}Leaderboards — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Leaderboards</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.total }} students ranked</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <select class="filter-select" name="division" title="Division">
+    {% for value in payload.divisions %}
+    <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="batch" title="Batch">
+    {% for value in payload.batches %}
+    <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="year" title="Academic Year">
+    {% for value in payload.years %}
+    <option value="{{ value }}" {% if value == year %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="semester" title="Semester">
+    {% for value in payload.semesters %}
+    <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <label class="filter-check"><input type="checkbox" name="anonymize" value="1" {% if anonymize %}checked{% endif %}> Anonymize</label>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/leaderboards?roster={{ roster_id }}">Clear</a>
+</form>
+
+<div class="leaderboard-grid">
+  {% for section in payload.sections %}
+  <section class="panel leader-card">
+    <div class="panel-title">{{ section.title }}</div>
+    {% for row in section.rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      {% if anonymize %}
+      <span class="leader-title">Student #{{ row.student_id }}</span>
+      {% else %}
+      <span class="leader-title">{{ row.name }} <span class="leader-sub">@{{ row.username }}</span></span>
+      {% endif %}
+      <span class="leader-score">{{ row.score }}</span>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</div>
+
+{% if payload.languages is not none %}
+<section class="panel">
+  <div class="panel-title">Top Languages by Repositories</div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Rank</th><th>Language</th><th>Repositories</th></tr></thead>
+      <tbody>
+        {% for row in payload.languages.to_dict('records') %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><span class="chip">{{ row.Language }}</span></td>
+          <td>{{ row.Repositories }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

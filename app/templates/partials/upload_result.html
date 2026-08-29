@@ -1,0 +1,23 @@
+{% if error %}
+<div class="roster-loaded-card roster-load-error" role="alert">
+  <svg class="status-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span class="roster-load-title">Upload failed</span>
+  <span class="roster-load-meta">{{ error }}</span>
+</div>
+<script>
+  try { localStorage.removeItem('gsad_roster_v1'); } catch (e) {}
+</script>
+{% else %}
+<div class="roster-loaded-card" data-roster-id="{{ roster_id }}">
+  <svg class="status-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  <span class="roster-load-title">Roster loaded</span>
+  <span class="roster-load-meta">{{ count }} student(s) parsed{% if invalid_format_count %} &bull; {{ invalid_format_count }} with invalid account format{% endif %}</span>
+  <a class="btn roster-clear" href="#"
+     hx-post="/upload/reset?roster_id={{ roster_id }}" hx-target="#upload-result" hx-swap="innerHTML">Clear roster</a>
+</div>
+<script>
+  window.__gsad_roster = { roster_id: '{{ roster_id }}', ids: {{ ids | tojson }} };
+  try { localStorage.setItem('gsad_roster_v1', JSON.stringify(window.__gsad_roster)); } catch (e) {}
+  if (typeof window.__gsadOnRoster === 'function') window.__gsadOnRoster(window.__gsad_roster);
+</script>
+{% endif %}

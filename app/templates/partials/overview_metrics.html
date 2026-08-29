@@ -1,0 +1,51 @@
+<div class="metrics-grid">
+  <div class="metric-card" style="--glow: rgba(59,130,246,0.75);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div></div>
+    <div class="metric-value">{{ metrics.students }}</div>
+    <div class="metric-label">Total Students</div>
+    <div class="metric-trend">Rows processed from Excel</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(34,197,94,0.72);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div></div>
+    <div class="metric-value">{{ metrics.valid }}</div>
+    <div class="metric-label">Valid GitHub Accounts</div>
+    <div class="metric-trend">Validated against GitHub API</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(239,68,68,0.68);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg></div></div>
+    <div class="metric-value">{{ metrics.invalid }}</div>
+    <div class="metric-label">Invalid Accounts</div>
+    <div class="metric-trend">Requires faculty follow-up</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(139,92,246,0.75);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div></div>
+    <div class="metric-value">{{ metrics.submission }}%</div>
+    <div class="metric-label">Submission %</div>
+    <div class="metric-trend">Connected accounts over roster</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(59,130,246,0.72);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg></div></div>
+    <div class="metric-value">{{ metrics.repos }}</div>
+    <div class="metric-label">Repositories Found</div>
+    <div class="metric-trend">Fetched repository metadata</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(34,197,94,0.66);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div></div>
+    <div class="metric-value">{{ metrics.avg_repos }}</div>
+    <div class="metric-label">Average Repository Count</div>
+    <div class="metric-trend">Public repos per validated student</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(245,158,11,0.65);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div></div>
+    <div class="metric-value">{{ metrics.avg_followers }}</div>
+    <div class="metric-label">Average Followers</div>
+    <div class="metric-trend">GitHub social signal</div>
+  </div>
+  <div class="metric-card" style="--glow: rgba(139,92,246,0.70);">
+    <div class="metric-top"><div class="metric-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div></div>
+    <div class="metric-value">{{ metrics.top_lang }}</div>
+    <div class="metric-label">Most Used Language</div>
+    <div class="metric-trend">Mode across repositories</div>
+  </div>
+</div>
+<div class="metric-meta">Updated {{ generated_at }}</div>

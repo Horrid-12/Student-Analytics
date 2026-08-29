@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Verification — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Verification</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.total }} students</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <div class="search-box-row">
+    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search student ID, name, username or division&hellip;">
+  </div>
+  <select class="filter-select" name="status" title="Validation Status">
+    {% for value in payload.statuses %}
+    <option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="rows" title="Rows" onchange="this.form.submit()">
+    <option value="50" {% if rows == 50 %}selected{% endif %}>50</option>
+    <option value="100" {% if rows == 100 %}selected{% endif %}>100</option>
+    <option value="500" {% if rows == 500 %}selected{% endif %}>500</option>
+    <option value="2000" {% if rows == 2000 %}selected{% endif %}>All</option>
+  </select>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/verification?roster={{ roster_id }}">Clear</a>
+  <span class="filter-count">{{ payload.showing }} of {{ payload.total }} shown</span>
+</form>
+
+<section class="panel">
+  <div class="panel-title">Account Verification Audit</div>
+  {% if not payload.filtered.empty %}
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Student</th><th>Division</th><th>GitHub Username</th><th>Validation Status</th><th>Repos Found</th><th>Followers</th><th>Following</th><th>Last Updated</th></tr>
+      </thead>
+      <tbody>
+        {% for row in payload.display.to_dict('records') %}
+        <tr>
+          <td>{{ row['Student Name'] }}<div class="repo-meta">{{ row['Student_ID'] }}</div></td>
+          <td>{{ row.Division }}</td>
+          <td>
+            {% if row['GitHub_Username'] %}
+            <a href="{{ row['GitHub Profile'] }}" target="_blank" rel="noopener">{{ row['GitHub_Username'] }}</a>
+            {% else %}<span class="badge-amber">none</span>{% endif %}
+          </td>
+          <td>
+            {% if row['Validation Status'] == 'Verified' %}<span class="badge-green">Verified</span>
+            {% elif row['Validation Status'] == 'Missing' %}<span class="badge-amber">Missing</span>
+            {% else %}<span class="badge-red">Invalid</span>{% endif %}
+          </td>
+          <td>{{ row['Repositories Found'] }}</td>
+          <td>{{ row.Followers }}</td>
+          <td>{{ row.Following }}</td>
+          <td>{{ row['Last Updated'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="export-row">
+    <a class="btn" href="/verification/export?roster={{ roster_id }}&format=csv&{{ export_query }}">Export CSV</a>
+    <a class="btn" href="/verification/export?roster={{ roster_id }}&format=xlsx&{{ export_query }}">Export Excel</a>
+  </div>
+  {% else %}
+  <p class="table-empty">No students match the current filters.</p>
+  {% endif %}
+</section>
+{% endblock %}

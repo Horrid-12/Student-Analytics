@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Repositories — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Repositories</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.total }} repositories</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <div class="search-box-row">
+    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repositories, owners or languages&hellip;">
+  </div>
+  <select class="filter-select" name="language" title="Language">
+    {% for value in payload.languages %}
+    <option value="{{ value }}" {% if value == language %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="rows" title="Rows" onchange="this.form.submit()">
+    {% for value in [10, 20, 30, 50] %}
+    <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }} repositories</option>
+    {% endfor %}
+  </select>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/repositories?roster={{ roster_id }}">Clear</a>
+  <span class="filter-count">{{ payload.total }} shown</span>
+</form>
+
+<section class="panel">
+  <div class="panel-title">Repository Cards</div>
+  <div class="repo-grid">
+    {% for repo in payload.cards.to_dict('records') %}
+    <div class="repo-card">
+      <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+      <div class="repo-meta">
+        <span class="chip">{{ repo.Language or 'Unknown' }}</span>
+        <span>&middot; {{ repo.Stars }} stars &middot; {{ repo.Forks }} forks</span>
+      </div>
+      {% if repo.Description %}<p class="repo-description">{{ repo.Description }}</p>{% endif %}
+      <div class="repo-meta">
+        {% if repo.License %}<span class="badge-blue">{{ repo.License }}</span>{% endif %}
+        <span class="badge-amber">{{ repo.Maintenance_Status or 'Maintenance unknown' }}</span>
+        {% if repo.Repository_Quality_Score %}<span class="badge-purple">Score {{ repo.Repository_Quality_Score | round(1) }}</span>{% endif %}
+      </div>
+      <div class="repo-owner"><a class="external-link-button" href="{{ repo.Username | e }}">@{{ repo.Username }}</a></div>
+    </div>
+    {% else %}
+    <p class="table-empty" style="grid-column:1/-1;">No repositories match the current filters.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-title">All Repositories</div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Repository</th><th>Owner</th><th>Language</th><th>Stars</th><th>Forks</th><th>License</th><th>Status</th><th>Score</th><th>Updated</th></tr></thead>
+      <tbody>
+        {% for repo in payload.table.to_dict('records') %}
+        <tr>
+          <td><a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a></td>
+          <td><a href="?roster={{ roster_id }}&q={{ repo.Username }}">{{ repo.Username }}</a></td>
+          <td>{% if repo.Language %}<span class="chip">{{ repo.Language }}</span>{% endif %}</td>
+          <td>{{ repo.Stars }}</td>
+          <td>{{ repo.Forks }}</td>
+          <td>{{ repo.License or '' }}</td>
+          <td><span class="badge-amber">{{ repo.Maintenance_Status or 'unknown' }}</span></td>
+          <td>{% if repo.Repository_Quality_Score is not none %}{{ repo.Repository_Quality_Score | round(1) }}{% endif %}</td>
+          <td>{% if repo.Updated %}{{ repo.Updated[0:10] }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

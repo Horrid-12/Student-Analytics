@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}GitHub Student Analytics Platform{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}">
+<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-sticky-brand">
+      <div class="shadcn-brand-header">
+        <div class="brand-avatar-box">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
+        </div>
+        <div class="brand-info">
+          <div class="brand-team">GitHub Platform</div>
+          <div class="brand-edition">Faculty Workspace</div>
+        </div>
+        <div class="brand-switcher">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-section-label">Main Navigation</div>
+    <nav class="sidebar-nav">
+      {% for item in nav %}
+      <a class="sidebar-nav-item{% if item.active %} is-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ item.svg | safe }}</svg>
+        <span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-user-footer">
+        <div class="user-avatar-pill">A</div>
+        <div class="user-details">
+          <div class="user-name">anonymous</div>
+          <div class="user-role-line"><span class="status-dot-active"></span>Connected</div>
+        </div>
+        <a class="sidebar-gear-link" href="#settings" title="Settings" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </a>
+      </div>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'gsad_roster_v1';
+  function read() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && parsed.roster_id ? parsed.roster_id : null;
+    } catch (e) { return null; }
+  }
+  var rosterId = read();
+  if (rosterId) {
+    document.querySelectorAll('nav.sidebar-nav a').forEach(function (link) {
+      var sep = link.getAttribute('href').indexOf('?') === -1 ? '?' : '&';
+      link.href = link.getAttribute('href') + sep + 'roster=' + encodeURIComponent(rosterId);
+    });
+  }
+})();
+</script>
+</body>
+</html>

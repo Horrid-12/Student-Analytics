@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Issues — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Open Issues</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.total }} student issues</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <select class="filter-select" name="issue" title="Issue Type">
+    {% for value in payload.types %}
+    <option value="{{ value }}" {% if value == issue_type %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/issues?roster={{ roster_id }}">Clear</a>
+  <span class="filter-count">{{ payload.total }} issue(s)</span>
+</form>
+
+<section class="panel">
+  <div class="panel-title">Issues &amp; Workflow</div>
+  {% if payload.rows %}
+  <div class="data-table-wrap">
+    <table class="data-table issues-table">
+      <thead>
+        <tr>
+          <th style="width:160px;">Student</th><th>Division</th><th>GitHub Username</th><th>Issue</th>
+          <th style="width:110px;">Status</th>
+          <th style="width:140px;">Owner</th>
+          <th style="width:240px;">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in payload.rows %}
+        <tr data-issue-key="{{ issue.key }}">
+          <td><a href="/students?roster={{ roster_id }}&select={{ issue.student_id }}">{{ issue.name }}</a><div class="repo-meta">{{ issue.student_id }}</div></td>
+          <td>{{ issue.division }}</td>
+          <td>{% if issue.username %}<code>{{ issue.username }}</code>{% else %}<span class="badge-amber">none</span>{% endif %}</td>
+          <td><span class="badge-amber">{{ issue.issue }}</span></td>
+          <td>
+            <select class="filter-select issue-status" data-field="Status">
+              <option value="Open" {% if issue.status == 'Open' %}selected{% endif %}>Open</option>
+              <option value="In Progress" {% if issue.status == 'In Progress' %}selected{% endif %}>In Progress</option>
+              <option value="Resolved" {% if issue.status == 'Resolved' %}selected{% endif %}>Resolved</option>
+            </select>
+          </td>
+          <td><input class="table-input issue-owner" value="{{ issue.owner }}" placeholder="Owner"></td>
+          <td><input class="table-input issue-notes" value="{{ issue.notes }}" placeholder="Notes"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="export-row">
+    <button class="btn btn-primary" type="button" id="save-workflow">Save Workflow</button>
+    <span class="filter-count" id="workflow-saved" hidden>Saved.</span>
+  </div>
+  {% else %}
+  <p class="table-empty">No issues to review for this roster.</p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  'use strict';
+  var saveBtn = document.getElementById('save-workflow');
+  if (!saveBtn) return;
+  var saved = document.getElementById('workflow-saved');
+  var params = new URLSearchParams(window.location.search);
+  var rosterId = params.get('roster') || '';
+  saveBtn.addEventListener('click', function () {
+    var workflow = {};
+    document.querySelectorAll('tr[data-issue-key]').forEach(function (tr) {
+      var key = tr.getAttribute('data-issue-key');
+      var status = tr.querySelector('.issue-status').value;
+      var owner = tr.querySelector('.issue-owner').value;
+      var notes = tr.querySelector('.issue-notes').value;
+      workflow[key] = { Status: status, Owner: owner, Notes: notes };
+    });
+    fetch('/issues/workflow?roster=' + encodeURIComponent(rosterId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workflow)
+    }).then(function (resp) {
+      if (resp.ok) {
+        saved.hidden = false;
+        setTimeout(function () { saved.hidden = true; }, 2000);
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

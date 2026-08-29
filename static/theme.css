@@ -1,0 +1,66 @@
+:root {
+    --bg: #09090B;
+    --sidebar: #111114;
+    --card: #18181B;
+    --card-soft: #1F1F24;
+    --border: #2A2A30;
+    --text: #FFFFFF;
+    --muted: #A1A1AA;
+    --blue: #3B82F6;
+    --green: #22C55E;
+    --amber: #F59E0B;
+    --red: #EF4444;
+    --purple: #8B5CF6;
+    --hover-bg: rgba(255, 255, 255, 0.04);
+    --subtle-bg: rgba(255, 255, 255, 0.025);
+    --icon-bg: rgba(255, 255, 255, 0.06);
+    --icon-border: rgba(255, 255, 255, 0.08);
+    --shadow: rgba(0, 0, 0, 0.24);
+    --shadow-strong: rgba(0, 0, 0, 0.35);
+    --topbar-bg: rgba(17, 17, 20, 0.78);
+    --topbar-border: rgba(42, 42, 48, 0.9);
+    --sidebar-footer-bg: rgba(24, 24, 27, 0.72);
+    --repo-card-bg: rgba(24, 24, 27, 0.88);
+    --alert-bg: rgba(24, 24, 27, 0.94);
+    --progress-shell: #27272A;
+    --metric-trend: #C7D2FE;
+    --leader-rank-bg: rgba(59, 130, 246, 0.12);
+    --leader-rank-color: #BFDBFE;
+    --badge-green-color: #86EFAC;
+    --badge-amber-color: #FCD34D;
+    --badge-red-color: #FCA5A5;
+    --badge-blue-color: #93C5FD;
+    --badge-purple-color: #C4B5FD;
+    --ext-link-color: #86EFAC;
+}
+
+[data-theme="light"] {
+    --bg: #F8FAFC;
+    --sidebar: #F1F5F9;
+    --card: #FFFFFF;
+    --card-soft: #F1F5F9;
+    --border: #CBD5E1;
+    --text: #0F172A;
+    --muted: #64748B;
+    --hover-bg: rgba(0, 0, 0, 0.04);
+    --subtle-bg: rgba(0, 0, 0, 0.02);
+    --icon-bg: rgba(0, 0, 0, 0.05);
+    --icon-border: rgba(0, 0, 0, 0.15);
+    --shadow: rgba(0, 0, 0, 0.06);
+    --shadow-strong: rgba(0, 0, 0, 0.12);
+    --topbar-bg: rgba(255, 255, 255, 0.95);
+    --topbar-border: #CBD5E1;
+    --sidebar-footer-bg: rgba(241, 245, 249, 0.72);
+    --repo-card-bg: rgba(255, 255, 255, 0.88);
+    --alert-bg: rgba(255, 255, 255, 0.94);
+    --progress-shell: #E2E8F0;
+    --metric-trend: #3B82F6;
+    --leader-rank-bg: rgba(59, 130, 246, 0.10);
+    --leader-rank-color: #1D4ED8;
+    --badge-green-color: #15803D;
+    --badge-amber-color: #B45309;
+    --badge-red-color: #DC2626;
+    --badge-blue-color: #2563EB;
+    --badge-purple-color: #7C3AED;
+    --ext-link-color: #15803D;
+}

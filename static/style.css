@@ -1,0 +1,1255 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+
+/* Fix Streamlit's native header background causing the white band in Dark mode */
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+/* Force Inter font everywhere */
+html, body, [class*="css"], * {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Ensure default text matches the theme */
+.stApp {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stRadio"] label, [data-testid="stRadio"] div, [data-testid="stMarkdownContainer"] p {
+    color: var(--text) !important;
+}
+
+/* =========================================================
+   SHADCN-STYLE CLEAN SIDEBAR (EXPANDED + COLLAPSED MINI-RAIL)
+   ========================================================= */
+[data-testid="stSidebar"] {
+    background: var(--sidebar) !important;
+    border-right: 1px solid var(--border) !important;
+    padding-top: 0.75rem !important;
+    transition: width 150ms ease, min-width 150ms ease, margin-left 150ms ease !important;
+}
+
+[data-testid="stSidebar"]:not([aria-expanded="false"]) {
+    min-width: 280px !important;
+    width: 280px !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding-left: 0.85rem !important;
+    padding-right: 0.85rem !important;
+    padding-top: 0.85rem !important;
+}
+
+[data-testid="stSidebar"] * {
+    color: var(--text);
+}
+
+/* Shadcn Workspace Brand Header */
+.shadcn-brand-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--subtle-bg);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    cursor: default;
+    transition: background 150ms ease, border-color 150ms ease;
+    overflow: hidden;
+}
+
+.shadcn-brand-header:hover {
+    background: var(--hover-bg);
+    border-color: var(--border);
+}
+
+.brand-avatar-box {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.brand-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.brand-team {
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.brand-edition {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.2;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.brand-switcher {
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* Quick Search / Command Pill Mockup */
+.sidebar-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: var(--subtle-bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-bottom: 14px;
+}
+
+.search-placeholder {
+    flex: 1;
+    color: var(--muted);
+    font-weight: 450;
+}
+
+.search-kbd {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: inherit;
+}
+
+/* Sidebar Section Headers */
+.sidebar-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    padding: 6px 8px 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* Radio Navigation Group */
+[data-testid="stSidebar"] [role="radiogroup"] {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+/* Eradicate Styled Radio Circle (Streamlit 1.62 react-aria: hidden span > input,
+   bullet renders at label > span + div > div > div:first-child) and native input */
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label[data-testid="stRadioOption"] > span + div > div > div:first-child,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label[data-testid="stRadioOption"] > span + div > div > div:first-child *,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child *,
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label input[type="radio"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    pointer-events: none !important;
+}
+
+/* Ensure the label container and text are 100% displayed */
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    display: flex !important;
+    align-items: center !important;
+    flex-direction: row !important;
+    gap: 10px !important;
+    padding: 9px 10px !important;
+    border-radius: 6px !important;
+    margin: 0 !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    cursor: pointer !important;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease !important;
+    font-size: 14.5px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+    position: relative !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] label div:has([data-testid="stMarkdownContainer"]),
+[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child,
+[data-testid="stSidebar"] [role="radiogroup"] label [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] * {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    pointer-events: auto !important;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] label div:has([data-testid="stMarkdownContainer"]),
+[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+/* Item hover state */
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text) !important;
+}
+
+/* Active Selected state - Highlight text & background */
+[data-testid="stSidebar"] [role="radiogroup"] label[data-selected],
+[data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] {
+    background: rgba(59, 130, 246, 0.12) !important;
+    color: var(--blue) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [role="radiogroup"] label p {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    font-size: 14.5px !important;
+    line-height: 1.3 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Inactive text color */
+[data-testid="stSidebar"] [role="radiogroup"] label:not([data-selected]):not([data-checked="true"]) [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [role="radiogroup"] label:not([data-selected]):not([data-checked="true"]) p {
+    color: var(--muted) !important;
+    font-weight: 500 !important;
+}
+
+/* Highlight text on active selected label */
+[data-testid="stSidebar"] [role="radiogroup"] label[data-selected] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [role="radiogroup"] label[data-selected] p,
+[data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] p {
+    color: var(--blue) !important;
+    font-weight: 700 !important;
+}
+
+/* Vector SVG icons for each navigation option */
+[data-testid="stSidebar"] [role="radiogroup"] > label::before {
+    content: "" !important;
+    display: inline-block !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    max-width: 16px !important;
+    flex-shrink: 0 !important;
+    background-color: currentColor !important;
+    -webkit-mask-size: contain !important;
+    mask-size: contain !important;
+    -webkit-mask-repeat: no-repeat !important;
+    mask-repeat: no-repeat !important;
+    -webkit-mask-position: center !important;
+    mask-position: center !important;
+    opacity: 0.65;
+    transition: opacity 120ms ease, background-color 120ms ease;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] > label:hover::before {
+    opacity: 1;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] > label[data-selected]::before,
+[data-testid="stSidebar"] [role="radiogroup"] > label[data-checked="true"]::before {
+    background-color: var(--blue) !important;
+    opacity: 1 !important;
+}
+
+/* Overview Icon (Dashboard Grid) */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(1)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>') !important;
+}
+
+/* Students Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(2)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>') !important;
+}
+
+/* Repositories Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(3)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>') !important;
+}
+
+/* Leaderboards Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(4)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>') !important;
+}
+
+/* History Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(5)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>') !important;
+}
+
+/* Issues Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>') !important;
+}
+
+/* Verification Icon */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(7)::before {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>') !important;
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>') !important;
+}
+
+/* User Account Profile Bottom Card */
+.sidebar-user-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--subtle-bg);
+    border: 1px solid var(--border);
+    margin-top: 20px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+/* BUG-079: non-student footer — gear <a> lives inside the card */
+.sidebar-user-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 10px;
+    border-radius: 10px;
+    background: var(--subtle-bg);
+    border: 1px solid var(--border);
+    margin-top: 20px;
+    overflow: hidden;
+}
+
+/* Pin the account card to the bottom of the sidebar. Flex pinning alone
+   doesn't reach because bh (stSidebarContent) is the scroll container with
+   overflow:auto and yh (stSidebarUserContent) is just a padding wrapper with
+   no intrinsic height — margin-top:auto had no free space to absorb (hence
+   "still the same" screenshots). Use absolute anchoring as the reliable path.
+   bh is positioned relative and fills 100dvh; the footer's element container
+   (the flex item, not the inner markdown) is taken out of flow and anchored to
+   its bottom. */
+[data-testid="stSidebarContent"] {
+    position: relative !important;
+    min-height: 100% !important;
+    padding-top: 0.2rem !important; /* pull brand header flush to top (was 0.85rem) */
+    padding-bottom: 92px !important; /* reserve space so nav doesn't hide under pinned card */
+}
+/* Collapse control sits tighter to the top edge, so the brand header can move up */
+section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stSidebarHeader"] {
+    height: 28px !important;
+    min-height: 28px !important;
+    margin-bottom: 6px !important;
+}
+/* Title bar (brand header) sticks to the top while the nav scrolls */
+section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stElementContainer"]:has(.shadcn-brand-header),
+section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMarkdownContainer"]:has(.shadcn-brand-header) {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 3 !important;
+    background: var(--sidebar) !important;
+    padding: 4px 0 8px !important;
+    margin: 0 !important;
+}
+section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stElementContainer"]:has(.sidebar-user-footer),
+section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMarkdownContainer"]:has(.sidebar-user-footer) {
+    position: absolute !important;
+    bottom: 12px !important;
+    left: 0.85rem !important;
+    right: 0.85rem !important;
+    width: auto !important;
+    margin: 0 !important;
+}
+
+.sidebar-gear-link {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.sidebar-gear-link:hover {
+    background: var(--icon-bg);
+    color: var(--text);
+}
+
+.user-avatar-pill {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--blue);
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.user-avatar-pill {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--blue);
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.user-details {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.user-name {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-role-line {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.2;
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.status-dot-active {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--green);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.status-dot-warning {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--amber);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* =========================================================
+   COLLAPSED (MINIMIZED) ICON-ONLY RAIL
+   When user collapses the sidebar via << chevron:
+   Keep a neat 68px width rail showing all icons centered!
+   ========================================================= */
+section[data-testid="stSidebar"][aria-expanded="false"] {
+    display: block !important;
+    visibility: visible !important;
+    margin-left: 0 !important;
+    transform: none !important;
+    min-width: 68px !important;
+    max-width: 68px !important;
+    width: 68px !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    height: 100vh !important;
+    z-index: 99 !important;
+    overflow-x: hidden !important;
+    border-right: 1px solid var(--border) !important;
+    background: var(--sidebar) !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    padding-top: 45px !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] ~ .main {
+    margin-left: 68px !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] > div:first-child {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+}
+
+/* Hide duplicate/inner collapse button when sidebar is already minimized */
+section[data-testid="stSidebar"][aria-expanded="false"] button[data-testid="stSidebarCollapseButton"],
+section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] {
+    display: none !important;
+}
+
+/* Hide text elements in minimized state */
+section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"][aria-expanded="false"] .brand-info,
+section[data-testid="stSidebar"][aria-expanded="false"] .brand-switcher,
+section[data-testid="stSidebar"][aria-expanded="false"] .sidebar-section-label,
+section[data-testid="stSidebar"][aria-expanded="false"] .user-details {
+    display: none !important;
+}
+
+/* Centered item styling in mini rail */
+section[data-testid="stSidebar"][aria-expanded="false"] .stRadio {
+    width: 100% !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] {
+    width: 100% !important;
+    align-items: center !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label {
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 0 !important;
+    margin: 3px auto !important;
+    gap: 0 !important;
+    border-radius: 50% !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    overflow: hidden !important;
+}
+
+/* Hide radio option text and all real children so only ::before icon remains */
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label > span,
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label > div,
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label p,
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label [data-testid="stMarkdownContainer"] * {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    flex: 0 0 0 !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label::before {
+    margin: 0 !important;
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+}
+
+/* Inactive icons when minimized */
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label:not([data-selected]):not([data-checked="true"])::before {
+    background-color: var(--muted) !important;
+    opacity: 0.65 !important;
+}
+
+/* Highlighted active icon when minimized */
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label[data-selected],
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label[data-checked="true"] {
+    background: rgba(59, 130, 246, 0.16) !important;
+    border: 1px solid rgba(59, 130, 246, 0.4) !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label[data-selected]::before,
+section[data-testid="stSidebar"][aria-expanded="false"] [role="radiogroup"] > label[data-checked="true"]::before {
+    background-color: var(--blue) !important;
+    opacity: 1 !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] .shadcn-brand-header,
+section[data-testid="stSidebar"][aria-expanded="false"] .sidebar-user-footer {
+    justify-content: center !important;
+    padding: 6px 0 !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* BUG-079: collapsed rail — shrink card, hide gear link */
+section[data-testid="stSidebar"][aria-expanded="false"] .sidebar-user-footer {
+    justify-content: center !important;
+    padding: 8px 0 !important;
+    margin-top: 8px !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] .user-details {
+    display: none !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] .sidebar-gear-link {
+    display: none !important;
+}
+
+.main .block-container {
+    max-width: 1600px;
+    padding: 22px 32px 42px;
+    margin: 0 auto;
+}
+
+[data-testid="stHorizontalBlock"] {
+    gap: 0.9rem;
+}
+
+h1, h2, h3 {
+    letter-spacing: 0;
+}
+
+.badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.badge-green { color: var(--badge-green-color); background: rgba(34, 197, 94, 0.10); border-color: rgba(34, 197, 94, 0.25); }
+.badge-amber { color: var(--badge-amber-color); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.25); }
+.badge-red { color: var(--badge-red-color); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
+.badge-blue { color: var(--badge-blue-color); background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.25); }
+.badge-purple { color: var(--badge-purple-color); background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
+
+.external-link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(34, 197, 94, 0.28);
+    color: var(--ext-link-color) !important;
+    background: rgba(34, 197, 94, 0.10);
+    font-size: 15px;
+    font-weight: 750;
+    text-decoration: none !important;
+    transition: 180ms ease;
+}
+
+.external-link-button:hover {
+    border-color: rgba(34, 197, 94, 0.48);
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.external-link-button svg {
+    width: 17px;
+    height: 17px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 15px 17px;
+    margin-bottom: 18px;
+    border: 1px solid var(--topbar-border);
+    border-radius: 18px;
+    background: var(--topbar-bg);
+    box-shadow: 0 18px 45px var(--shadow);
+}
+
+.topbar-title {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.topbar-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.faculty-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #FFFFFF;
+    background: var(--blue);
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.hero {
+    margin: 2px 0 18px;
+}
+
+.hero h1 {
+    font-size: 36px;
+    line-height: 1.1;
+    margin: 0;
+    font-weight: 800;
+}
+
+.hero p {
+    color: var(--muted);
+    font-size: 16px;
+    margin: 7px 0 0;
+}
+
+.metric-card, .panel, .empty-state, .profile-panel {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+}
+
+.metric-card {
+    min-height: 146px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.metric-card:hover {
+    border-color: rgba(59, 130, 246, 0.45);
+}
+
+.metric-card::after {
+    display: none;
+}
+
+.metric-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+}
+
+.metric-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--icon-bg);
+    border: 1px solid var(--icon-border);
+}
+
+.metric-value {
+    position: relative;
+    z-index: 1;
+    font-size: 46px;
+    line-height: 1;
+    font-weight: 800;
+    margin-top: 15px;
+}
+
+.metric-label {
+    position: relative;
+    z-index: 1;
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 7px;
+}
+
+.metric-trend {
+    position: relative;
+    z-index: 1;
+    color: var(--metric-trend);
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 9px;
+}
+
+.panel {
+    padding: 15px;
+    margin-bottom: 16px;
+}
+
+.panel-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.panel-title h3 {
+    font-size: 22px;
+    margin: 0;
+    font-weight: 800;
+}
+
+.panel-title span {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.pipeline {
+    display: grid;
+    gap: 7px;
+}
+
+.pipeline-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-size: 15px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--subtle-bg);
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+}
+
+.progress-shell {
+    height: 11px;
+    border-radius: 999px;
+    background: var(--progress-shell);
+    overflow: hidden;
+    margin: 11px 0 9px;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 100%;
+    border-radius: inherit;
+    background: var(--blue);
+}
+
+.run-log-scroll {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.system-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.system-item {
+    padding: 10px 11px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--subtle-bg);
+}
+
+.system-label {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.system-value {
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 700;
+    margin-top: 3px;
+}
+
+.empty-state {
+    min-height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 34px;
+}
+
+.empty-illustration {
+    width: 86px;
+    height: 86px;
+    margin: 0 auto 20px;
+    border-radius: 26px;
+    display: grid;
+    place-items: center;
+    color: #FFFFFF;
+    background: var(--blue);
+}
+
+.empty-state h2 {
+    margin: 0;
+    font-size: 26px;
+}
+
+.empty-state p {
+    color: var(--muted);
+    margin: 8px 0 0;
+    font-size: 16px;
+}
+
+.profile-panel {
+    padding: 15px;
+    position: sticky;
+    top: 20px;
+}
+
+.profile-header {
+    display: flex;
+    gap: 13px;
+    align-items: center;
+    margin-bottom: 13px;
+}
+
+.profile-header img {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+}
+
+.profile-name {
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.profile-sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 3px;
+}
+
+.repo-card {
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--repo-card-bg);
+    transition: 180ms ease;
+    min-height: 118px;
+}
+
+.repo-card:hover {
+    border-color: rgba(59, 130, 246, 0.45);
+}
+
+.repo-name {
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 8px;
+}
+
+.repo-meta {
+    color: var(--muted);
+    font-size: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 9px;
+}
+
+.leader-card {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    margin-bottom: 8px;
+}
+
+.leader-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.leader-rank {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--leader-rank-bg);
+    color: var(--leader-rank-color);
+    font-weight: 800;
+    font-size: 13px;
+}
+
+.leader-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.leader-score {
+    font-size: 22px;
+    font-weight: 800;
+}
+
+/* Cohesive button styling across all Streamlit buttons */
+.stButton > button,
+.stDownloadButton > button,
+.stPopover > button,
+div[data-testid="stPopover"] > button {
+    border-radius: 12px !important;
+    min-height: 40px !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    padding: 0 16px !important;
+    transition: all 180ms ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Secondary & Popover buttons (Limits, Refresh, etc.) */
+.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+.stDownloadButton > button,
+.stPopover > button,
+div[data-testid="stPopover"] > button {
+    background: var(--card-soft) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+}
+
+.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+.stDownloadButton > button:hover,
+.stPopover > button:hover,
+div[data-testid="stPopover"] > button:hover {
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    background: var(--hover-bg) !important;
+    color: var(--text) !important;
+}
+
+/* Primary button (Run Analysis) */
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="stBaseButton-primary"] {
+    background: var(--blue) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--blue) !important;
+}
+
+.stButton > button[kind="primary"]:hover,
+.stButton > button[data-testid="stBaseButton-primary"]:hover {
+    background: #2563EB !important;
+}
+
+.stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stNumberInput input {
+    border-radius: 12px !important;
+    border-color: var(--border) !important;
+    background: var(--sidebar) !important;
+    color: var(--text) !important;
+    font-size: 15px !important;
+    min-height: 42px !important;
+}
+
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    font-size: 15px;
+}
+
+[data-testid="stDataFrame"] * {
+    font-size: 15px !important;
+    line-height: 1.4 !important;
+}
+
+[data-testid="stDataFrame"] [role="columnheader"] * {
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stDataFrame"] [role="row"] {
+    min-height: 38px !important;
+}
+
+.stAlert {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--alert-bg);
+    font-size: 15px;
+}
+
+@media (max-width: 1100px) {
+    .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .system-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==========================================================================
+   Centerpiece File Uploader Card & Blue Action Button
+   ========================================================================== */
+.main [data-testid="stFileUploader"] {
+    width: 100% !important;
+    margin: 10px 0 25px !important;
+}
+
+.main [data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"],
+.main [data-testid="stFileUploader"] section {
+    min-height: 360px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 16px !important;
+    border: 1.5px dashed rgba(59, 130, 246, 0.4) !important;
+    border-radius: 20px !important;
+    background: var(--card) !important;
+    padding: 40px 24px !important;
+    cursor: pointer !important;
+    box-shadow: 0 18px 40px var(--shadow) !important;
+    transition: all 200ms ease !important;
+    text-align: center !important;
+}
+
+.main [data-testid="stFileUploader"] section:hover {
+    border-color: var(--blue) !important;
+    background: rgba(59, 130, 246, 0.04) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Big Blue Center Button */
+.main [data-testid="stFileUploader"] section button,
+.main [data-testid="stFileUploader"] section button[data-testid="stBaseButton-secondary"] {
+    width: 86px !important;
+    height: 86px !important;
+    min-height: 86px !important;
+    border-radius: 26px !important;
+    background: var(--blue) !important;
+    color: transparent !important;
+    border: none !important;
+    display: grid !important;
+    place-items: center !important;
+    cursor: pointer !important;
+    transition: transform 180ms ease !important;
+    margin: 0 auto 6px !important;
+    order: -1 !important;
+    position: relative !important;
+    font-size: 0 !important;
+}
+
+.main [data-testid="stFileUploader"] section button:hover {
+    transform: scale(1.08) !important;
+    border: none !important;
+}
+
+.main [data-testid="stFileUploader"] section button::after {
+    content: "" !important;
+    display: block !important;
+    width: 38px !important;
+    height: 38px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='17 8 12 3 7 8'/%3E%3Cline x1='12' y1='3' x2='12' y2='15'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: contain !important;
+}
+
+/* Dropzone text instructions */
+.main [data-testid="stFileUploader"] section [data-testid="stFileUploaderDropzoneInstructions"] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 6px !important;
+}
+
+.main [data-testid="stFileUploader"] section [data-testid="stFileUploaderDropzoneInstructions"] svg {
+    display: none !important;
+}
+
+.main [data-testid="stFileUploader"] section [data-testid="stFileUploaderDropzoneInstructions"] > span {
+    font-size: 22px !important;
+    font-weight: 800 !important;
+    color: var(--text) !important;
+}
+
+.main [data-testid="stFileUploader"] section [data-testid="stFileUploaderDropzoneInstructions"] > small {
+    font-size: 14px !important;
+    color: var(--muted) !important;
+    font-weight: 500 !important;
+}
+
+/* Selected File Card */
+.main [data-testid="stFileUploader"] [data-testid="stUploadedFileData"],
+.main [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] {
+    border-radius: 18px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--card) !important;
+    padding: 20px 24px !important;
+    margin: 30px auto !important;
+    max-width: 650px !important;
+    box-shadow: 0 16px 36px var(--shadow) !important;
+}
+
+.main [data-testid="stFileUploader"] [data-testid="stUploadedFileData"] * {
+    font-size: 15px !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span {
+    color: var(--text) !important;
+}

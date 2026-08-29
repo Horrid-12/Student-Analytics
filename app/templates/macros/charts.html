@@ -1,0 +1,13 @@
+{% macro chart(id, fig) %}
+{% if fig %}
+<div class="donut-chart" id="{{ id }}"></div>
+<script>
+/* <![CDATA[ */
+(function () {
+  var data = {{ fig | tojson }};
+  Plotly.react(document.getElementById('{{ id }}'), data, {responsive: true});
+})();
+/* ]]> */
+</script>
+{% endif %}
+{% endmacro %}

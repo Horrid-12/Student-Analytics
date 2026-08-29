@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% import "macros/charts.html" as mc %}
+{% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+{% set complete = view is not none and view.state is not none and view.state.status == 'complete' %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">.github Overview</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span>
+        <span>&bull;</span>
+        <span>Last completed analysis: {% if complete %}{{ last_analysis }}{% else %}No completed analysis yet{% endif %}</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <button class="btn btn-primary" type="button" id="run-analysis">Run Analysis</button>
+    <button class="btn" type="button" id="reset-analysis">Reset</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+<div class="auth-notice">
+  Authentication is not configured &mdash; the dashboard is open. Add <code>[AUTH]</code> /
+  <code>FACULTY_PASSWORD_SHA256</code> to <code>.streamlit/secrets.toml</code> before sharing student data.
+</div>
+
+{% include "partials/upload_bar.html" %}
+<div id="upload-result"></div>
+
+<section class="panel">
+  <div class="panel-title">Analysis Pipeline</div>
+  <div class="pipeline">
+    <div class="pipeline-step {{ 'is-done' if not complete or complete else '' }}"><span class="pipeline-index">1</span>Excel Upload</div>
+    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">2</span>Username Extraction</div>
+    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">3</span>Account Validation</div>
+    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">4</span>Repository Fetch</div>
+    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">5</span>Contribution Trends</div>
+    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">6</span>Analytics Build</div>
+  </div>
+  <div class="pipeline-rule"></div>
+  <div class="pipeline-meta" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
+      {% if complete %}
+      <span class="badge-green">{{ payload.status }}</span>
+      <span>Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
+      {% else %}
+      <span class="badge-purple">Idle</span>
+      <span>Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
+      {% endif %}
+    </div>
+    {% if complete %}<span style="font-size:12px; color:#8B8B91;">Completed {{ payload.last_analysis }}</span>{% endif %}
+  </div>
+</section>
+
+<div id="analysis-progress" class="batch-progress" hidden>
+  <div id="analysis-label" class="batch-progress-label">Idle</div>
+  <div class="progress-shell"><div id="analysis-bar" class="progress-bar" style="width:0%"></div></div>
+  <div class="run-log-scroll" id="analysis-log"></div>
+</div>
+
+{% if complete %}
+<section class="panel">
+  <div class="panel-title">Key Metrics</div>
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-blue">Total</span></div>
+      <div class="metric-value">{{ payload.total }}</div>
+      <div class="metric-label">Students</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-green">Connected</span></div>
+      <div class="metric-value">{{ payload.valid }}</div>
+      <div class="metric-label">Valid Accounts</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-red">Invalid</span></div>
+      <div class="metric-value">{{ payload.invalid }}</div>
+      <div class="metric-label">Invalid Accounts</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-amber">Repos</span></div>
+      <div class="metric-value">{{ payload.repos_found }}</div>
+      <div class="metric-label">Repositories Found</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-purple">Active</span></div>
+      <div class="metric-value">{{ payload.submission_rate }}%</div>
+      <div class="metric-label">Submission Rate</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-green">Stars</span></div>
+      <div class="metric-value">{{ payload.total_stars }}</div>
+      <div class="metric-label">Total Stars / Forks</div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-title">Account Validation Status</div>
+  <div class="two-col-grid">
+    <div>
+      {{ mc.chart('account-status-donut', payload.donut_fig) }}
+    </div>
+    <div class="system-grid">
+      <div class="system-item">
+        <div class="system-label">API Status</div>
+        <div class="system-value">{{ payload.api_status }}</div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Analysis Status</div>
+        <div class="system-value">{{ payload.status }}</div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Language Distribution</div>
+        <div class="system-value">{{ payload.most_used_language }}</div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Average Repositories</div>
+        <div class="system-value">{{ payload.avg_repos }}</div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Average Followers</div>
+        <div class="system-value">{{ payload.avg_followers }}</div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Average Quality Score</div>
+        <div class="system-value">{{ payload.avg_quality }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-title">Analysis Results</div>
+  <div class="two-col-grid">
+    <div>
+      <div class="panel-minor-title">Repository Distribution (Students)</div>
+      <div class="donut-chart">{{ mc.chart('repo-dist-area', payload.repo_dist_fig) }}</div>
+    </div>
+    <div>
+      <div class="panel-minor-title">Followers Distribution</div>
+      <div class="donut-chart">{{ mc.chart('followers-dist-area', payload.followers_dist_fig) }}</div>
+    </div>
+    <div style="grid-column: 1 / -1;">
+      <div class="panel-minor-title">Top 10 Languages</div>
+      {{ mc.chart('language-bar', payload.language_fig) }}
+    </div>
+    <div style="grid-column: 1 / -1;">
+      <div class="panel-minor-title">Repository Activity by Division &amp; Batch</div>
+      {{ mc.chart('activity-heatmap', payload.heatmap_fig) }}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-title">Run Log</div>
+  <div class="run-log-scroll run-log-snapshot">
+    {% for line in payload.log %}<div class="batch-log-item">{{ line }}</div>{% endfor %}
+  </div>
+</section>
+
+{% else %}
+<div class="empty-state">
+  <div>
+    <div class="empty-illustration">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+    </div>
+    <h2>Student Analytics Workspace</h2>
+    <p>No student data loaded yet. Upload a roster above and click <strong>Run Analysis</strong> to populate this overview.</p>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  'use strict';
+  var STORE_KEY = 'gsad_roster_v1';
+  var BATCH_SIZE = 25;
+  var running = false;
+  var current = readLocal();
+
+  function readLocal() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+
+  var progressEl = document.getElementById('analysis-progress');
+  var barEl = document.getElementById('analysis-bar');
+  var labelEl = document.getElementById('analysis-label');
+  var logEl = document.getElementById('analysis-log');
+  if (!logEl) return;
+
+  window.__gsadOnRoster = function (data) { current = data || null; };
+
+  function logLine(text, cls) {
+    var line = document.createElement('div');
+    line.className = 'batch-log-item' + (cls ? ' ' + cls : '');
+    line.textContent = text;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setProgress(done, total, status) {
+    progressEl.hidden = false;
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    barEl.style.width = pct + '%';
+    labelEl.textContent = status + ' — analyzing ' + done + ' of ' + total + ' student(s)';
+  }
+
+  function chunk(list, size) {
+    var out = [];
+    for (var i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+    return out;
+  }
+
+  var runBtn = document.getElementById('run-analysis');
+  var resetBtn = document.getElementById('reset-analysis');
+  if (runBtn) runBtn.addEventListener('click', runAll);
+  if (resetBtn) resetBtn.addEventListener('click', resetAll);
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('#upload-result .roster-clear')) {
+      try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+      current = null;
+    }
+  });
+
+  function resetAll() {
+    if (!current) { window.location.reload(); return; }
+    fetch('/upload/reset?roster_id=' + encodeURIComponent(current.roster_id), { method: 'POST' })
+      .catch(function () {});
+    try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+    current = null;
+    window.location.reload();
+  }
+
+  function runAll() {
+    if (running) return;
+    logEl.innerHTML = '';
+    logEl.scrollTop = 0;
+    if (!current || !Array.isArray(current.ids) || !current.ids.length) {
+      logLine('Upload a roster first, then run analysis.', 'error');
+      return;
+    }
+    running = true;
+    if (runBtn) runBtn.disabled = true;
+
+    var rosterId = current.roster_id;
+    var total = current.ids.length;
+    setProgress(0, total, 'running');
+    logLine('Analyzing ' + total + ' student(s) in batches of ' + BATCH_SIZE + '...');
+
+    batchedFetch(rosterId, chunk(current.ids, BATCH_SIZE), total)
+      .then(function (summary) {
+        logLine(summary.text, summary.ok ? '' : 'error');
+        setProgress(summary.done, total, summary.ok ? 'complete' : 'stopped');
+        if (summary.ok) setTimeout(function () { window.location.reload(); }, 600);
+      })
+      .catch(function (err) {
+        logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
+      })
+      .finally(function () {
+        running = false;
+        if (runBtn) runBtn.disabled = false;
+      });
+  }
+
+  function batchedFetch(rosterId, batches, total) {
+    var done = 0;
+    var reduce = function () {
+      if (!batches.length) {
+        return Promise.resolve({ ok: true, done: done, text: 'Done — ' + done + ' student(s) analyzed.' });
+      }
+      var chunkIds = batches.shift();
+      return fetch('/analysis/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roster_id: rosterId, student_ids: chunkIds })
+      }).then(function (resp) {
+        if (resp.status === 429) {
+          return resp.json().then(function (body) {
+            throw new Error('GitHub rate limit reached' + (body.reset_epoch ? ' (resets at ' + body.reset_epoch + ')' : '') + ' — wait, then run again.');
+          });
+        }
+        if (!resp.ok) {
+          return resp.json().then(function (body) {
+            throw new Error((body && body.detail) || ('Request failed (' + resp.status + ')'));
+          });
+        }
+        return resp.json().then(function (data) {
+          done += chunkIds.length;
+          setProgress(done, total, 'running');
+          var r = data.result || {};
+          logLine('Batch done: ' + chunkIds.length + ' student(s) — valid ' + r.valid_users + ', invalid ' + r.invalid_users + ', errors ' + r.error_users + '.');
+          return reduce();
+        });
+      });
+    };
+    return reduce();
+  }
+
+  if (current && current.roster_id) {
+    fetch('/roster/' + encodeURIComponent(current.roster_id))
+      .then(function (resp) {
+        if (resp.status === 404) throw new Error('gone');
+        return resp.json();
+      })
+      .then(function (info) {
+        current = { roster_id: info.roster_id, ids: info.student_ids };
+      })
+      .catch(function () {
+        try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+        current = null;
+      });
+  }
+})();
+</script>
+{% endblock %}

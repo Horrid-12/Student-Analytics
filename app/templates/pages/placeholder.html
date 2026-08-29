@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <div>
+    <div class="empty-illustration">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ icon_svg | safe }}</svg>
+    </div>
+    <h2>{{ title }}</h2>
+    <p>{{ message }}</p>
+    {% if needs_run %}
+    <p style="margin-top:14px; font-size:14px;">This view populates after you upload a roster and run an analysis on the Overview page.</p>
+    {% endif %}
+  </div>
+</div>
+<a class="btn btn-primary" href="/" style="width:100%; box-sizing:border-box;">Go to Overview</a>
+{% endblock %}

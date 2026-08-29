@@ -1,0 +1,463 @@
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+}
+
+a {
+    color: var(--blue);
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+/* Sidebar — mirrors Streamlit stSidebar geometry (280px, bordered, own scroll). */
+.app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    box-sizing: border-box;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 0.2rem 1.5rem 118px;
+    z-index: 10;
+}
+
+/* Brand header sticks to the top while the nav scrolls (legacy 403-402). */
+.sidebar-sticky-brand {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--sidebar);
+    padding: 4px 0 8px;
+    margin-bottom: 12px;
+}
+
+.sidebar-sticky-brand .shadcn-brand-header {
+    margin-bottom: 0;
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+/* Nav items replicating the legacy radio-label styling (style.css 191-272). */
+.sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    margin: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--muted);
+    text-decoration: none;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.sidebar-nav-item:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+.sidebar-nav-item.is-active {
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--blue);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.sidebar-nav-item .nav-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: 0.65;
+    transition: opacity 120ms ease;
+}
+
+.sidebar-nav-item:hover .nav-icon,
+.sidebar-nav-item.is-active .nav-icon {
+    opacity: 1;
+}
+
+.sidebar-nav-item.is-active span {
+    font-weight: 700;
+}
+
+.sidebar-nav-item span {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Account card pinned to the sidebar bottom (legacy 403-411). */
+.sidebar-foot {
+    position: absolute;
+    bottom: 12px;
+    left: 1.5rem;
+    right: 1.5rem;
+    margin: 0;
+    width: auto;
+}
+
+/* Main column — mirrors the LIVE legacy block-container (Streamlit 1.62:
+   96px/80px/160px — the styled 22px 32px 42px never matches its selectors). */
+.main-content {
+    margin-left: 280px;
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+}
+
+.content {
+    max-width: none;
+    margin: 0 auto;
+    padding: 96px 80px 160px;
+}
+
+/* Replicates [data-testid="stMarkdownContainer"] color rule (style.css 1249-1255). */
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content p,
+.main-content span {
+    color: var(--text);
+}
+
+.main-content p {
+    margin: 7px 0 0;
+}
+
+/* Topbar — legacy render_topbar renders inside a card (render_topbar 268-280). */
+.topbar-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 18px 45px var(--shadow);
+    padding: 12px 20px;
+    margin-bottom: 20px;
+}
+
+.topbar-card .topbar {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Auth / open-state notice — mirrors the .stAlert look (style.css 1122-1127). */
+.auth-notice {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--alert-bg);
+    font-size: 15px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    color: var(--text);
+}
+
+/* Uploader bar — clones the LIVE legacy stFileUploader dropzone anatomy
+   (white bar, radius 8, Browse-files button, muted hints). */
+.upload-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: #FFFFFF;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 68px;
+    box-sizing: border-box;
+}
+
+.upload-browse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #FFFFFF;
+    border: 1px solid rgba(15, 23, 42, 0.2);
+    border-radius: 8px;
+    min-height: 40px;
+    padding: 6px 12px;
+    color: #0F172A;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.upload-browse:hover {
+    background: #F1F5F9;
+}
+
+.upload-hint {
+    font-size: 14px;
+    color: rgba(15, 23, 42, 0.6);
+}
+
+/* Buttons — replicates Streamlit button styling (style.css 1043-1089). */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 12px;
+    min-height: 40px;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 0 16px;
+    transition: all 180ms ease;
+    background: var(--card-soft);
+    color: var(--text);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.btn:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+.btn-primary {
+    background: var(--blue);
+    color: #FFFFFF;
+    border: 1px solid var(--blue);
+}
+
+.btn-primary:hover {
+    background: #2563EB;
+    border-color: var(--blue);
+    color: #FFFFFF;
+}
+
+/* Roster upload result — legacy st.success "Roster loaded" card anatomy. */
+.roster-loaded-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    background: rgba(39, 174, 96, 0.08);
+    border: 1px solid rgba(39, 174, 96, 0.35);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.roster-load-error {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.roster-loaded-card .status-icon {
+    color: #27AE60;
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+
+.roster-load-error .status-icon {
+    color: #EF4444;
+}
+
+.roster-load-title {
+    font-weight: 700;
+}
+
+.roster-load-meta {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.roster-clear {
+    margin-left: auto;
+    min-height: 34px;
+    font-size: 13px;
+    padding: 0 12px;
+}
+
+/* Batch analysis progress (3.5) — bar reuses .progress-shell/.progress-bar. */
+.batch-progress {
+    margin-top: 16px;
+}
+
+.batch-progress-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+
+.batch-log-item {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 3px 0;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.batch-log-item.error {
+    color: #EF4444;
+}
+
+/* Metric rows — st.columns gap is 0.9rem (style.css 645-647). */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 16px;
+}
+
+.metrics-grid .metric-card {
+    min-height: 146px;
+}
+
+.metric-meta {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Two-up grids (rows mirror st.columns([1.1, 1]) and st.columns([0.9, 1.3])). */
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 0.9rem;
+    margin-bottom: 16px;
+}
+
+.grid-chart {
+    display: grid;
+    grid-template-columns: 0.9fr 1.3fr;
+    gap: 0.9rem;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+    .metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .grid-2,
+    .grid-chart {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    .content {
+        padding: 40px 24px 80px;
+    }
+    .app-sidebar {
+        position: static;
+        width: 100%;
+        max-height: none;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 1rem;
+    }
+    .sidebar-foot {
+        position: static;
+        margin-top: 20px;
+    }
+    .main-content {
+        margin-left: 0;
+    }
+}
+/* 3.6 page components */
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 18px 45px var(--shadow); padding: 20px; margin-bottom: 20px; }
+.panel-title { font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 14px; }
+.panel-minor-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 14px 0 8px; }
+.pipeline { display: flex; flex-wrap: wrap; gap: 10px; }
+.pipeline-step { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card-soft); color: var(--muted); font-size: 13px; font-weight: 600; }
+.pipeline-step.is-done { border-color: rgba(34, 197, 94, 0.4); color: var(--text); background: rgba(34, 197, 94, 0.07); }
+.pipeline-index { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); color: var(--blue); font-size: 12px; font-weight: 800; }
+.pipeline-rule { height: 1px; background: var(--border); margin: 16px 0; }
+.metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
+@media (max-width: 1400px) { .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 1100px) { .two-col-grid { grid-template-columns: 1fr; } }
+.donut-chart { min-height: 200px; }
+.run-log-snapshot { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #A78BFA; font-size: 12px; font-weight: 600; border: 1px solid rgba(139, 92, 246, 0.3); }
+.filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.search-box-row { flex: 1 1 260px; min-width: 200px; }
+.search-input { width: 100%; box-sizing: border-box; min-height: 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); padding: 0 14px; font-size: 14px; font-family: inherit; }
+.search-input:focus { outline: none; border-color: var(--blue); }
+.filter-select { min-height: 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); padding: 0 12px; font-size: 13px; font-family: inherit; }
+.filter-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.filter-count { font-size: 13px; color: var(--muted); }
+.results-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .results-row { grid-template-columns: 1fr; } }
+.results-main { min-width: 0; }
+.results-side { position: sticky; top: 20px; }
+.data-table-wrap { overflow-x: auto; margin-bottom: 14px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th { text-align: left; padding: 9px 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+.data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.data-table tbody tr:hover { background: var(--hover-bg); }
+.table-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.avatar-fallback, .profile-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); color: var(--blue); font-weight: 700; font-size: 13px; }
+.table-empty { text-align: center; color: var(--muted); padding: 24px 0; }
+.export-row { display: flex; gap: 10px; align-items: center; }
+.profile-panel { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.profile-header { display: flex; gap: 14px; align-items: center; }
+.profile-avatar-wrap { flex-shrink: 0; }
+.profile-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+.profile-avatar-fallback { width: 64px; height: 64px; font-size: 24px; }
+.profile-name { font-size: 17px; font-weight: 800; color: var(--text); }
+.profile-sub { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.profile-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+.profile-stat { text-align: center; }
+.stat-number { font-size: 16px; font-weight: 800; color: var(--text); }
+.stat-label { font-size: 11px; color: var(--muted); }
+.profile-repo { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.external-link-button { display: inline-block; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); font-size: 12px; font-weight: 600; text-decoration: none; }
+.repo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.repo-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card-soft); }
+.repo-name { color: var(--blue); font-weight: 700; text-decoration: none; font-size: 14px; }
+.repo-meta { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.repo-description { font-size: 13px; color: var(--muted); margin: 8px 0; }
+.repo-owner { margin-top: 10px; }
+.leaderboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.leader-card .panel-title { margin-bottom: 8px; }
+.leader-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.leader-row:last-child { border-bottom: none; }
+.leader-rank { font-size: 13px; font-weight: 800; color: var(--blue); min-width: 24px; }
+.leader-title { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leader-sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+.leader-score { font-size: 14px; font-weight: 800; color: var(--text); }
+.table-input { width: 100%; box-sizing: border-box; min-height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); padding: 0 10px; font-size: 13px; font-family: inherit; }
+.issues-table td { white-space: normal; vertical-align: top; }

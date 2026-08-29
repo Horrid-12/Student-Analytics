@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "macros/charts.html" as mc %}
+{% block title %}History — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Run History</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.count }} recorded run{{ payload.count | pluralize }}</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+{% if payload.has_runs %}
+<section class="panel">
+  <div class="panel-title">Trends</div>
+  {{ mc.chart('history-trends', payload.trends_fig) }}
+</section>
+
+<section class="panel">
+  <div class="panel-title">Analysis Runs</div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Run</th><th>Status</th><th>Students</th><th>Valid</th><th>Invalid</th><th>Errors</th><th>Repos Found</th><th>Active Repos</th><th>Avg Quality</th><th>Elapsed (s)</th></tr>
+      </thead>
+      <tbody>
+        {% for run in payload.runs %}
+        <tr>
+          <td>{{ run.friendly }}</td>
+          <td>
+            {% if run.status == 'Complete' %}<span class="badge-green">{{ run.status }}</span>
+            {% elif run.status == 'Partial' %}<span class="badge-amber">{{ run.status }}</span>
+            {% else %}<span class="badge-red">{{ run.status }}</span>{% endif %}
+          </td>
+          <td>{{ run.total_students }}</td>
+          <td>{{ run.valid_accounts }}</td>
+          <td>{{ run.invalid_accounts }}</td>
+          <td>{{ run.error_accounts }}</td>
+          <td>{{ run.repos_found }}</td>
+          <td>{{ run.active_repos }}</td>
+          <td>{% if run.avg_quality_score is not none %}{{ run.avg_quality_score | round(1) }}{% endif %}</td>
+          <td>{% if run.elapsed_seconds %}{{ run.elapsed_seconds | round(1) }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<div class="empty-state">
+  <div>
+    <div class="empty-illustration">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+    </div>
+    <h2>Run History</h2>
+    <p>Past analysis runs, timings, and outcomes appear here after your first complete analysis.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% import "macros/charts.html" as mc %}
+{% block title %}Students — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title" style="font-size:19px; font-weight:800; line-height:1.2;">Students</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{{ payload.total }} students</span>
+      </div>
+    </div>
+    <button class="btn" type="button">Limits</button>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      <span class="badge-purple">Faculty</span>
+      <div class="faculty-avatar">FM</div>
+    </div>
+  </div>
+</div>
+
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <div class="search-box-row">
+    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name, username or language&hellip;">
+  </div>
+  <select class="filter-select" name="division" title="Division">
+    {% for value in payload.divisions %}
+    <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="batch" title="Batch">
+    {% for value in payload.batches %}
+    <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="year" title="Academic Year">
+    {% for value in payload.years %}
+    <option value="{{ value }}" {% if value == year %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="semester" title="Semester">
+    {% for value in payload.semesters %}
+    <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="rows" title="Rows per page" onchange="this.form.submit()">
+    {% for value in payload.row_options %}
+    <option value="{{ value }}" {% if value == payload.page_size %}selected{% endif %}>{{ value }} rows</option>
+    {% endfor %}
+  </select>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/students?roster={{ roster_id }}">Clear</a>
+  <span class="filter-count">{{ payload.showing }} of {{ payload.total }} shown</span>
+</form>
+
+<div class="results-row">
+  <section class="panel results-main">
+    <div class="panel-title">Student Explorer</div>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            {% for column in payload.available_cols %}
+            <th>{{ payload.headers[column] }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in payload.display.to_dict('records') %}
+          <tr class="student-row" data-student-id="{{ row.Student_ID }}">
+            {% for column in payload.available_cols %}
+            <td>
+              {% if column == 'Avatar_URL' %}
+                {% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL }}" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}
+              {% elif column == 'GitHub Profile' %}
+                <a class="external-link-button" href="{{ row['GitHub Profile'] }}" target="_blank" rel="noopener">Profile</a>
+              {% elif column == 'Profile_URL' %}
+                <a class="external-link-button" href="{{ row.Profile_URL }}" target="_blank" rel="noopener">Open</a>
+              {% elif column == 'GitHub_Username' %}
+                <a href="?roster={{ roster_id }}&q={{ row.GitHub_Username }}">{{ row.GitHub_Username }}</a>
+              {% elif column == 'Student_ID' %}
+                <a href="?roster={{ roster_id }}&select={{ row.Student_ID }}">{{ row.Student_ID }}</a>
+              {% elif column == 'Status' %}
+                <span class="badge-green">{{ row.Status }}</span>
+              {% elif column in ['Username_Changed', 'Repo_Fetch_Status', 'Contrib_Fetch_Status'] %}
+                {% if row[column] %}<span class="badge-amber">{{ row[column] }}</span>{% endif %}
+              {% elif row[column] is not none and row[column] != '' %}
+                {% if column == 'Primary_Language' %}<span class="chip">{{ row[column] }}</span>{% else %}{{ row[column] }}{% endif %}
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td class="table-empty" colspan="{{ payload.available_cols | length }}">No students match the current filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="export-row">
+      <a class="btn" href="/students/export?{{ payload.export_query }}">Export CSV</a>
+      <a class="btn" href="/students/export?{{ payload.export_query.replace('format=csv', 'format=xlsx') }}">Export Excel</a>
+    </div>
+  </section>
+
+  <aside class="panel results-side">
+    <div class="panel-title">Student Profile</div>
+    {% if payload.profile %}
+      {% set p = payload.profile %}
+      <div class="profile-panel">
+        <div class="profile-header">
+          <div class="profile-avatar-wrap">
+            {% if p.avatar %}<img src="{{ p.avatar }}" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
+          </div>
+          <div>
+            <div class="profile-name">{{ p.name }}</div>
+            <div class="profile-sub">{{ p.student_id }} &middot; {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}</div>
+            <a class="external-link-button" href="{{ p.profile_url }}" target="_blank" rel="noopener">{{ p.username }}</a>
+          </div>
+        </div>
+        <div class="profile-stats">
+          <div class="profile-stat"><div class="stat-number">{{ p.followers }}</div><div class="stat-label">Followers</div></div>
+          <div class="profile-stat"><div class="stat-number">{{ p.repositories }}</div><div class="stat-label">Repos Found</div></div>
+          <div class="profile-stat"><div class="stat-number">{{ p.active_repos }}</div><div class="stat-label">Active (6m)</div></div>
+          <div class="profile-stat"><div class="stat-number">{{ p.primary_language }}</div><div class="stat-label">Primary Lang</div></div>
+        </div>
+      </div>
+      <div class="panel-minor-title">Recent Repositories</div>
+      {% for repo in p.repos.to_dict('records') %}
+      <div class="profile-repo">
+        <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+        <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
+      </div>
+      {% else %}
+      <p style="color:#8B8B91; font-size:13px; padding:8px 0;">No public repositories found.</p>
+      {% endfor %}
+      {% if p.language_fig %}<div class="panel-minor-title">Language Mix</div>{{ mc.chart('student-langs', p.language_fig) }}{% endif %}
+    {% else %}
+      <p style="color:#8B8B91; font-size:13px; padding:8px 0;">Select a student to inspect their GitHub profile, repositories and language mix.</p>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
