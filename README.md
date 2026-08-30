@@ -1,8 +1,8 @@
 # GitHub Student Analytics Dashboard
 
-Upload a class roster, validate every student's GitHub account, pull their public repos and stats, and explore interactive dashboards — all from one Excel (or CSV) file. Built with Streamlit.
+Upload a class roster, validate every student's GitHub account, pull their public repos and stats, and explore interactive dashboards — all from one Excel (or CSV) file. Built with FastAPI + Jinja2 + HTMX + Plotly and deployed on Vercel.
 
-**Live demo:** https://stud-dashboard.streamlit.app
+**Live demo:** https://student-analytics-iota.vercel.app
 
 ---
 
@@ -15,10 +15,10 @@ Upload your roster, click **Run Analysis**, and get seven pages:
 | **Overview** | Big-picture metrics — total students, valid/invalid accounts, language breakdown, key charts |
 | **Students** | Searchable table of every validated student with profile cards, GitHub username, followers, repo counts, and account age |
 | **Repositories** | Every repo found across all students, as cards or a table, with language tags |
-| **Leaderboards** | Top 10 by repos, followers, public repos, and language usage |
-| **Issues** | Follow-up queue: invalid, missing, or malformed submissions, with clickable profile links |
+| **Leaderboards** | Compare recent activity, public repo counts, follower counts, and language usage across students |
+| **History** | Past analysis runs — timestamps, status, counts, and outcome trends |
+| **Issues** | Follow-up queue: invalid, missing, or malformed submissions, with clickable profile links and an editable workflow |
 | **Verification** | Faculty audit table — exactly which profiles were checked and their status |
-| **Settings** | Runtime info, API cache management |
 
 ### Key features
 
@@ -28,6 +28,7 @@ Upload your roster, click **Run Analysis**, and get seven pages:
 - **Account-age normalization** — repos and followers are shown per year of account age for fair comparisons
 - **Academic year / semester labels** — timestamps are automatically normalized into semesters (July-start calendar)
 - **Full public-repo pagination** — fetches all repos, not just the first 100
+- **Batched, concurrent analysis** — students are processed in server-side batches so progress is tracked and the GitHub API is not oversubscribed
 - **Rate-limit handling** — uses a GitHub token when available; shows friendly errors when quota runs out
 - **Sample mode** — limit the number of students processed to save API quota while testing
 
@@ -45,7 +46,7 @@ Upload your roster, click **Run Analysis**, and get seven pages:
 
 The fastest way to use the dashboard — no setup required:
 
-1. Go to **https://stud-dashboard.streamlit.app**
+1. Go to **https://student-analytics-iota.vercel.app**
 2. Upload your student roster (`.xlsx`, `.xls`, or `.csv`)
 3. Click **Run Analysis**
 4. Explore the seven dashboard pages
@@ -70,8 +71,7 @@ cd Student-Analytics
 ```powershell
 # Windows (PowerShell)
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 ```bash
@@ -95,23 +95,31 @@ Without a token, GitHub allows only **60 requests/hour** — a full roster needs
    GITHUB_TOKEN = "ghp_pasteYourTokenHere"
    ```
 
+The token can also be supplied via the `GITHUB_TOKEN` environment variable (as Vercel does in production).
+
 ### 4. Run the app
 
 ```bash
-streamlit run app.py
+# Windows (PowerShell)
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001
 ```
 
-Opens at http://localhost:8501. The server auto-reloads whenever you save a file.
+```bash
+# macOS / Linux
+uvicorn app.main:app --port 8001
+```
+
+Opens at **http://localhost:8001** (Path `/`). The server auto-reloads with `--reload` while you develop.
 
 ---
 
 ## Using the app (daily workflow)
 
-1. Upload the roster using the sidebar uploader (`.xlsx`, `.xls`, or `.csv`)
-2. **Tick "Custom Value" first** if you're just testing — it limits rows processed and saves your API quota
+1. Upload the roster using the upload bar (`.xlsx`, `.xls`, or `.csv`)
+2. **Limit the samples first** if you're just testing — it limits rows processed and saves your API quota
 3. Click **Run Analysis** and wait — a full roster takes several minutes (it calls GitHub once per student, twice for repos)
-4. Explore the pages via the left sidebar
-5. Export results as CSV from any table page
+4. Explore the pages via the sidebar
+5. Export results as CSV or XLSX from any table page
 
 > **Tip:** The bundled sample file (`Foundation Of Programming-GitHub Link (Responses) (2).xlsx`) works out of the box for testing.
 
@@ -137,18 +145,42 @@ The three legacy "Repository N Link" columns are tolerated if present but **not 
 ## Project structure
 
 ```
-├── app.py              # UI: theme, pages, charts, tables, exports
-├── services.py         # Logic: Excel parsing, GitHub API calls, aggregation
-├── requirements.txt    # Pinned Python dependencies
-├── Taskflow.md         # Roadmap and bug tracker
-├── ANALYSIS.md         # Codebase review: known strengths and issues
-├── Bridge.md           # Stack-switch planning document
+├── app/
+│   ├── main.py          # FastAPI routes, upload/batch/progress endpoints
+│   ├── services.py      # Logic: Excel parsing, GitHub API calls, aggregation
+│   ├── github_client.py # httpx transport + Upstash cache + retry/backoff
+│   ├── batch.py         # Concurrent per-student analysis
+│   ├── views.py         # Page payload builders
+│   ├── charts.py        # Plotly chart helpers
+│   ├── storage.py       # Run-history persistence (analytics_history.db)
+│   └── templates/       # Jinja2 pages + HTMX partials
+├── static/              # CSS / JS assets
+├── tests/               # pytest suite (legacy parity + transport + pages)
+├── api/index.py         # Mangum wrapper — legacy/inert on Vercel, kept for local parity
+├── requirements.txt     # Pinned FastAPI stack dependencies
+├── Taskflow.md          # Roadmap / progress tracker
+├── Bug Tracker.md       # Bug log (BUG-### ids)
+├── ANALYSIS.md          # Codebase review: known strengths and issues
+├── Bridge.md            # Legacy → FastAPI migration planning document
+├── vercel.json          # Vercel Python runtime config (serves app/main.py directly)
 └── .streamlit/
-    ├── config.toml     # Server settings
-    └── secrets.toml    # Your GITHUB_TOKEN (never committed)
+    └── secrets.toml     # Your GITHUB_TOKEN (never committed)
 ```
 
-**Rule of thumb:** if it talks to the internet or does math, it belongs in `services.py`; if it draws something on screen, it belongs in `app.py`.
+**Rule of thumb:** if it talks to the internet or does math, it belongs in `services.py`; if it draws something on screen or handles requests, it belongs in the app/templates layer (and pure logic lives in `views.py`/`charts.py`).
+
+---
+
+## Testing
+
+Tests run against both the frozen legacy `services.py` and the ported `app/services.py` (the alias activated via `MODULE_UNDER_TEST`). Run from the repo root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\ -q                                    # all tests
+$env:MODULE_UNDER_TEST="app.services"; .\.venv\Scripts\python.exe -m pytest tests\ -q; Remove-Item Env:\MODULE_UNDER_TEST  # same suite vs the port
+.\.venv\Scripts\python.exe -m pytest tests\test_github_client.py -q               # transport/cache only (no network)
+.\.venv\Scripts\python.exe -m pytest tests\test_pages_36.py -q                    # page ports (upload + 2 batches)
+```
 
 ---
 
@@ -159,18 +191,21 @@ The three legacy "Repository N Link" columns are tolerated if present but **not 
 | `ModuleNotFoundError: No module named 'pandas'` | Activate the venv first, then `pip install -r requirements.txt` |
 | `Missing required columns: ...` on upload | Wrong file — check the roster format table above; the three "Repository N Link" columns are optional |
 | "GitHub API rate limit reached" | Set up a token (step 3 above), or wait for the reset time shown in the error |
-| Port 8501 already in use | `streamlit run app.py --server.port 8502` |
+| Port 8001 already in use | `uvicorn app.main:app --port 8002` |
 | App breaks after pulling changes | Run `pip install -r requirements.txt` again — dependencies may have changed |
+| Local pages show "placeholder" until an analysis runs | Upload a roster and complete a **Run Analysis** first — most pages populate after a completed run |
 
 ---
 
 ## Deploying (maintainers)
 
-This app runs free on [Streamlit Community Cloud](https://share.streamlit.io):
+This app runs free on [Vercel](https://vercel.com) using the Python native ASGI preset:
 
-1. Push to GitHub
-2. On Streamlit Cloud: **New app** → pick this repo, branch `main`, main file `app.py`
-3. In the app's settings → Secrets, add `GITHUB_TOKEN = "..."` same format as above
+1. Push to the `main` branch — a linked Vercel project auto-deploys on every push
+2. In the project's **Environment Variables**, add `GITHUB_TOKEN = "..."` (same format as above)
+3. Optional — add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for cross-instance caching/persistence
+
+`vercel.json` is minimal — Vercel's Python runtime serves `app/main.py` directly as an ASGI app (no rewrites or Mangum needed). The `api/index.py` Mangum wrapper is kept in-repo only for local/test parity and is inert on Vercel.
 
 ---
 
