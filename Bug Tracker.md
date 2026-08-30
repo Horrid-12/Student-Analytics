@@ -130,7 +130,7 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | BUG-083 | ❌ Open | Storage | `app/storage.py` swallows every sqlite/OSError by design — DB failure is invisible to users; History just renders empty and BUG-046 audit events vanish | Surface storage state on Settings/History (see BUG-085 storage-health card); python logger |
 | BUG-084 | ❌ Open | Analysis | Minor hardening: `RosterStore.clear()` runs without the roster lock and leaves the `workflow:` orphan key (NEW-005); `_locks` dict is never pruned (NEW-006); reset can race an in-flight batch append (NEW-009) | `clear()` under lock, also delete `workflow:` + prune lock; benign locally, negligible on serverless |
 | BUG-085 | ✅ Fixed | UI | Settings page is missing from the new stack — sidebar gear is `href="#settings"` (base.html:47), no selector/route/JS exists, so the gear is a dead anchor (legacy BUG-079/080 parity drop) | Ported `/settings`: storage-health card (honest read-only detection via write-probe, last recorded run table), Dark/Light theme toggle persisted to localStorage `gsad_theme_v1` with no-FOUC `<head>` init, account/role card (token-presence + auth-planned note); gear → `/settings`. Verified: 3 new tests, both suites 129, local uvicorn 200, live smoke |
-
+| BUG-086 | ❌ Open | UI | Light Mode Does Not Work for Pages other than Settings |
 ### Tracked on the Phase 4 roadmap (not current defects)
 
 - NEW-003 SQLite (`analytics_history.db`) is not reliable serverless persistence — repo-root file, per-instance, effectively read-only on Vercel. **→ Taskflow 4.8** (Neon Postgres) — this is the root cause behind BUG-081/083.
