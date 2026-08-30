@@ -74,6 +74,23 @@ def init_db() -> bool:
         return False
 
 
+def storage_healthy() -> bool:
+    """True when the run-history DB both opens AND accepts writes (Vercel's
+    read-only volume fails the insert; the rollback keeps the probe invisible).
+    """
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _init_schema(conn)
+            conn.execute(
+                "INSERT INTO analysis_runs (run_timestamp, status) VALUES ('probe', 'probe')"
+            )
+            conn.rollback()
+        return True
+    except (sqlite3.Error, OSError):
+        return False
+
+
 def record_analysis_run(
     status: str,
     total_students: int,

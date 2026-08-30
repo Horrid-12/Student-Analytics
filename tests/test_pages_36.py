@@ -336,3 +336,31 @@ class TestVercelEntrypoint:
         assert client.get("/api/index.py").status_code == 200
         assert client.get("/api/index.py/history").status_code == 200
         assert client.get("/api/history").status_code == 200
+
+
+class TestSettingsPage:
+    """BUG-085 — Settings was dropped in the new stack; the gear link was a dead
+    #settings fragment with no selector/route/JS. /settings now renders a storage
+    health card + theme toggle, and the gear targets the real route."""
+
+    def _client(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
+        return TestClient(app, raise_server_exceptions=True)
+
+    def test_settings_route_renders(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        r = client.get("/settings")
+        assert r.status_code == 200
+        assert "Run History Storage" in r.text
+        assert "gsad_theme_v1" in r.text
+        assert "data-theme-btn" in r.text
+
+    def test_gear_link_targets_settings_route(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        r = client.get("/")
+        assert 'href="/settings"' in r.text
+        assert 'href="#settings"' not in r.text
+
+    def test_storage_healthy_true_on_writable_tmp_db(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
+        assert storage.storage_healthy() is True

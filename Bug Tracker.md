@@ -15,10 +15,10 @@ This is the single source of truth for correctness work. One row represents one 
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 73 |
-| Open | 0 |
+| Fixed / moved | 74 |
+| Open | 4 |
 | Planned | 5 |
-| Last audit | 2026-08-28 |
+| Last audit | 2026-08-30 |
 
 🗓️ Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
 
@@ -114,6 +114,36 @@ This is the single source of truth for correctness work. One row represents one 
 | BUG-078 | ✅ Fixed | UI | Sidebar nav still shows radio bullets and the selected page isn't highlighted | Root cause: the sidebar radio CSS targeted the old baseweb radio DOM (`label > div:first-child` bullet, `[data-checked="true"]` selected attribute), but Streamlit 1.62 (pinned in requirements) renders react-aria radios — the bullet is `label[data-testid="stRadioOption"] > span + div > div > div:first-child` and selection is marked `data-selected`. So the bullet was never hidden and the highlight never matched. Fix: updated every sidebar selector in `style.css` (and the duplicate inline block in `app.py` `render_sidebar`) to the 1.62 react-aria path for bullet removal, and to `[data-selected]` (with `[data-checked="true"]` kept as a legacy fallback) for the blue text/icon highlight. Verified: AppTest full page sweep with zero exceptions across all 8 pages after the change. Follow-up fixes: (a) collapsed mini-rail highlight overflowed the 68px rail — Streamlit 1.62 radio label text has no `stMarkdownContainer` testid, so the hide-text rule missed and the base `width:100%` label rule won; collapsed labels now get a fixed 40×40px centered pill with their `p` text hidden. (b) Changed collapsed labels to `border-radius: 50%` so they render as perfect circles with centered icons. |
 | BUG-079 | ✅ Fixed | UI | Settings clutters the main nav and can't live inside the account card | Moved Settings out of the sidebar radio (nav now shows 7 pages; radio guards against a stale `sidebar_nav` == "Settings") into the "Connected • Open Access" footer card as an inline `<a class="sidebar-gear-link">` (SVG gear) inside the card's own `st.markdown` HTML — no `st.columns`/`st.button` widget infrastructure was able to fit a 32px gear beside the card text without truncating it (columns + pinned-width rules were tried and rejected). Clicking the link navigates to `?page=Settings`; a near-top dispatch reads the query param and routes to Settings. Role labels shortened (Admin/Faculty/Student; open-access role shows just "Connected"). Collapsed mini-rail hides the gear link. Verified with AppTest: radio shows 7 options, `?page=Settings` lands on Settings with zero exceptions, student role renders the card without a gear. |
 | BUG-080 | ✅ Fixed | UI | Clicking Light mode on Settings bounces back to the front page | Root cause: the Settings navigation was a one-shot `sidebar_override` value that was popped on the first rerun after arrival, so the very next rerun (e.g. toggling the theme radio on Settings) fell back to whatever page the sidebar radio still pointed at (Overview). Fix: the override is now a persistent flag (`sidebar_override` + a saved `sidebar_nav_saved`) that keeps dispatching to Settings on every rerun while the radio stays on the pre-Settings page; explicit navigation (radio click or a `page_nav_target` CTA) clears it and follows the new page. `st.query_params` is cleared after reading so the URL doesn't stay polluted. Verified with AppTest: `?page=Settings` → toggle theme to Light → still on Settings with theme state `Light`; then radio → Students leaves Settings and drops the override. |
+
+## Post-cutover audit (2026-08-30)
+
+Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend yet) against the
+`NEW-###` findings. Triaged into: open defects (fix candidates), Phase 4 roadmap work, and declined
+(by-design / false-positive).
+
+### Open defects — new stack
+
+| ID | Status | Area | Problem | Next action |
+|---|---|---|---|---|
+| BUG-081 | ❌ Open | Storage | `record_analysis_run_if_fresh` (app/main.py:306) sets `state["recorded"]=True` and persists BEFORE the DB write, discarding `record_analysis_run()`'s bool return — on Vercel's read-only volume the write fails, so the run is never recorded and never retried (History stays empty silently) | Mark `recorded` only when the DB write returns True; log failures |
+| BUG-082 | ❌ Open | Analysis | `append_analysis` (app/main.py:192) appends students/repos/issues unconditionally and adds `done` per batch — a retried/re-sent batch duplicates rows and can flip `complete` (done ≥ total) with students still missing | Dedupe by student id per analysis state; don't double-count |
+| BUG-083 | ❌ Open | Storage | `app/storage.py` swallows every sqlite/OSError by design — DB failure is invisible to users; History just renders empty and BUG-046 audit events vanish | Surface storage state on Settings/History (see BUG-085 storage-health card); python logger |
+| BUG-084 | ❌ Open | Analysis | Minor hardening: `RosterStore.clear()` runs without the roster lock and leaves the `workflow:` orphan key (NEW-005); `_locks` dict is never pruned (NEW-006); reset can race an in-flight batch append (NEW-009) | `clear()` under lock, also delete `workflow:` + prune lock; benign locally, negligible on serverless |
+| BUG-085 | ✅ Fixed | UI | Settings page is missing from the new stack — sidebar gear is `href="#settings"` (base.html:47), no selector/route/JS exists, so the gear is a dead anchor (legacy BUG-079/080 parity drop) | Ported `/settings`: storage-health card (honest read-only detection via write-probe, last recorded run table), Dark/Light theme toggle persisted to localStorage `gsad_theme_v1` with no-FOUC `<head>` init, account/role card (token-presence + auth-planned note); gear → `/settings`. Verified: 3 new tests, both suites 129, local uvicorn 200, live smoke |
+
+### Tracked on the Phase 4 roadmap (not current defects)
+
+- NEW-003 SQLite (`analytics_history.db`) is not reliable serverless persistence — repo-root file, per-instance, effectively read-only on Vercel. **→ Taskflow 4.8** (Neon Postgres) — this is the root cause behind BUG-081/083.
+- NEW-015 conflicting shared-storage architecture (SQLite history + Upstash/cache roster+analysis + in-memory). **→ Taskflow 4.8** unifies them.
+- NEW-007 batches can stay stuck `running` if the client disconnects mid-run (completion only fires on a batch POST) — short runs + re-upload make this tolerable now. **→ Taskflow 4.10** (cross-instance state + reconcile).
+
+### Reviewed & declined (expected / false positive)
+
+- NEW-001 (Vercel function mismatch): native FastAPI preset serves `app/main.py`; legacy `api/index.py` is deliberately inert-but-present for tests/parity (Taskflow 3.8).
+- NEW-002 (no rewrite routing): rewrites intentionally removed — the Python framework preset handles all requests; live smoke proved it.
+- NEW-010 (token-keyed cache keys): intentional (never serve a cached body from a different credential); one token per env, negligible cost.
+- NEW-011 (`list[str] = []` default on `BatchRequest`): false positive — Pydantic v2 deep-copies defaults per instance.
+- NEW-012 (`History ORDER BY id`): not a bug — AUTOINCREMENT order is chronological and more stable than second-resolution timestamps.
 
 ## Verification checklist
 

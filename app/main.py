@@ -49,6 +49,7 @@ def slug_for(page: str) -> str:
         "History": "history",
         "Issues": "issues",
         "Verification": "verification",
+        "Settings": "settings",
     }
     return SLUGS.get(page, page.lower())
 
@@ -635,6 +636,41 @@ def verification_export(
     payload = views.verification_payload(view, q, status, rows)
     df = payload["filtered"].copy()
     return _export_response(df, format, "verification")
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    """Settings — storage health (honest about serverless read-only), theme
+    toggle (persisted in localStorage), and the account/role card (auth is a
+    Phase 4.7 placeholder until then)."""
+    ctx = _base_context("Settings")
+    storage_ok, last_run = False, None
+    try:
+        storage_ok = storage.storage_healthy()
+        if storage_ok:
+            row = storage.last_recorded_run()
+            if row:
+                last_run = {
+                    "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
+                    "status": row.get("status") or "Complete",
+                    "total_students": int(row.get("total_students") or 0),
+                    "valid_accounts": int(row.get("valid_accounts") or 0),
+                    "error_accounts": int(row.get("error_accounts") or 0),
+                    "repos_found": int(row.get("repos_found") or 0),
+                }
+    except Exception:
+        storage_ok = False
+    return templates.TemplateResponse(
+        request,
+        "pages/settings.html",
+        {
+            **ctx,
+            "storage_ok": storage_ok,
+            "db_path": str(storage.DB_PATH),
+            "last_run": last_run,
+            "token_present": bool(github_client.load_token()),
+        },
+    )
 
 
 @app.post("/upload")
