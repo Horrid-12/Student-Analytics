@@ -16,7 +16,7 @@ This is the single source of truth for correctness work. One row represents one 
 | Metric | Count |
 |---|---:|
 | Fixed / moved | 74 |
-| Open | 4 |
+| Open | 6 |
 | Planned | 5 |
 | Last audit | 2026-08-30 |
 
@@ -91,12 +91,12 @@ This is the single source of truth for correctness work. One row represents one 
 | ID | Status | Area | Problem | Next action |
 |---|---|---|---|---|
 | BUG-056 | ✅ Fixed | UI | "Custom Value" checkbox is confusing | Replaced with a sample-row number input; 0 analyzes the full roster. |
-| BUG-057 | 🗓️ Planned | UX | UI is too blocky and cluttered | Add spacing, reduce visual density, use cards/whitespace |
-| BUG-058 | 🗓️ Planned | UX | Graphs are too generic | Richer chart types, better styling, context labels |
-| BUG-059 | 🗓️ Planned | UX | Buttons are too generic | Consistent primary/secondary button styles |
-| BUG-060 | 🗓️ Planned | UX | Sidebar is ugly | Sidebar redesign — icons, grouping, visual hierarchy |
+| BUG-057 | 🗓️ Planned | UX | UI is too blocky and cluttered | Absorbed into Taskflow 4.1 UI/UX rewrite |
+| BUG-058 | 🗓️ Planned | UX | Graphs are too generic | Absorbed into Taskflow 4.1 UI/UX rewrite |
+| BUG-059 | 🗓️ Planned | UX | Buttons are too generic | Absorbed into Taskflow 4.1 UI/UX rewrite |
+| BUG-060 | 🗓️ Planned | UX | Sidebar is ugly | Absorbed into Taskflow 4.1 UI/UX rewrite |
 | BUG-061 | ✅ Fixed | UX | No use of + Icon Next the Spreadsheet Upload | Resolved by keeping the spreadsheet uploader free of an unnecessary plus icon. |
-| BUG-062 | 🗓️ Planned | UX | Graph styles are inconsistent across pages | Unified chart theme and sizing |
+| BUG-062 | 🗓️ Planned | UX | Graph styles are inconsistent across pages | Absorbed into Taskflow 4.1 UI/UX rewrite |
 | BUG-063 | ✅ Fixed | Feature | No live run logs | Added a scrollable live run log that updates during analysis. |
 | BUG-064 | ✅ Fixed | UI | "Unknown Language" label is unclear | Language breakdown charts and leaderboard now label missing languages as "Misc". |
 | BUG-065 | ✅ Fixed | UI | Redundant "Language" footer under top Languages | Removed the redundant "Language" badge shown beneath each Top Languages entry. |
@@ -130,7 +130,9 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | BUG-083 | ❌ Open | Storage | `app/storage.py` swallows every sqlite/OSError by design — DB failure is invisible to users; History just renders empty and BUG-046 audit events vanish | Surface storage state on Settings/History (see BUG-085 storage-health card); python logger |
 | BUG-084 | ❌ Open | Analysis | Minor hardening: `RosterStore.clear()` runs without the roster lock and leaves the `workflow:` orphan key (NEW-005); `_locks` dict is never pruned (NEW-006); reset can race an in-flight batch append (NEW-009) | `clear()` under lock, also delete `workflow:` + prune lock; benign locally, negligible on serverless |
 | BUG-085 | ✅ Fixed | UI | Settings page is missing from the new stack — sidebar gear is `href="#settings"` (base.html:47), no selector/route/JS exists, so the gear is a dead anchor (legacy BUG-079/080 parity drop) | Ported `/settings`: storage-health card (honest read-only detection via write-probe, last recorded run table), Dark/Light theme toggle persisted to localStorage `gsad_theme_v1` with no-FOUC `<head>` init, account/role card (token-presence + auth-planned note); gear → `/settings`. Verified: 3 new tests, both suites 129, local uvicorn 200, live smoke |
-| BUG-086 | ❌ Open | UI | Light Mode Does Not Work for Pages other than Settings |
+| BUG-086 | ❌ Open | UI | Light mode does not fully apply outside Settings — charts (`charts.py`) hardcode dark (`#1F1F24` hover bg, `#2A2A30` grid, `#A1A1AA` text) and many colors in `static/style.css`/`static/layout.css` are untokenized, so toggling light themes the shell but leaves dark surfaces/charts | Taskflow 4.1 rewrite: tokenize everything through `theme.css` v2 + theme-aware Plotly palette; verify each page in both themes |
+| BUG-087 | ❌ Open | UI | Upload control is full white in dark theme — `.upload-bar`/`.upload-browse` (layout.css:188-218) hardcode `#FFFFFF` + slate text (the legacy Streamlit dropzone clone, delivered with 3.2 landing alignment); clashes with any dark surface | Taskflow 4.1 rebuild: theme-token surfaces, drop the Streamlit mimicry |
+| BUG-088 | ❌ Open | UI | UI copy typos / artifact titles across the new stack — e.g. Overview page title renders ".github Overview" (pages/overview.html:11), pattern of `style="font-size:19px"` heads repeated per-page instead of shared classes | Taskflow 4.1 copy sweep + shared `page-head` component |
 ### Tracked on the Phase 4 roadmap (not current defects)
 
 - NEW-003 SQLite (`analytics_history.db`) is not reliable serverless persistence — repo-root file, per-instance, effectively read-only on Vercel. **→ Taskflow 4.8** (Neon Postgres) — this is the root cause behind BUG-081/083.
