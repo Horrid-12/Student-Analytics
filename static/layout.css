@@ -183,14 +183,15 @@ button {
     color: var(--text);
 }
 
-/* Uploader bar — clones the LIVE legacy stFileUploader dropzone anatomy
-   (white bar, radius 8, Browse-files button, muted hints). */
+/* Uploader bar — BUG-087: uses theme tokens so the control adapts to both
+   dark and light themes instead of hardcoding white. */
 .upload-bar {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 16px;
-    background: #FFFFFF;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px;
     min-height: 68px;
@@ -202,25 +203,25 @@ button {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    background: #FFFFFF;
-    border: 1px solid rgba(15, 23, 42, 0.2);
+    background: var(--card-soft);
+    border: 1px solid var(--border);
     border-radius: 8px;
     min-height: 40px;
     padding: 6px 12px;
-    color: #0F172A;
+    color: var(--text);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 150ms ease;
+    transition: background 150ms ease, border-color 150ms ease;
 }
 
 .upload-browse:hover {
-    background: #F1F5F9;
+    background: var(--hover-bg);
 }
 
 .upload-hint {
     font-size: 14px;
-    color: rgba(15, 23, 42, 0.6);
+    color: var(--muted);
 }
 
 /* Buttons — replicates Streamlit button styling (style.css 1043-1089). */

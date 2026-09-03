@@ -13,9 +13,10 @@ PURPLE = "#8B5CF6"
 DONUT_COLORS = ["#3B82F6", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"]
 
 _AXIS = dict(
-    gridcolor="rgba(42, 42, 48, 0.55)",
-    color="#2A2A30",
-    tickfont=dict(color="#A1A1AA", size=13, family="Inter"),
+    # BUG-086: neutral placeholders — theme-aware values injected by charts.html macro at render time.
+    gridcolor="transparent",
+    color="transparent",
+    tickfont=dict(color="transparent", size=13, family="Inter"),
 )
 
 
@@ -25,10 +26,11 @@ def _layout(fig, title, height):
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#A1A1AA", family="Inter"),
+        font=dict(color="transparent", family="Inter"),
         margin=dict(l=10, r=10, t=40 if title else 8, b=10),
         showlegend=False,
-        hoverlabel=dict(bgcolor="#1F1F24", bordercolor="#2A2A30", font=dict(color="#FFFFFF")),
+        # BUG-086: hoverlabel colours injected by JS — placeholder keeps structure valid.
+        hoverlabel=dict(bgcolor="transparent", bordercolor="transparent", font=dict(color="transparent")),
     )
     return fig
 
@@ -44,7 +46,7 @@ def donut(labels, values, title=None, colors=None):
             sort=False,
             marker=dict(colors=colors or DONUT_COLORS[: len(values)]),
             textinfo="label+percent",
-            textfont=dict(color="#FFFFFF", size=12),
+            textfont=dict(color="transparent", size=12),  # BUG-086: injected by JS
             hovertemplate="%{label}: %{value}<extra></extra>",
         )
     )
@@ -52,11 +54,11 @@ def donut(labels, values, title=None, colors=None):
         title=title,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#A1A1AA", family="Inter"),
+        font=dict(color="transparent", family="Inter"),  # BUG-086: injected by JS
         margin=dict(l=10, r=10, t=40 if title else 12, b=10),
         showlegend=True,
         height=260,
-        hoverlabel=dict(bgcolor="#1F1F24", bordercolor="#2A2A30", font=dict(color="#FFFFFF")),
+        hoverlabel=dict(bgcolor="transparent", bordercolor="transparent", font=dict(color="transparent")),
         legend=dict(orientation="h", yanchor="bottom", y=-0.12),
     )
     return fig.to_dict()

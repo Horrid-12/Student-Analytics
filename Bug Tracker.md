@@ -15,10 +15,10 @@ This is the single source of truth for correctness work. One row represents one 
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 74 |
-| Open | 6 |
+| Fixed / moved | 77 |
+| Open | 3 |
 | Planned | 5 |
-| Last audit | 2026-08-30 |
+| Last audit | 2026-09-03 |
 
 🗓️ Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
 
@@ -130,9 +130,10 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | BUG-083 | ❌ Open | Storage | `app/storage.py` swallows every sqlite/OSError by design — DB failure is invisible to users; History just renders empty and BUG-046 audit events vanish | Surface storage state on Settings/History (see BUG-085 storage-health card); python logger |
 | BUG-084 | ❌ Open | Analysis | Minor hardening: `RosterStore.clear()` runs without the roster lock and leaves the `workflow:` orphan key (NEW-005); `_locks` dict is never pruned (NEW-006); reset can race an in-flight batch append (NEW-009) | `clear()` under lock, also delete `workflow:` + prune lock; benign locally, negligible on serverless |
 | BUG-085 | ✅ Fixed | UI | Settings page is missing from the new stack — sidebar gear is `href="#settings"` (base.html:47), no selector/route/JS exists, so the gear is a dead anchor (legacy BUG-079/080 parity drop) | Ported `/settings`: storage-health card (honest read-only detection via write-probe, last recorded run table), Dark/Light theme toggle persisted to localStorage `gsad_theme_v1` with no-FOUC `<head>` init, account/role card (token-presence + auth-planned note); gear → `/settings`. Verified: 3 new tests, both suites 129, local uvicorn 200, live smoke |
-| BUG-086 | ❌ Open | UI | Light mode does not fully apply outside Settings — charts (`charts.py`) hardcode dark (`#1F1F24` hover bg, `#2A2A30` grid, `#A1A1AA` text) and many colors in `static/style.css`/`static/layout.css` are untokenized, so toggling light themes the shell but leaves dark surfaces/charts | Taskflow 4.1 rewrite: tokenize everything through `theme.css` v2 + theme-aware Plotly palette; verify each page in both themes |
-| BUG-087 | ❌ Open | UI | Upload control is full white in dark theme — `.upload-bar`/`.upload-browse` (layout.css:188-218) hardcode `#FFFFFF` + slate text (the legacy Streamlit dropzone clone, delivered with 3.2 landing alignment); clashes with any dark surface | Taskflow 4.1 rebuild: theme-token surfaces, drop the Streamlit mimicry |
-| BUG-088 | ❌ Open | UI | UI copy typos / artifact titles across the new stack — e.g. Overview page title renders ".github Overview" (pages/overview.html:11), pattern of `style="font-size:19px"` heads repeated per-page instead of shared classes | Taskflow 4.1 copy sweep + shared `page-head` component |
+| BUG-086 | ✅ Fixed | UI | `_AXIS`, `_layout()`, and `donut()` in `charts.py` replaced dark-only hex values with neutral transparent placeholders. The `charts.html` macro now reads `document.documentElement.dataset.theme` before each `Plotly.react()` and injects theme-correct grid, tick, hover, and font colours. A `window storage` listener re-renders all charts when `gsad_theme_v1` changes, so toggling theme on Settings updates charts immediately without a page reload. | Taskflow 4.1 rewrite: tokenize everything through `theme.css` v2 + theme-aware Plotly palette; verify each page in both themes |
+| BUG-087 | ✅ Fixed | UI | `.upload-bar`, `.upload-browse`, `.upload-browse:hover`, and `.upload-hint` in `layout.css` now use `var(--card)`, `var(--card-soft)`, `var(--border)`, `var(--text)`, `var(--muted)`, and `var(--hover-bg)` — all already defined for both dark and light themes in `theme.css`. The upload control adapts to both themes with zero JS changes. | Taskflow 4.1 rebuild: theme-token surfaces, drop the Streamlit mimicry |
+| BUG-088 | ✅ Fixed | UI | Overview page title fixed from `.github Overview` → `Overview`. Removed 9 redundant `style="font-size:19px; font-weight:800; line-height:1.2;"` inline attributes from all page templates and the shared `partials/topbar.html`. `.topbar-title` in `style.css` updated to the correct authoritative values (19px / 800 / 1.2) so the class alone controls sizing. | Taskflow 4.1 copy sweep + shared `page-head` component |
+
 ### Tracked on the Phase 4 roadmap (not current defects)
 
 - NEW-003 SQLite (`analytics_history.db`) is not reliable serverless persistence — repo-root file, per-instance, effectively read-only on Vercel. **→ Taskflow 4.8** (Neon Postgres) — this is the root cause behind BUG-081/083.
