@@ -42,6 +42,11 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
     df = pd.DataFrame(records)
     usernames = df["GitHub_Username"].tolist() if "GitHub_Username" in df.columns else []
 
+    analysis_keys = [
+        str(record.get("_analysis_key", index))
+        for index, record in enumerate(records)
+    ]
+
     valid_users, invalid_users, error_users, user_payloads = services.validate_users(usernames, token)
     github_stats = services.build_github_stats(valid_users, user_payloads)
     valid_for_repos = list(github_stats["GitHub_Username"]) if not github_stats.empty else []
@@ -66,6 +71,20 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
     if not duplicate_students.empty:
         issues = pd.concat([issues, duplicate_students], ignore_index=True).drop_duplicates()
 
+    valid_set = {str(username).strip().lower() for username in valid_users if username}
+    invalid_set = {str(username).strip().lower() for username in invalid_users if username}
+    error_set = {str(username).strip().lower() for username in error_users if username}
+    outcomes = {}
+    for key, username in zip(analysis_keys, usernames):
+        if pd.isna(username) or not str(username).strip():
+            outcome = "invalid"
+        else:
+            lowered = str(username).strip().lower()
+            outcome = "valid" if lowered in valid_set else "error" if lowered in error_set else "invalid"
+            if lowered in invalid_set:
+                outcome = "invalid"
+        outcomes[key] = outcome
+
     return {
         "students": _json_rows(dashboard_df),
         "repos": _json_rows(repo_df),
@@ -77,4 +96,5 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         "contrib_unavailable_users": list(contrib_unavailable),
         "status": services.determine_analysis_status(valid_users, error_users),
         "analyzed": len(records),
+        "student_outcomes": outcomes,
     }

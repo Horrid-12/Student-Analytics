@@ -30,7 +30,6 @@ Upload your roster, click **Run Analysis**, and get seven pages:
 - **Full public-repo pagination** — fetches all repos, not just the first 100
 - **Batched, concurrent analysis** — students are processed in server-side batches so progress is tracked and the GitHub API is not oversubscribed
 - **Rate-limit handling** — uses a GitHub token when available; shows friendly errors when quota runs out
-- **Sample mode** — limit the number of students processed to save API quota while testing
 
 ---
 
@@ -116,10 +115,9 @@ Opens at **http://localhost:8001** (Path `/`). The server auto-reloads with `--r
 ## Using the app (daily workflow)
 
 1. Upload the roster using the upload bar (`.xlsx`, `.xls`, or `.csv`)
-2. **Limit the samples first** if you're just testing — it limits rows processed and saves your API quota
-3. Click **Run Analysis** and wait — a full roster takes several minutes (it calls GitHub once per student, twice for repos)
-4. Explore the pages via the sidebar
-5. Export results as CSV or XLSX from any table page
+2. Click **Run Analysis** and wait — a full roster takes several minutes (it calls GitHub once per student, twice for repos)
+3. Explore the pages via the sidebar
+4. Export results as CSV or XLSX from any table page
 
 > **Tip:** The bundled sample file (`Foundation Of Programming-GitHub Link (Responses) (2).xlsx`) works out of the box for testing.
 
@@ -156,7 +154,7 @@ The three legacy "Repository N Link" columns are tolerated if present but **not 
 │   └── templates/       # Jinja2 pages + HTMX partials
 ├── static/              # CSS / JS assets
 ├── tests/               # pytest suite (legacy parity + transport + pages)
-├── api/index.py         # Mangum wrapper — legacy/inert on Vercel, kept for local parity
+├── api/index.py         # Mangum wrapper — local/test companion; inert on Vercel
 ├── requirements.txt     # Pinned FastAPI stack dependencies
 ├── Taskflow.md          # Roadmap / progress tracker
 ├── Bug Tracker.md       # Bug log (BUG-### ids)

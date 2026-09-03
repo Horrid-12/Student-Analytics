@@ -7,8 +7,8 @@
   /* BUG-086: theme-aware Plotly renderer.
      Palette values mirror theme.css :root (dark) and [data-theme="light"]. */
   var PALETTES = {
-    dark:  { grid: 'rgba(42,42,48,0.55)', tick: '#A1A1AA', hover_bg: '#1F1F24', hover_border: '#2A2A30', hover_font: '#FFFFFF', font: '#A1A1AA' },
-    light: { grid: 'rgba(203,213,225,0.7)', tick: '#64748B', hover_bg: '#FFFFFF',  hover_border: '#CBD5E1', hover_font: '#0F172A',  font: '#64748B'  }
+    dark:  { grid: 'rgba(42,42,48,0.55)', tick: '#A1A1AA', hover_bg: '#1F1F24', hover_border: '#2A2A30', hover_font: '#FFFFFF', font: '#A1A1AA', heatmap_low: '#18181B', heatmap_mid: '#1D4ED8', heatmap_high: '#22C55E' },
+    light: { grid: 'rgba(203,213,225,0.7)', tick: '#64748B', hover_bg: '#FFFFFF',  hover_border: '#CBD5E1', hover_font: '#0F172A',  font: '#64748B',  heatmap_low: '#F8FAFC', heatmap_mid: '#2563EB', heatmap_high: '#16A34A' }
   };
 
   function palette() {
@@ -26,12 +26,26 @@
     };
   }
 
+  function themeData() {
+    var p = palette();
+    return (figData.data || figData).map(function (trace) {
+      var next = Object.assign({}, trace);
+      if (next.type === 'pie') {
+        next.textfont = Object.assign({}, next.textfont || {}, { color: p.font });
+      }
+      if (next.type === 'heatmap') {
+        next.colorscale = [[0, p.heatmap_low], [0.5, p.heatmap_mid], [1, p.heatmap_high]];
+      }
+      return next;
+    });
+  }
+
   var el = document.getElementById('{{ id }}');
   var figData = {{ fig | tojson }};
 
   function render() {
     var layout = Object.assign({}, figData.layout || {}, themeLayout());
-    Plotly.react(el, figData.data || figData, layout, { responsive: true });
+    Plotly.react(el, themeData(), layout, { responsive: true });
   }
 
   render();

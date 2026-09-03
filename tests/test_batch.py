@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import batch
+from app import batch, storage
 from app.main import app, roster_store
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -218,6 +218,51 @@ class TestBatchEndpoints:
         assert state["done"] == 2
         assert state["status"] == "complete"
         assert len(state["students"]) == 2
+
+    def test_replayed_batch_is_idempotent(self, monkeypatch):
+        patch_app_pipeline(monkeypatch, crash_free_fake())
+        data = upload_roster(self.client)
+        roster_id = data["roster_id"]
+        student_ids = [s["student_id"] for s in data["students"]]
+        payload = {"roster_id": roster_id, "student_ids": student_ids}
+
+        first = self.client.post("/analysis/batch", json=payload)
+        second = self.client.post("/analysis/batch", json=payload)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        state = roster_store.get_analysis(roster_id)
+        assert state["done"] == 2
+        assert state["valid"] == 2
+        assert len(state["students"]) == 2
+        assert len(state["repos"]) == 3
+
+    def test_history_write_failure_is_retryable(self, monkeypatch, tmp_path):
+        patch_app_pipeline(monkeypatch, crash_free_fake())
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "history.db")
+        original_record = storage.record_analysis_run
+        calls = []
+
+        def fail_once(*args, **kwargs):
+            calls.append(True)
+            return False if len(calls) == 1 else original_record(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "record_analysis_run", fail_once)
+        data = upload_roster(self.client)
+        payload = {
+            "roster_id": data["roster_id"],
+            "student_ids": [s["student_id"] for s in data["students"]],
+        }
+
+        first = self.client.post("/analysis/batch", json=payload)
+        assert first.status_code == 200
+        assert roster_store.get_analysis(data["roster_id"])["recorded"] is False
+        assert len(storage.load_run_history()) == 0
+
+        second = self.client.post("/analysis/batch", json=payload)
+        assert second.status_code == 200
+        assert roster_store.get_analysis(data["roster_id"])["recorded"] is True
+        assert len(storage.load_run_history()) == 1
 
     def test_progress_endpoint(self, monkeypatch):
         patch_app_pipeline(monkeypatch, crash_free_fake())

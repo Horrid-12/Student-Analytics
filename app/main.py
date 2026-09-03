@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,9 +15,11 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import batch, charts, github_client, services, storage, views
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -89,15 +93,29 @@ class RosterStore:
         self._ttl = ttl
         self._cache = github_client.build_default_cache()
         self._locks: dict[str, threading.Lock] = {}
+        self._lock_refs: dict[str, int] = {}
         self._locks_guard = threading.Lock()
 
-    def _lock_for(self, roster_id: str) -> threading.Lock:
+    @contextmanager
+    def _locked(self, roster_id: str):
         with self._locks_guard:
             lock = self._locks.get(roster_id)
             if lock is None:
                 lock = threading.Lock()
                 self._locks[roster_id] = lock
-            return lock
+            self._lock_refs[roster_id] = self._lock_refs.get(roster_id, 0) + 1
+        try:
+            with lock:
+                yield
+        finally:
+            with self._locks_guard:
+                refs = self._lock_refs.get(roster_id, 1) - 1
+                if refs <= 0:
+                    self._lock_refs.pop(roster_id, None)
+                    if self._locks.get(roster_id) is lock:
+                        self._locks.pop(roster_id, None)
+                else:
+                    self._lock_refs[roster_id] = refs
 
     def put(self, roster_id: str, records: list[dict]) -> None:
         self._cache.set(f"roster:{roster_id}", json.dumps(records, default=str), self._ttl)
@@ -139,9 +157,11 @@ class RosterStore:
             return {}
 
     def clear(self, roster_id: str) -> None:
-        self._cache.delete(f"roster:{roster_id}")
-        self._cache.delete(f"analysis:{roster_id}")
-        self._cache.delete(f"meta:{roster_id}")
+        with self._locked(roster_id):
+            self._cache.delete(f"roster:{roster_id}")
+            self._cache.delete(f"analysis:{roster_id}")
+            self._cache.delete(f"meta:{roster_id}")
+            self._cache.delete(f"workflow:{roster_id}")
 
     def init_analysis(self, roster_id: str, record_count: int, file_hash: str | None = None) -> None:
         state = {
@@ -160,13 +180,19 @@ class RosterStore:
             "elapsed": None,
             "file_hash": file_hash,
             "recorded": False,
+            "processed_keys": [],
         }
         self._cache.set(f"analysis:{roster_id}", json.dumps(state, default=str), self._ttl)
 
     def ensure_analysis(self, roster_id: str, record_count: int, file_hash: str | None = None) -> None:
-        state = self.get_analysis(roster_id)
-        if state is None or state.get("status") != "running":
-            self.init_analysis(roster_id, record_count, file_hash=file_hash)
+        with self._locked(roster_id):
+            state = self.get_analysis(roster_id)
+            if state is None:
+                self.init_analysis(roster_id, record_count, file_hash=file_hash)
+            elif state.get("status") != "running" and not (
+                state.get("status") == "complete" and not state.get("recorded")
+            ):
+                self.init_analysis(roster_id, record_count, file_hash=file_hash)
 
     def persist_analysis(self, roster_id: str, state: dict) -> None:
         self._cache.set(f"analysis:{roster_id}", json.dumps(state, default=str), self._ttl)
@@ -182,7 +208,7 @@ class RosterStore:
             return None
 
     def mark_analysis(self, roster_id: str, status: str) -> None:
-        with self._lock_for(roster_id):
+        with self._locked(roster_id):
             state = self.get_analysis(roster_id)
             if state is not None:
                 state["status"] = status
@@ -192,19 +218,82 @@ class RosterStore:
 
     def append_analysis(self, roster_id: str, partial: dict) -> dict:
         """Add one batch's results to the shared analysis state (thread-safe)."""
-        with self._lock_for(roster_id):
+        with self._locked(roster_id):
             state = self.get_analysis(roster_id)
             if state is None:
                 return {}
-            state["students"].extend(partial.get("students") or [])
-            state["repos"].extend(partial.get("repos") or [])
-            state["issues"].extend(partial.get("issues") or [])
-            state["valid"] += int(partial.get("valid_users", 0))
-            state["invalid"] += int(partial.get("invalid_users", 0))
-            state["errors"] += int(partial.get("error_users", 0))
-            state["repo_unavailable"].extend(partial.get("repo_unavailable_users") or [])
-            state["contrib_unavailable"].extend(partial.get("contrib_unavailable_users") or [])
-            state["done"] += int(partial.get("analyzed", 0))
+
+            def append_unique(name, rows, key):
+                current = state.setdefault(name, [])
+                seen = {key(row) for row in current}
+                for row in rows or []:
+                    identity = key(row)
+                    if identity not in seen:
+                        current.append(row)
+                        seen.add(identity)
+
+            append_unique(
+                "students",
+                partial.get("students"),
+                lambda row: str(row.get("Student_ID") or json.dumps(row, sort_keys=True, default=str)),
+            )
+            append_unique(
+                "repos",
+                partial.get("repos"),
+                lambda row: (
+                    str(row.get("Username") or "").lower(),
+                    str(row.get("Repository_URL") or row.get("Repository") or ""),
+                ),
+            )
+            append_unique(
+                "issues",
+                partial.get("issues"),
+                lambda row: json.dumps(row, sort_keys=True, default=str),
+            )
+
+            requested_keys = [str(key) for key in (partial.get("analyzed_keys") or [])]
+            if not requested_keys:
+                requested_keys = [
+                    str(row.get("Student_ID"))
+                    for row in (partial.get("students") or [])
+                    if row.get("Student_ID") not in (None, "")
+                ]
+                if not requested_keys:
+                    requested_keys = [
+                        str(row.get("Student_ID"))
+                        for row in (partial.get("issues") or [])
+                        if row.get("Student_ID") not in (None, "")
+                    ]
+
+            processed = {str(key) for key in state.get("processed_keys") or []}
+            new_keys = [key for key in requested_keys if key not in processed]
+            if requested_keys and not new_keys:
+                return state
+
+            outcomes = partial.get("student_outcomes") or {}
+            if outcomes and new_keys:
+                state["valid"] += sum(outcomes.get(key) == "valid" for key in new_keys)
+                state["invalid"] += sum(outcomes.get(key) == "invalid" for key in new_keys)
+                state["errors"] += sum(outcomes.get(key) == "error" for key in new_keys)
+            elif not requested_keys:
+                state["valid"] += int(partial.get("valid_users", 0))
+                state["invalid"] += int(partial.get("invalid_users", 0))
+                state["errors"] += int(partial.get("error_users", 0))
+
+            unavailable_repos = [str(user).lower() for user in state.get("repo_unavailable") or []]
+            for user in partial.get("repo_unavailable_users") or []:
+                if str(user).lower() not in unavailable_repos:
+                    state.setdefault("repo_unavailable", []).append(user)
+            unavailable_contrib = [str(user).lower() for user in state.get("contrib_unavailable") or []]
+            for user in partial.get("contrib_unavailable_users") or []:
+                if str(user).lower() not in unavailable_contrib:
+                    state.setdefault("contrib_unavailable", []).append(user)
+
+            if requested_keys:
+                state.setdefault("processed_keys", []).extend(new_keys)
+                state["done"] += len(new_keys)
+            else:
+                state["done"] += int(partial.get("analyzed", 0))
             if state["done"] >= state["total"] and state["status"] == "running":
                 state["status"] = "complete"
                 state["elapsed"] = round(
@@ -214,6 +303,22 @@ class RosterStore:
                 f"analysis:{roster_id}", json.dumps(state, default=str), self._ttl
             )
             return state
+
+    def record_if_unrecorded(self, roster_id: str, recorder) -> bool:
+        """Run a durable-history write once, marking the state only on success."""
+        with self._locked(roster_id):
+            state = self.get_analysis(roster_id)
+            if state is None or state.get("recorded"):
+                return False
+            try:
+                if not recorder(state):
+                    return False
+            except Exception:
+                logger.exception("Unable to record analysis history for roster %s", roster_id)
+                return False
+            state["recorded"] = True
+            self._cache.set(f"analysis:{roster_id}", json.dumps(state, default=str), self._ttl)
+            return True
 
 
 roster_store = RosterStore()
@@ -226,7 +331,7 @@ _BATCH_THREAD_LIMIT = threading.BoundedSemaphore(8)
 
 class BatchRequest(BaseModel):
     roster_id: str
-    student_ids: list[str] = []
+    student_ids: list[str] = Field(default_factory=list)
 
 
 async def run_batch_unlocked(records: list[dict]) -> dict:
@@ -244,6 +349,26 @@ def _roster_records(prepared):
     """JSON-safe student records from a prepared roster — same contracts as
     services.prepare_students (normalized Student_ID, extracted usernames)."""
     return json.loads(prepared.to_json(orient="records"))
+
+
+def _roster_record_keys(records: list[dict]) -> list[str]:
+    """Return stable client-visible keys, including for blank/duplicate IDs."""
+    counts: dict[str, int] = {}
+    for record in records:
+        student_id = str(record.get(services.STUDENT_ID_COL) or "").strip()
+        if student_id:
+            counts[student_id] = counts.get(student_id, 0) + 1
+
+    keys = []
+    for index, record in enumerate(records):
+        student_id = str(record.get(services.STUDENT_ID_COL) or "").strip()
+        if student_id and counts[student_id] == 1:
+            keys.append(student_id)
+        elif student_id:
+            keys.append(f"student:{student_id}:row:{index}")
+        else:
+            keys.append(f"row:{index}")
+    return keys
 
 
 def _is_complete(view) -> bool:
@@ -307,35 +432,42 @@ def _export_response(df, format: str, name: str):
 def record_analysis_run_if_fresh(roster_id: str, state: dict) -> None:
     """Record a completed run exactly once per roster in the shared history DB
     (legacy storage.py schema) plus an audit event. Never raises."""
-    if state.get("recorded"):
-        return
-    state["recorded"] = True
-    roster_store.persist_analysis(roster_id, state)
-    try:
-        metrics = run_metrics(state)
-    except Exception:
-        metrics = {}
-    storage.init_db()
-    storage.record_analysis_run(
-        status=metrics.get("status", "Complete"),
-        total_students=metrics.get("total_students", 0),
-        valid_accounts=metrics.get("valid_accounts", 0),
-        invalid_accounts=metrics.get("invalid_accounts", 0),
-        error_accounts=metrics.get("error_accounts", 0),
-        repos_found=metrics.get("repos_found", 0),
-        active_repos=metrics.get("active_repos", 0),
-        avg_quality_score=metrics.get("avg_quality_score"),
-        elapsed_seconds=metrics.get("elapsed_seconds", 0.0),
-        source_file_hash=state.get("file_hash"),
-    )
-    storage.log_event(
-        "analysis_run",
-        f"roster={roster_id}; status={metrics.get('status', 'Complete')}",
-    )
+    def persist(state_to_record: dict) -> bool:
+        try:
+            metrics = run_metrics(state_to_record)
+        except Exception:
+            metrics = {}
+            logger.exception("Unable to calculate metrics for roster %s", roster_id)
+
+        if not storage.init_db():
+            logger.warning("Analysis history storage is unavailable for roster %s", roster_id)
+            return False
+        saved = storage.record_analysis_run(
+            status=metrics.get("status", "Complete"),
+            total_students=metrics.get("total_students", 0),
+            valid_accounts=metrics.get("valid_accounts", 0),
+            invalid_accounts=metrics.get("invalid_accounts", 0),
+            error_accounts=metrics.get("error_accounts", 0),
+            repos_found=metrics.get("repos_found", 0),
+            active_repos=metrics.get("active_repos", 0),
+            avg_quality_score=metrics.get("avg_quality_score"),
+            elapsed_seconds=metrics.get("elapsed_seconds", 0.0),
+            source_file_hash=state_to_record.get("file_hash"),
+        )
+        if not saved:
+            logger.warning("Analysis history write failed for roster %s", roster_id)
+            return False
+        if not storage.log_event(
+            "analysis_run",
+            f"roster={roster_id}; status={metrics.get('status', 'Complete')}",
+        ):
+            logger.warning("Audit log write failed for roster %s", roster_id)
+        return True
+
+    roster_store.record_if_unrecorded(roster_id, persist)
 
 
 def run_metrics(state: dict) -> dict:
-    students = state.get("students") or []
     repos = state.get("repos") or []
     errors = int(state.get("errors", 0))
     valid = int(state.get("valid", 0))
@@ -545,6 +677,7 @@ def leaderboards_page(
 def history_page(request: Request):
     ctx = _base_context("History")
     df = storage.load_run_history()
+    storage_ok = storage.storage_healthy()
     runs = []
     for _, row in df.iterrows():
         runs.append(
@@ -574,7 +707,13 @@ def history_page(request: Request):
             )
         except Exception:
             trends_fig = None
-    payload = {"has_runs": bool(runs), "runs": runs, "count": len(runs), "trends_fig": trends_fig}
+    payload = {
+        "has_runs": bool(runs),
+        "runs": runs,
+        "count": len(runs),
+        "trends_fig": trends_fig,
+        "storage_ok": storage_ok,
+    }
     return templates.TemplateResponse(request, "pages/history.html", {**ctx, "payload": payload})
 
 
@@ -694,6 +833,8 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
         )
 
     prepared, invalid_format = services.prepare_students(df)
+    if prepared.empty:
+        return _upload_failure(request, "The roster contains no student rows.")
     records = _roster_records(prepared)
     roster_id = uuid.uuid4().hex
     roster_store.put(roster_id, records)
@@ -714,7 +855,7 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
                 "roster_id": roster_id,
                 "count": len(prepared),
                 "invalid_format_count": len(invalid_format),
-                "ids": [str(row.get(services.STUDENT_ID_COL) or "") for row in records],
+                "ids": _roster_record_keys(records),
                 "error": None,
             },
         )
@@ -724,6 +865,7 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
         "roster_id": roster_id,
         "student_count": len(prepared),
         "invalid_format_count": len(invalid_format),
+        "student_ids": _roster_record_keys(records),
         "students": [
             {
                 "student_id": str(row.get(services.STUDENT_ID_COL) or ""),
@@ -757,7 +899,7 @@ def roster_summary(roster_id: str):
     return {
         "roster_id": roster_id,
         "student_count": len(records),
-        "student_ids": [str(row.get(services.STUDENT_ID_COL) or "") for row in records],
+        "student_ids": _roster_record_keys(records),
         "analysis": state,
     }
 
@@ -789,10 +931,18 @@ async def analysis_batch(payload: BatchRequest):
     if records is None:
         raise HTTPException(status_code=404, detail="Roster not found — upload it again")
 
+    keys = _roster_record_keys(records)
     wanted = {str(sid).strip() for sid in payload.student_ids}
-    subset = [
-        row for row in records if str(row.get(services.STUDENT_ID_COL) or "").strip() in wanted
-    ]
+    selected = [(key, row) for key, row in zip(keys, records) if key in wanted]
+    # Keep compatibility with callers that send a unique normalized Student_ID
+    # directly, while canonical upload responses use the stable row keys above.
+    if not selected:
+        selected = [
+            (key, row)
+            for key, row in zip(keys, records)
+            if str(row.get(services.STUDENT_ID_COL) or "").strip() in wanted
+        ]
+    subset = [dict(row, _analysis_key=key) for key, row in selected]
     if not subset:
         raise HTTPException(status_code=400, detail="No roster students matched this batch")
 
@@ -813,12 +963,21 @@ async def analysis_batch(payload: BatchRequest):
             },
         )
 
+    result = dict(result)
+    result["analyzed_keys"] = [key for key, _ in selected]
     state = roster_store.append_analysis(payload.roster_id, result)
+    if not state:
+        raise HTTPException(status_code=404, detail="Roster was reset while this batch was running")
     if state.get("status") == "complete":
         record_analysis_run_if_fresh(payload.roster_id, state)
+    client_result = {
+        key: value
+        for key, value in result.items()
+        if key not in {"analyzed_keys", "student_outcomes"}
+    }
     return {
         "status": "ok",
-        "result": result,
+        "result": client_result,
         "progress": {
             "roster_id": payload.roster_id,
             "total": state.get("total", len(records)),

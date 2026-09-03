@@ -2,6 +2,7 @@ import re
 import time
 from dataclasses import dataclass
 from typing import Callable, Iterable
+from urllib.parse import urlsplit
 
 import pandas as pd
 import requests
@@ -115,15 +116,20 @@ def extract_username(text):
     if not text:
         return None
 
-    # Step 1: If input looks like a URL (contains / or .), require github.com
+    # Step 1: If input looks like a URL (contains / or .), require github.com.
     if "/" in text or ("." in text and " " not in text):
         # Strip query string and fragment before matching
         cleaned = re.split(r"[?#]", text, maxsplit=1)[0]
-        match = re.search(r"github\.com/([A-Za-z0-9_-]+)", cleaned, flags=re.IGNORECASE)
-        if match:
-            return match.group(1)
-        # It's a URL but not GitHub — reject it (don't harvest junk tokens)
-        return None
+        try:
+            parsed = urlsplit(cleaned if "://" in cleaned else f"//{cleaned}")
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").lower()
+        if host not in {"github.com", "www.github.com"}:
+            # It's a URL but not GitHub — reject it (don't harvest junk tokens)
+            return None
+        username = parsed.path.strip("/").split("/", 1)[0]
+        return username if re.fullmatch(r"[A-Za-z0-9_-]+", username or "") else None
 
     # Step 2: Bare username (no slashes, no dots) — must be valid GitHub chars
     bare = text.rstrip(".,;:!?")  # strip trailing punctuation
@@ -205,11 +211,7 @@ def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
     prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
     prepared["Submitted_GitHub_Username"] = prepared["GitHub_Username"]
-    invalid_format = prepared[
-        ~prepared[GITHUB_COL].astype(str).str.contains(
-            "github.com/", case=False, na=False, regex=False
-        )
-    ].copy()
+    invalid_format = prepared[prepared["GitHub_Username"].isna()].copy()
     invalid_format["Issue"] = "Invalid format"
     return prepared, invalid_format
 
@@ -781,17 +783,14 @@ def build_invalid_issues(
     error_set = {str(user).strip().lower() for user in error_users if user and not pd.isna(user)}
     usernames = df["GitHub_Username"]
     has_username = usernames.notna() & usernames.astype(str).str.strip().ne("")
+    submitted = df[GITHUB_COL].notna() & df[GITHUB_COL].astype(str).str.strip().ne("")
     lowered = usernames.where(has_username).astype(str).str.strip().str.lower()
-    link_has_github = df[GITHUB_COL].astype(str).str.contains(
-        "github.com/", case=False, na=False, regex=False
-    )
-
     failed = has_username & lowered.isin(invalid_set)
     api_error = has_username & ~failed & lowered.isin(error_set)
-    bad_format = has_username & ~failed & ~api_error & ~link_has_github
+    bad_format = submitted & ~has_username
 
     issue = pd.Series("", index=df.index)
-    issue[~has_username] = "Missing username"
+    issue[~submitted] = "Missing username"
     issue[failed] = "Failed GitHub validation"
     issue[api_error] = "GitHub API error"
     issue[bad_format] = "Invalid format"

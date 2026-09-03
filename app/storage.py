@@ -8,12 +8,15 @@ All public functions swallow sqlite/OSError failures and return safe defaults;
 a missing or locked database must never crash a successful analysis run.
 """
 
+import logging
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).resolve().parent.parent / "analytics_history.db"
 
@@ -70,7 +73,8 @@ def init_db() -> bool:
             with conn:
                 _init_schema(conn)
         return True
-    except (sqlite3.Error, OSError):
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Unable to initialize analysis history storage: %s", exc)
         return False
 
 
@@ -87,7 +91,8 @@ def storage_healthy() -> bool:
             )
             conn.rollback()
         return True
-    except (sqlite3.Error, OSError):
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Analysis history health check failed: %s", exc)
         return False
 
 
@@ -126,7 +131,8 @@ def record_analysis_run(
                     ),
                 )
         return True
-    except (sqlite3.Error, OSError):
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Analysis history write failed: %s", exc)
         return False
 
 

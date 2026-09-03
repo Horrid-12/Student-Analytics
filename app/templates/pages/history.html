@@ -12,13 +12,19 @@
         <span>{{ payload.count }} recorded run{{ payload.count | pluralize }}</span>
       </div>
     </div>
-    <button class="btn" type="button">Limits</button>
     <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
       <span class="badge-purple">Faculty</span>
       <div class="faculty-avatar">FM</div>
     </div>
   </div>
 </div>
+
+{% if not payload.storage_ok %}
+<div class="auth-notice" role="status">
+  Run-history storage is unavailable on this host. New completed runs can still be analyzed, but they cannot be saved here.
+  See Settings for storage details.
+</div>
+{% endif %}
 
 {% if payload.has_runs %}
 <section class="panel">

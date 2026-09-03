@@ -46,7 +46,7 @@ def donut(labels, values, title=None, colors=None):
             sort=False,
             marker=dict(colors=colors or DONUT_COLORS[: len(values)]),
             textinfo="label+percent",
-            textfont=dict(color="transparent", size=12),  # BUG-086: injected by JS
+            textfont=dict(color="#A1A1AA", size=12),
             hovertemplate="%{label}: %{value}<extra></extra>",
         )
     )
@@ -54,7 +54,7 @@ def donut(labels, values, title=None, colors=None):
         title=title,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="transparent", family="Inter"),  # BUG-086: injected by JS
+        font=dict(color="#A1A1AA", family="Inter"),
         margin=dict(l=10, r=10, t=40 if title else 12, b=10),
         showlegend=True,
         height=260,
@@ -80,7 +80,9 @@ def bar(labels, values, color=ACCENT, height=285, title=None):
     )
     fig.update_xaxes(**_AXIS, zeroline=False)
     fig.update_yaxes(**_AXIS, categoryorder="total ascending")
-    return _layout(fig, title, max(height - 18, 180)).to_dict()
+    _layout(fig, title, max(height - 18, 180))
+    fig.update_layout(margin=dict(l=10, r=70, t=40 if title else 8, b=10))
+    return fig.to_dict()
 
 
 def area(x, y, color=ACCENT, height=260, title=None):
@@ -140,5 +142,9 @@ def line(x, series, title=None, height=260, colors=None):
         )
     fig.update_xaxes(**_AXIS, zeroline=False)
     fig.update_yaxes(**_AXIS, zeroline=False, title=None)
-    fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=-0.2))
-    return _layout(fig, title, height).to_dict()
+    _layout(fig, title, height)
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2),
+    )
+    return fig.to_dict()

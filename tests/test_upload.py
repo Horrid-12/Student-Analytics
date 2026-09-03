@@ -106,6 +106,22 @@ class TestUpload:
         assert data["invalid_format_count"] == 1
         assert data["students"][0]["username"] == ""
 
+    def test_blank_or_duplicate_ids_get_stable_batch_keys(self):
+        rows = roster_rows()
+        rows[0]["PRN No"] = ""
+        rows[1]["PRN No"] = ""
+        response = upload(self.client, make_roster(rows=rows))
+        assert response.status_code == 200
+        assert response.json()["student_ids"] == ["row:0", "row:1"]
+
+    def test_github_path_inside_other_host_is_invalid(self):
+        rows = roster_rows()
+        rows[0]["Actual GitHub Account Link:"] = "https://evil.example/github.com/alice"
+        response = upload(self.client, make_roster(rows=rows))
+        assert response.status_code == 200
+        assert response.json()["invalid_format_count"] == 1
+        assert response.json()["students"][0]["username"] == ""
+
     def test_missing_required_column_rejected(self):
         df = pd.DataFrame(
             [dict(row) for row in roster_rows()],

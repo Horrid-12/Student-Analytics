@@ -11,12 +11,14 @@ This is the single source of truth for correctness work. One row represents one 
 | Moved | Replaced by a product decision or another bug |
 | Planned | Valid future improvement, not a current defect |
 
+Priority is tracked as P1 (highest), then P2 and P3. Current defects are listed in that order.
+
 ## Current release summary
 
 | Metric | Count |
 |---|---:|
-| Fixed / moved | 77 |
-| Open | 15 |
+| Fixed / moved | 87 |
+| Open | 6 |
 | Planned | 5 |
 | Last audit | 2026-09-03 |
 
@@ -115,34 +117,20 @@ Planned items are roadmap work rather than regressions. They should not be repor
 | BUG-079 | Fixed | UI | Settings clutters the main nav and can't live inside the account card | Moved Settings out of the sidebar radio (nav now shows 7 pages; radio guards against a stale `sidebar_nav` == "Settings") into the "Connected • Open Access" footer card as an inline `<a class="sidebar-gear-link">` (SVG gear) inside the card's own `st.markdown` HTML - no `st.columns`/`st.button` widget infrastructure was able to fit a 32px gear beside the card text without truncating it (columns + pinned-width rules were tried and rejected). Clicking the link navigates to `?page=Settings`; a near-top dispatch reads the query param and routes to Settings. Role labels shortened (Admin/Faculty/Student; open-access role shows just "Connected"). Collapsed mini-rail hides the gear link. Verified with AppTest: radio shows 7 options, `?page=Settings` lands on Settings with zero exceptions, student role renders the card without a gear. |
 | BUG-080 | Fixed | UI | Clicking Light mode on Settings bounces back to the front page | Root cause: the Settings navigation was a one-shot `sidebar_override` value that was popped on the first rerun after arrival, so the very next rerun (e.g. toggling the theme radio on Settings) fell back to whatever page the sidebar radio still pointed at (Overview). Fix: the override is now a persistent flag (`sidebar_override` + a saved `sidebar_nav_saved`) that keeps dispatching to Settings on every rerun while the radio stays on the pre-Settings page; explicit navigation (radio click or a `page_nav_target` CTA) clears it and follows the new page. `st.query_params` is cleared after reading so the URL doesn't stay polluted. Verified with AppTest: `?page=Settings` -> toggle theme to Light -> still on Settings with theme state `Light`; then radio -> Students leaves Settings and drops the override. |
 
-## Post-cutover audit (2026-08-30)
+## Post-cutover audit (2026-09-03)
 
-Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend yet) against the `NEW-###` findings. Triaged into: open defects (fix candidates), Phase 4 roadmap work, and declined (by-design / false-positive).
+Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend yet) against the `NEW-###` findings. Triaged into: current defects, Phase 4 roadmap work, and declined (by-design / false-positive).
 
-### Open defects - new stack
+### Current defects - new stack
 
-| ID | Status | Area | Problem | Next action |
+| Priority | ID | Status | Area | Problem | Next action |
 |---|---|---|---|---|
-| BUG-081 | Open | Storage | `record_analysis_run_if_fresh` (app/main.py:306) sets `state["recorded"]=True` and persists BEFORE the DB write, discarding `record_analysis_run()`'s bool return - on Vercel's read-only volume the write fails, so the run is never recorded and never retried (History stays empty silently) | Mark `recorded` only when the DB write returns True; log failures |
-| BUG-082 | Open | Analysis | `append_analysis` (app/main.py:192) appends students/repos/issues unconditionally and adds `done` per batch - a retried/re-sent batch duplicates rows and can flip `complete` (done >= total) with students still missing | Dedupe by student id per analysis state; don't double-count |
-| BUG-083 | Open | Storage | `app/storage.py` swallows every sqlite/OSError by design - DB failure is invisible to users; History just renders empty and BUG-046 audit events vanish | Surface storage state on Settings/History (see BUG-085 storage-health card); python logger |
-| BUG-084 | Open | Analysis | Minor hardening: `RosterStore.clear()` runs without the roster lock and leaves the `workflow:` orphan key (NEW-005); `_locks` dict is never pruned (NEW-006); reset can race an in-flight batch append (NEW-009) | `clear()` under lock, also delete `workflow:` + prune lock; benign locally, negligible on serverless |
-| BUG-085 | Fixed | UI | Settings page is missing from the new stack - sidebar gear is `href="#settings"` (base.html:47), no selector/route/JS exists, so the gear is a dead anchor (legacy BUG-079/080 parity drop) | Ported `/settings`: storage-health card (honest read-only detection via write-probe, last recorded run table), Dark/Light theme toggle persisted to localStorage `gsad_theme_v1` with no-FOUC `<head>` init, account/role card (token-presence + auth-planned note); gear -> `/settings`. Verified: 3 new tests, both suites 129, local uvicorn 200, live smoke |
-| BUG-086 | Fixed | UI | `_AXIS`, `_layout()`, and `donut()` in `charts.py` replaced dark-only hex values with neutral transparent placeholders. The `charts.html` macro now reads `document.documentElement.dataset.theme` before each `Plotly.react()` and injects theme-correct grid, tick, hover, and font colours. A `window storage` listener re-renders all charts when `gsad_theme_v1` changes, so toggling theme on Settings updates charts immediately without a page reload. | Taskflow 4.1 rewrite: tokenize everything through `theme.css` v2 + theme-aware Plotly palette; verify each page in both themes |
-| BUG-087 | Fixed | UI | `.upload-bar`, `.upload-browse`, `.upload-browse:hover`, and `.upload-hint` in `layout.css` now use `var(--card)`, `var(--card-soft)`, `var(--border)`, `var(--text)`, `var(--muted)`, and `var(--hover-bg)` - all already defined for both dark and light themes in `theme.css`. The upload control adapts to both themes with zero JS changes. | Taskflow 4.1 rebuild: theme-token surfaces, drop the Streamlit mimicry |
-| BUG-088 | Fixed | UI | Overview page title fixed from `.github Overview` -> `Overview`. Removed 9 redundant `style="font-size:19px; font-weight:800; line-height:1.2;"` inline attributes from all page templates and the shared `partials/topbar.html`. `.topbar-title` in `style.css` updated to the correct authoritative values (19px / 800 / 1.2) so the class alone controls sizing. | Taskflow 4.1 copy sweep + shared `page-head` component |
-| BUG-089 | Open | UI | Donut chart `textfont` transparent (invisible labels); Pie trace property not handled by layout macro | Inject `textfont` at the trace level |
-| BUG-090 | Open | UI | Heatmap colorscale hardcoded dark; invisible data values in light mode | Update macro to pass theme-aware colorscale |
-| BUG-091 | Open | UI | Dead `href="#"` on `.roster-clear` causes page jump | Change to `<button>` or `href="javascript:void(0)"` |
-| BUG-092 | Open | UI | Limits button non-functional in `overview.html` and `topbar.html` | Wire up limits functionality or remove button |
-| BUG-093 | Open | UI | Bar chart `textposition="outside"` with `cliponaxis=False` clips short bars | Adjust margins or `cliponaxis` |
-| BUG-094 | Open | UI | `line()` chart legend hidden because `update_layout` overrides it | Move `showlegend` update after `_layout()` |
-| BUG-095 | Open | UI | `color:#8B8B91` hardcoded in `overview.html:57` (dark-only muted color) | Replace inline style with `var(--muted)` |
-| BUG-096 | Open | UI | Inline style `grid-column: 1 / -1;` used directly on div | Move styling rule to a CSS class |
-| BUG-097 | Open | Routing | No 404 page for typo slugs on dedicated routes | Add catch-all 404 handler for unknown slugs |
-| BUG-098 | Open | UI | Faculty Workspace text is hardcoded in sidebar brand | Dynamically set text based on user role post-auth |
-| BUG-099 | Open | UI | Idle badge uses purple instead of muted/grey | Switch to a muted badge class |
-| BUG-100 | Open | UI | Accent `rgba` color hardcoded in hover/focus states | Replace hardcoded values with `var(--blue)` |
+| P2 | BUG-097 | Open | Routing | No 404 page for typo slugs on dedicated routes | Add a friendly catch-all 404 page for unknown slugs |
+| P3 | BUG-095 | Open | UI | `color:#8B8B91` hardcoded in `overview.html:57` (dark-only muted color) | Replace inline style with `var(--muted)` during the UI pass |
+| P3 | BUG-096 | Open | UI | Inline style `grid-column: 1 / -1;` used directly on div | Move styling rule to a CSS class during the UI pass |
+| P3 | BUG-098 | Open | UI | Faculty Workspace text is hardcoded in sidebar brand | Dynamically set text based on user role post-auth |
+| P3 | BUG-099 | Open | UI | Idle badge uses purple instead of muted/grey | Switch to a muted badge class during the UI pass |
+| P3 | BUG-100 | Open | UI | Accent `rgba` color hardcoded in hover/focus states | Replace hardcoded values with `var(--blue)` during the UI pass |
 
 ### Tracked on the Phase 4 roadmap (not current defects)
 
@@ -158,12 +146,31 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 - NEW-011 (`list[str] = []` default on `BatchRequest`): false positive - Pydantic v2 deep-copies defaults per instance.
 - NEW-012 (`History ORDER BY id`): not a bug - AUTOINCREMENT order is chronological and more stable than second-resolution timestamps.
 
+### Fixed in this audit (moved to the bottom)
+
+| ID | Status | Area | Resolution / proof |
+|---|---|---|---|
+| BUG-085 | Fixed | UI | Settings is available at `/settings` with storage health, theme controls, and account state; the sidebar gear targets the route. |
+| BUG-086 | Fixed | UI | Chart rendering applies theme-aware grid, tick, hover, legend, pie-label, and heatmap colours. |
+| BUG-087 | Fixed | UI | The upload control uses shared theme tokens and adapts to dark and light modes. |
+| BUG-088 | Fixed | UI | Overview copy and redundant title inline styles were corrected so shared title styling is authoritative. |
+| BUG-081 | Fixed | Storage | History is marked recorded only after `init_db()` and `record_analysis_run()` succeed; failed writes log a warning and remain retryable. Covered by the retry test in `tests/test_batch.py`. |
+| BUG-082 | Fixed | Analysis | Batch state is protected by a reference-counted roster lock, batches carry stable row keys, processed keys are tracked, and students/repos/issues are appended idempotently. Replayed batches no longer increase progress or duplicate output. Covered by the replay test in `tests/test_batch.py`. |
+| BUG-083 | Fixed | Storage | Storage failures now emit Python logger warnings, Settings reports write health, and History displays an unavailable-storage notice instead of silently presenting an empty history. |
+| BUG-084 | Fixed | Analysis | Reset now locks against batch appends, removes roster/analysis/meta/workflow state together, prunes unused lock entries, and returns 404 if a reset wins an in-flight batch race. |
+| BUG-089 | Fixed | Charts | Theme rendering now applies the active text colour to pie trace `textfont`, restoring donut labels in both themes. |
+| BUG-090 | Fixed | Charts | Theme rendering now replaces the heatmap colorscale for dark and light modes so heatmap values remain visible in either theme. |
+| BUG-091 | Fixed | UI | The roster clear control is a real button, so clearing a roster no longer jumps the page to the top. |
+| BUG-092 | Fixed | UI | Removed non-functional Limits buttons from the new-stack pages and removed the stale sample-mode claim from the README. |
+| BUG-093 | Fixed | Charts | Bar charts now reserve right margin for outside value labels, preventing short-bar labels from being clipped. |
+| BUG-094 | Fixed | Charts | The line-chart legend is enabled after the shared layout helper runs, so history series are visible. |
+
 ## Verification checklist
 
-- Run `python -m py_compile app.py services.py`.
+- Run `python -m compileall -q app api tests`.
 - Exercise pure service functions with missing, invalid, mixed-case, duplicate, and API-error rows.
 - Verify the Verification page after both non-empty and empty dashboard results.
-- Verify Refresh causes the next analysis to make fresh API requests.
+- Verify Reset causes the next analysis to make fresh API requests.
 - Update the relevant row and proof whenever a bug changes status.
 
 ## Tracker rules
