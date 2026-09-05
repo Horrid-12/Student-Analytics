@@ -255,13 +255,10 @@
     if (runBtn) runBtn.disabled = true;
 
     var rosterId = current.roster_id;
-    /* BUG-092: respect the sample limit set via the Limits popover (0 = all). */
-    var ids = (sampleLimit > 0) ? current.ids.slice(0, sampleLimit) : current.ids;
+    var ids = current.ids;
     var total = ids.length;
-    var rosterTotal = current.ids.length;
     setProgress(0, total, 'running');
-    var limitNote = (sampleLimit > 0 && total < rosterTotal) ? ' (limited to ' + total + ' of ' + rosterTotal + ' total)' : '';
-    logLine('Analyzing ' + total + ' student(s) in batches of ' + BATCH_SIZE + limitNote + '...');
+    logLine('Analyzing ' + total + ' student(s) in batches of ' + BATCH_SIZE + '...');
 
     batchedFetch(rosterId, chunk(ids, BATCH_SIZE), total)
       .then(function (summary) {
