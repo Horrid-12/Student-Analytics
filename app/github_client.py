@@ -264,12 +264,14 @@ class GitHubClient:
                 status = response.status_code
                 headers = _canonical_headers(response.headers)
                 payload = _safe_json(response)
-                if status not in RETRYABLE_STATUS:
+                if status in {200, 404}:
                     serialized = json.dumps(
                         {"status": status, "headers": headers, "payload": payload},
                         default=str,
                     )
                     self.cache.set(key, serialized, CACHE_TTL_SECONDS)
+                    return status, headers, payload
+                if status not in RETRYABLE_STATUS:
                     return status, headers, payload
                 last = (status, headers, payload)
                 if attempt >= self.max_retries:

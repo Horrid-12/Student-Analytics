@@ -423,7 +423,7 @@ def fetch_contribution_data(
             else:
                 summaries.append(summarize_user_contributions(username, prs, issues))
         except RateLimitError:
-            raise
+            unavailable_users.append(username)
         except Exception:
             unavailable_users.append(username)
         finally:

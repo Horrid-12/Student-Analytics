@@ -319,6 +319,17 @@ button {
     margin-bottom: 6px;
 }
 
+.progress-bar.is-running {
+    background: linear-gradient(90deg, #3B82F6 0%, #60A5FA 50%, #3B82F6 100%);
+    background-size: 200% 100%;
+    animation: progress-shimmer 1.5s infinite linear;
+}
+
+@keyframes progress-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
 .batch-log-item {
     font-size: 13px;
     color: var(--muted);

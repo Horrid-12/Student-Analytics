@@ -14,9 +14,10 @@ DONUT_COLORS = ["#3B82F6", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"
 
 _AXIS = dict(
     # BUG-086: neutral placeholders — theme-aware values injected by charts.html macro at render time.
-    gridcolor="transparent",
-    color="transparent",
-    tickfont=dict(color="transparent", size=13, family="Inter"),
+    # Use rgba(0,0,0,0) instead of "transparent" — Plotly's Python validator rejects the CSS keyword.
+    gridcolor="rgba(0,0,0,0)",
+    color="rgba(0,0,0,0)",
+    tickfont=dict(color="rgba(0,0,0,0)", size=13, family="Inter"),
 )
 
 
@@ -26,11 +27,11 @@ def _layout(fig, title, height):
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="transparent", family="Inter"),
+        font=dict(color="rgba(0,0,0,0)", family="Inter"),
         margin=dict(l=10, r=10, t=40 if title else 8, b=10),
         showlegend=False,
         # BUG-086: hoverlabel colours injected by JS — placeholder keeps structure valid.
-        hoverlabel=dict(bgcolor="transparent", bordercolor="transparent", font=dict(color="transparent")),
+        hoverlabel=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(0,0,0,0)", font=dict(color="rgba(0,0,0,0)")),
     )
     return fig
 
@@ -58,7 +59,7 @@ def donut(labels, values, title=None, colors=None):
         margin=dict(l=10, r=10, t=40 if title else 12, b=10),
         showlegend=True,
         height=260,
-        hoverlabel=dict(bgcolor="transparent", bordercolor="transparent", font=dict(color="transparent")),
+        hoverlabel=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(0,0,0,0)", font=dict(color="rgba(0,0,0,0)")),
         legend=dict(orientation="h", yanchor="bottom", y=-0.12),
     )
     return fig.to_dict()

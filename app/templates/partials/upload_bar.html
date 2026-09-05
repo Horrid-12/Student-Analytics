@@ -1,6 +1,5 @@
 <form class="upload-bar" id="roster-form"
-      hx-post="/upload" hx-target="#upload-result" hx-swap="innerHTML"
-      hx-encoding="multipart/form-data" enctype="multipart/form-data">
+      enctype="multipart/form-data">
   <label class="upload-browse" for="roster-file">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
     Upload
@@ -11,3 +10,14 @@
          hx-encoding="multipart/form-data"/>
   <span class="upload-hint">200MB per file &bull; XLSX, XLS, CSV</span>
 </form>
+<script>
+  document.body.addEventListener('htmx:responseError', function(evt) {
+    var target = document.getElementById('upload-result');
+    if (target && evt.detail.target === target) {
+      var s = evt.detail.xhr ? evt.detail.xhr.status : 0;
+      target.innerHTML = '<div class="roster-loaded-card roster-load-error" role="alert">'
+        + '<span class="roster-load-title">Upload failed</span>'
+        + '<span class="roster-load-meta">Server error (' + s + ') — check file size and try again.</span></div>';
+    }
+  });
+</script>

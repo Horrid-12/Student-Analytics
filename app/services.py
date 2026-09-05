@@ -241,7 +241,10 @@ def check_rate_limit_parts(status_code: int, headers: dict) -> None:
 
     Primary:   403 + X-RateLimit-Remaining: 0
     Secondary: 403 + Retry-After header (no X-RateLimit-Remaining: 0)
+    Exhausted: 429 returned after github_client retries are exhausted
     """
+    if status_code == 429:
+        raise RateLimitError(headers.get("X-RateLimit-Reset"))
     if status_code == 403:
         if headers.get("X-RateLimit-Remaining") == "0":
             raise RateLimitError(headers.get("X-RateLimit-Reset"))
@@ -352,7 +355,7 @@ def get_search_contributions(username: str, kind: str, token: str | None) -> tup
         if page >= SEARCH_PAGE_GUARD:
             break
         page += 1
-        time.sleep(0.2)
+        time.sleep(0.1)
     return items, True
 
 
@@ -396,8 +399,15 @@ def fetch_contribution_data(
     unavailable_users: list[str] = []
     usernames = list(pd.Series(list(valid_usernames)).dropna().unique())
     total_users = len(usernames)
+    search_throttled = False
 
     for index, username in enumerate(usernames, start=1):
+        if search_throttled:
+            unavailable_users.append(username)
+            if progress_callback:
+                progress_callback(index, total_users, username)
+            continue
+
         try:
             prs, prs_ok = get_search_contributions(username, "pr", token)
             issues, issues_ok = get_search_contributions(username, "issue", token)
@@ -406,15 +416,14 @@ def fetch_contribution_data(
             else:
                 summaries.append(summarize_user_contributions(username, prs, issues))
         except RateLimitError:
-            raise
+            unavailable_users.append(username)
+            search_throttled = True  # Stop further search calls in this batch if throttled
         except Exception:
             unavailable_users.append(username)
         finally:
-            # Report progress even for accounts whose searches failed, so the
-            # UI bar never appears to stall.
             if progress_callback:
                 progress_callback(index, total_users, username)
-            time.sleep(0.15)  # Search API limits are tighter than the core API
+            time.sleep(0.05)
 
     contrib_columns = [
         "Username",
@@ -783,14 +792,17 @@ def build_invalid_issues(
     error_set = {str(user).strip().lower() for user in error_users if user and not pd.isna(user)}
     usernames = df["GitHub_Username"]
     has_username = usernames.notna() & usernames.astype(str).str.strip().ne("")
-    submitted = df[GITHUB_COL].notna() & df[GITHUB_COL].astype(str).str.strip().ne("")
     lowered = usernames.where(has_username).astype(str).str.strip().str.lower()
+    link_has_github = df[GITHUB_COL].astype(str).str.contains(
+        "github.com/", case=False, na=False, regex=False
+    )
+
     failed = has_username & lowered.isin(invalid_set)
     api_error = has_username & ~failed & lowered.isin(error_set)
-    bad_format = submitted & ~has_username
+    bad_format = has_username & ~failed & ~api_error & ~link_has_github
 
     issue = pd.Series("", index=df.index)
-    issue[~submitted] = "Missing username"
+    issue[~has_username] = "Missing username"
     issue[failed] = "Failed GitHub validation"
     issue[api_error] = "GitHub API error"
     issue[bad_format] = "Invalid format"

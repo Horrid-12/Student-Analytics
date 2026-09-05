@@ -181,7 +181,7 @@
 (function () {
   'use strict';
   var STORE_KEY = 'gsad_roster_v1';
-  var BATCH_SIZE = 25;
+  var BATCH_SIZE = 15;
   var running = false;
   var current = readLocal();
 
@@ -243,6 +243,13 @@
     window.location.reload();
   }
 
+  function getBatchSize(total) {
+    if (total <= 10) return 1;
+    if (total <= 30) return 2;
+    if (total <= 100) return 5;
+    return 10;
+  }
+
   function runAll() {
     if (running) return;
     logEl.innerHTML = '';
@@ -253,18 +260,25 @@
     }
     running = true;
     if (runBtn) runBtn.disabled = true;
+    if (barEl) barEl.classList.add('is-running');
 
     var rosterId = current.roster_id;
     var ids = current.ids;
     var total = ids.length;
+    var batchSize = getBatchSize(total);
     setProgress(0, total, 'running');
-    logLine('Analyzing ' + total + ' student(s) in batches of ' + BATCH_SIZE + '...');
+    logLine('Starting analysis for ' + total + ' student(s)...');
 
-    batchedFetch(rosterId, chunk(ids, BATCH_SIZE), total)
+    batchedFetch(rosterId, chunk(ids, batchSize), total)
       .then(function (summary) {
         logLine(summary.text, summary.ok ? '' : 'error');
         setProgress(summary.done, total, summary.ok ? 'complete' : 'stopped');
-        if (summary.ok) setTimeout(function () { window.location.reload(); }, 600);
+        if (summary.ok) {
+          logLine('Analysis complete! Loading dashboard...', '');
+          setTimeout(function () {
+            window.location.href = '/?roster=' + encodeURIComponent(rosterId);
+          }, 300);
+        }
       })
       .catch(function (err) {
         logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
@@ -272,16 +286,22 @@
       .finally(function () {
         running = false;
         if (runBtn) runBtn.disabled = false;
+        if (barEl) barEl.classList.remove('is-running');
       });
   }
 
   function batchedFetch(rosterId, batches, total) {
     var done = 0;
+    var totalBatches = batches.length;
+    var batchNum = 0;
     var reduce = function () {
       if (!batches.length) {
-        return Promise.resolve({ ok: true, done: done, text: 'Done — ' + done + ' student(s) analyzed.' });
+        return Promise.resolve({ ok: true, done: done, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
       }
       var chunkIds = batches.shift();
+      batchNum++;
+      var statusLabel = totalBatches > 1 ? 'running (batch ' + batchNum + '/' + totalBatches + ')' : 'running';
+      setProgress(done, total, statusLabel);
       return fetch('/analysis/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -301,7 +321,16 @@
           done += chunkIds.length;
           setProgress(done, total, 'running');
           var r = data.result || {};
-          logLine('Batch done: ' + chunkIds.length + ' student(s) — valid ' + r.valid_users + ', invalid ' + r.invalid_users + ', errors ' + r.error_users + '.');
+          if (r.students && r.students.length) {
+            r.students.forEach(function (s) {
+              var name = s['Student Name'] || s['GitHub_Username'] || 'Student';
+              var u = s['GitHub_Username'] ? '@' + s['GitHub_Username'] : 'invalid';
+              var repos = s['Repository_Count'] !== undefined ? s['Repository_Count'] + ' repos' : '';
+              logLine('✓ ' + name + ' (' + u + ')' + (repos ? ' — ' + repos : ''));
+            });
+          } else {
+            logLine('Batch ' + batchNum + ' done (' + chunkIds.length + ' student(s)) — ' + r.valid_users + ' valid, ' + r.invalid_users + ' invalid.');
+          }
           return reduce();
         });
       });
@@ -317,10 +346,15 @@
       })
       .then(function (info) {
         current = { roster_id: info.roster_id, ids: info.student_ids };
+        if (info.analysis && info.analysis.status === 'complete' && window.location.search.indexOf('roster=') === -1) {
+          window.location.replace('/?roster=' + encodeURIComponent(info.roster_id));
+        }
       })
       .catch(function () {
         try { localStorage.removeItem(STORE_KEY); } catch (e) {}
         current = null;
+        var r = document.getElementById('upload-result');
+        if (r) r.innerHTML = '';
       });
   }
 })();
