@@ -132,11 +132,11 @@
         <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
       </div>
       {% else %}
-      <p style="color:#8B8B91; font-size:13px; padding:8px 0;">No public repositories found.</p>
+      <p style="color:var(--muted); font-size:13px; padding:8px 0;">No public repositories found.</p>
       {% endfor %}
       {% if p.language_fig %}<div class="panel-minor-title">Language Mix</div>{{ mc.chart('student-langs', p.language_fig) }}{% endif %}
     {% else %}
-      <p style="color:#8B8B91; font-size:13px; padding:8px 0;">Select a student to inspect their GitHub profile, repositories and language mix.</p>
+      <p style="color:var(--muted); font-size:13px; padding:8px 0;">Select a student to inspect their GitHub profile, repositories and language mix.</p>
     {% endif %}
   </aside>
 </div>

@@ -667,6 +667,10 @@ h1, h2, h3 {
 .badge-red { color: var(--badge-red-color); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
 .badge-blue { color: var(--badge-blue-color); background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.25); }
 .badge-purple { color: var(--badge-purple-color); background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
+.badge-muted { color: var(--muted); background: var(--icon-bg); border-color: var(--border); }
+
+/* BUG-096: full-bleed rows inside the overview metric grid */
+.full-width { grid-column: 1 / -1; }
 
 .external-link-button {
     display: inline-flex;
