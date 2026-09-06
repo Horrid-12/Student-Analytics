@@ -106,6 +106,7 @@ Github-website-/
 > These absorb the spirit of the UI/UX bugs from Phase 2 in the new stack.
 
 > **RESOLVED disposition (verify visually during real-roster use, don't re-open):**
+>
 > - [x] A. Consistent loading/empty/error states across all pages — upload placeholder cards, guarded pages render the prompt, friendly 400/error partials (never tracebacks)
 > - [x] C. Real values for version/status chips — every badge is data-driven (status, license, quality score, maintenance); the only static chip is the `Faculty` role placeholder awaiting deferred 3.7 auth
 > - [x] D. Chart consistency audit — all charts go through the shared `app/charts.py` layout/readability helpers
@@ -114,6 +115,7 @@ Github-website-/
 > - [ ] E. Accessibility: contrast ratios, focus states, alt text on avatars — carried forward alongside B (Phase 2-style audit on the new stack)
 
 > #### Original list (now resolved)
+>
 > - [x] A. Consistent loading/empty/error states across all pages
 > - [ ] B. Mobile/responsive pass (topbar wraps, tables overflow, metric grid collapses)
 > - [x] C. Real values for version/status chips (no hardcoded `v1.0.0` / always-on badges)
@@ -140,30 +142,14 @@ Github-website-/
 > so rosters/results stop being lost to Vercel cold starts (listed as follow-ups in 3.9/3.10).
 > Deps for the new stack were already pinned at cutover (3.10) — the legacy Streamlit pin set lives in `requirements.txt.dead`.
 
-- [ ] 4.1 **UI/UX rewrite (NEW — full redesign, still dark; FIRST priority)** — stop imitating the deleted Streamlit app: the current shell is a pixel-perfect clone (fixed 280px sidebar, sticky brand chevron, 96/80/160px gutters, full-white upload bar) and that mimicry reads as broken:
-      - **Design direction (decided 2026-08-30): full re-design, dark-first.** Compact nav — icon rail (64px) expanding to a labeled 230px nav (hover/toggle, Linear/Mercury pattern); sticky topbar (page title + meta, right side: theme toggle, storage-health chip, account); content ~1200px max-width with ~32/40/64px gutters (kills the 96/80/160 clone padding); mobile <760px → top-nav drawer + hamburger.
-      - **Acceptance (2026-08-30 review):** un-bloat the layout; rebuild sidebar/nav; light mode must genuinely work everywhere (incl. charts); upload control no longer full-white in dark; typos/page-title sweep (`.github Overview` artifact). Absorbs BUG-057/058/059/060/062 (planned UX) + BUG-086 (light-mode leak) + BUG-087 (white upload) + BUG-088 (copy typos) + acceptance B (mobile/responsive) + E (a11y: focus-visible, aria on icon buttons & toggle, contrast pass, reduced-motion).
-      - **How:** `static/theme.css` v2 = design tokens for both themes with zero hardcoded hex in components; one new `static/app.css` component system (`page-head`, `panel`, `metric-card` without glow, `btn` variants/sizes, `chip`/`badge`, `field`/`select`/`toggle` with focus ring, `data-table`, `empty-state`, `progress`, `avatar`, `status-dot`); templates + partials rebuilt on system classes, killing the ~72 inline `style=` blocks; Jinja macros (shared page-head) instead of per-page `<div style="font-size:19px…">`.
-      - **Charts:** theme-aware Plotly palette in `app/charts.py` (hover bg / grid / tick / text derive from the active theme; views pass the current `mode` down) — fixes BUG-086's dark-leak on charts.
-      - **Constraints:** frozen `static/style.css` + `static/layout.css` stay ON DISK (AGENTS frozen-reference rule; `tests/test_pages_36.py:329` asserts `style.css` is served) but `base.html` links only `theme.css` + `app.css`; legacy `services.py/storage.py/ui_helpers.py` untouched.
-      - **Verify:** both suites stay green (129 ×2 modes — backend untouched); page-suite (`test_pages_36.py`) selectors updated ONLY if markers moved; local click-through in dark + light + narrow widths; manual browser looks right; **ask before pushing**.
+- [ ] 4.1 **UI/UX rewrite (NEW — full redesign, still dark; FIRST priority)** — stop imitating the deleted Streamlit app: the current shell is a pixel-perfect clone (fixed 280px sidebar, sticky brand chevron, 96/80/160px gutters, full-white upload bar) and that mimicry reads as broken: - **Design direction (decided 2026-08-30): full re-design, dark-first.** Compact nav — icon rail (64px) expanding to a labeled 230px nav (hover/toggle, Linear/Mercury pattern); sticky topbar (page title + meta, right side: theme toggle, storage-health chip, account); content ~1200px max-width with ~32/40/64px gutters (kills the 96/80/160 clone padding); mobile <760px → top-nav drawer + hamburger. - **Acceptance (2026-08-30 review):** un-bloat the layout; rebuild sidebar/nav; light mode must genuinely work everywhere (incl. charts); upload control no longer full-white in dark; typos/page-title sweep (`.github Overview` artifact). Absorbs BUG-057/058/059/060/062 (planned UX) + BUG-086 (light-mode leak) + BUG-087 (white upload) + BUG-088 (copy typos) + acceptance B (mobile/responsive) + E (a11y: focus-visible, aria on icon buttons & toggle, contrast pass, reduced-motion). - **How:** `static/theme.css` v2 = design tokens for both themes with zero hardcoded hex in components; one new `static/app.css` component system (`page-head`, `panel`, `metric-card` without glow, `btn` variants/sizes, `chip`/`badge`, `field`/`select`/`toggle` with focus ring, `data-table`, `empty-state`, `progress`, `avatar`, `status-dot`); templates + partials rebuilt on system classes, killing the ~72 inline `style=` blocks; Jinja macros (shared page-head) instead of per-page `<div style="font-size:19px…">`. - **Charts:** theme-aware Plotly palette in `app/charts.py` (hover bg / grid / tick / text derive from the active theme; views pass the current `mode` down) — fixes BUG-086's dark-leak on charts. - **Constraints:** frozen `static/style.css` + `static/layout.css` stay ON DISK (AGENTS frozen-reference rule; `tests/test_pages_36.py:329` asserts `style.css` is served) but `base.html` links only `theme.css` + `app.css`; legacy `services.py/storage.py/ui_helpers.py` untouched. - **Verify:** both suites stay green (129 ×2 modes — backend untouched); page-suite (`test_pages_36.py`) selectors updated ONLY if markers moved; local click-through in dark + light + narrow widths; manual browser looks right; **ask before pushing**.
 - [ ] 4.2 Dead code cleanup (did NOT fold into 3.3): delete dead `check_rate_limit()` legacy pre-port copy (services.py:109) — superseded by `check_rate_limit_parts` (github_client); stop consulting legacy `get_token`: it now lives only as the frozen-reference copy for tests, `app/github_client.load_token` is the runtime loader
 - **DROPPED** ~~4.3 file-split plan~~ — `app.py` is demolished by Phase 3; splitting it first is throwaway work.
 - **MOVED** ~~4.4 pytest for `services.py`~~ → Phase 3 step 3.1 (must run BEFORE the port)
 - [ ] 4.5 Add ruff (lint+format) config and CI workflow running lint + tests — set up day one in the NEW repo layout
 - **MOVED** ~~4.6 retry/backoff for transient GitHub API failures~~ → folded into Phase 3 step 3.3
-- [ ] 4.7 **Auth gate (adopted from deferred 3.7; spec G–K below)** — `app/auth.py` on the new stack:
-      - Authlib Google OAuth flow (authlib already pinned in `requirements.txt`); consent screen + credentials with localhost AND prod redirect URIs
-      - Post-sign-in domain gate: reject unless `email`/`hd` ∈ `@<college-domain>` (env `ALLOWED_COLLEGE_DOMAIN`) — never rely on UI hiding
-      - Guard EVERY route via middleware (login/logout/static exempt); signed session cookie + timeout + clean logout
-      - Optional faculty role via env `FACULTY_PASSWORD_SHA256` → replaces the static `badge-purple">Faculty` placeholder chip with a real role
-      - Secrets only in Vercel env vars / host secrets, never in code
-- [ ] 4.8 **Excel → SQL persistence (new)** — durability across Vercel cold starts:
-      - Choice: serverless Postgres — **Neon** recommended (serverless WS driver, free tier, Vercel-friendly); env `POSTGRES_URL`; driver `asyncpg` or `psycopg3` (decide at implementation)
-      - Schema: `students` (stores profile username only, per Bridge.md:57), `repos`, `analysis_runs` (evolve the legacy table), `issues_workflow`; keep `audit_log`
-      - Upload persists parsed records; batch persists per-batch results incrementally; `RosterStore`/TTL cache stays as the fast read layer; History + Issues workflow survive instance scale-down
-      - Views consume DB (or cache while consistent); `storage.py` SQLite becomes legacy-only
-      - Tests: tmp-DB suite mirroring `tests/test_pages_36.py`; pages byte-identical whether served from memory or DB
+- [ ] 4.7 **Auth gate (adopted from deferred 3.7; spec G–K below)** — `app/auth.py` on the new stack: - Authlib Google OAuth flow (authlib already pinned in `requirements.txt`); consent screen + credentials with localhost AND prod redirect URIs - Post-sign-in domain gate: reject unless `email`/`hd` ∈ `@<college-domain>` (env `ALLOWED_COLLEGE_DOMAIN`) — never rely on UI hiding - Guard EVERY route via middleware (login/logout/static exempt); signed session cookie + timeout + clean logout - Optional faculty role via env `FACULTY_PASSWORD_SHA256` → replaces the static `badge-purple">Faculty` placeholder chip with a real role - Secrets only in Vercel env vars / host secrets, never in code
+- [ ] 4.8 **Excel → SQL persistence (new)** — durability across Vercel cold starts: - Choice: serverless Postgres — **Neon** recommended (serverless WS driver, free tier, Vercel-friendly); env `POSTGRES_URL`; driver `asyncpg` or `psycopg3` (decide at implementation) - Schema: `students` (stores profile username only, per Bridge.md:57), `repos`, `analysis_runs` (evolve the legacy table), `issues_workflow`; keep `audit_log` - Upload persists parsed records; batch persists per-batch results incrementally; `RosterStore`/TTL cache stays as the fast read layer; History + Issues workflow survive instance scale-down - Views consume DB (or cache while consistent); `storage.py` SQLite becomes legacy-only - Tests: tmp-DB suite mirroring `tests/test_pages_36.py`; pages byte-identical whether served from memory or DB
 - **FOLDED** ~~4.9 UI improvements~~ → covered by 4.1 above (B/E polish + the five planned UX bugs now ship inside the redesign); the real faculty-role chip still waits post-4.7
 - [ ] 4.10 Ops realism (follow-ups carried from 3.9/3.10): suspend/delete the legacy Streamlit Community Cloud project (it rebuilds from `main` with no streamlit); optionally set `UPSTASH_REDIS_REST_URL/TOKEN` on Vercel so the issues-workflow + analysis cache survive cold instances until 4.8 lands
 
@@ -186,17 +172,18 @@ Github-website-/
 > on Vercel's serverless model").
 >
 > **2026-08-23: SUPERSEDED.** Two constraints changed everything:
+>
 > 1. The project must stay **Python-primary** (college assignment grades) → a TypeScript-heavy
 >    rewrite is off the table.
 > 2. Hosting requirement relaxed: **any free host** — Vercel specifically is not required.
 >
 > Shortlist evaluated (full reasoning in `Bridge.md`):
 >
-> | Candidate | Host fits | Verdict |
-> |---|---|---|
+> | Candidate               | Host fits        | Verdict                                                                         |
+> | ----------------------- | ---------------- | ------------------------------------------------------------------------------- |
 > | FastAPI + Jinja2 + HTMX | Vercel / Railway | **Leading (not yet committed)** — max control, industry-standard Python backend |
-> | NiceGUI | Railway / Render | Contender — least rewriting, Streamlit-like DX, but framework magic |
-> | Reflex | Railway / Fly.io | Not preferred — compiled-JS debugging pain |
+> | NiceGUI                 | Railway / Render | Contender — least rewriting, Streamlit-like DX, but framework magic             |
+> | Reflex                  | Railway / Fly.io | Not preferred — compiled-JS debugging pain                                      |
 >
 > Whatever wins, these carry over unchanged: `services.py` logic, the fixed Excel schema contract,
 > and the auth requirement above. Execution = **Phase 3**; this section remains as the decision record.
