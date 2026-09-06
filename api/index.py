@@ -9,10 +9,15 @@ from app.main import app as fastapi_app
 # the path the function actually received, so a still-misrouted deploy reports
 # it in the response body instead of a bare {"detail": "Not Found"}.
 async def _not_found(request: Request, exc: StarletteHTTPException):
-    return JSONResponse(
-        status_code=404,
-        content={"detail": "Not Found", "received_path": request.scope.get("path")},
-    )
+    path = request.scope.get("path", "")
+    accept = request.headers.get("accept", "")
+    if path.startswith(("/api", "/analysis/", "/upload", "/roster/")) or path.endswith("/export") or "application/json" in accept:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Not Found", "received_path": path},
+        )
+    from app.main import _not_found_response
+    return _not_found_response(request)
 
 
 fastapi_app.add_exception_handler(StarletteHTTPException, _not_found)

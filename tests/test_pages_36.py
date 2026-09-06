@@ -364,3 +364,31 @@ class TestSettingsPage:
     def test_storage_healthy_true_on_writable_tmp_db(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         assert storage.storage_healthy() is True
+
+
+class TestNotFoundRouting:
+    """Catch-all friendly 404 page for typo and unknown slugs."""
+
+    def test_unknown_slug_returns_friendly_404_html(self):
+        client = TestClient(app)
+        res = client.get("/nonexistent-typo-slug")
+        assert res.status_code == 404
+        assert "text/html" in res.headers.get("content-type", "")
+        assert "Page Not Found" in res.text
+        assert "Go to Overview" in res.text
+
+    def test_nested_typo_route_returns_friendly_404_html(self):
+        client = TestClient(app)
+        res = client.get("/students/typo/unknown")
+        assert res.status_code == 404
+        assert "text/html" in res.headers.get("content-type", "")
+        assert "Page Not Found" in res.text
+        assert "Go to Overview" in res.text
+
+    def test_overview_route_renders_overview_page(self):
+        client = TestClient(app)
+        res = client.get("/overview")
+        assert res.status_code == 200
+        assert "Overview" in res.text
+        assert "Student Analytics Workspace" in res.text
+        assert "No student data loaded yet" in res.text

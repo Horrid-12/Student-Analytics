@@ -400,6 +400,21 @@ def _placeholder_response(request: Request, ctx: dict, page_name: str):
     )
 
 
+def _not_found_response(request: Request, ctx: dict | None = None) -> HTMLResponse:
+    if ctx is None:
+        ctx = _base_context("404")
+    return templates.TemplateResponse(
+        request,
+        "pages/404.html",
+        {
+            **ctx,
+            "title": "Page Not Found",
+            "page_name": "404",
+        },
+        status_code=404,
+    )
+
+
 def _guard_page(request: Request, ctx: dict, page_name: str, roster: str):
     """Page guard — data pages need a roster with a completed analysis, else the
     legacy placeholder page is served."""
@@ -557,6 +572,7 @@ def topbar_date() -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/overview", response_class=HTMLResponse)
 def overview(request: Request, roster: str = ""):
     ctx = _base_context("Overview")
     ctx["view"] = None
@@ -1003,4 +1019,19 @@ def placeholder_page(request: Request, slug: str):
                     "nav": nav(active=name),
                 },
             )
-    raise HTTPException(status_code=404, detail="Page not found")
+    return _not_found_response(request)
+
+
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: Exception):
+    accept = request.headers.get("accept", "")
+    path = request.url.path
+    if (
+        "application/json" in accept
+        or path.startswith(("/analysis/", "/upload", "/roster/"))
+        or path.endswith("/export")
+    ):
+        detail = getattr(exc, "detail", "Not Found")
+        return JSONResponse(status_code=404, content={"detail": detail})
+    return _not_found_response(request)
+
