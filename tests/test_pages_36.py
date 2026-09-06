@@ -9,6 +9,7 @@ placeholder. No network, no Streamlit.
 
 import io
 import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -364,6 +365,38 @@ class TestSettingsPage:
     def test_storage_healthy_true_on_writable_tmp_db(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         assert storage.storage_healthy() is True
+
+
+class TestSidebarIdentityContext:
+    """BUG-098: sidebar/account identity must be context-driven, never hardcoded
+    in templates — Phase 4.7 auth overrides the context values per role."""
+
+    def test_identity_values_render_from_context(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
+        client = TestClient(app)
+        settings = client.get("/settings").text
+        assert "Faculty Workspace" in settings       # sidebar brand edition
+        assert "anonymous" in settings               # footer user name
+        assert "Open Access" in settings             # settings account footer
+
+    def test_base_template_uses_context_variables(self):
+        base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
+        source = base.read_text(encoding="utf-8")
+        assert "{{ brand_edition }}" in source
+        assert "{{ auth_user }}" in source
+        assert "{{ auth_status }}" in source
+        assert "Faculty Workspace" not in source     # hardcoded string must be gone
+
+    def test_settings_template_uses_context_variables(self):
+        settings = (
+            Path(__file__).resolve().parent.parent / "app" / "templates" / "pages" / "settings.html"
+        )
+        source = settings.read_text(encoding="utf-8")
+        assert "{{ auth_role }}" in source
+        assert "{{ auth_user }}" in source
+        assert "{{ auth_footer }}" in source
+        for hardcoded in ("Faculty Workspace", 'user-name">anonymous', "Connected &bull; Open Access"):
+            assert hardcoded not in source
 
 
 class TestNotFoundRouting:

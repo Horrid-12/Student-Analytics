@@ -12,7 +12,7 @@
       </div>
     </div>
     <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-      <span class="badge-purple">Faculty</span>
+      <span class="badge-purple">{{ auth_role }}</span>
       <div class="faculty-avatar">FM</div>
     </div>
   </div>
@@ -76,8 +76,8 @@
   <div style="display:flex; align-items:center; gap:12px;">
     <div class="user-avatar-pill" style="width:36px; height:36px;">A</div>
     <div style="min-width:0;">
-      <div class="user-name">anonymous</div>
-      <div class="user-role-line"><span class="status-dot-active"></span>Connected &bull; Open Access</div>
+      <div class="user-name">{{ auth_user }}</div>
+      <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_footer }}</div>
     </div>
   </div>
   <div style="margin-top:12px;">

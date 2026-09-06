@@ -381,6 +381,14 @@ def _base_context(page_name: str) -> dict:
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name),
         "last_analysis": views.friendly_timestamp(views.last_analysis_time()),
+        # BUG-098: sidebar/account identity is context-driven instead of being
+        # hardcoded in the templates. Phase 4.7 auth overrides these per role
+        # (Admin/Faculty/Student) without touching any HTML.
+        "brand_edition": "Faculty Workspace",
+        "auth_role": "Faculty",
+        "auth_user": "anonymous",
+        "auth_status": "Connected",
+        "auth_footer": "Connected \u2022 Open Access",
     }
 
 
