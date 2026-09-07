@@ -17,10 +17,10 @@ Priority is tracked as P1 (highest), then P2 and P3. Current defects are listed 
 
 | Metric        |      Count |
 | ------------- | ---------: |
-| Fixed / moved |         91 |
+| Fixed / moved |         92 |
 | Open          |          0 |
-| Planned       |          7 |
-| Last audit    | 2026-09-06 |
+| Planned       |          6 |
+| Last audit    | 2026-09-07 |
 
 Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
 
@@ -130,7 +130,7 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | P3       | BUG-096 | Fixed   | UI      | Inline style `grid-column: 1 / -1;` used directly on div                    | Moved styling rule to `.full-width` CSS class in style.css                   |
 | P3       | BUG-098 | Planned | UI      | Faculty Workspace text is hardcoded in sidebar brand                        | Dynamically set text based on user role post-auth                            |
 | P3       | BUG-099 | Fixed   | UI      | Idle badge uses purple instead of muted/grey                                | Switched to `.badge-muted` class in overview.html                            |
-| P3       | BUG-100 | Planned | UI      | Accent `rgba` color hardcoded in hover/focus states                         | Replace hardcoded values with `var(--blue)` during the UI pass               |
+| P3       | BUG-100 | Fixed   | UI      | Accent `rgba` color hardcoded in hover/focus states                         | Replaced hardcoded `rgba(59,130,246,…)` with `--blue-*` alpha variables in theme.css; live rules in layout.css (sidebar active, btn hover, pipeline-index, avatar fallback) and style.css (badge-blue, metric-card/repo-card hover) now use them. Streamlit-dead styles left untouched. Covered by `TestCssThemeHygiene` (2 tests). Suite: 141 pass. |
 
 ### Tracked on the Phase 4 roadmap (not current defects)
 

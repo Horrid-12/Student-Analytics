@@ -86,9 +86,9 @@ button {
 }
 
 .sidebar-nav-item.is-active {
-    background: rgba(59, 130, 246, 0.12);
+    background: var(--blue-active-bg);
     color: var(--blue);
-    border-color: rgba(59, 130, 246, 0.3);
+    border-color: var(--blue-active-border);
 }
 
 .sidebar-nav-item .nav-icon {
@@ -244,7 +244,7 @@ button {
 }
 
 .btn:hover {
-    border-color: rgba(59, 130, 246, 0.5);
+    border-color: var(--blue-hover-border);
     background: var(--hover-bg);
     color: var(--text);
 }
@@ -414,7 +414,7 @@ button {
 .pipeline { display: flex; flex-wrap: wrap; gap: 10px; }
 .pipeline-step { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card-soft); color: var(--muted); font-size: 13px; font-weight: 600; }
 .pipeline-step.is-done { border-color: rgba(34, 197, 94, 0.4); color: var(--text); background: rgba(34, 197, 94, 0.07); }
-.pipeline-index { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); color: var(--blue); font-size: 12px; font-weight: 800; }
+.pipeline-index { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--blue-icon-bg); color: var(--blue); font-size: 12px; font-weight: 800; }
 .pipeline-rule { height: 1px; background: var(--border); margin: 16px 0; }
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
 @media (max-width: 1400px) { .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -441,7 +441,7 @@ button {
 .data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
 .data-table tbody tr:hover { background: var(--hover-bg); }
 .table-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
-.avatar-fallback, .profile-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); color: var(--blue); font-weight: 700; font-size: 13px; }
+.avatar-fallback, .profile-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--blue-icon-bg); color: var(--blue); font-weight: 700; font-size: 13px; }
 .table-empty { text-align: center; color: var(--muted); padding: 24px 0; }
 .export-row { display: flex; gap: 10px; align-items: center; }
 .profile-panel { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; }

@@ -10,6 +10,7 @@ placeholder. No network, no Streamlit.
 import io
 import json
 from pathlib import Path
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -365,6 +366,66 @@ class TestSettingsPage:
     def test_storage_healthy_true_on_writable_tmp_db(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         assert storage.storage_healthy() is True
+
+
+class TestCssThemeHygiene:
+    """BUG-100: live app CSS must not hardcode blue accent rgba values."""
+
+    STREAMLIT_MARKERS = (
+        "stSidebar", "stButton", "stDownloadButton", "stPopover",
+        "stFileUploader", "data-testid=\"stBaseButton", "stBaseButton-primary",
+    )
+    BLUE_RGBA = "rgba(59, 130, 246"
+
+    def _live_rules(self, css_text):
+        """Declaration lines that hardcode blue rgba, skipping rules whose
+        selector targets Streamlit (legacy dead) components."""
+        selected = []
+        n = len(css_text)
+        i = 0
+        while i < n:
+            if css_text[i] == "}":
+                i += 1
+                continue
+            brace = css_text.find("{", i)
+            if brace == -1:
+                break
+            head = css_text[i:brace]
+            depth = 0
+            j = brace
+            end = -1
+            while j < n:
+                if css_text[j] == "{":
+                    depth += 1
+                elif css_text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = j
+                        break
+                j += 1
+            if end == -1:
+                break
+            body = css_text[brace + 1:end]
+            if self.BLUE_RGBA in body and not any(m in head for m in self.STREAMLIT_MARKERS):
+                for decl in body.splitlines():
+                    if self.BLUE_RGBA in decl:
+                        selected.append(decl.strip())
+            i = end + 1
+        return selected
+
+    def test_theme_blue_alpha_vars_defined(self):
+        theme_root = Path(__file__).resolve().parents[1] / "static" / "theme.css"
+        css = theme_root.read_text(encoding="utf-8")
+        for var in ("--blue-active-bg", "--blue-active-border", "--blue-hover-border",
+                    "--blue-card-hover-border", "--blue-badge-border", "--blue-icon-bg"):
+            assert var in css, f"{var} missing from theme.css"
+
+    def test_no_hardcoded_blue_rgba_in_live_css(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static"
+        for name in ("layout.css", "style.css"):
+            css = (static_dir / name).read_text(encoding="utf-8")
+            offenders = self._live_rules(css)
+            assert not offenders, f"{name} live rules still hardcode blue rgba: {offenders}"
 
 
 class TestSidebarIdentityContext:

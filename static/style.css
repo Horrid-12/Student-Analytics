@@ -665,7 +665,7 @@ h1, h2, h3 {
 .badge-green { color: var(--badge-green-color); background: rgba(34, 197, 94, 0.10); border-color: rgba(34, 197, 94, 0.25); }
 .badge-amber { color: var(--badge-amber-color); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.25); }
 .badge-red { color: var(--badge-red-color); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
-.badge-blue { color: var(--badge-blue-color); background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.25); }
+.badge-blue { color: var(--badge-blue-color); background: var(--blue-active-bg); border-color: var(--blue-badge-border); }
 .badge-purple { color: var(--badge-purple-color); background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
 .badge-muted { color: var(--muted); background: var(--icon-bg); border-color: var(--border); }
 
@@ -771,7 +771,7 @@ h1, h2, h3 {
 }
 
 .metric-card:hover {
-    border-color: rgba(59, 130, 246, 0.45);
+    border-color: var(--blue-card-hover-border);
 }
 
 .metric-card::after {
@@ -988,7 +988,7 @@ h1, h2, h3 {
 }
 
 .repo-card:hover {
-    border-color: rgba(59, 130, 246, 0.45);
+    border-color: var(--blue-card-hover-border);
 }
 
 .repo-name {
