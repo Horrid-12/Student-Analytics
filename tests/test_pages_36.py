@@ -259,6 +259,44 @@ class TestPageRenderingWithData:
         assert xlsx.status_code == 200
         assert "spreadsheetml" in xlsx.headers["content-type"]
 
+    def test_demo_metrics_route_removed(self, tmp_path):
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.client = TestClient(app)
+        res = self.client.get("/overview/partial")
+        assert res.status_code == 404
+
+    def test_verification_export_respects_status_filter(self, tmp_path):
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.client = TestClient(app)
+        patch_app_pipeline(self.monkeypatch, crash_free_fake())
+        rows = roster_rows() + [
+            {
+                "Timestamp": "2025-08-01 10:10:00",
+                "PRN No": "303.0",
+                "Student Name": "Carol None",
+                "Division": "B",
+                "Batch": "2026",
+                "Actual GitHub Account Link:": "",
+            }
+        ]
+        buf = make_roster_xlsx(rows)
+        data = self.client.post(
+            "/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)}
+        ).json()
+        roster_id = run_all_batches(self.client, data)
+        page = self.client.get(f"/verification?roster={roster_id}&status=Missing").text
+        assert "status=Missing" in page
+        assert "Carol None" in page
+        csv = self.client.get(f"/verification/export?roster={roster_id}&status=Missing").text
+        assert "Carol None" in csv
+        assert "Alice Example" not in csv
+
+    def test_csv_export_has_utf8_bom(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        raw = self.client.get(f"/students/export?roster={roster_id}&format=csv")
+        assert raw.content.startswith(b"\xef\xbb\xbf")
+        assert "Alice Example" in raw.content.decode("utf-8-sig")
+
     def test_history_records_completed_run(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get("/history").text

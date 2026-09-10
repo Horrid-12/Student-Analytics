@@ -446,7 +446,7 @@ def _export_response(df, format: str, name: str):
             headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'},
         )
     return Response(
-        content=df.to_csv(index=False),
+        content="\ufeff" + df.to_csv(index=False),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{name}.csv"'},
     )
@@ -555,26 +555,6 @@ def _upload_failure(request: Request, message: str):
     return JSONResponse(status_code=400, content={"status": "error", "message": message})
 
 
-def sample_metrics() -> dict:
-    return {
-        "students": "735",
-        "valid": "725",
-        "invalid": "9",
-        "errors": "1",
-        "repos": "1,380",
-        "active_repos": "904",
-        "avg_quality": "62.4",
-        "submission": "98.6",
-        "avg_repos": "1.9",
-        "avg_followers": "3.2",
-        "top_lang": "Python",
-    }
-
-
-def generated_at() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-
 def topbar_date() -> str:
     return datetime.now().strftime("%A, %d %B %Y")
 
@@ -595,15 +575,6 @@ def overview(request: Request, roster: str = ""):
             except Exception:
                 ctx["view"] = None
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
-
-
-@app.get("/overview/partial", response_class=HTMLResponse)
-def overview_partial(request: Request):
-    return templates.TemplateResponse(
-        request,
-        "partials/overview_metrics.html",
-        {"metrics": sample_metrics(), "generated_at": generated_at()},
-    )
 
 
 @app.get("/students", response_class=HTMLResponse)
@@ -780,7 +751,7 @@ def verification_page(
         return response
     payload = views.verification_payload(view, q, status, rows)
     export_query = views.export_query_str(
-        roster_id=roster, q=q, division="All", batch="All", year="All", semester="All"
+        roster_id=roster, q=q, division="All", batch="All", year="All", semester="All", status=status
     )
     return templates.TemplateResponse(
         request,
