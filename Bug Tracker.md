@@ -17,10 +17,10 @@ Priority is tracked as P1 (highest), then P2 and P3. Current defects are listed 
 
 | Metric        |      Count |
 | ------------- | ---------: |
-| Fixed / moved |         93 |
+| Fixed / moved |         96 |
 | Open          |          0 |
 | Planned       |          5 |
-| Last audit    | 2026-09-07 |
+| Last audit    | 2026-09-10 |
 
 Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
 
@@ -171,6 +171,9 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | ✅ BUG-099 | Fixed  | Charts   | Plotly Python validator rejected `'transparent'` as a color value for `gridcolor`, `color`, `tickfont.color`, and `hoverlabel` properties in `charts.py`. Caused 2 test failures in `test_pages_36.py`. Fix: replaced all `'transparent'` with `'rgba(0,0,0,0)'` which is functionally identical and valid in Plotly. These are theme-placeholder values overridden by JS at render time. Before: 2 test failures. After: 133/133 pass (legacy mode).                                                                                                                                                                                                  |
 | ✅ BUG-100 | Fixed  | Analysis | Pre-existing port divergence in `app/services.py:build_invalid_issues` classified empty-GitHub-column rows differently than `services.py`. Restored exact logic from `services.py`. Before: 1 test failure in port mode. After: 133/133 pass in both legacy and port modes.                                                                                                                                                                                                                                                                                                                                                                            |
 | ✅ BUG-101 | Fixed  | Routing  | No 404 page for typo slugs on dedicated routes (originally labeled BUG-097). Fix: added friendly catch-all 404 page (`404.html`) extending `base.html` with empty-state illustration, friendly explanation, and "Go to Overview" CTA; added 404 exception handler in `app/main.py` serving HTML 404 for browser/page requests while keeping JSON 404 for API/export endpoints; added dedicated `@app.get("/overview")` route. Covered by `TestNotFoundRouting` (3 new tests) in `tests/test_pages_36.py`. Before: raw JSON `{"detail":"Page not found"}` returned. After: friendly themed 404 page. Suite: 136/136 pass in both legacy and port modes. |
+| ✅ BUG-102 | Fixed  | API      | Dead fabricated-metrics endpoint `/overview/partial` served hardcoded demo numbers (735/725/1,380/62.4) from `sample_metrics()`/`generated_at()`, referenced nowhere in templates, JS, or tests. Fix: removed route + helpers and orphaned `partials/overview_metrics.html`. Covered by `test_demo_metrics_route_removed` (asserts 404). Suite: 144 pass. |
+| ✅ BUG-103 | Fixed  | Export   | Verification export ignored the active status filter — with table filtered to "Verified"/"Invalid"/"Missing" the `/verification/export` link exported the whole roster (students export honors q + cohort, so asymmetry was confirmed), and the link duplicated `roster`/`format` params. Fix: `export_query_str(...)` gained a `status` param, `verification_page` passes the active status, template links simplified to a single `?{{ export_query }}` (Excel swaps `format=csv`→`format=xlsx`). Covered by `test_verification_export_respects_status_filter` (Missing-only export excludes Alice/Bob). |
+| ✅ BUG-104 | Fixed  | Export   | CSV exports used `df.to_csv(index=False)` (bare UTF-8, no BOM) so Excel rendered non-ASCII student names as mojibake. Fix: `_export_response` prepends `\ufeff` (BOM) so CSV opens correctly in Excel. Covered by `test_csv_export_has_utf8_bom` (raw bytes start with `EF BB BF`). |
 
 ## Verification checklist
 

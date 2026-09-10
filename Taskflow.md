@@ -153,7 +153,7 @@ Github-website-/
 - **FOLDED** ~~4.9 UI improvements~~ → covered by 4.1 above (B/E polish + the five planned UX bugs now ship inside the redesign); the real faculty-role chip still waits post-4.7
 - [ ] 4.10 Ops realism (follow-ups carried from 3.9/3.10): suspend/delete the legacy Streamlit Community Cloud project (it rebuilds from `main` with no streamlit); optionally set `UPSTASH_REDIS_REST_URL/TOKEN` on Vercel so the issues-workflow + analysis cache survive cold instances until 4.8 lands
 
-> 4.x resolved so far (pre-rewrite polish): BUG-100 (UI — accent `rgba` blue values replaced with `--blue-*` alpha vars; `TestCssThemeHygiene` guards it).
+> 4.x resolved so far (pre-rewrite polish): BUG-100 (UI — accent `rgba` blue values replaced with `--blue-*` alpha vars; `TestCssThemeHygiene` guards it), BUG-102 (dead fabricated `/overview/partial` endpoint + helpers + orphan template removed), BUG-103 (verification export now honors the active status filter; template link deduped), BUG-104 (CSV exports prepend a UTF-8 BOM for Excel). Suite: **144 pass**.
 
 ---
 
