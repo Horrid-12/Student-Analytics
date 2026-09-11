@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap');
 
 
 /* Fix Streamlit's native header background causing the white band in Dark mode */
@@ -8,7 +8,7 @@ header[data-testid="stHeader"] {
 
 /* Force Inter font everywhere */
 html, body, [class*="css"], * {
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-sans);
 }
 
 /* Ensure default text matches the theme */
@@ -428,8 +428,8 @@ section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMa
 }
 
 .user-avatar-pill {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     background: var(--blue);
     color: #FFFFFF;
@@ -441,8 +441,8 @@ section[data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMa
 }
 
 .user-avatar-pill {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     background: var(--blue);
     color: #FFFFFF;
