@@ -9,6 +9,8 @@ placeholder. No network, no Streamlit.
 
 import io
 import json
+from pathlib import Path
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -257,6 +259,44 @@ class TestPageRenderingWithData:
         assert xlsx.status_code == 200
         assert "spreadsheetml" in xlsx.headers["content-type"]
 
+    def test_demo_metrics_route_removed(self, tmp_path):
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.client = TestClient(app)
+        res = self.client.get("/overview/partial")
+        assert res.status_code == 404
+
+    def test_verification_export_respects_status_filter(self, tmp_path):
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.client = TestClient(app)
+        patch_app_pipeline(self.monkeypatch, crash_free_fake())
+        rows = roster_rows() + [
+            {
+                "Timestamp": "2025-08-01 10:10:00",
+                "PRN No": "303.0",
+                "Student Name": "Carol None",
+                "Division": "B",
+                "Batch": "2026",
+                "Actual GitHub Account Link:": "",
+            }
+        ]
+        buf = make_roster_xlsx(rows)
+        data = self.client.post(
+            "/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)}
+        ).json()
+        roster_id = run_all_batches(self.client, data)
+        page = self.client.get(f"/verification?roster={roster_id}&status=Missing").text
+        assert "status=Missing" in page
+        assert "Carol None" in page
+        csv = self.client.get(f"/verification/export?roster={roster_id}&status=Missing").text
+        assert "Carol None" in csv
+        assert "Alice Example" not in csv
+
+    def test_csv_export_has_utf8_bom(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        raw = self.client.get(f"/students/export?roster={roster_id}&format=csv")
+        assert raw.content.startswith(b"\xef\xbb\xbf")
+        assert "Alice Example" in raw.content.decode("utf-8-sig")
+
     def test_history_records_completed_run(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get("/history").text
@@ -364,3 +404,123 @@ class TestSettingsPage:
     def test_storage_healthy_true_on_writable_tmp_db(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         assert storage.storage_healthy() is True
+
+
+class TestCssThemeHygiene:
+    """BUG-100: live app CSS must not hardcode blue accent rgba values."""
+
+    STREAMLIT_MARKERS = (
+        "stSidebar", "stButton", "stDownloadButton", "stPopover",
+        "stFileUploader", "data-testid=\"stBaseButton", "stBaseButton-primary",
+    )
+    BLUE_RGBA = "rgba(59, 130, 246"
+
+    def _live_rules(self, css_text):
+        """Declaration lines that hardcode blue rgba, skipping rules whose
+        selector targets Streamlit (legacy dead) components."""
+        selected = []
+        n = len(css_text)
+        i = 0
+        while i < n:
+            if css_text[i] == "}":
+                i += 1
+                continue
+            brace = css_text.find("{", i)
+            if brace == -1:
+                break
+            head = css_text[i:brace]
+            depth = 0
+            j = brace
+            end = -1
+            while j < n:
+                if css_text[j] == "{":
+                    depth += 1
+                elif css_text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = j
+                        break
+                j += 1
+            if end == -1:
+                break
+            body = css_text[brace + 1:end]
+            if self.BLUE_RGBA in body and not any(m in head for m in self.STREAMLIT_MARKERS):
+                for decl in body.splitlines():
+                    if self.BLUE_RGBA in decl:
+                        selected.append(decl.strip())
+            i = end + 1
+        return selected
+
+    def test_theme_blue_alpha_vars_defined(self):
+        theme_root = Path(__file__).resolve().parents[1] / "static" / "theme.css"
+        css = theme_root.read_text(encoding="utf-8")
+        for var in ("--blue-active-bg", "--blue-active-border", "--blue-hover-border",
+                    "--blue-card-hover-border", "--blue-badge-border", "--blue-icon-bg"):
+            assert var in css, f"{var} missing from theme.css"
+
+    def test_no_hardcoded_blue_rgba_in_live_css(self):
+        static_dir = Path(__file__).resolve().parents[1] / "static"
+        for name in ("layout.css", "style.css"):
+            css = (static_dir / name).read_text(encoding="utf-8")
+            offenders = self._live_rules(css)
+            assert not offenders, f"{name} live rules still hardcode blue rgba: {offenders}"
+
+
+class TestSidebarIdentityContext:
+    """BUG-098: sidebar/account identity must be context-driven, never hardcoded
+    in templates — Phase 4.7 auth overrides the context values per role."""
+
+    def test_identity_values_render_from_context(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
+        client = TestClient(app)
+        settings = client.get("/settings").text
+        assert "Faculty Workspace" in settings       # sidebar brand edition
+        assert "anonymous" in settings               # footer user name
+        assert "Open Access" in settings             # settings account footer
+
+    def test_base_template_uses_context_variables(self):
+        base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
+        source = base.read_text(encoding="utf-8")
+        assert "{{ brand_edition }}" in source
+        assert "{{ auth_user }}" in source
+        assert "{{ auth_status }}" in source
+        assert "Faculty Workspace" not in source     # hardcoded string must be gone
+
+    def test_settings_template_uses_context_variables(self):
+        settings = (
+            Path(__file__).resolve().parent.parent / "app" / "templates" / "pages" / "settings.html"
+        )
+        source = settings.read_text(encoding="utf-8")
+        assert "{{ auth_role }}" in source
+        assert "{{ auth_user }}" in source
+        assert "{{ auth_footer }}" in source
+        for hardcoded in ("Faculty Workspace", 'user-name">anonymous', "Connected &bull; Open Access"):
+            assert hardcoded not in source
+
+
+class TestNotFoundRouting:
+    """Catch-all friendly 404 page for typo and unknown slugs."""
+
+    def test_unknown_slug_returns_friendly_404_html(self):
+        client = TestClient(app)
+        res = client.get("/nonexistent-typo-slug")
+        assert res.status_code == 404
+        assert "text/html" in res.headers.get("content-type", "")
+        assert "Page Not Found" in res.text
+        assert "Go to Overview" in res.text
+
+    def test_nested_typo_route_returns_friendly_404_html(self):
+        client = TestClient(app)
+        res = client.get("/students/typo/unknown")
+        assert res.status_code == 404
+        assert "text/html" in res.headers.get("content-type", "")
+        assert "Page Not Found" in res.text
+        assert "Go to Overview" in res.text
+
+    def test_overview_route_renders_overview_page(self):
+        client = TestClient(app)
+        res = client.get("/overview")
+        assert res.status_code == 200
+        assert "Overview" in res.text
+        assert "Student Analytics Workspace" in res.text
+        assert "No student data loaded yet" in res.text

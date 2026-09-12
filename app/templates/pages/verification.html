@@ -72,8 +72,8 @@
     </table>
   </div>
   <div class="export-row">
-    <a class="btn" href="/verification/export?roster={{ roster_id }}&format=csv&{{ export_query }}">Export CSV</a>
-    <a class="btn" href="/verification/export?roster={{ roster_id }}&format=xlsx&{{ export_query }}">Export Excel</a>
+    <a class="btn" href="/verification/export?{{ export_query }}">Export CSV</a>
+    <a class="btn" href="/verification/export?{{ export_query.replace('format=csv', 'format=xlsx') }}">Export Excel</a>
   </div>
   {% else %}
   <p class="table-empty">No students match the current filters.</p>

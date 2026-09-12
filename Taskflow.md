@@ -83,6 +83,7 @@ All bugs live in **`Bug Tracker.md`** with `BUG-###` ids — commit messages ref
 - [x] 3.10 Cutover: delete `app.py`, `.streamlit/`, `runtime.txt`, Streamlit deps; pin the new `requirements.txt` — **done 2026-08-29 (Phase 3 CLOSED):** deps flip (`requirements.txt` = new stack, original as `requirements.txt.dead`), `app.py`/`.streamlit/config.toml`/`runtime.txt` deleted, Vercel is canonical (single `student-analytics` project owns `student-analytics-iota.vercel.app`, GitHub auto-deploy, `GITHUB_TOKEN` set, live pipeline verified, duplicate project removed). Follow-up action carried to Phase 4: suspend/delete the legacy Streamlit Community Cloud project (it rebuilds from `main` and has no streamlit anymore), and optional Upstash env vars for cross-instance persistence. **2026-08-30 runners/gotchas:** workspace-root `run.bat`/`run.sh` (outside the repo) updated from the stale Streamlit scripts (`app.py`, port 8501) to the new stack — locate the repo by `app/main.py`, prefer `.venv`, `uvicorn app.main:app --port 8001`, auto-open browser; Overview `auth-notice` reworded to drop the dead `.streamlit/secrets.toml` / `[AUTH]` references (auth is deferred to 4.7 via env vars).
 - [x] 3.11 Post-cutover functionality audit — **done 2026-09-03:** repaired retry-safe analysis history writes, idempotent/concurrent batch accumulation, reset cleanup/race handling, stable roster row keys for blank or duplicate IDs, transparent chart trace styling, dead Limits controls, and stale upload/README behavior. Remaining P2/P3 presentation and routing polish is tracked in the Bug Tracker and deliberately left for Phase 4.
 - [x] 3.12 Rate-limit, upload, and batching reliability fixes — **done 2026-09-05 (BUG-095–100):** (1) BUG-095: 403/429 rate-limit responses are never cached in `github_client.py` (only 200/404 cached), preventing stale rate limits from locking out the app; (2) BUG-096: HTTP 429 recognized by `check_rate_limit_parts`; (3) BUG-097: Search API rate limits (30 req/min) handled per-user as `unavailable_users` instead of aborting the batch; removed blocking sleeps; BATCH_SIZE set to 15 with batch-start logging in overview.html for fast real-time progress; (4) BUG-098: upload form double-fire removed, added `htmx:responseError` handler; (5) BUG-099: Plotly `'transparent'` replaced with `rgba(0,0,0,0)`; (6) BUG-100: port divergence in `build_invalid_issues` fixed. Suite: **133/133 passed in legacy mode, 133/133 passed in port mode**.
+- [x] 3.13 Catch-all 404 routing & /overview fix — **done 2026-09-06 (BUG-101):** (1) Added friendly catch-all 404 page (`app/templates/pages/404.html`) extending `base.html` with empty-state illustration, explanation, and "Go to Overview" CTA; (2) Added 404 exception handler in `app/main.py` serving HTML 404 for browser/page requests while keeping JSON 404 for API/export endpoints; (3) Added dedicated `/overview` route mapping to `overview_page`; (4) Updated `api/index.py` to delegate HTML 404s to app 404 handler; (5) Added `TestNotFoundRouting` tests (3 new tests) — suite now **136/136 passed in legacy mode, 136/136 passed in port mode**.
 
 ### Target structure (port destination)
 
@@ -105,6 +106,7 @@ Github-website-/
 > These absorb the spirit of the UI/UX bugs from Phase 2 in the new stack.
 
 > **RESOLVED disposition (verify visually during real-roster use, don't re-open):**
+>
 > - [x] A. Consistent loading/empty/error states across all pages — upload placeholder cards, guarded pages render the prompt, friendly 400/error partials (never tracebacks)
 > - [x] C. Real values for version/status chips — every badge is data-driven (status, license, quality score, maintenance); the only static chip is the `Faculty` role placeholder awaiting deferred 3.7 auth
 > - [x] D. Chart consistency audit — all charts go through the shared `app/charts.py` layout/readability helpers
@@ -113,6 +115,7 @@ Github-website-/
 > - [ ] E. Accessibility: contrast ratios, focus states, alt text on avatars — carried forward alongside B (Phase 2-style audit on the new stack)
 
 > #### Original list (now resolved)
+>
 > - [x] A. Consistent loading/empty/error states across all pages
 > - [ ] B. Mobile/responsive pass (topbar wraps, tables overflow, metric grid collapses)
 > - [x] C. Real values for version/status chips (no hardcoded `v1.0.0` / always-on badges)
@@ -146,25 +149,17 @@ Github-website-/
       - **Charts:** theme-aware Plotly palette in `app/charts.py` (hover bg / grid / tick / text derive from the active theme; views pass the current `mode` down) — fixes BUG-086's dark-leak on charts.
       - **Constraints:** frozen `static/style.css` + `static/layout.css` stay ON DISK (AGENTS frozen-reference rule; `tests/test_pages_36.py:329` asserts `style.css` is served) but `base.html` links only `theme.css` + `app.css`; legacy `services.py/storage.py/ui_helpers.py` untouched.
       - **Verify:** both suites stay green (129 ×2 modes — backend untouched); page-suite (`test_pages_36.py`) selectors updated ONLY if markers moved; local click-through in dark + light + narrow widths; manual browser looks right; **ask before pushing**.
-- [x] 4.2 Dead code cleanup (did NOT fold into 3.3): delete dead `check_rate_limit()` legacy pre-port copy (services.py:109) — superseded by `check_rate_limit_parts` (github_client); stop consulting legacy `get_token`: it now lives only as the frozen-reference copy for tests, `app/github_client.load_token` is the runtime loader — **done 2026-09-12 (Phase-4 cleanup):** confirmed neither `check_rate_limit()` nor `get_token` remains in `services.py` or `app/services.py` (only `check_rate_limit_parts`, and the runtime loader is `app/github_client.load_token`). Also executed the agreed repo cleanup: deleted `style.css` (served CSS is `static/style.css`), `requirements-new.txt`, and `requirements.txt.dead` (`git rm`, staged); synced the frozen `services.py` fully (urlsplit `extract_username`, `prepare_students` invalid-format builder, 429 branch in `check_rate_limit_parts`, Search-API pacing 0.2→0.1 and per-batch `search_throttled` cutout, and removed the long-migrated `resolve_role` so the diff against the port is only the framework seams) + frozen `storage.py` (back-ported `storage_healthy()` + `logging`) and `ui_helpers.py` docstring; removed `run_analysis`/`determine_analysis_status`/`AnalysisResult` from the port (`app/services.py` — legacy runner now lives ONLY in the frozen copy); `app/batch.py` status now derives from `views.run_outcome` (single status source); skip matrix applied to the parity suite (`TestResolveRole` deleted; `TestAnalysisStatus`, `TestRunAnalysis::test_end_to_end_complete`, `TestAnalyzeRecordsParity::test_matches_run_analysis` skipped when `MODULE_UNDER_TEST` is set); `PAGES`/`NAV_SVG` now carry `Settings` (gear SVG from base.html); `_export_response` validates `format` (400 on anything not `csv`/`xlsx`); `api/index.py` `_not_found` 404-override + its unused imports removed (Mangum + `_StripVercelPrefix` kept); docs updated. Suite: **129 passed legacy / 126 passed + 3 skipped (by design) in `MODULE_UNDER_TEST=app.services` mode; diff-invariant `git diff --no-index services.py app/services.py` still shows only imports + `st = None` + cache block + port-side legacy-runner removal.**
+- [ ] 4.2 Dead code cleanup (did NOT fold into 3.3): delete dead `check_rate_limit()` legacy pre-port copy (services.py:109) — superseded by `check_rate_limit_parts` (github_client); stop consulting legacy `get_token`: it now lives only as the frozen-reference copy for tests, `app/github_client.load_token` is the runtime loader
 - **DROPPED** ~~4.3 file-split plan~~ — `app.py` is demolished by Phase 3; splitting it first is throwaway work.
 - **MOVED** ~~4.4 pytest for `services.py`~~ → Phase 3 step 3.1 (must run BEFORE the port)
 - [ ] 4.5 Add ruff (lint+format) config and CI workflow running lint + tests — set up day one in the NEW repo layout
 - **MOVED** ~~4.6 retry/backoff for transient GitHub API failures~~ → folded into Phase 3 step 3.3
-- [ ] 4.7 **Auth gate (adopted from deferred 3.7; spec G–K below)** — `app/auth.py` on the new stack:
-      - Authlib Google OAuth flow (authlib already pinned in `requirements.txt`); consent screen + credentials with localhost AND prod redirect URIs
-      - Post-sign-in domain gate: reject unless `email`/`hd` ∈ `@<college-domain>` (env `ALLOWED_COLLEGE_DOMAIN`) — never rely on UI hiding
-      - Guard EVERY route via middleware (login/logout/static exempt); signed session cookie + timeout + clean logout
-      - Optional faculty role via env `FACULTY_PASSWORD_SHA256` → replaces the static `badge-purple">Faculty` placeholder chip with a real role
-      - Secrets only in Vercel env vars / host secrets, never in code
-- [ ] 4.8 **Excel → SQL persistence (new)** — durability across Vercel cold starts:
-      - Choice: serverless Postgres — **Neon** recommended (serverless WS driver, free tier, Vercel-friendly); env `POSTGRES_URL`; driver `asyncpg` or `psycopg3` (decide at implementation)
-      - Schema: `students` (stores profile username only, per Bridge.md:57), `repos`, `analysis_runs` (evolve the legacy table), `issues_workflow`; keep `audit_log`
-      - Upload persists parsed records; batch persists per-batch results incrementally; `RosterStore`/TTL cache stays as the fast read layer; History + Issues workflow survive instance scale-down
-      - Views consume DB (or cache while consistent); `storage.py` SQLite becomes legacy-only
-      - Tests: tmp-DB suite mirroring `tests/test_pages_36.py`; pages byte-identical whether served from memory or DB
+- [ ] 4.7 **Auth gate (adopted from deferred 3.7; spec G–K below)** — `app/auth.py` on the new stack: - Authlib Google OAuth flow (authlib already pinned in `requirements.txt`); consent screen + credentials with localhost AND prod redirect URIs - Post-sign-in domain gate: reject unless `email`/`hd` ∈ `@<college-domain>` (env `ALLOWED_COLLEGE_DOMAIN`) — never rely on UI hiding - Guard EVERY route via middleware (login/logout/static exempt); signed session cookie + timeout + clean logout - Optional faculty role via env `FACULTY_PASSWORD_SHA256` → replaces the static `badge-purple">Faculty` placeholder chip with a real role - Secrets only in Vercel env vars / host secrets, never in code
+- [ ] 4.8 **Excel → SQL persistence (new)** — durability across Vercel cold starts: - Choice: serverless Postgres — **Neon** recommended (serverless WS driver, free tier, Vercel-friendly); env `POSTGRES_URL`; driver `asyncpg` or `psycopg3` (decide at implementation) - Schema: `students` (stores profile username only, per Bridge.md:57), `repos`, `analysis_runs` (evolve the legacy table), `issues_workflow`; keep `audit_log` - Upload persists parsed records; batch persists per-batch results incrementally; `RosterStore`/TTL cache stays as the fast read layer; History + Issues workflow survive instance scale-down - Views consume DB (or cache while consistent); `storage.py` SQLite becomes legacy-only - Tests: tmp-DB suite mirroring `tests/test_pages_36.py`; pages byte-identical whether served from memory or DB
 - **FOLDED** ~~4.9 UI improvements~~ → covered by 4.1 above (B/E polish + the five planned UX bugs now ship inside the redesign); the real faculty-role chip still waits post-4.7
 - [ ] 4.10 Ops realism (follow-ups carried from 3.9/3.10): suspend/delete the legacy Streamlit Community Cloud project (it rebuilds from `main` with no streamlit); optionally set `UPSTASH_REDIS_REST_URL/TOKEN` on Vercel so the issues-workflow + analysis cache survive cold instances until 4.8 lands
+
+> 4.x resolved so far (pre-rewrite polish): BUG-100 (UI — accent `rgba` blue values replaced with `--blue-*` alpha vars; `TestCssThemeHygiene` guards it), BUG-102 (dead fabricated `/overview/partial` endpoint + helpers + orphan template removed), BUG-103 (verification export now honors the active status filter; template link deduped), BUG-104 (CSV exports prepend a UTF-8 BOM for Excel). Suite: **144 pass**.
 
 ---
 
@@ -185,17 +180,18 @@ Github-website-/
 > on Vercel's serverless model").
 >
 > **2026-08-23: SUPERSEDED.** Two constraints changed everything:
+>
 > 1. The project must stay **Python-primary** (college assignment grades) → a TypeScript-heavy
 >    rewrite is off the table.
 > 2. Hosting requirement relaxed: **any free host** — Vercel specifically is not required.
 >
 > Shortlist evaluated (full reasoning in `Bridge.md`):
 >
-> | Candidate | Host fits | Verdict |
-> |---|---|---|
+> | Candidate               | Host fits        | Verdict                                                                         |
+> | ----------------------- | ---------------- | ------------------------------------------------------------------------------- |
 > | FastAPI + Jinja2 + HTMX | Vercel / Railway | **Leading (not yet committed)** — max control, industry-standard Python backend |
-> | NiceGUI | Railway / Render | Contender — least rewriting, Streamlit-like DX, but framework magic |
-> | Reflex | Railway / Fly.io | Not preferred — compiled-JS debugging pain |
+> | NiceGUI                 | Railway / Render | Contender — least rewriting, Streamlit-like DX, but framework magic             |
+> | Reflex                  | Railway / Fly.io | Not preferred — compiled-JS debugging pain                                      |
 >
 > Whatever wins, these carry over unchanged: `services.py` logic, the fixed Excel schema contract,
 > and the auth requirement above. Execution = **Phase 3**; this section remains as the decision record.

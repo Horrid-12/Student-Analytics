@@ -392,12 +392,12 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
     }
 
 
-def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All") -> str:
+def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="") -> str:
     pairs = []
     if roster_id:
         pairs.append(("roster", roster_id))
     pairs.append(("format", "csv"))
-    for key, value in (("q", q), ("division", division), ("batch", batch), ("year", year), ("semester", semester)):
+    for key, value in (("q", q), ("division", division), ("batch", batch), ("year", year), ("semester", semester), ("status", status)):
         if value not in (None, "", "All"):
             pairs.append((key, str(value)))
     from urllib.parse import urlencode

@@ -7,6 +7,12 @@
     --text: #FFFFFF;
     --muted: #A1A1AA;
     --blue: #3B82F6;
+    --blue-active-bg: rgba(59, 130, 246, 0.12);
+    --blue-active-border: rgba(59, 130, 246, 0.3);
+    --blue-hover-border: rgba(59, 130, 246, 0.5);
+    --blue-card-hover-border: rgba(59, 130, 246, 0.45);
+    --blue-badge-border: rgba(59, 130, 246, 0.25);
+    --blue-icon-bg: rgba(59, 130, 246, 0.15);
     --green: #22C55E;
     --amber: #F59E0B;
     --red: #EF4444;
