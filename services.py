@@ -2,6 +2,7 @@ import re
 import time
 from dataclasses import dataclass
 from typing import Callable, Iterable
+from urllib.parse import urlsplit
 
 import pandas as pd
 import requests
@@ -113,15 +114,20 @@ def extract_username(text):
     if not text:
         return None
 
-    # Step 1: If input looks like a URL (contains / or .), require github.com
+    # Step 1: If input looks like a URL (contains / or .), require github.com.
     if "/" in text or ("." in text and " " not in text):
         # Strip query string and fragment before matching
         cleaned = re.split(r"[?#]", text, maxsplit=1)[0]
-        match = re.search(r"github\.com/([A-Za-z0-9_-]+)", cleaned, flags=re.IGNORECASE)
-        if match:
-            return match.group(1)
-        # It's a URL but not GitHub — reject it (don't harvest junk tokens)
-        return None
+        try:
+            parsed = urlsplit(cleaned if "://" in cleaned else f"//{cleaned}")
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").lower()
+        if host not in {"github.com", "www.github.com"}:
+            # It's a URL but not GitHub — reject it (don't harvest junk tokens)
+            return None
+        username = parsed.path.strip("/").split("/", 1)[0]
+        return username if re.fullmatch(r"[A-Za-z0-9_-]+", username or "") else None
 
     # Step 2: Bare username (no slashes, no dots) — must be valid GitHub chars
     bare = text.rstrip(".,;:!?")  # strip trailing punctuation
@@ -203,11 +209,7 @@ def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
     prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
     prepared["Submitted_GitHub_Username"] = prepared["GitHub_Username"]
-    invalid_format = prepared[
-        ~prepared[GITHUB_COL].astype(str).str.contains(
-            "github.com/", case=False, na=False, regex=False
-        )
-    ].copy()
+    invalid_format = prepared[prepared["GitHub_Username"].isna()].copy()
     invalid_format["Issue"] = "Invalid format"
     return prepared, invalid_format
 
@@ -258,7 +260,10 @@ def check_rate_limit_parts(status_code: int, headers: dict) -> None:
 
     Primary:   403 + X-RateLimit-Remaining: 0
     Secondary: 403 + Retry-After header (no X-RateLimit-Remaining: 0)
+    Exhausted: 429 returned after github_client retries are exhausted
     """
+    if status_code == 429:
+        raise RateLimitError(headers.get("X-RateLimit-Reset"))
     if status_code == 403:
         if headers.get("X-RateLimit-Remaining") == "0":
             raise RateLimitError(headers.get("X-RateLimit-Reset"))
@@ -279,27 +284,6 @@ def classify_api_error(exc: Exception = None, status_code: int = 0) -> str:
     if status_code == 403:
         return "rate_limit"
     return "unknown"
-
-
-def resolve_role(
-    password_sha256: str | None,
-    configured: dict,
-) -> str | None:
-    """BUG-044: map a submitted password hash to its role.
-
-    Checks ADMIN, then FACULTY, then STUDENT hashes from the ``[AUTH]``
-    secrets section; returns None when no configured hash matches. Roles are
-    checked most-privileged first so an identical password cannot silently
-    downgrade to the least powerful role.
-    """
-    candidate = (password_sha256 or "").strip().lower()
-    if not candidate:
-        return None
-    for role in ("admin", "faculty", "student"):
-        expected = str(configured.get(f"{role.upper()}_PASSWORD_SHA256") or "").strip().lower()
-        if expected and candidate == expected:
-            return role
-    return None
 
 
 def get_user(username: str, token: str | None) -> tuple[bool, dict, bool, str]:
@@ -369,7 +353,7 @@ def get_search_contributions(username: str, kind: str, token: str | None) -> tup
         if page >= SEARCH_PAGE_GUARD:
             break
         page += 1
-        time.sleep(0.2)
+        time.sleep(0.1)
     return items, True
 
 
@@ -413,8 +397,15 @@ def fetch_contribution_data(
     unavailable_users: list[str] = []
     usernames = list(pd.Series(list(valid_usernames)).dropna().unique())
     total_users = len(usernames)
+    search_throttled = False
 
     for index, username in enumerate(usernames, start=1):
+        if search_throttled:
+            unavailable_users.append(username)
+            if progress_callback:
+                progress_callback(index, total_users, username)
+            continue
+
         try:
             prs, prs_ok = get_search_contributions(username, "pr", token)
             issues, issues_ok = get_search_contributions(username, "issue", token)
@@ -424,14 +415,13 @@ def fetch_contribution_data(
                 summaries.append(summarize_user_contributions(username, prs, issues))
         except RateLimitError:
             unavailable_users.append(username)
+            search_throttled = True  # Stop further search calls in this batch if throttled
         except Exception:
             unavailable_users.append(username)
         finally:
-            # Report progress even for accounts whose searches failed, so the
-            # UI bar never appears to stall.
             if progress_callback:
                 progress_callback(index, total_users, username)
-            time.sleep(0.15)  # Search API limits are tighter than the core API
+            time.sleep(0.05)
 
     contrib_columns = [
         "Username",

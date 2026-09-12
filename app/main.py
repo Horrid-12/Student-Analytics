@@ -29,7 +29,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="st
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
 
-PAGES = ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification"]
+PAGES = ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
 
 # Sidebar icons — SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -40,6 +40,7 @@ NAV_SVG = {
     "History": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 }
 
 
@@ -413,6 +414,9 @@ def _export_response(df, format: str, name: str):
     import io
 
     from fastapi.responses import Response
+
+    if format not in {"csv", "xlsx"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}")
 
     if format == "xlsx":
         buffer = io.BytesIO()

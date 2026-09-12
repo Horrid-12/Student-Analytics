@@ -1,16 +1,22 @@
 """Batched analysis worker (Bridge 3.5).
 
-Runs the EXACT pipeline stages of ``services.run_analysis`` over already-prepared
-roster records (the JSON rows the 3.4 upload stored behind a roster_id). No logic
-is duplicated here — this module composes the frozen ``services.*`` functions, so
-a parity test can pin its output against ``run_analysis`` on identical inputs.
+Runs the shared pipeline stages (services.validate_users → build_github_stats →
+fetch_repository_data → fetch_contribution_data → build_dashboard_df + issue
+builders) over already-prepared roster records (the JSON rows the 3.4 upload
+stored behind a roster_id). No logic is duplicated here — this module composes
+the frozen ``services.*`` functions, and the legacy-mode parity test pins its
+output against the frozen ``run_analysis`` on identical inputs.
+
+The run outcome is derived from ``views.run_outcome`` — the single status
+source in the port (the legacy ``determine_analysis_status`` helper was removed
+with the old monolithic runner).
 """
 
 import json
 
 import pandas as pd
 
-from app import services
+from app import services, views
 
 
 def _json_rows(df: pd.DataFrame) -> list[dict]:
@@ -94,7 +100,7 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         "error_users": len(error_users),
         "repo_unavailable_users": list(repo_unavailable),
         "contrib_unavailable_users": list(contrib_unavailable),
-        "status": services.determine_analysis_status(valid_users, error_users),
+        "status": views.run_outcome({"valid": len(valid_users), "errors": len(error_users)}),
         "analyzed": len(records),
         "student_outcomes": outcomes,
     }

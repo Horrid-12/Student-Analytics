@@ -1,4 +1,8 @@
-"""Small, framework-light helpers shared by Streamlit views."""
+"""Small, framework-light helpers shared by Streamlit views.
+
+Ported verbatim from the frozen repo-root ``ui_helpers.py`` for the FastAPI
+stack (no Streamlit dependency, pandas only).
+"""
 
 import html
 import io

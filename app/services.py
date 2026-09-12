@@ -1,6 +1,5 @@
 import re
 import time
-from dataclasses import dataclass
 from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
@@ -50,34 +49,6 @@ class RateLimitError(RuntimeError):
     def __init__(self, reset_epoch: str | None = None):
         self.reset_epoch = reset_epoch
         super().__init__("GitHub API rate limit reached")
-
-
-@dataclass
-class AnalysisResult:
-    source_df: pd.DataFrame
-    github_stats: pd.DataFrame
-    repo_df: pd.DataFrame
-    dashboard_df: pd.DataFrame
-    invalid_issues_df: pd.DataFrame
-    valid_users: list[str]
-    invalid_users: list[str]
-    error_users: list[str]
-    repo_unavailable_users: list[str]
-    contributions_df: pd.DataFrame
-    contrib_unavailable_users: list[str]
-    log: list[str]
-    # Keep the analysis outcome as data on every result.  The UI receives this
-    # object, so an explicit field is safer than asking the UI to calculate it.
-    status: str
-
-
-def determine_analysis_status(valid_users: list[str], error_users: list[str]) -> str:
-    """Return the user-facing outcome for one completed analysis run."""
-    if not error_users:
-        return "Complete"
-    if not valid_users:
-        return "Failed"
-    return "Partial"
 
 
 def build_headers(token: str | None) -> dict[str, str]:
@@ -265,27 +236,6 @@ def classify_api_error(exc: Exception = None, status_code: int = 0) -> str:
     if status_code == 403:
         return "rate_limit"
     return "unknown"
-
-
-def resolve_role(
-    password_sha256: str | None,
-    configured: dict,
-) -> str | None:
-    """BUG-044: map a submitted password hash to its role.
-
-    Checks ADMIN, then FACULTY, then STUDENT hashes from the ``[AUTH]``
-    secrets section; returns None when no configured hash matches. Roles are
-    checked most-privileged first so an identical password cannot silently
-    downgrade to the least powerful role.
-    """
-    candidate = (password_sha256 or "").strip().lower()
-    if not candidate:
-        return None
-    for role in ("admin", "faculty", "student"):
-        expected = str(configured.get(f"{role.upper()}_PASSWORD_SHA256") or "").strip().lower()
-        if expected and candidate == expected:
-            return role
-    return None
 
 
 def get_user(username: str, token: str | None) -> tuple[bool, dict, bool, str]:
@@ -836,114 +786,3 @@ def build_followup_workflow_df(
     result["Owner"] = [state.get(item, {}).get("Owner", "") for item in keys]
     result["Notes"] = [state.get(item, {}).get("Notes", "") for item in keys]
     return result.reindex(columns=columns + ["_Workflow_Key"])
-
-
-def run_analysis(
-    uploaded_file,
-    token: str | None,
-    sample_size: int | None = None,
-    progress_callback: Callable[[str, int, int, str], None] | None = None,
-) -> AnalysisResult:
-    log: list[str] = []
-    df = load_excel(uploaded_file)
-    if sample_size:
-        df = df.head(sample_size).copy()
-    log.append(f"Loaded Excel - {len(df)} rows")
-
-    df, _ = prepare_students(df)
-    log.append("Extracted usernames")
-
-    usernames = df["GitHub_Username"].tolist()
-
-    def validation_progress(index: int, total: int, username: str) -> None:
-        if progress_callback:
-            progress_callback("validate", index, total, username)
-
-    valid_users, invalid_users, error_users, user_payloads = validate_users(
-        usernames,
-        token,
-        validation_progress,
-    )
-    log.append(
-        f"Validated accounts - {len(valid_users)} valid, {len(invalid_users)} invalid, {len(error_users)} API errors"
-    )
-
-    github_stats = build_github_stats(valid_users, user_payloads)
-    log.append("Fetched user stats")
-
-    def repo_progress(index: int, total: int, username: str) -> None:
-        if progress_callback:
-            progress_callback("repos", index, total, username)
-
-    repo_df, repo_unavailable_users = fetch_repository_data(
-        github_stats["GitHub_Username"] if not github_stats.empty else [],
-        token,
-        repo_progress,
-    )
-    if repo_unavailable_users:
-        log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
-    log.append(f"Fetched repositories - {len(repo_df)} found")
-
-    def contrib_progress(index: int, total: int, username: str) -> None:
-        if progress_callback:
-            progress_callback("contributions", index, total, username)
-
-    contributions_df, contrib_unavailable_users = fetch_contribution_data(
-        github_stats["GitHub_Username"] if not github_stats.empty else [],
-        token,
-        contrib_progress,
-    )
-    if contrib_unavailable_users:
-        log.append(
-            f"PR/issue data unavailable for {len(contrib_unavailable_users)} account(s) — the GitHub Search API "
-            "has a strict per-minute limit; add a GITHUB_TOKEN to improve reliability"
-        )
-    total_prs = int(contributions_df["Pull_Requests"].sum()) if not contributions_df.empty else 0
-    total_issues = int(contributions_df["Issues_Opened"].sum()) if not contributions_df.empty else 0
-    log.append(f"Collected contributions - {total_prs} pull request(s), {total_issues} issue(s)")
-
-    dashboard_df = build_dashboard_df(
-        df,
-        github_stats,
-        repo_df,
-        repo_unavailable_users,
-        contributions_df,
-        contrib_unavailable_users,
-    )
-    invalid_issues_df = build_invalid_issues(df, invalid_users, error_users)
-    duplicate_issues_df = build_duplicate_issues(df)
-    if not duplicate_issues_df.empty:
-        log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
-        invalid_issues_df = (
-            pd.concat([invalid_issues_df, duplicate_issues_df], ignore_index=True).drop_duplicates()
-        )
-    duplicate_student_issues_df = build_duplicate_student_issues(df)
-    if not duplicate_student_issues_df.empty:
-        log.append(f"Detected {len(duplicate_student_issues_df)} duplicate student submission(s)")
-        invalid_issues_df = (
-            pd.concat([invalid_issues_df, duplicate_student_issues_df], ignore_index=True).drop_duplicates()
-        )
-    count_mismatches = find_repo_count_mismatches(dashboard_df)
-    if count_mismatches:
-        log.append(
-            f"{len(count_mismatches)} student record(s) show a different fetched repository count than their "
-            "profile reports (profiles also count hidden/private repos that public listings cannot see)"
-        )
-    log.append("Building analytics...")
-    log.append("Complete")
-
-    return AnalysisResult(
-        source_df=df,
-        github_stats=github_stats,
-        repo_df=repo_df,
-        dashboard_df=dashboard_df,
-        invalid_issues_df=invalid_issues_df,
-        valid_users=valid_users,
-        invalid_users=invalid_users,
-        error_users=error_users,
-        repo_unavailable_users=repo_unavailable_users,
-        contributions_df=contributions_df,
-        contrib_unavailable_users=contrib_unavailable_users,
-        log=log,
-        status=determine_analysis_status(valid_users, error_users),
-    )

@@ -11,3 +11,5 @@ __pycache__/
 .streamlit/secrets.toml
 analytics_history.db
 .vercel
+all_templates.txt
+
