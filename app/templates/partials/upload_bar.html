@@ -1,16 +1,43 @@
 <form class="upload-bar" id="roster-form"
       enctype="multipart/form-data">
+  <div class="upload-header">
+    <span class="upload-title">Upload</span>
+    <span class="upload-hint">200MB per file &bull; XLSX, XLS, CSV</span>
+  </div>
   <label class="upload-browse" for="roster-file">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    Upload
+    <span class="upload-copy">
+      <strong>Upload</strong>
+      <small>Drag and drop a file here, or click to browse</small>
+    </span>
   </label>
   <input type="file" id="roster-file" name="file" hidden
          accept=".xlsx,.xls,.csv"
          hx-trigger="change" hx-post="/upload" hx-target="#upload-result" hx-swap="innerHTML"
          hx-encoding="multipart/form-data"/>
-  <span class="upload-hint">200MB per file &bull; XLSX, XLS, CSV</span>
 </form>
 <script>
+  (function () {
+    var form = document.getElementById('roster-form');
+    var input = document.getElementById('roster-file');
+    if (!form || !input) return;
+
+    form.addEventListener('dragover', function (event) {
+      event.preventDefault();
+      form.classList.add('is-dragging');
+    });
+    form.addEventListener('dragleave', function (event) {
+      if (event.target === form) form.classList.remove('is-dragging');
+    });
+    form.addEventListener('drop', function (event) {
+      event.preventDefault();
+      form.classList.remove('is-dragging');
+      if (!event.dataTransfer || !event.dataTransfer.files.length) return;
+      input.files = event.dataTransfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  })();
+
   document.body.addEventListener('htmx:responseError', function(evt) {
     var target = document.getElementById('upload-result');
     if (target && evt.detail.target === target) {

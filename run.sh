@@ -18,15 +18,21 @@ elif command -v xdg-open &> /dev/null; then
     (sleep 2 && xdg-open "http://localhost:$PORT") &
 fi
 
-# Run the FastAPI app with uvicorn (venv first, then system python)
-if [ -x ".venv/bin/python" ]; then
-    ./.venv/bin/python -m uvicorn app.main:app --port "$PORT"
-elif command -v python3 &> /dev/null; then
-    python3 -m uvicorn app.main:app --port "$PORT"
-elif command -v python &> /dev/null; then
-    python -m uvicorn app.main:app --port "$PORT"
-else
-    echo "[ERROR] Python was not found in your PATH."
-    echo "Please install Python and the dependencies in requirements.txt."
+# Run the FastAPI app with a usable runtime (venv first, then system Python).
+PYTHON_CMD=""
+if [ -x ".venv/bin/python" ] && .venv/bin/python -c "import uvicorn" >/dev/null 2>&1; then
+    PYTHON_CMD=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1 && python3 -c "import uvicorn" >/dev/null 2>&1; then
+    PYTHON_CMD="python3"
+elif command -v python >/dev/null 2>&1 && python -c "import uvicorn" >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+fi
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "[ERROR] A Python runtime with uvicorn was not found."
+    echo "Install the dependencies with: python -m pip install -r requirements.txt"
     exit 1
 fi
+
+echo "Using Python runtime: $PYTHON_CMD"
+exec "$PYTHON_CMD" -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --reload
