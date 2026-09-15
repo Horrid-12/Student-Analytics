@@ -23,8 +23,13 @@ if MUT:
 @pytest.fixture(autouse=True)
 def _isolate_databases(tmp_path, monkeypatch):
     """Give every test its own analytics-history and users DB so endpoint tests
-    never touch the real ./analytics_history.db or ./users.db (Phase 4.7 auth)."""
+    never touch the real ./analytics_history.db or ./users.db (Phase 4.7 auth).
+
+    Baseline allowlist so legacy seed/login helpers (@college.edu, @test.local)
+    keep authenticating; the strict Phase 4.7.2 domain gate is asserted by
+    dedicated tests (test_google_auth / test_auth) that override this env."""
     from app import auth, storage
 
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "history.db")
     monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+    monkeypatch.setenv("ALLOWED_OAUTH_DOMAINS", "college.edu mitwpu.edu.in test.local")

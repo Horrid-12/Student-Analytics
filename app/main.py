@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import threading
@@ -17,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import auth, batch, charts, github_client, services, storage, views
+from app import auth, batch, charts, github_client, google_oauth, services, storage, views
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,9 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="GitHub Student Analytics Platform")
 app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="static")
 
-_PUBLIC_PREFIXES = ("/static/", "/login", "/signup", "/logout", "/favicon.ico")
+# /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
+# anonymous browsers can reach the consent redirect and callback.
+_PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico")
 _API_REQUIRE_LOGIN = ("/upload", "/analysis/", "/roster/")
 
 
@@ -616,7 +619,7 @@ def topbar_date() -> str:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, registered: int = 0, error: int = 0):
+def login_page(request: Request, registered: int = 0, error: int = 0, oauth: str = ""):
     if request.state.user:
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(
@@ -625,17 +628,32 @@ def login_page(request: Request, registered: int = 0, error: int = 0):
         {
             "page_name": "login",
             "show_registered_banner": bool(registered),
-            "show_error_banner": bool(error),
+            "show_error_banner": bool(error == 1),
+            "show_domain_banner": bool(error == 2),
+            "oauth_message": oauth,
+            "oauth_domains_text": ", ".join(auth.allowed_domains()),
+            "google_configured": google_oauth.configured(),
         },
     )
 
 
 @app.post("/login", response_class=HTMLResponse)
 async def login_submit(request: Request, email: str = Form(...), password: str = Form(...), next: str = Form("/")):
-    user = auth.verify_login(email, password)
-    if user is None:
-        storage.log_event("login_failed", email)
-        return RedirectResponse("/login?error=1", status_code=302)
+    # Phase 4.7.2: password login is gated to the college domain (error=2 =
+    # non-college email), except seeded/allowlisted admin bypass accounts.
+    if auth.domain_allowed_email(email):
+        user = auth.verify_login(email, password)
+        if user is None:
+            storage.log_event("login_failed", email)
+            return RedirectResponse("/login?error=1", status_code=302)
+    else:
+        if not auth.admin_bypass_eligible(email):
+            storage.log_event("login_failed_domain", email)
+            return RedirectResponse("/login?error=2", status_code=302)
+        user = auth.verify_admin_bypass(email, password)
+        if user is None:
+            storage.log_event("login_failed", email)
+            return RedirectResponse("/login?error=1", status_code=302)
     storage.log_event("login", email)
     response = RedirectResponse(next or "/", status_code=302)
     response.set_cookie(
@@ -655,7 +673,7 @@ def signup_page(request: Request, error: int = 0):
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
-        {"page_name": "signup", "show_error_banner": bool(error)},
+        {"page_name": "signup", "show_error_banner": bool(error == 1), "show_domain_banner": bool(error == 2)},
     )
 
 
@@ -671,11 +689,86 @@ async def signup_submit(
         return RedirectResponse("/signup?error=1", status_code=302)
     if len(password) < 6:
         return RedirectResponse("/signup?error=1", status_code=302)
+    # Phase 4.7.2: signup is restricted to college addresses.
+    if not auth.domain_allowed_email(email):
+        return RedirectResponse("/signup?error=2", status_code=302)
     user = auth.create_user(email, password, role="student", name=name)
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)
     storage.log_event("signup", email)
     return RedirectResponse("/login?registered=1", status_code=302)
+
+
+@app.get("/auth/google")
+def auth_google(request: Request):
+    """Start Google sign-in: consent URL + opaque state nonce in a short-lived,
+    httponly cookie. The domain gate is enforced on the callback, never here."""
+    if not google_oauth.configured():
+        return RedirectResponse("/login?oauth=unconfigured", status_code=302)
+    if request.state.user:
+        return RedirectResponse("/", status_code=302)
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    domains = auth.allowed_domains()
+    state = auth.new_oauth_state()
+    url = google_oauth.build_authorization_url(redirect_uri, state, allowed_domain=domains[0] if domains else None)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(
+        auth._OAUTH_STATE_COOKIE,
+        state,
+        max_age=auth._OAUTH_STATE_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(request: Request, state: str = "", error: str = ""):
+    """Complete Google sign-in: verify state, exchange the code, apply the
+    server-side college-domain gate, resolve the role and mint the normal
+    ``gsad_session`` cookie. Rejections redirect to /login?oauth=domain."""
+    expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
+
+    def reject(kind: str) -> RedirectResponse:
+        response = RedirectResponse(f"/login?oauth={kind}", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        return response
+
+    if error:
+        return reject("error")
+    if not expected or not hmac.compare_digest(state or "", expected):
+        logger.warning("Google OAuth state mismatch (or expired nonce)")
+        return reject("error")
+
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    try:
+        claims = await google_oauth.exchange_code(str(request.url), state, redirect_uri)
+    except Exception:
+        logger.exception("Google OAuth code exchange failed")
+        return reject("error")
+
+    if not auth.authorize_domain(claims):
+        storage.log_event("oauth_denied", claims.get("email", "unknown"))
+        return reject("domain")
+
+    email = claims["email"].lower()
+    role = auth.resolve_google_role(email)
+    user = auth.upsert_google_user(email, claims.get("name", ""), claims.get("sub", ""), role)
+    if user is None:
+        # Read-only/unavailable users DB (Vercel): stay signed in with the
+        # env-allowlist role; nothing durable to persist yet.
+        user = {"email": email, "role": role, "name": claims.get("name", "")}
+    storage.log_event("oauth_login", email)
+    response = RedirectResponse("/", status_code=302)
+    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 @app.get("/logout")

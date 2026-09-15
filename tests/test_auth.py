@@ -20,6 +20,7 @@ from app.main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "auth_history.db")
     monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+    monkeypatch.setenv("ALLOWED_OAUTH_DOMAINS", "college.edu")  # gate must accept the fixture emails
     return TestClient(app)
 
 

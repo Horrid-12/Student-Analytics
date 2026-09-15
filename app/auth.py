@@ -1,15 +1,23 @@
-"""Phase 4.7 auth for the FastAPI stack — email/password accounts with roles.
+"""Phase 4.7 auth for the FastAPI stack — Google OAuth (+ college-domain gate)
+plus an email/password fallback, all with roles.
 
-Self-managed accounts (student-only signup; admin/faculty created via the
-``python -m app.seed_users`` bootstrap) rather than the originally-planned
-Google OAuth. Users are stored in a SQLite ``users`` table fail-safe like the
+Public signup (email/password) only ever creates students; admin/faculty are
+created via the ``python -m app.seed_users`` bootstrap. Google sign-in upserts
+the verified email into the same ``users`` table, resolving roles from the
+``ADMIN_EMAILS``/``FACULTY_EMAILS`` env allowlists first and a stored row second
+(defaulting to student). Both login paths enforce the ``ALLOWED_OAUTH_DOMAINS``
+allowlist server-side (email suffix match + Google ``hd``/``email_verified``
+claims are NEVER skipped), so only college addresses can authenticate.
+
+Users are stored in a SQLite ``users`` table fail-safe like the
 analysis-history storage (BUG-020/021/022): a missing/locked DB denies auth
 with a friendly error but must never crash the app. On Vercel's read-only
-volume this database does not persist — signups/logins only survive on hosts
-with a writable filesystem until Phase 4.8 moves accounts to Postgres.
+volume this database does not persist — role resolution falls back to the env
+allowlists, so Google sign-in works there with zero DB writes; signups/logins
+only survive on hosts with a writable filesystem until Phase 4.8 moves accounts
+to Postgres.
 
-Everything here is stdlib (hashlib/hmac/hmac.compare_digest, base64, sqlite3);
-no new dependencies were added.
+``app/google_oauth.py`` owns the authlib transport; this module stays stdlib.
 """
 
 import base64
@@ -20,14 +28,23 @@ import logging
 import os
 import sqlite3
 import time
+import tomllib
 from contextlib import closing
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 USERS_DB = Path(__file__).resolve().parent.parent / "users.db"
+_SECRETS_PATH = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
 
 ROLES = ("student", "faculty", "admin")
+
+# Columns added after the original email/password schema; _ensure_schema()
+# upgrades existing databases in place (ALTER TABLE ... ADD COLUMN).
+_EXTRA_COLUMNS = (
+    ("auth_source", 'TEXT NOT NULL DEFAULT "password"'),
+    ("google_sub", "TEXT NOT NULL DEFAULT ''"),
+)
 
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
@@ -55,12 +72,14 @@ ROLE_PAGES = {
 _PBKDF2_ITERATIONS = 120_000
 _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 _COOKIE_NAME = "gsad_session"
+_OAUTH_STATE_COOKIE = "gsad_oauth_state"
+_OAUTH_STATE_TTL_SECONDS = 10 * 60  # state nonce lifetime
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
     role TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
@@ -81,8 +100,136 @@ def _secret() -> str:
     return "gsad-dev-secret-change-me"
 
 
+def _env_or_secrets(key: str, default: str = "") -> str:
+    """Env var first, then the top-level key in the gitignored
+    ``.streamlit/secrets.toml`` (mirrors github_client.load_token). Never
+    hardcoded anywhere."""
+    value = os.environ.get(key, "").strip()
+    if value:
+        return value
+    try:
+        with _SECRETS_PATH.open("rb") as handle:
+            data = tomllib.load(handle)
+        value = str(data.get(key, "") or "").strip()
+    except (FileNotFoundError, OSError, TypeError):
+        value = ""
+    return value
+
+
+def _env_admin_emails() -> set[str]:
+    return {e.strip().lower() for e in _env_or_secrets("ADMIN_EMAILS").replace(",", " ").split() if e.strip()}
+
+
+def _env_faculty_emails() -> set[str]:
+    return {e.strip().lower() for e in _env_or_secrets("FACULTY_EMAILS").replace(",", " ").split() if e.strip()}
+
+
+def _admin_bypass_name() -> str:
+    return _env_or_secrets("ADMIN_NAME", "Administrator")
+
+
+def allowed_domains() -> list[str]:
+    """College-domain allowlist from ``ALLOWED_OAUTH_DOMAINS`` (comma- or
+    space-separated). Empty/absent means NO domain is allowed — deny-all — so
+    auth stays closed until the operator configures it."""
+    raw = os.environ.get("ALLOWED_OAUTH_DOMAINS", "mitwpu.edu.in")
+    domains = []
+    for part in raw.replace(",", " ").split():
+        part = part.strip().lower()
+        if part:
+            domains.append(part)
+    return domains
+
+
+def domain_allowed_email(email: str) -> bool:
+    """True when ``email`` sits inside an allowed college domain. Case- and
+    whitespace-insensitive. Mirrors the server-side gate used by password
+    login/signup (UI hiding alone is never trusted)."""
+    email = (email or "").strip().lower()
+    return any(email == domain or email.endswith("@" + domain) for domain in allowed_domains())
+
+
+def admin_bypass_eligible(email: str) -> bool:
+    """True when a non-college address is allowed to attempt an admin bypass:
+    listed in the ``ADMIN_EMAILS`` env allowlist (Vercel-safe, no DB), or a
+    stored users row with the admin role."""
+    email = (email or "").strip().lower()
+    if email in _env_admin_emails():
+        return True
+    user = get_user(email)
+    return bool(user and user.get("role") == "admin")
+
+
+def verify_admin_bypass(email: str, password: str) -> dict | None:
+    """Password-verify a bypass attempt. For ``ADMIN_EMAILS`` allowlist entries
+    the hash comes from the shared ``ADMIN_PASSWORD_HASH`` env var — so the team
+    works on Vercel's read-only filesystem with zero DB writes. Stored admin
+    rows verify against their own hash. Returns the user dict or None."""
+    email = (email or "").strip().lower()
+    if email in _env_admin_emails():
+        env_hash = _env_or_secrets("ADMIN_PASSWORD_HASH")
+        if not env_hash or not verify_password(password, env_hash):
+            return None
+        return {"email": email, "role": "admin", "name": _admin_bypass_name()}
+    user = get_user(email)
+    if user is None or user.get("role") != "admin":
+        return None
+    if not user.get("password_hash") or not verify_password(password, user["password_hash"]):
+        return None
+    return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+
+
+def authorize_domain(claims: dict) -> bool:
+    """Server-side Google domain gate (spec item H).
+
+    Accept when the Workspace ``hd`` claim matches an allowed domain, OR when
+    Google has verified the address and its suffix is inside the allowlist.
+    ``hd`` alone is preferred because it cannot be forged by a personal
+    account; the email-suffix fallback still requires ``email_verified``.
+    """
+    allowed = allowed_domains()
+    if not allowed:
+        return False
+    hd = str(claims.get("hd") or claims.get("hosted_domain") or "").strip().lower()
+    if hd:
+        return hd in allowed
+    email = str(claims.get("email") or "").strip().lower()
+    if not email:
+        return False
+    if not claims.get("email_verified"):
+        return False
+    return any(email == domain or email.endswith("@" + domain) for domain in allowed)
+
+
+def resolve_google_role(email: str) -> str:
+    """Role for a Google sign-in: ``ADMIN_EMAILS``/``FACULTY_EMAILS`` allowlists
+    (Vercel-safe, no DB), then a stored users row (seeded faculty/admin keep
+    their role), else a student."""
+    email = (email or "").strip().lower()
+    admin = _env_admin_emails()
+    facility = _env_faculty_emails()
+    if email in admin:
+        return "admin"
+    if email in facility:
+        return "faculty"
+    existing = get_user(email)
+    if existing is not None:
+        return existing.get("role") or "student"
+    return "student"
+
+
 def _connect() -> sqlite3.Connection:
     return sqlite3.connect(USERS_DB, timeout=5)
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create the users table and backfill any columns added after 4.7 shipped
+    (auth_source/google_sub). Idempotent against both fresh and existing DBs."""
+    conn.execute(_SCHEMA)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    for column, declaration in _EXTRA_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {column} {declaration}")
 
 
 def init_db() -> bool:
@@ -90,7 +237,7 @@ def init_db() -> bool:
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)
+                _ensure_schema(conn)
         return True
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Unable to initialize users storage: %s", exc)
@@ -108,6 +255,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored: str) -> bool:
+    if not stored or not isinstance(stored, str):
+        return False  # Google-only accounts have no password to match
     try:
         algo, iterations_s, salt_b64, key_b64 = stored.split("$", 3)
         key = hashlib.pbkdf2_hmac(
@@ -119,6 +268,48 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(key, base64.b64decode(key_b64))
     except (ValueError, TypeError):
         return False
+
+
+def upsert_google_user(email: str, name: str, google_sub: str, role: str = "student") -> dict | None:
+    """Create or update a Google-authenticated user. Stores the resolved role
+    (env-allowlist or stored row) but never clobbers an existing user's
+    password_hash. Returns the user dict, or None when the DB is unavailable
+    (callers may still proceed with env-allowlist roles)."""
+    email = (email or "").strip().lower()
+    if not email or not init_db():
+        return None
+    if role not in ROLES:
+        role = "student"
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO users (email, password_hash, role, name, created_at, auth_source, google_sub)
+                    VALUES (?, NULL, ?, ?, ?, 'google', ?)
+                    ON CONFLICT(email) DO UPDATE SET
+                        role = excluded.role,
+                        name = excluded.name,
+                        auth_source = 'google',
+                        google_sub = excluded.google_sub
+                    """,
+                    (email, role, (name or "").strip(), now, google_sub or ""),
+                )
+        user = get_user(email)
+        if user is None:
+            return None
+        return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Google upsert failed for %s: %s", email, exc)
+        return None
+
+
+def new_oauth_state() -> str:
+    """Random opaque state nonce for the Google consent round-trip (padding
+    stripped so the cookie value is never URL- or quote-encoded)."""
+    return base64.urlsafe_b64encode(os.urandom(32)).decode("ascii").rstrip("=")
 
 
 def create_user(email: str, password: str, role: str = "student", name: str = "") -> dict | None:
@@ -134,9 +325,9 @@ def create_user(email: str, password: str, role: str = "student", name: str = ""
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)
+                _ensure_schema(conn)
                 conn.execute(
-                    "INSERT INTO users (email, password_hash, role, name, created_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO users (email, password_hash, role, name, created_at, auth_source) VALUES (?, ?, ?, ?, ?, 'password')",
                     (email, hash_password(password), role, (name or "").strip(), time.strftime("%Y-%m-%d %H:%M:%S UTC")),
                 )
         return get_user(email)
@@ -150,8 +341,10 @@ def get_user(email: str) -> dict | None:
     try:
         with closing(_connect()) as conn:
             conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
             row = conn.execute(
-                "SELECT id, email, password_hash, role, name FROM users WHERE email = ?", (email,)
+                "SELECT id, email, password_hash, role, name, auth_source, google_sub FROM users WHERE email = ?",
+                (email,),
             ).fetchone()
         if row is None:
             return None
@@ -175,7 +368,7 @@ def set_user_password(email: str, password: str) -> bool:
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)
+                _ensure_schema(conn)
                 conn.execute(
                     "UPDATE users SET password_hash = ? WHERE email = ?",
                     (hash_password(password), (email or "").strip().lower()),
@@ -192,7 +385,7 @@ def set_user_role(email: str, role: str) -> bool:
     try:
         with closing(_connect()) as conn:
             with conn:
-                conn.execute(_SCHEMA)
+                _ensure_schema(conn)
                 conn.execute(
                     "UPDATE users SET role = ? WHERE email = ?", (role, (email or "").strip().lower())
                 )
@@ -208,10 +401,11 @@ def create_session_token(user: dict) -> str:
         "name": user.get("name", ""),
         "exp": int(time.time()) + _SESSION_TTL_SECONDS,
     }
-    body = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    # Padding stripped so the cookie value is never quote-encoded.
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
     digest = base64.urlsafe_b64encode(
         hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
-    ).decode("ascii")
+    ).decode("ascii").rstrip("=")
     return f"{body}.{digest}"
 
 
@@ -223,10 +417,11 @@ def read_session_token(token: str | None) -> dict | None:
         body, digest = token.split(".", 1)
         expected = base64.urlsafe_b64encode(
             hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
-        ).decode("ascii")
+        ).decode("ascii").rstrip("=")
         if not hmac.compare_digest(digest, expected):
             return None
-        payload = json.loads(base64.urlsafe_b64decode(body.encode("ascii")).decode("utf-8"))
+        padded = body + "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
         if int(payload.get("exp", 0)) < time.time():
             return None
         return payload

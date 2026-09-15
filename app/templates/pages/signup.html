@@ -8,10 +8,13 @@
   {% if show_error_banner %}
   <div class="banner-error">Sign-up failed — check your details or try a different email.</div>
   {% endif %}
+  {% if show_domain_banner %}
+  <div class="banner-error">Only college email addresses can create an account.</div>
+  {% endif %}
 
   <form method="post" action="/signup">
     <div class="form-group">
-      <label for="email">Email address</label>
+      <label for="email">College email address</label>
       <input type="email" id="email" name="email" placeholder="you@college.edu" required autofocus>
     </div>
     <div class="form-group">
