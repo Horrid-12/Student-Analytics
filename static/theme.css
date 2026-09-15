@@ -16,9 +16,11 @@
     --blue-card-hover-border: rgba(190, 52, 43, 0.40);
     --blue-badge-border: rgba(96, 115, 138, 0.36);
     --blue-icon-bg: #60738a;
+    --blue-glow: rgba(96, 115, 138, 0.4);
     --green: #21845d;
     --amber: #a66b25;
     --red: #be342b;
+    --red-hover: #a52c25;
     --purple: #60738a;
     --hover-bg: rgba(20, 34, 53, 0.055);
     --subtle-bg: rgba(255, 255, 255, 0.28);
@@ -44,23 +46,25 @@
 }
 
 [data-theme="dark"] {
-    --bg: #111318;
-    --sidebar: #17191e;
-    --card: #1d2026;
-    --card-soft: #242831;
-    --border: #45505d;
+    --bg: #2C2C2C;
+    --sidebar: #333336;
+    --card: #3A3A3E;
+    --card-soft: #414145;
+    --border: #50505A;
     --text: #f4f1e9;
     --muted: #aeb4bb;
-    --blue: #9aaabd;
-    --blue-active-bg: rgba(190, 52, 43, 0.18);
-    --blue-active-border: rgba(220, 91, 78, 0.64);
-    --blue-hover-border: rgba(220, 91, 78, 0.80);
-    --blue-card-hover-border: rgba(220, 91, 78, 0.60);
-    --blue-badge-border: rgba(154, 170, 189, 0.44);
-    --blue-icon-bg: #60738a;
+    --blue: #5B9CF6;
+    --blue-active-bg: rgba(91, 156, 246, 0.18);
+    --blue-active-border: rgba(91, 156, 246, 0.64);
+    --blue-hover-border: rgba(91, 156, 246, 0.80);
+    --blue-card-hover-border: rgba(91, 156, 246, 0.60);
+    --blue-badge-border: rgba(91, 156, 246, 0.44);
+    --blue-icon-bg: #5B9CF6;
+    --blue-glow: rgba(91, 156, 246, 0.4);
     --green: #55b98b;
     --amber: #d39a52;
-    --red: #dc5b4e;
+    --red: #5B9CF6;
+    --red-hover: #3B82F6;
     --purple: #9aaabd;
     --hover-bg: rgba(255, 255, 255, 0.06);
     --subtle-bg: rgba(255, 255, 255, 0.04);
@@ -68,19 +72,19 @@
     --icon-border: rgba(255, 255, 255, 0.16);
     --shadow: rgba(0, 0, 0, 0.28);
     --shadow-strong: rgba(0, 0, 0, 0.42);
-    --topbar-bg: rgba(29, 32, 38, 0.92);
-    --topbar-border: #45505d;
-    --sidebar-footer-bg: rgba(29, 32, 38, 0.78);
-    --repo-card-bg: rgba(29, 32, 38, 0.90);
-    --alert-bg: rgba(29, 32, 38, 0.96);
-    --progress-shell: #303640;
-    --metric-trend: #b7c4d3;
-    --leader-rank-bg: rgba(154, 170, 189, 0.16);
+    --topbar-bg: rgba(51, 51, 54, 0.92);
+    --topbar-border: #50505A;
+    --sidebar-footer-bg: rgba(51, 51, 54, 0.78);
+    --repo-card-bg: rgba(51, 51, 54, 0.90);
+    --alert-bg: rgba(51, 51, 54, 0.96);
+    --progress-shell: #414145;
+    --metric-trend: #5B9CF6;
+    --leader-rank-bg: rgba(91, 156, 246, 0.16);
     --leader-rank-color: #c5d1df;
     --badge-green-color: #7bd6aa;
     --badge-amber-color: #e7b877;
     --badge-red-color: #ff9d92;
-    --badge-blue-color: #b8c8da;
+    --badge-blue-color: #93C5FD;
     --badge-purple-color: #b8c8da;
     --ext-link-color: #7bd6aa;
 }
@@ -93,6 +97,8 @@
     --border: #1b2633;
     --text: #142235;
     --muted: #566271;
+    --red: #be342b;
+    --red-hover: #a52c25;
     --hover-bg: rgba(20, 34, 53, 0.055);
     --subtle-bg: rgba(255, 255, 255, 0.28);
     --icon-bg: rgba(20, 34, 53, 0.06);

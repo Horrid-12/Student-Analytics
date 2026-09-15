@@ -43,13 +43,13 @@
 
 <section class="panel">
   <div class="panel-title">Analysis Pipeline</div>
-  <div class="pipeline">
-    <div class="pipeline-step {{ 'is-done' if not complete or complete else '' }}"><span class="pipeline-index">1</span>Excel Upload</div>
-    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">2</span>Username Extraction</div>
-    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">3</span>Account Validation</div>
-    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">4</span>Repository Fetch</div>
-    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">5</span>Contribution Trends</div>
-    <div class="pipeline-step {{ 'is-done' if complete else '' }}"><span class="pipeline-index">6</span>Analytics Build</div>
+  <div class="pipeline" id="analysis-pipeline">
+    <div class="pipeline-step" data-step="1"><span class="pipeline-index">1</span>Excel Upload</div>
+    <div class="pipeline-step" data-step="2"><span class="pipeline-index">2</span>Username Extraction</div>
+    <div class="pipeline-step" data-step="3"><span class="pipeline-index">3</span>Account Validation</div>
+    <div class="pipeline-step" data-step="4"><span class="pipeline-index">4</span>Repository Fetch</div>
+    <div class="pipeline-step" data-step="5"><span class="pipeline-index">5</span>Contribution Trends</div>
+    <div class="pipeline-step" data-step="6"><span class="pipeline-index">6</span>Analytics Build</div>
   </div>
   <div class="pipeline-rule"></div>
   <div class="pipeline-meta" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
@@ -58,19 +58,14 @@
       <span class="badge-green">{{ payload.status }}</span>
       <span>Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
       {% else %}
-      <span class="badge-muted">Idle</span>
-      <span>Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
+      <span class="badge-muted" id="pipeline-status-badge">Idle</span>
+      <span id="pipeline-status-text">Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
       {% endif %}
     </div>
     {% if complete %}<span style="font-size:12px; color:var(--muted);">Completed {{ payload.last_analysis }}</span>{% endif %}
   </div>
+  <div id="analysis-log" class="run-log-scroll run-log-live" hidden></div>
 </section>
-
-<div id="analysis-progress" class="batch-progress" hidden>
-  <div id="analysis-label" class="batch-progress-label">Idle</div>
-  <div class="progress-shell"><div id="analysis-bar" class="progress-bar" style="width:0%"></div></div>
-  <div class="run-log-scroll" id="analysis-log"></div>
-</div>
 
 {% if complete %}
 <section class="panel">
@@ -201,15 +196,16 @@
     } catch (e) { return null; }
   }
 
-  var progressEl = document.getElementById('analysis-progress');
-  var barEl = document.getElementById('analysis-bar');
-  var labelEl = document.getElementById('analysis-label');
   var logEl = document.getElementById('analysis-log');
-  if (!logEl) return;
+  var pipelineEl = document.getElementById('analysis-pipeline');
+  var statusBadge = document.getElementById('pipeline-status-badge');
+  var statusText = document.getElementById('pipeline-status-text');
 
   window.__gsadOnRoster = function (data) { current = data || null; };
 
   function logLine(text, cls) {
+    if (!logEl) return;
+    if (logEl.hidden) logEl.hidden = false;
     var line = document.createElement('div');
     line.className = 'batch-log-item' + (cls ? ' ' + cls : '');
     line.textContent = text;
@@ -217,11 +213,22 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function setProgress(done, total, status) {
-    progressEl.hidden = false;
-    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    barEl.style.width = pct + '%';
-    labelEl.textContent = status + ' — analyzing ' + done + ' of ' + total + ' student(s)';
+  function updatePipelineStep(step, state) {
+    if (!pipelineEl) return;
+    var stepEl = pipelineEl.querySelector('[data-step="' + step + '"]');
+    if (!stepEl) return;
+    stepEl.classList.remove('is-running', 'is-done', 'is-error');
+    if (state === 'running') stepEl.classList.add('is-running');
+    else if (state === 'done') stepEl.classList.add('is-done');
+    else if (state === 'error') stepEl.classList.add('is-error');
+  }
+
+  function updatePipelineStatus(text, isComplete, isError) {
+    if (statusBadge) {
+      statusBadge.className = 'badge-' + (isError ? 'red' : isComplete ? 'green' : 'muted');
+      statusBadge.textContent = isComplete ? 'Complete' : isError ? 'Error' : 'Running';
+    }
+    if (statusText) statusText.textContent = text;
   }
 
   function chunk(list, size) {
@@ -268,33 +275,49 @@
     }
     running = true;
     if (runBtn) runBtn.disabled = true;
-    if (barEl) barEl.classList.add('is-running');
+
+    // Reset pipeline to initial state (step 1 done = upload)
+    if (pipelineEl) {
+      pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
+        el.classList.remove('is-running', 'is-done', 'is-error');
+      });
+      updatePipelineStep(1, 'done');
+    }
+    updatePipelineStatus('Starting analysis...', false, false);
+    logLine('Starting analysis for ' + current.ids.length + ' student(s)...');
 
     var rosterId = current.roster_id;
     var ids = current.ids;
     var total = ids.length;
     var batchSize = getBatchSize(total);
-    setProgress(0, total, 'running');
-    logLine('Starting analysis for ' + total + ' student(s)...');
 
     batchedFetch(rosterId, chunk(ids, batchSize), total)
       .then(function (summary) {
         logLine(summary.text, summary.ok ? '' : 'error');
-        setProgress(summary.done, total, summary.ok ? 'complete' : 'stopped');
         if (summary.ok) {
+          // Mark all steps as done
+          if (pipelineEl) {
+            pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
+              el.classList.remove('is-running');
+              el.classList.add('is-done');
+            });
+          }
+          updatePipelineStatus('Analyzed ' + total + ' student(s) in ' + (summary.elapsed || 0) + 's — ' + summary.valid + ' connected, ' + summary.invalid + ' invalid, ' + summary.repos_found + ' repositories found.', true, false);
           logLine('Analysis complete! Loading dashboard...', '');
           setTimeout(function () {
             window.location.href = '/?roster=' + encodeURIComponent(rosterId);
           }, 300);
+        } else {
+          updatePipelineStatus('Analysis stopped: ' + summary.text, false, true);
         }
       })
       .catch(function (err) {
         logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
+        updatePipelineStatus('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), false, true);
       })
       .finally(function () {
         running = false;
         if (runBtn) runBtn.disabled = false;
-        if (barEl) barEl.classList.remove('is-running');
       });
   }
 
@@ -302,14 +325,34 @@
     var done = 0;
     var totalBatches = batches.length;
     var batchNum = 0;
+    var pipelineStages = [
+      { step: 2, name: 'Username Extraction', threshold: 0 },
+      { step: 3, name: 'Account Validation', threshold: 0.15 },
+      { step: 4, name: 'Repository Fetch', threshold: 0.45 },
+      { step: 5, name: 'Contribution Trends', threshold: 0.7 },
+      { step: 6, name: 'Analytics Build', threshold: 0.9 }
+    ];
+    var currentStage = 0;
+
     var reduce = function () {
       if (!batches.length) {
-        return Promise.resolve({ ok: true, done: done, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
+        return Promise.resolve({ ok: true, done: done, valid: 0, invalid: 0, repos_found: 0, elapsed: 0, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
       }
       var chunkIds = batches.shift();
       batchNum++;
       var statusLabel = totalBatches > 1 ? 'running (batch ' + batchNum + '/' + totalBatches + ')' : 'running';
-      setProgress(done, total, statusLabel);
+      updatePipelineStatus('Batch ' + batchNum + '/' + totalBatches + ' — analyzing ' + done + ' of ' + total + ' student(s)...', false, false);
+      
+      // Update pipeline stage based on progress
+      var progress = total > 0 ? done / total : 0;
+      while (currentStage < pipelineStages.length && progress >= pipelineStages[currentStage].threshold) {
+        updatePipelineStep(pipelineStages[currentStage].step, 'done');
+        currentStage++;
+      }
+      if (currentStage < pipelineStages.length) {
+        updatePipelineStep(pipelineStages[currentStage].step, 'running');
+      }
+
       return fetch('/analysis/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -327,7 +370,6 @@
         }
         return resp.json().then(function (data) {
           done += chunkIds.length;
-          setProgress(done, total, 'running');
           var r = data.result || {};
           if (r.students && r.students.length) {
             r.students.forEach(function (s) {

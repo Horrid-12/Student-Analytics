@@ -847,30 +847,6 @@ h1, h2, h3 {
     font-size: 14px;
 }
 
-.pipeline {
-    display: grid;
-    gap: 7px;
-}
-
-.pipeline-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text);
-    font-size: 15px;
-    padding: 8px 10px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--subtle-bg);
-}
-
-.dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--green);
-}
-
 .progress-shell {
     height: 11px;
     border-radius: 999px;
@@ -889,6 +865,16 @@ h1, h2, h3 {
 .run-log-scroll {
     max-height: 220px;
     overflow-y: auto;
+}
+
+.run-log-live {
+    margin-top: 12px;
+    padding: 10px 14px;
+}
+
+.batch-log-item {
+    font-size: 13px;
+    color: var(--muted);
 }
 
 .system-grid {

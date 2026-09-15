@@ -393,8 +393,8 @@ button {
 }
 
 .btn-primary:hover {
-    background: #a52c25;
-    border-color: #a52c25;
+    background: var(--red-hover);
+    border-color: var(--red-hover);
     color: #FFFFFF;
 }
 
@@ -681,7 +681,15 @@ button {
 .pipeline::before { content: ""; position: absolute; top: 15px; left: 8%; right: 8%; height: 1px; background: rgba(86, 98, 113, 0.45); z-index: 0; }
 .pipeline-step { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; text-align: center; position: relative; z-index: 1; }
 .pipeline-step.is-done { color: var(--text); background: transparent; border: 0; }
-.pipeline-index { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--blue); color: #f5f1e9; font-size: 13px; font-weight: 800; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--blue); }
+.pipeline-step.is-running .pipeline-index { background: var(--blue); box-shadow: 0 0 0 2px var(--blue-glow); animation: pulse-ring 1.5s infinite; }
+.pipeline-step.is-error .pipeline-index { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.pipeline-index { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; background: var(--blue); color: #f5f1e9; font-size: 13px; font-weight: 800; line-height: 1; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--blue); }
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--blue-glow); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 var(--blue-glow); }
+}
 .pipeline-step:first-child .pipeline-index { background: var(--red); box-shadow: 0 0 0 1px var(--red); }
 .pipeline-rule { height: 1px; background: rgba(86, 98, 113, 0.45); margin: 22px 0 16px; }
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
@@ -748,7 +756,8 @@ button {
 [data-theme="dark"] .main-content,
 [data-theme="dark"] .content {
     background-color: var(--bg);
-    background-image: none;
+    background-image: linear-gradient(rgba(44, 44, 44, 0.5), rgba(44, 44, 44, 0.5)), url('/static/paper-fiber-texture-dark.png');
+    background-image: url('/static/paper-fiber-texture-dark.png');
 }
 
 [data-theme="dark"] .app-sidebar,
@@ -757,9 +766,12 @@ button {
 [data-theme="dark"] .upload-bar,
 [data-theme="dark"] .panel {
     background-color: var(--card);
-    background-image: none;
+    background-image: linear-gradient(rgba(58, 58, 62, 0.5), rgba(58, 58, 62, 0.5)), url('/static/paper-fiber-texture-dark.png');
+    background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)), url('/static/paper-fiber-texture-dark.png');
 }
 
 [data-theme="dark"] .app-sidebar {
     background-color: var(--sidebar);
+    background-image: linear-gradient(rgba(51, 51, 54, 0.5), rgba(51, 51, 54, 0.5)), url('/static/paper-fiber-texture-dark.png');
+    background-image: linear-gradient(rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025)), url('/static/paper-fiber-texture-dark.png');
 }
