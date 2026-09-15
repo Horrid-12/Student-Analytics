@@ -33,9 +33,7 @@
 </div>
 <div class="auth-notice">
   <svg class="auth-notice-icon" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-4.5-1.2L3 20l1.5-4.2A8.7 8.7 0 0 1 3 11.5a9 9 0 1 1 18 0Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-  <span>Sign-in is not enabled yet &mdash; the dashboard is open-access. Google OAuth with a
-  college-domain allowlist is planned (Taskflow Phase 4.7); until it lands, don't share the
-  workspace publicly while student data is loaded.</span>
+  <span>Signed in as <b>{{ auth_user }}</b> ({{ auth_role }}). Public sign-up creates student accounts; admin and faculty accounts are provisioned by the administrator.</span>
 </div>
 
 {% include "partials/upload_bar.html" %}

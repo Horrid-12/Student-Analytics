@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import services
+from app import auth, services
 from app.main import app, roster_store
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -58,9 +58,22 @@ def upload(client: TestClient, buf: io.BytesIO, name: str = None):
     )
 
 
+def login_admin(client: TestClient, role="admin"):
+    """Seed + log in a direct account (admin by default) so the Phase 4.7 auth
+    middleware admits the request. Signup itself only ever creates students."""
+    import uuid
+
+    email = f"{role}-{uuid.uuid4().hex[:6]}@test.local"
+    assert auth.create_user(email, "secret123", role, "Test User"), "seed failed"
+    r = client.post("/login", data={"email": email, "password": "secret123"})
+    assert r.status_code in (200, 302), f"login failed: {r.status_code}"
+    return email
+
+
 class TestUploadRoot:
     def test_overview_still_served(self):
         client = TestClient(app)
+        login_admin(client)
         response = client.get("/")
         assert response.status_code == 200
         assert "Roster loaded" not in response.text
@@ -70,6 +83,7 @@ class TestUploadRoot:
 class TestUpload:
     def setup_method(self):
         self.client = TestClient(app)
+        login_admin(self.client)
 
     def test_xlsx_returns_parsed_students(self):
         response = upload(self.client, make_roster())
@@ -174,6 +188,7 @@ class TestUpload:
 class TestUploadReset:
     def setup_method(self):
         self.client = TestClient(app)
+        login_admin(self.client)
 
     def test_clear_roster(self):
         response = upload(self.client, make_roster())

@@ -11,13 +11,13 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import batch, charts, github_client, services, storage, views
+from app import auth, batch, charts, github_client, services, storage, views
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,49 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="GitHub Student Analytics Platform")
 app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="static")
 
+_PUBLIC_PREFIXES = ("/static/", "/login", "/signup", "/logout", "/favicon.ico")
+_API_REQUIRE_LOGIN = ("/upload", "/analysis/", "/roster/")
+
+
+@app.middleware("http")
+async def auth_gate(request: Request, call_next):
+    """Phase 4.7 login + RBAC gate (BUG-043/044/045). Static and the auth pages
+    are public; known page paths are role-gated; upload/batch/roster API calls
+    need a session too. Unknown garbage slugs stay ungated so the friendly 404
+    still works for anonymous browsers. Browser (Accept: text/html) GETs bounce
+    to /login or home; fetch/HTMX calls get JSON 401/403s.
+    """
+    path = request.url.path
+    request.state.user = auth.current_user(request)
+    if path.startswith(_PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    page = auth.page_for_path(path)
+    user = request.state.user
+    wants_html = "text/html" in request.headers.get("accept", "")
+
+    if page is None:
+        if path.startswith(_API_REQUIRE_LOGIN) and user is None:
+            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        return await call_next(request)
+
+    if user is None:
+        if wants_html:
+            return RedirectResponse("/login", status_code=302)
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+    if not auth.can_access(user.get("role"), page):
+        if wants_html:
+            return RedirectResponse("/", status_code=303)
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return await call_next(request)
+
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
 
 PAGES = ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
 
-# Sidebar icons — SVG inner markup of the legacy radio-label masks (style.css 304-344).
+# Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
     "Overview": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
@@ -45,7 +82,7 @@ NAV_SVG = {
 
 
 def slug_for(page: str) -> str:
-    """URL slug per page — mirrors the legacy sidebar order."""
+    """URL slug per page â€” mirrors the legacy sidebar order."""
     SLUGS = {
         "Overview": "overview",
         "Students": "students",
@@ -59,7 +96,11 @@ def slug_for(page: str) -> str:
     return SLUGS.get(page, page.lower())
 
 
-def nav(active: str) -> list[dict]:
+def nav(active: str, role: str | None = None) -> list[dict]:
+    if role:
+        pages = [page for page in PAGES if auth.can_access(role, page)]
+    else:
+        pages = []
     return [
         {
             "label": page,
@@ -67,7 +108,7 @@ def nav(active: str) -> list[dict]:
             "active": page == active,
             "svg": NAV_SVG[page],
         }
-        for page in PAGES
+        for page in pages
     ]
 
 
@@ -347,7 +388,7 @@ async def run_batch_unlocked(records: list[dict]) -> dict:
 
 
 def _roster_records(prepared):
-    """JSON-safe student records from a prepared roster — same contracts as
+    """JSON-safe student records from a prepared roster â€” same contracts as
     services.prepare_students (normalized Student_ID, extracted usernames)."""
     return json.loads(prepared.to_json(orient="records"))
 
@@ -377,19 +418,30 @@ def _is_complete(view) -> bool:
     return bool(state and state.get("status") == "complete")
 
 
-def _base_context(page_name: str) -> dict:
+def _base_context(request: Request, page_name: str) -> dict:
+    user = getattr(request.state, "user", None)
+    role = (user or {}).get("role")
+    # BUG-098: sidebar/account identity is context-driven and now reflects the
+    # signed-in Phase 4.7 user (Admin/Faculty/Student) without touching HTML.
+    brand = {
+        "admin": "Admin Workspace",
+        "faculty": "Faculty Workspace",
+        "student": "Student Portal",
+    }.get(role, "Public Workspace")
+    display = (user.get("name") or user.get("email")) if user else "Guest"
+    status = user["role"].title() if user else "Not signed in"
+    footer = f"{role.title()} \u2022 {display}" if user else "Open Access"
     return {
         "topbar_date": topbar_date(),
-        "nav": nav(active=page_name),
+        "nav": nav(active=page_name, role=role),
         "last_analysis": views.friendly_timestamp(views.last_analysis_time()),
-        # BUG-098: sidebar/account identity is context-driven instead of being
-        # hardcoded in the templates. Phase 4.7 auth overrides these per role
-        # (Admin/Faculty/Student) without touching any HTML.
-        "brand_edition": "Faculty Workspace",
-        "auth_role": "Faculty",
-        "auth_user": "anonymous",
-        "auth_status": "Connected",
-        "auth_footer": "Connected \u2022 Open Access",
+        "brand_edition": brand,
+        "auth_role": role.title() if role else "",
+        "auth_user": display,
+        "auth_status": status,
+        "auth_footer": footer,
+        "auth_logged_in": bool(user),
+        "auth_logout": "/logout",
     }
 
 
@@ -411,7 +463,7 @@ def _placeholder_response(request: Request, ctx: dict, page_name: str):
 
 def _not_found_response(request: Request, ctx: dict | None = None) -> HTMLResponse:
     if ctx is None:
-        ctx = _base_context("404")
+        ctx = _base_context(request, "404")
     return templates.TemplateResponse(
         request,
         "pages/404.html",
@@ -425,7 +477,7 @@ def _not_found_response(request: Request, ctx: dict | None = None) -> HTMLRespon
 
 
 def _guard_page(request: Request, ctx: dict, page_name: str, roster: str):
-    """Page guard — data pages need a roster with a completed analysis, else the
+    """Page guard â€” data pages need a roster with a completed analysis, else the
     legacy placeholder page is served."""
     view = views.analysis_view(roster_store, roster) if roster else None
     if view is None or not _is_complete(view):
@@ -563,10 +615,81 @@ def topbar_date() -> str:
     return datetime.now().strftime("%A, %d %B %Y")
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, registered: int = 0, error: int = 0):
+    if request.state.user:
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "pages/login.html",
+        {
+            "page_name": "login",
+            "show_registered_banner": bool(registered),
+            "show_error_banner": bool(error),
+        },
+    )
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request, email: str = Form(...), password: str = Form(...), next: str = Form("/")):
+    user = auth.verify_login(email, password)
+    if user is None:
+        storage.log_event("login_failed", email)
+        return RedirectResponse("/login?error=1", status_code=302)
+    storage.log_event("login", email)
+    response = RedirectResponse(next or "/", status_code=302)
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request, error: int = 0):
+    if request.state.user:
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "pages/signup.html",
+        {"page_name": "signup", "show_error_banner": bool(error)},
+    )
+
+
+@app.post("/signup", response_class=HTMLResponse)
+async def signup_submit(
+    request: Request,
+    email: str = Form(...),
+    name: str = Form(""),
+    password: str = Form(...),
+    confirm_password: str = Form(""),
+):
+    if password != confirm_password:
+        return RedirectResponse("/signup?error=1", status_code=302)
+    if len(password) < 6:
+        return RedirectResponse("/signup?error=1", status_code=302)
+    user = auth.create_user(email, password, role="student", name=name)
+    if user is None:
+        return RedirectResponse("/signup?error=1", status_code=302)
+    storage.log_event("signup", email)
+    return RedirectResponse("/login?registered=1", status_code=302)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    storage.log_event("logout", getattr(request.state, "user", {}).get("email", "unknown"))
+    response = RedirectResponse("/login", status_code=302)
+    response.delete_cookie(auth._COOKIE_NAME)
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/overview", response_class=HTMLResponse)
 def overview(request: Request, roster: str = ""):
-    ctx = _base_context("Overview")
+    ctx = _base_context(request, "Overview")
     ctx["view"] = None
     ctx["payload"] = None
     if roster:
@@ -593,7 +716,7 @@ def students_page(
     rows: int = 0,
     select: str = "",
 ):
-    ctx = _base_context("Students")
+    ctx = _base_context(request, "Students")
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return response
@@ -638,7 +761,7 @@ def students_export(
 def repositories_page(
     request: Request, roster: str = "", q: str = "", language: str = "All", rows: int = 30
 ):
-    ctx = _base_context("Repositories")
+    ctx = _base_context(request, "Repositories")
     view, response = _guard_page(request, ctx, "Repositories", roster)
     if response is not None:
         return response
@@ -660,7 +783,7 @@ def leaderboards_page(
     semester: str = "All",
     anonymize: int = 0,
 ):
-    ctx = _base_context("Leaderboards")
+    ctx = _base_context(request, "Leaderboards")
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
@@ -674,7 +797,7 @@ def leaderboards_page(
 
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request):
-    ctx = _base_context("History")
+    ctx = _base_context(request, "History")
     df = storage.load_run_history()
     storage_ok = storage.storage_healthy()
     runs = []
@@ -718,7 +841,7 @@ def history_page(request: Request):
 
 @app.get("/issues", response_class=HTMLResponse)
 def issues_page(request: Request, roster: str = "", issue: str = "All"):
-    ctx = _base_context("Issues")
+    ctx = _base_context(request, "Issues")
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
         return response
@@ -749,7 +872,7 @@ async def issues_workflow_save(request: Request, roster: str = ""):
 def verification_page(
     request: Request, roster: str = "", q: str = "", status: str = "All", rows: int = 50
 ):
-    ctx = _base_context("Verification")
+    ctx = _base_context(request, "Verification")
     view, response = _guard_page(request, ctx, "Verification", roster)
     if response is not None:
         return response
@@ -778,10 +901,10 @@ def verification_export(
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
-    """Settings — storage health (honest about serverless read-only), theme
+    """Settings â€” storage health (honest about serverless read-only), theme
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
-    ctx = _base_context("Settings")
+    ctx = _base_context(request, "Settings")
     storage_ok, last_run = False, None
     try:
         storage_ok = storage.storage_healthy()
@@ -889,11 +1012,11 @@ async def upload_reset(request: Request, roster_id: str = ""):
 @app.get("/roster/{roster_id}")
 def roster_summary(roster_id: str):
     """Roster summary for UI restore (localStorage survivors a reload/tab
-    close) — whether it still exists server-side, its size, ids, and any
+    close) â€” whether it still exists server-side, its size, ids, and any
     accumulated analysis results so far."""
     records = roster_store.get(roster_id)
     if records is None:
-        raise HTTPException(status_code=404, detail="Roster not found — upload it again")
+        raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
     state = roster_store.get_analysis(roster_id)
     return {
         "roster_id": roster_id,
@@ -928,7 +1051,7 @@ async def analysis_batch(payload: BatchRequest):
     ``analysis:<roster_id>`` (thread-safe appends) so progress is server-authoritative."""
     records = roster_store.get(payload.roster_id)
     if records is None:
-        raise HTTPException(status_code=404, detail="Roster not found — upload it again")
+        raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
 
     keys = _roster_record_keys(records)
     wanted = {str(sid).strip() for sid in payload.student_ids}
@@ -990,18 +1113,15 @@ async def analysis_batch(payload: BatchRequest):
 def placeholder_page(request: Request, slug: str):
     for name, (icon, title, message, needs_run) in PAGE_PLACEHOLDERS.items():
         if slug_for(name) == slug:
-            return templates.TemplateResponse(
-                request,
-                "pages/placeholder.html",
-                {
-                    "page_name": name,
-                    "title": title,
-                    "message": message,
-                    "needs_run": needs_run,
-                    "icon_svg": NAV_SVG[name],
-                    "nav": nav(active=name),
-                },
-            )
+            ctx = _base_context(request, name)
+            ctx.update({
+                "page_name": name,
+                "title": title,
+                "message": message,
+                "needs_run": needs_run,
+                "icon_svg": NAV_SVG[name],
+            })
+            return templates.TemplateResponse(request, "pages/placeholder.html", ctx)
     return _not_found_response(request)
 
 

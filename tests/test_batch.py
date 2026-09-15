@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import batch, storage
+from app import auth, batch, storage
 from app.main import app, roster_store
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -151,6 +151,16 @@ def upload_roster(client):
     return response.json()
 
 
+def login_admin(client):
+    import uuid
+
+    email = f"admin-{uuid.uuid4().hex[:6]}@test.local"
+    assert auth.create_user(email, "secret123", "admin", "Test User"), "seed failed"
+    r = client.post("/login", data={"email": email, "password": "secret123"})
+    assert r.status_code in (200, 302), f"login failed: {r.status_code}"
+    return email
+
+
 class TestAnalyzeRecordsParity:
     @pytest.mark.skipif(
         bool(os.environ.get("MODULE_UNDER_TEST")),
@@ -195,6 +205,7 @@ class TestAnalyzeRecordsParity:
 class TestBatchEndpoints:
     def setup_method(self):
         self.client = TestClient(app)
+        login_admin(self.client)
 
     def test_batches_accumulate_then_complete(self, monkeypatch):
         patch_app_pipeline(monkeypatch, crash_free_fake())

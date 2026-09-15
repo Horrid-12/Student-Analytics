@@ -9,6 +9,7 @@ placeholder. No network, no Streamlit.
 
 import io
 import json
+import uuid
 from pathlib import Path
 from pathlib import Path
 
@@ -16,12 +17,22 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import storage
+from app import auth, storage
 from app.main import app, roster_store
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 import app.services as psvc
+
+
+def make_user(client, role="admin"):
+    """Seed a user directly and log them in so the session cookie persists on the
+    TestClient for the rest of the test (Phase 4.7 auth gates every page)."""
+    email = f"{role.lower()}-{uuid.uuid4().hex[:6]}@college.edu"
+    assert auth.create_user(email, "secret123", role, "Test User"), "user seed failed"
+    login = client.post("/login", data={"email": email, "password": "secret123"})
+    assert login.status_code in (200, 302)
+    return email
 
 
 def make_roster_xlsx(rows=None) -> io.BytesIO:
@@ -137,9 +148,11 @@ def patch_app_pipeline(monkeypatch, fake):
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     storage.DB_PATH = tmp_path / "analytics_history.db"
+    monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
     test_client = TestClient(app)
+    make_user(test_client, "admin")
     yield test_client
 
 
@@ -171,7 +184,9 @@ class TestPageRenderingWithData:
 
     def _setup(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         patch_app_pipeline(self.monkeypatch, crash_free_fake())
         data = upload_roster(self.client)
         roster_id = run_all_batches(self.client, data)
@@ -189,7 +204,9 @@ class TestPageRenderingWithData:
 
     def test_overview_without_roster_shows_empty_state(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         body = self.client.get("/").text
         assert "Student Analytics Workspace" in body
         assert "No student data loaded yet" in body
@@ -261,13 +278,17 @@ class TestPageRenderingWithData:
 
     def test_demo_metrics_route_removed(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         res = self.client.get("/overview/partial")
         assert res.status_code == 404
 
     def test_verification_export_respects_status_filter(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         patch_app_pipeline(self.monkeypatch, crash_free_fake())
         rows = roster_rows() + [
             {
@@ -321,7 +342,9 @@ class TestPageRenderingWithData:
 
     def test_pages_without_analysis_show_placeholder(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         data = upload_roster(self.client)
         roster_id = data["roster_id"]
         for path in ("students", "repositories", "leaderboards", "issues", "verification"):
@@ -332,7 +355,9 @@ class TestPageRenderingWithData:
 
     def test_export_without_analysis_404(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         self.client = TestClient(app)
+        make_user(self.client, "admin")
         data = upload_roster(self.client)
         response = self.client.get(f"/students/export?roster={data['roster_id']}")
         assert response.status_code == 404
@@ -342,37 +367,46 @@ class TestVercelEntrypoint:
     """api/index.py wraps the FastAPI app with a Vercel-prefix stripper so the
     rewrite  /(.*) -> /api/index  still routes to '/', '/students', etc."""
 
-    def test_prefix_stripped_for_root(self):
+    def _client(self, tmp_path, monkeypatch):
+        from api.index import wrapped
+
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "vercel.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(wrapped, raise_server_exceptions=False)
+        make_user(client, "admin")
+        return client
+
+    def test_prefix_stripped_for_root(self, tmp_path, monkeypatch):
         from api.index import Mangum, wrapped
 
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = self._client(tmp_path, monkeypatch)
         assert client.get("/api/index").status_code == 200
         assert "Student Analytics" in client.get("/api/index").text or "student" in client.get("/api/index").text.lower()
 
-    def test_prefix_stripped_for_pages(self):
+    def test_prefix_stripped_for_pages(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = self._client(tmp_path, monkeypatch)
         assert client.get("/api/index/history").status_code == 200
         assert client.get("/api/index/students").status_code == 200
 
-    def test_real_paths_unaffected(self):
+    def test_real_paths_unaffected(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = self._client(tmp_path, monkeypatch)
         assert client.get("/history").status_code == 200
 
-    def test_no_prefix_stripped_from_deep_static(self):
+    def test_no_prefix_stripped_from_deep_static(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = self._client(tmp_path, monkeypatch)
         css = client.get("/api/index/static/style.css")
         assert css.status_code in (200, 404)
 
-    def test_py_function_path_forms(self):
+    def test_py_function_path_forms(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = self._client(tmp_path, monkeypatch)
         assert client.get("/api/index.py").status_code == 200
         assert client.get("/api/index.py/history").status_code == 200
         assert client.get("/api/history").status_code == 200
@@ -385,7 +419,10 @@ class TestSettingsPage:
 
     def _client(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
-        return TestClient(app, raise_server_exceptions=True)
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app, raise_server_exceptions=True)
+        make_user(client, "admin")
+        return client
 
     def test_settings_route_renders(self, tmp_path, monkeypatch):
         client = self._client(tmp_path, monkeypatch)
@@ -472,11 +509,14 @@ class TestSidebarIdentityContext:
 
     def test_identity_values_render_from_context(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app)
+        email = make_user(client, "faculty")
         settings = client.get("/settings").text
-        assert "Faculty Workspace" in settings       # sidebar brand edition
-        assert "anonymous" in settings               # footer user name
-        assert "Open Access" in settings             # settings account footer
+        assert "Faculty Workspace" in settings       # sidebar brand edition per role
+        assert "Test User" in settings               # signed-in account shown
+        assert "Open Access" not in settings         # anonymous footer replaced
+        assert "Sign out" in settings                # auth footer offers logout
 
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
@@ -509,16 +549,22 @@ class TestNotFoundRouting:
         assert "Page Not Found" in res.text
         assert "Go to Overview" in res.text
 
-    def test_nested_typo_route_returns_friendly_404_html(self):
+    def test_nested_typo_route_returns_friendly_404_html(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "nested404.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app)
+        make_user(client, "admin")
         res = client.get("/students/typo/unknown")
         assert res.status_code == 404
         assert "text/html" in res.headers.get("content-type", "")
         assert "Page Not Found" in res.text
         assert "Go to Overview" in res.text
 
-    def test_overview_route_renders_overview_page(self):
+    def test_overview_route_renders_overview_page(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "overview.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app)
+        make_user(client, "student")
         res = client.get("/overview")
         assert res.status_code == 200
         assert "Overview" in res.text
