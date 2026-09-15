@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Sign In{% endblock %}</title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('gsad_theme_v1');
+      if (t === 'light' || t === 'dark') { document.documentElement.dataset.theme = t; }
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}">
+<style>
+.auth-page{display:flex;justify-content:center;align-items:center;min-height:100vh;width:100%;padding:24px;box-sizing:border-box;}
+.auth-card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:420px;box-shadow:0 2px 12px rgba(0,0,0,.08);}
+.auth-card h1{font-size:22px;font-weight:600;color:var(--text);margin:0 0 4px}
+.auth-card p.sub{color:var(--muted);font-size:14px;margin:0 0 20px}
+.auth-card .form-group{margin-bottom:14px}
+.auth-card label{display:block;font-size:13px;font-weight:500;color:var(--text);margin-bottom:5px}
+.auth-card input[type="email"],.auth-card input[type="password"],.auth-card input[type="text"]{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;box-sizing:border-box}
+.auth-card input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-active-bg)}
+.auth-card .btn-primary{width:100%;padding:11px;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;background:var(--blue);color:#fff;margin-top:4px}
+.auth-card .btn-primary:hover{filter:brightness(1.1)}
+.auth-card .foot-text{color:var(--muted);font-size:13px;margin-top:16px;text-align:center}
+.auth-card .foot-text a{color:var(--blue);text-decoration:none;font-weight:500}
+.auth-card .foot-text a:hover{text-decoration:underline}
+.auth-card .banner-error{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+.auth-card .banner-success{background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+</style>
+</head>
+<body style="background:var(--bg)">
+<div class="auth-page">
+  {% block auth_card %}{% endblock %}
+</div>
+</body>
+</html>
