@@ -14,3 +14,4 @@ users.db
 .vercel
 all_templates.txt
 
+.env*

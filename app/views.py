@@ -116,7 +116,15 @@ def friendly_timestamp(value) -> str:
 
 
 def last_analysis_time() -> str:
-    run = storage.last_recorded_run()
+    from app import database
+
+    run = None
+    if database.db_configured():
+        from app import db
+
+        run = db.last_recorded_run()
+    if run is None:
+        run = storage.last_recorded_run()
     return run.get("run_timestamp", "Never") if run else "Never"
 
 

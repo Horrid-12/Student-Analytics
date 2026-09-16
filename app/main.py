@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import auth, batch, charts, github_client, google_oauth, services, storage, views
+from app import auth, batch, charts, database, db, github_client, google_oauth, services, storage, views
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,14 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="GitHub Student Analytics Platform")
 app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="static")
+
+
+@app.on_event("startup")
+async def startup_init():
+    """Initialise the Postgres schema when Neon is configured; otherwise the
+    legacy SQLite/fallback stores self-heal on demand."""
+    if database.db_configured():
+        db.init_schema()
 
 # /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
 # anonymous browsers can reach the consent redirect and callback.
@@ -68,6 +76,39 @@ async def auth_gate(request: Request, call_next):
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
+
+
+def _analysis_view(roster_id: str):
+    """Page-render helper: read from Postgres first (if configured), fall back
+    to the in-memory RosterStore cache. Returns the same dict shape either way."""
+    if database.db_configured():
+        view = db.get_analysis_view_data(roster_id)
+        if view is not None:
+            return view
+    return views.analysis_view(roster_store, roster_id)
+
+
+def _workflow_state(roster_id: str) -> dict:
+    """Workflow state: prefer Postgres; fall back to RosterStore cache."""
+    if database.db_configured():
+        return db.get_workflow(roster_id)
+    return roster_store.get_workflow(roster_id)
+
+
+def _db_log_event(event_type: str, detail: str = "") -> bool:
+    """Audit log: prefer Postgres; fall back to SQLite."""
+    if database.db_configured():
+        return db.log_event(event_type, detail)
+    return storage.log_event(event_type, detail)
+
+
+def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
+    """Record a completed run: prefer Postgres; fall back to legacy SQLite path."""
+    if database.db_configured():
+        return db.record_analysis_run_if_unrecorded(roster_id)
+    record_analysis_run_if_fresh(roster_id, state)
+    return True
+
 
 PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
 
@@ -485,7 +526,7 @@ def _not_found_response(request: Request, ctx: dict | None = None) -> HTMLRespon
 def _guard_page(request: Request, ctx: dict, page_name: str, roster: str):
     """Page guard â€” data pages need a roster with a completed analysis, else the
     legacy placeholder page is served."""
-    view = views.analysis_view(roster_store, roster) if roster else None
+    view = _analysis_view(roster) if roster else None
     if view is None or not _is_complete(view):
         return None, _placeholder_response(request, ctx, page_name)
     return view, None
@@ -542,7 +583,7 @@ def record_analysis_run_if_fresh(roster_id: str, state: dict) -> None:
         if not saved:
             logger.warning("Analysis history write failed for roster %s", roster_id)
             return False
-        if not storage.log_event(
+        if not _db_log_event(
             "analysis_run",
             f"roster={roster_id}; status={metrics.get('status', 'Complete')}",
         ):
@@ -647,17 +688,17 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
     if auth.domain_allowed_email(email):
         user = auth.verify_login(email, password)
         if user is None:
-            storage.log_event("login_failed", email)
+            _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
     else:
         if not auth.admin_bypass_eligible(email):
-            storage.log_event("login_failed_domain", email)
+            _db_log_event("login_failed_domain", email)
             return RedirectResponse("/login?error=2", status_code=302)
         user = auth.verify_admin_bypass(email, password)
         if user is None:
-            storage.log_event("login_failed", email)
+            _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
-    storage.log_event("login", email)
+    _db_log_event("login", email)
     response = RedirectResponse(next if next != "/" else "/onboarding", status_code=302)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -698,7 +739,7 @@ async def signup_submit(
     user = auth.create_user(email, password, role="student", name=name)
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)
-    storage.log_event("signup", email)
+    _db_log_event("signup", email)
     return RedirectResponse("/login?registered=1", status_code=302)
 
 
@@ -751,7 +792,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         return reject("error")
 
     if not auth.authorize_domain(claims):
-        storage.log_event("oauth_denied", claims.get("email", "unknown"))
+        _db_log_event("oauth_denied", claims.get("email", "unknown"))
         return reject("domain")
 
     email = claims["email"].lower()
@@ -761,7 +802,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         # Read-only/unavailable users DB (Vercel): stay signed in with the
         # env-allowlist role; nothing durable to persist yet.
         user = {"email": email, "role": role, "name": claims.get("name", "")}
-    storage.log_event("oauth_login", email)
+    _db_log_event("oauth_login", email)
     response = RedirectResponse("/onboarding", status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
     response.set_cookie(
@@ -801,7 +842,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
         user_info = await github_oauth.exchange_code(str(request.url), state, redirect_uri)
         # TODO: Save user_info["login"] to the DB for this user
-        storage.log_event("github_linked", user["email"])
+        _db_log_event("github_linked", user["email"])
     except Exception:
         logger.exception("GitHub OAuth exchange failed")
         return RedirectResponse("/onboarding?github=error", status_code=302)
@@ -833,7 +874,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
         user_info = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
         # TODO: Save user_info["sub"] (or public URL) to the DB for this user
-        storage.log_event("linkedin_linked", user["email"])
+        _db_log_event("linkedin_linked", user["email"])
     except Exception:
         logger.exception("LinkedIn OAuth exchange failed")
         return RedirectResponse("/onboarding?linkedin=error", status_code=302)
@@ -842,7 +883,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
 
 @app.get("/logout")
 def logout(request: Request):
-    storage.log_event("logout", getattr(request.state, "user", {}).get("email", "unknown"))
+    _db_log_event("logout", getattr(request.state, "user", {}).get("email", "unknown"))
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie(auth._COOKIE_NAME)
     return response
@@ -855,7 +896,7 @@ def overview(request: Request, roster: str = ""):
     ctx["view"] = None
     ctx["payload"] = None
     if roster:
-        view = views.analysis_view(roster_store, roster)
+        view = _analysis_view(roster)
         if view is not None and _is_complete(view):
             try:
                 ctx["view"] = view
@@ -966,8 +1007,8 @@ def leaderboards_page(
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request):
     ctx = _base_context(request, "History")
-    df = storage.load_run_history()
-    storage_ok = storage.storage_healthy()
+    df = db.load_run_history() if database.db_configured() else storage.load_run_history()
+    storage_ok = db.schema_healthy() if database.db_configured() else storage.storage_healthy()
     runs = []
     for _, row in df.iterrows():
         runs.append(
@@ -1013,7 +1054,7 @@ def issues_page(request: Request, roster: str = "", issue: str = "All"):
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
         return response
-    payload = views.issues_payload(view, issue, roster_store.get_workflow(roster))
+    payload = views.issues_payload(view, issue, _workflow_state(roster))
     return templates.TemplateResponse(
         request,
         "pages/issues.html",
@@ -1033,6 +1074,8 @@ async def issues_workflow_save(request: Request, roster: str = ""):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Workflow must be a JSON object")
     roster_store.put_workflow(roster, body)
+    if database.db_configured():
+        db.put_workflow(roster, body)
     return {"status": "ok", "saved": len(body)}
 
 
@@ -1075,18 +1118,21 @@ def settings_page(request: Request):
     ctx = _base_context(request, "Settings")
     storage_ok, last_run = False, None
     try:
-        storage_ok = storage.storage_healthy()
-        if storage_ok:
-            row = storage.last_recorded_run()
-            if row:
-                last_run = {
-                    "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
-                    "status": row.get("status") or "Complete",
-                    "total_students": int(row.get("total_students") or 0),
-                    "valid_accounts": int(row.get("valid_accounts") or 0),
-                    "error_accounts": int(row.get("error_accounts") or 0),
-                    "repos_found": int(row.get("repos_found") or 0),
-                }
+        if database.db_configured():
+            storage_ok = db.schema_healthy()
+            row = db.last_recorded_run()
+        else:
+            storage_ok = storage.storage_healthy()
+            row = storage.last_recorded_run() if storage_ok else None
+        if storage_ok and row:
+            last_run = {
+                "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
+                "status": row.get("status") or "Complete",
+                "total_students": int(row.get("total_students") or 0),
+                "valid_accounts": int(row.get("valid_accounts") or 0),
+                "error_accounts": int(row.get("error_accounts") or 0),
+                "repos_found": int(row.get("repos_found") or 0),
+            }
     except Exception:
         storage_ok = False
     return templates.TemplateResponse(
@@ -1095,7 +1141,7 @@ def settings_page(request: Request):
         {
             **ctx,
             "storage_ok": storage_ok,
-            "db_path": str(storage.DB_PATH),
+            "db_path": str(storage.DB_PATH) if not database.db_configured() else "Neon Postgres",
             "last_run": last_run,
             "token_present": bool(github_client.load_token()),
         },
@@ -1136,6 +1182,16 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
         },
     )
+    if database.db_configured():
+        db.register_roster(
+            records,
+            filename=file.filename or "roster.xlsx",
+            file_hash=file_hash,
+            student_count=len(prepared),
+            invalid_count=len(invalid_format),
+            roster_id=roster_id,
+        )
+        db.ensure_run_summary(roster_id, len(prepared), file_hash)
 
     if request.headers.get("HX-Request") == "true":
         return templates.TemplateResponse(
@@ -1174,6 +1230,8 @@ async def upload_reset(request: Request, roster_id: str = ""):
     """Ditch the stored roster for this upload and restore the pristine upload bar."""
     if roster_id:
         roster_store.clear(roster_id)
+        if database.db_configured():
+            db.clear_roster(roster_id)
     return templates.TemplateResponse(request, "partials/upload_bar.html", {})
 
 
@@ -1182,10 +1240,14 @@ def roster_summary(roster_id: str):
     """Roster summary for UI restore (localStorage survivors a reload/tab
     close) â€” whether it still exists server-side, its size, ids, and any
     accumulated analysis results so far."""
-    records = roster_store.get(roster_id)
+    if database.db_configured():
+        records = db.get_roster_records(roster_id)
+        state = db.get_run_summary(roster_id)
+    else:
+        records = roster_store.get(roster_id)
+        state = roster_store.get_analysis(roster_id)
     if records is None:
         raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
-    state = roster_store.get_analysis(roster_id)
     return {
         "roster_id": roster_id,
         "student_count": len(records),
@@ -1195,11 +1257,15 @@ def roster_summary(roster_id: str):
 
 
 @app.get("/analysis/progress")
-def analysis_progress(roster_id: str = ""):
+async def analysis_progress(roster_id: str = ""):
     """Server-side accumulation view for the run bar (done/total/status)."""
     if not roster_id:
         return {"roster_id": "", "total": 0, "done": 0, "status": "idle"}
-    state = roster_store.get_analysis(roster_id)
+    state = None
+    if database.db_configured():
+        state = db.get_run_summary(roster_id)
+    else:
+        state = roster_store.get_analysis(roster_id)
     if state is None:
         return {"roster_id": roster_id, "total": 0, "done": 0, "status": "idle"}
     return {
@@ -1218,6 +1284,12 @@ async def analysis_batch(payload: BatchRequest):
     """Analyze a ~25-student slice of the stored roster. Results accumulate into
     ``analysis:<roster_id>`` (thread-safe appends) so progress is server-authoritative."""
     records = roster_store.get(payload.roster_id)
+    if records is None and database.db_configured():
+        # Serverless cold start — the in-memory RosterStore is empty, but the
+        # roster was persisted to Postgres at upload time. Rehydrate it.
+        records = db.get_roster_records(payload.roster_id)
+        if records is not None:
+            roster_store.put(payload.roster_id, records)
     if records is None:
         raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
 
@@ -1237,13 +1309,21 @@ async def analysis_batch(payload: BatchRequest):
         raise HTTPException(status_code=400, detail="No roster students matched this batch")
 
     meta = roster_store.get_meta(payload.roster_id) or {}
+    if not meta.get("file_hash") and database.db_configured():
+        summary = db.get_run_summary(payload.roster_id)
+        if summary and summary.get("file_hash"):
+            meta = dict(meta, file_hash=summary["file_hash"])
     roster_store.ensure_analysis(
         payload.roster_id, len(records), file_hash=meta.get("file_hash")
     )
+    if database.db_configured():
+        db.ensure_run_summary(payload.roster_id, len(records), file_hash=meta.get("file_hash"))
     try:
         result = await run_batch_unlocked(subset)
     except services.RateLimitError as exc:
         roster_store.mark_analysis(payload.roster_id, "rate_limited")
+        if database.db_configured():
+            db.mark_run_rate_limited(payload.roster_id)
         return JSONResponse(
             status_code=429,
             content={
@@ -1258,8 +1338,10 @@ async def analysis_batch(payload: BatchRequest):
     state = roster_store.append_analysis(payload.roster_id, result)
     if not state:
         raise HTTPException(status_code=404, detail="Roster was reset while this batch was running")
+    if database.db_configured():
+        db.upsert_batch_results(payload.roster_id, result, result["analyzed_keys"])
     if state.get("status") == "complete":
-        record_analysis_run_if_fresh(payload.roster_id, state)
+        _db_record_run_if_unrecorded(payload.roster_id, state)
     client_result = {
         key: value
         for key, value in result.items()
