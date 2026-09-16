@@ -716,6 +716,8 @@ button {
 .data-table th { text-align: left; padding: 9px 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
 .data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }
 .data-table tbody tr:hover { background: var(--hover-bg); }
+.history-link { color: var(--accent, #3b82f6); text-decoration: none; }
+.history-link:hover { text-decoration: underline; }
 .table-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
 .avatar-fallback, .profile-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--blue-icon-bg); color: var(--blue); font-weight: 700; font-size: 13px; }
 .table-empty { text-align: center; color: var(--muted); padding: 24px 0; }

@@ -32,6 +32,8 @@ import tomllib
 from contextlib import closing
 from pathlib import Path
 
+from app import database, db
+
 logger = logging.getLogger(__name__)
 
 USERS_DB = Path(__file__).resolve().parent.parent / "users.db"
@@ -235,6 +237,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 
 def init_db() -> bool:
     """Create the users table if needed. Returns True when usable."""
+    if database.db_configured():
+        return db.init_schema()
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -281,6 +285,18 @@ def upsert_google_user(email: str, name: str, google_sub: str, role: str = "stud
         return None
     if role not in ROLES:
         role = "student"
+    if database.db_configured():
+        user = db.upsert_user(
+            email=email,
+            role=role,
+            name=(name or "").strip(),
+            password_hash=None,
+            auth_source="google",
+            google_sub=google_sub or "",
+        )
+        if user is None:
+            return None
+        return {"email": user.get("email", email), "role": user.get("role", role), "name": user.get("name", "")}
     now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
     try:
         with closing(_connect()) as conn:
@@ -323,6 +339,18 @@ def create_user(email: str, password: str, role: str = "student", name: str = ""
         role = "student"
     if not init_db():
         return None
+    if database.db_configured():
+        if db.get_user_by_email(email) is not None:
+            return None  # email already taken
+        user = db.upsert_user(
+            email=email,
+            role=role,
+            name=(name or "").strip(),
+            password_hash=hash_password(password),
+            auth_source="password",
+            google_sub="",
+        )
+        return user
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -339,6 +367,8 @@ def create_user(email: str, password: str, role: str = "student", name: str = ""
 
 def get_user(email: str) -> dict | None:
     email = (email or "").strip().lower()
+    if database.db_configured():
+        return db.get_user_by_email(email)
     try:
         with closing(_connect()) as conn:
             conn.row_factory = sqlite3.Row
@@ -366,6 +396,8 @@ def verify_login(email: str, password: str) -> dict | None:
 
 def set_user_password(email: str, password: str) -> bool:
     """Reset an account's password. Returns True on success."""
+    if database.db_configured():
+        return db.set_user_password(email, hash_password(password))
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -383,6 +415,8 @@ def set_user_role(email: str, role: str) -> bool:
     """Used by the admin/teacher bootstrap seed. Returns True on success."""
     if role not in ROLES:
         return False
+    if database.db_configured():
+        return db.set_user_role(email, role)
     try:
         with closing(_connect()) as conn:
             with conn:

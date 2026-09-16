@@ -36,13 +36,19 @@
   <div class="panel-title">Analysis Runs</div>
   <div class="data-table-wrap">
     <table class="data-table">
-      <thead>
-        <tr><th>Run</th><th>Status</th><th>Students</th><th>Valid</th><th>Invalid</th><th>Errors</th><th>Repos Found</th><th>Active Repos</th><th>Avg Quality</th><th>Elapsed (s)</th></tr>
-      </thead>
-      <tbody>
-        {% for run in payload.runs %}
-        <tr>
-          <td>{{ run.friendly }}</td>
+<thead>
+          <tr><th>Run</th><th>Status</th><th>Students</th><th>Valid</th><th>Invalid</th><th>Errors</th><th>Repos Found</th><th>Active Repos</th><th>Avg Quality</th><th>Elapsed (s)</th></tr>
+        </thead>
+        <tbody>
+          {% for run in payload.runs %}
+          <tr>
+            <td>
+              {% if run.roster_id %}
+              <a href="/overview?roster={{ run.roster_id }}" class="history-link">{{ run.friendly }}</a>
+              {% else %}
+              {{ run.friendly }}
+              {% endif %}
+            </td>
           <td>
             {% if run.status == 'Complete' %}<span class="badge-green">{{ run.status }}</span>
             {% elif run.status == 'Partial' %}<span class="badge-amber">{{ run.status }}</span>
