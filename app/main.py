@@ -69,11 +69,12 @@ async def auth_gate(request: Request, call_next):
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
 
-PAGES = ["Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
     "Overview": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+    "Onboarding": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M16 11h6"/>',
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
@@ -88,6 +89,7 @@ def slug_for(page: str) -> str:
     """URL slug per page â€” mirrors the legacy sidebar order."""
     SLUGS = {
         "Overview": "overview",
+        "Onboarding": "onboarding",
         "Students": "students",
         "Repositories": "repositories",
         "Leaderboards": "leaderboards",
@@ -124,6 +126,7 @@ PAGE_PLACEHOLDERS = {
     "Issues": ("issues", "Open Issues", "Review open issues and technical debt across student repositories.", True),
     "Verification": ("verification", "Verification", "Confirm each GitHub account, review validation results, and export per-student status.", True),
     "History": ("history", "Run History", "Past analysis runs, timings, and outcomes appear here.", False),
+    "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
 }
 
 
@@ -655,7 +658,7 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
             storage.log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
     storage.log_event("login", email)
-    response = RedirectResponse(next or "/", status_code=302)
+    response = RedirectResponse(next if next != "/" else "/onboarding", status_code=302)
     response.set_cookie(
         auth._COOKIE_NAME,
         auth.create_session_token(user),
@@ -759,7 +762,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         # env-allowlist role; nothing durable to persist yet.
         user = {"email": email, "role": role, "name": claims.get("name", "")}
     storage.log_event("oauth_login", email)
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse("/onboarding", status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -768,6 +771,72 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         httponly=True,
         samesite="lax",
     )
+    return response
+
+
+from app import github_oauth, linkedin_oauth
+
+@app.get("/auth/github")
+def auth_github(request: Request):
+    if not request.state.user:
+        return RedirectResponse("/login", status_code=302)
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
+    state = auth.new_oauth_state()
+    url = github_oauth.build_authorization_url(redirect_uri, state)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True)
+    return response
+
+@app.get("/auth/github/callback")
+async def auth_github_callback(request: Request, state: str = "", error: str = ""):
+    user = request.state.user
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
+    response = RedirectResponse("/onboarding?github=linked", status_code=302)
+    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    if error or not expected or not hmac.compare_digest(state or "", expected):
+        return RedirectResponse("/onboarding?github=error", status_code=302)
+    try:
+        redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
+        user_info = await github_oauth.exchange_code(str(request.url), state, redirect_uri)
+        # TODO: Save user_info["login"] to the DB for this user
+        storage.log_event("github_linked", user["email"])
+    except Exception:
+        logger.exception("GitHub OAuth exchange failed")
+        return RedirectResponse("/onboarding?github=error", status_code=302)
+    return response
+
+
+@app.get("/auth/linkedin")
+def auth_linkedin(request: Request):
+    if not request.state.user:
+        return RedirectResponse("/login", status_code=302)
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
+    state = auth.new_oauth_state()
+    url = linkedin_oauth.build_authorization_url(redirect_uri, state)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True)
+    return response
+
+@app.get("/auth/linkedin/callback")
+async def auth_linkedin_callback(request: Request, state: str = "", error: str = ""):
+    user = request.state.user
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
+    response = RedirectResponse("/onboarding?linkedin=linked", status_code=302)
+    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    if error or not expected or not hmac.compare_digest(state or "", expected):
+        return RedirectResponse("/onboarding?linkedin=error", status_code=302)
+    try:
+        redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
+        user_info = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
+        # TODO: Save user_info["sub"] (or public URL) to the DB for this user
+        storage.log_event("linkedin_linked", user["email"])
+    except Exception:
+        logger.exception("LinkedIn OAuth exchange failed")
+        return RedirectResponse("/onboarding?linkedin=error", status_code=302)
     return response
 
 
@@ -795,6 +864,12 @@ def overview(request: Request, roster: str = ""):
             except Exception:
                 ctx["view"] = None
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
+
+
+@app.get("/onboarding", response_class=HTMLResponse)
+def onboarding(request: Request):
+    ctx = _base_context(request, "Onboarding")
+    return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
 
 
 @app.get("/students", response_class=HTMLResponse)

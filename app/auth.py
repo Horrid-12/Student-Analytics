@@ -55,16 +55,17 @@ _PAGE_BY_PREFIX = (
     ("/leaderboards", "Leaderboards"),
     ("/repositories", "Repositories"),
     ("/students", "Students"),
+    ("/onboarding", "Onboarding"),
     ("/overview", "Overview"),
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings")
 
-# BUG-044/045 RBAC: students see only Overview + Leaderboards; faculty and
-# admin see everything. (Anonymized leaderboards are rendered by the page.)
+# BUG-044/045 RBAC: students see Overview + Leaderboards + Settings; faculty
+# and admin see everything. (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Leaderboards"),
+    "student": ("Overview", "Onboarding", "Leaderboards", "Settings"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }

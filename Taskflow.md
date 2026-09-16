@@ -160,7 +160,7 @@ Github-website-/
 - **FOLDED** ~~4.9 UI improvements~~ → covered by 4.1 above (B/E polish + the five planned UX bugs now ship inside the redesign); the real faculty-role chip still waits post-4.7
 - [ ] 4.10 Ops realism (follow-ups carried from 3.9/3.10): suspend/delete the legacy Streamlit Community Cloud project (it rebuilds from `main` with no streamlit); optionally set `UPSTASH_REDIS_REST_URL/TOKEN` on Vercel so the issues-workflow + analysis cache survive cold instances until 4.8 lands
 
-> 4.x resolved so far (pre-rewrite polish): BUG-100 (UI — accent `rgba` blue values replaced with `--blue-*` alpha vars; `TestCssThemeHygiene` guards it), BUG-102 (dead fabricated `/overview/partial` endpoint + helpers + orphan template removed), BUG-103 (verification export now honors the active status filter; template link deduped), BUG-104 (CSV exports prepend a UTF-8 BOM for Excel), **BUG-105 (Phase 4.7 auth gate: email/password session auth + RBAC + signup/seed; 158 pass)**.
+> 4.x resolved so far (pre-rewrite polish): BUG-100 (UI — accent `rgba` blue values replaced with `--blue-*` alpha vars; `TestCssThemeHygiene` guards it), BUG-102 (dead fabricated `/overview/partial` endpoint + helpers + orphan template removed), BUG-103 (verification export now honors the active status filter; template link deduped), BUG-104 (CSV exports prepend a UTF-8 BOM for Excel), **BUG-105 (Phase 4.7 auth gate: email/password session auth + RBAC + signup/seed; 158 pass)**, **BUG-106 (student role gained `Settings` access — theme toggle/account card; `test_student_can_open_settings_but_not_students_history`)**.
 
 ---
 
@@ -172,6 +172,8 @@ Github-website-/
 - [ ] 5.4 Dependency vulnerability scan (`pip-audit`) — rerun against the new stack's pinned deps at cutover
 - [ ] 5.5 Verify GitHub token is fine-grained/read-only; confirm no tokens/secrets in history (`gitleaks`)
 - [ ] 5.6 Check logs/exports for PII leakage (issue CSVs contain student emails/PRNs)
+
+> **2026-09-16:** `Features List.md` audited against the live stack and annotated (✅ implemented / ⚠️ partial / blank = not built). Verdict highlights: features 1–21 (auth, RBAC, pages, GitHub data pipeline, error/cache/rate-limit) largely done; the per-student personal portal (items 22–31, "My Dashboard" persona) is the largest gap — students currently see only college-wide Overview + Leaderboards + Settings.
 
 ---
 

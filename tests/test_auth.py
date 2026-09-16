@@ -133,11 +133,11 @@ class TestRBACGating:
         assert client.get("/").status_code == 200
         assert client.get("/leaderboards").status_code in (200, 404)  # roster not loaded -> placeholder/404
 
-    def test_student_is_blocked_from_students_and_settings(self, client):
+    def test_student_can_open_settings_but_not_students_history(self, client):
         self._session(client, "student")
         assert client.get("/students").status_code == 403
-        assert client.get("/settings").status_code == 403
         assert client.get("/history").status_code == 403
+        assert client.get("/settings").status_code == 200
 
     def test_faculty_and_admin_open_all_pages(self, client):
         for role in ("faculty", "admin"):

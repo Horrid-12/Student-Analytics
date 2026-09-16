@@ -17,10 +17,10 @@ Priority is tracked as P1 (highest), then P2 and P3. Current defects are listed 
 
 | Metric        |      Count |
 | ------------- | ---------: |
-| Fixed / moved |         97 |
+| Fixed / moved |         98 |
 | Open          |          0 |
 | Planned       |          5 |
-| Last audit    | 2026-09-10 |
+| Last audit    | 2026-09-16 |
 
 Planned items are roadmap work rather than regressions. They should not be reported as currently broken.
 
@@ -174,7 +174,8 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | ✅ BUG-102 | Fixed  | API      | Dead fabricated-metrics endpoint `/overview/partial` served hardcoded demo numbers (735/725/1,380/62.4) from `sample_metrics()`/`generated_at()`, referenced nowhere in templates, JS, or tests. Fix: removed route + helpers and orphaned `partials/overview_metrics.html`. Covered by `test_demo_metrics_route_removed` (asserts 404). Suite: 144 pass. |
 | ✅ BUG-103 | Fixed  | Export   | Verification export ignored the active status filter — with table filtered to "Verified"/"Invalid"/"Missing" the `/verification/export` link exported the whole roster (students export honors q + cohort, so asymmetry was confirmed), and the link duplicated `roster`/`format` params. Fix: `export_query_str(...)` gained a `status` param, `verification_page` passes the active status, template links simplified to a single `?{{ export_query }}` (Excel swaps `format=csv`→`format=xlsx`). Covered by `test_verification_export_respects_status_filter` (Missing-only export excludes Alice/Bob). |
 | ✅ BUG-104 | Fixed  | Export   | CSV exports used `df.to_csv(index=False)` (bare UTF-8, no BOM) so Excel rendered non-ASCII student names as mojibake. Fix: `_export_response` prepends `\ufeff` (BOM) so CSV opens correctly in Excel. Covered by `test_csv_export_has_utf8_bom` (raw bytes start with `EF BB BF`). |
-| ✅ BUG-105 | Fixed  | Security | No session-based auth gate on new FastAPI stack — every route was open or gated only by a Streamlit-era placeholder chip. Fix: email/password auth with cookie sessions (`gsad_session`, HMAC-signed, 7-day TTL), student-only public signup, admin/faculty provisioned via `python -m app.seed_users`; full RBAC middleware gates every page (student: Overview + Leaderboards only, faculty/admin: all pages); API endpoints require a valid session; SQLite `users.db` store (will migrate to Postgres at Phase 4.8); 158 tests pass including dedicated auth suite (`tests/test_auth.py`). |
+| ✅ BUG-105 | Fixed  | Security | No session-based auth gate on new FastAPI stack — every route was open or gated only by a Streamlit-era placeholder chip. Fix: email/password auth with cookie sessions (`gsad_session`, HMAC-signed, 7-day TTL), student-only public signup, admin/faculty provisioned via `python -m app.seed_users`; full RBAC middleware gates every page (student: Overview + Leaderboards + Settings, faculty/admin: all pages); API endpoints require a valid session; SQLite `users.db` store (will migrate to Postgres at Phase 4.8); 158 tests pass including dedicated auth suite (`tests/test_auth.py`). |
+| ✅ BUG-106 | Fixed  | Security | Student role could not open `/settings`, which holds user-level controls (Dark/Light theme persisted in localStorage, account card, sign out) — the RBAC middleware redirected student sessions home with a 303. Fix: added `Settings` to the student role's `ROLE_PAGES` in `app/auth.py` so the gear link and `/settings` route work for students; nav now shows it via `nav()` role filtering. Before: student `/settings` returned 303 → `/`. After: 200 and the page renders with the signed-in account. Verified by `tests/test_auth.py::TestRBACGating::test_student_can_open_settings_but_not_students_history` (students/history still 403). |
 
 ## Verification checklist
 
