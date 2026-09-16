@@ -1,7 +1,8 @@
 # Website Dashboard — Complete Feature & Priority List
 
-> Status last audited: 2026-09-16 against the live FastAPI stack (Phase 3–4.7.2).
+> Status last audited: 2026-09-16 against the live FastAPI stack (Phase 3–4.7.2 + onboarding).
 > ✅ = implemented · ⚠️ = partial (pieces missing, noted in "Why it matters") · (blank) = not implemented yet.
+> Second pass 2026-09-16: onboarding page (`/onboarding`) + GitHub/LinkedIn OAuth linking marked up on rows 3, 17, 23, 44, 45, 68, 75.
 
 ## Priority Legend
 | Priority | Meaning |
@@ -17,7 +18,7 @@
 |---:|---|---|---|---|
 | 1 | ✅ Authentication & Access Control | Secure login, sessions, authorization, logout | P0 — Critical | Foundation of the system |
 | 2 | ⚠️ Student Login Portal | PRN + password login | P0 — Critical | Required for personal access — login is college email + password today, not PRN (`app/auth.py`, `login.html:41-51`) |
-| 3 | ⚠️ Student Registration / Sign Up | New student registration with PRN verification | P0 — Critical | Supports missed registrations — signup exists (`/signup`) but collects email/name only, no PRN verification (`signup.html:15-32`) |
+| 3 | ⚠️ Student Registration / Sign Up | New student registration with PRN verification | P0 — Critical | Supports missed registrations — signup `/signup` (email/name) plus an `/onboarding` page collecting PRN, degree program, and division for manual registrar verification; PRN form is still UI-only (no submit endpoint yet) |
 | 4 | ⚠️ Duplicate Student Prevention | Prevent an existing PRN/student from creating another account | P0 — Critical | Prevents misuse — `UNIQUE` on users.email prevents duplicate accounts (`auth.py:81`); duplicate PRNs in a roster get "Duplicate student" issues (`services.py:718-729`), but no "already registered" UX |
 | 5 | Student Authorization / Privacy | Students can access only their own private analytics | P0 — Critical | Mandatory privacy control — students only get college-wide Overview + Leaderboards + Settings (`auth.py:66-70`); no per-student data isolation |
 | 6 | ⚠️ Password Security | Hashing, validation, password change/reset | P0 — Critical | Required for real deployment — PBKDF2-SHA256 hashing + validation (`auth.py:247-270`); no change/reset route or UI |
@@ -31,13 +32,13 @@
 | 14 | ✅ Issues Page | GitHub issues opened, closed and active | P0 — Critical | Important GitHub metric — `/issues` + editable workflow (`main.py:935-961`) |
 | 15 | ✅ Verifications Page | PRN ↔ GitHub account verification | P0 — Critical | Prevents incorrect mappings — Verified/Missing/Invalid audit + status filter (`views.py:604-609`) |
 | 16 | ✅ Settings Page | Account, profile, password and preferences | P0 — Critical | Account management — theme/storage-health/account card (`/settings`, `settings.html`); profile/password editing not yet included |
-| 17 | ⚠️ GitHub Account Linking | Connect verified student GitHub account | P0 — Critical | Required for analytics — roster upload maps students→GitHub usernames (`services.py:180-187`); no student-initiated GitHub OAuth link |
+| 17 | ✅ GitHub Account Linking | Connect verified student GitHub account | P0 — Critical | Required for analytics — student-initiated GitHub OAuth flow on `/onboarding` ("Link GitHub Profile" → `/auth/github` → callback logs `github_linked`); linked login not yet persisted to the users DB (TODO in `main.py:803`) |
 | 18 | ✅ GitHub Data Fetching | Repos, commits, PRs, issues, contributions etc. | P0 — Critical | Backend data foundation — users/repos/PRs/issues/followers/stars (`services.py:241-493`); commits deliberately not fetched (activity model, `services.py:586`) |
 | 19 | ⚠️ Data Synchronization | Update GitHub data automatically/manually | P0 — Critical | Keeps analytics current — manual "Run Analysis" only (`overview.html:19-22`); no scheduler/auto-sync |
 | 20 | ⚠️ Data Validation & Integrity | Validate API/database data and relationships | P0 — Critical | Prevents incorrect analytics — `prepare_students`/`normalize_student_id`/dedup + invalid/duplicate issues (`services.py:113-187,626-762`); no per-repo issue validation |
 | 21 | ✅ Error Handling | API failures, missing accounts and invalid data | P0 — Critical | Prevents crashes — `RateLimitError`, `classify_api_error`, retry/backoff, friendly failures (`services.py:48-51,226-238`; `github_client.py:227-279`; `main.py:607-614`) |
 | 22 | Student Dashboard / Overview | Personal summary after login | P1 — High | Main student experience — students land on the college-wide `/`, no personal dashboard route |
-| 23 | ⚠️ Student Profile Card | Name, department, division, year, GitHub username | P1 — High | Student identity — profile panel on `/students?select=` but faculty/admin only (`views.py:408-433`; `students.html:106-141`) |
+| 23 | ⚠️ Student Profile Card | Name, department, division, year, GitHub username | P1 — High | Student identity — onboarding now captures PRN, degree program/branch, and division (`onboarding.html:27-60`); profile display on `/students?select=` is faculty/admin only (`views.py:408-433`) |
 | 24 | ⚠️ Personal Statistics | Repos, commits, contributions, PRs, issues, stars | P1 — High | Basic analytics — columns exist (repos/PRs/issues/followers/stars) in the Students table; no commits, no student-facing page |
 | 25 | My Rank Card | College rank, percentile and rank movement | P1 — High | Immediately useful — not implemented |
 | 26 | Activity Score | Transparent score using multiple metrics | P1 — High | Fairer than commit-only ranking — not implemented (leaderboards sort raw columns) |
@@ -58,8 +59,8 @@
 | 41 | ✅ Faculty Authentication | Separate faculty login/access | P1 — High | Protects faculty data — seed CLI + `FACULTY_EMAILS` allowlist + role resolution (`seed_users.py`; `auth.py:123-124,204-218`) |
 | 42 | ✅ Student Detail View | Authorized faculty view of student analytics | P1 — High | Useful for mentoring — `/students?select=` profile panel (faculty/admin only) |
 | 43 | ⚠️ Admin Controls | Manage students, accounts and verifications | P1 — High | Administrative requirement — RBAC gating + seed CLI; no in-app management UI |
-| 44 | ⚠️ Verification Management | Pending, verified and rejected accounts | P1 — High | Account integrity — status filter + CSV/Excel export; statuses auto-computed, no manual approve/reject (`views.py:604-609`) |
-| 45 | GitHub Ownership Verification | Confirm student controls linked GitHub account | P1 — High | Prevents impersonation — validation is a `GET /users/{username}` existence check only (`services.py:241-251`), no ownership proof |
+| 44 | ⚠️ Verification Management | Pending, verified and rejected accounts | P1 — High | Account integrity — status filter + CSV/Excel export; onboarding adds a "submitted → Registrar review → approval unlocks portal" flow, but statuses are auto-computed with no admin approve/reject UI (`views.py:604-609`) |
+| 45 | ⚠️ GitHub Ownership Verification | Confirm student controls linked GitHub account | P1 — High | Prevents impersonation — the onboarding GitHub OAuth grant is a real ownership signal; the legacy roster path still only checks `GET /users/{username}` existence (`services.py:241-251`), and neither result feeds the Verification page yet |
 | 46 | ⚠️ Data Refresh Button | Manual GitHub data refresh | P1 — High | Useful to users — "Run Analysis" re-run + Reset (`overview.html:19-22`; `main.py:1097-1102`); no dedicated refresh on data pages |
 | 47 | ✅ Last Synced Indicator | Show timestamp of latest sync | P1 — High | Shows data freshness — "Last completed analysis" (`base.html`; `views.last_analysis_time`) |
 | 48 | ✅ API Rate Limit Handling | Gracefully handle GitHub limits | P1 — High | Important at scale — `RateLimitError` + X-RateLimit headers + 429 JSON response (`services.py:48-51,210-223`; `main.py:1170-1179`) |
@@ -82,14 +83,14 @@
 | 65 | Notifications | Sync, achievements and feedback alerts | P2 — Medium | Engagement — not implemented |
 | 66 | Automatic Scheduled Sync | Periodic GitHub synchronization | P2 — Medium | Needed as scale grows — not implemented |
 | 67 | Settings — Profile | Edit allowed profile fields | P2 — Medium | Account management — not implemented (Settings is read-only account card) |
-| 68 | Settings — GitHub Account | View/reconnect verified GitHub account | P2 — Medium | Account management — not implemented (only a token presence badge, `settings.html:84-89`) |
+| 68 | ⚠️ Settings — GitHub Account | View/reconnect verified GitHub account | P2 — Medium | Account management — account linking now lives on `/onboarding` ("Link GitHub Profile"); Settings still only shows a token presence badge (`settings.html:84-89`) |
 | 69 | Settings — Privacy | Optional visibility controls | P2 — Medium | Better privacy — not implemented |
 | 70 | ✅ Audit Logs | Record important admin/account actions | P2 — Medium | Useful for official deployment — `log_event` + `audit_log` table wired to login/signup/logout/OAuth/analysis (`storage.py:161-174`; `main.py:542,647-761`) |
 | 71 | ⚠️ Security Monitoring | Suspicious login/registration detection | P2 — Medium | Improves security — failed-login/OAuth-deny events logged; no lockout, IP tracking, or anomaly detection |
 | 72 | ⚠️ Performance Optimization | Database/API/page performance | P1 — High | Required for scale — batched analysis + thread cap + TTL caching + table pagination (`main.py:374,1141-1202`; `github_client.py`); no DB indexes on `analysis_runs`/`audit_log` |
 | 73 | HackerRank Integration | Add coding-platform statistics | P3 — Future | Expand beyond GitHub — not implemented |
 | 74 | LeetCode / CodeChef Integration | Add additional competitive coding data | P3 — Future | Expand skill profile — not implemented |
-| 75 | Kaggle / LinkedIn / Certifications | Additional professional profiles | P3 — Future | Broader student profile — not implemented |
+| 75 | ⚠️ Kaggle / LinkedIn / Certifications | Additional professional profiles | P3 — Future | Broader student profile — LinkedIn OAuth linking added on `/onboarding` ("Link LinkedIn Profile" → `/auth/linkedin`); Kaggle/certifications still future |
 | 76 | Unified Student Skill Profile | Combine multiple platforms | P3 — Future | Long-term architecture — not implemented |
 | 77 | Overall Development Score | Combined multi-platform score | P3 — Future | Advanced analytics — not implemented |
 | 78 | Internship / Project Tracking | Projects, internships and certifications | P3 — Future | College ecosystem — not implemented |
@@ -144,11 +145,11 @@ FACULTY / ADMIN
 └── Settings
 ```
 
-> Current reality (2026-09-16): the site is a college-wide analytics dashboard (Overview, Students, Repositories, Leaderboards, History, Issues, Verification, Settings gear) rather than the personal-portal structure above. The per-student persona (My Dashboard/Analytics/Progress/Goals/Reports) is a future phase.
+> Current reality (2026-09-16): login lands on a student `/onboarding` page (PRN/degree/division capture + GitHub & LinkedIn profile linking). The rest of the site is a college-wide analytics dashboard (Overview, Students, Repositories, Leaderboards, History, Issues, Verification, Settings gear) rather than the personal-portal structure above. The per-student persona (My Dashboard/Analytics/Progress/Goals/Reports) is a future phase.
 
 ## Non-Negotiable Core Features
 1. ✅ Secure Student Login & Registration
-2. ⚠️ PRN + GitHub Account Verification — GitHub validation done; PRN and ownership verification pending
+2. ⚠️ PRN + GitHub Account Verification — GitHub username validation done + student GitHub OAuth link on onboarding; PRN collected for manual registrar verification; ownership result not yet surfaced on Verification
 3. Personal Student Dashboard — not implemented
 4. ✅ GitHub Analytics
 5. ⚠️ Repository & Project Analysis — rich repo columns + quality score; no per-repo commits/PRs or project view

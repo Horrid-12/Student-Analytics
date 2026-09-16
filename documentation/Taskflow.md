@@ -174,6 +174,7 @@ Github-website-/
 - [ ] 5.6 Check logs/exports for PII leakage (issue CSVs contain student emails/PRNs)
 
 > **2026-09-16:** `Features List.md` audited against the live stack and annotated (✅ implemented / ⚠️ partial / blank = not built). Verdict highlights: features 1–21 (auth, RBAC, pages, GitHub data pipeline, error/cache/rate-limit) largely done; the per-student personal portal (items 22–31, "My Dashboard" persona) is the largest gap — students currently see only college-wide Overview + Leaderboards + Settings.
+> **2026-09-16 (second pass):** onboarding page landed — `/onboarding` captures PRN/degree/division for registrar verification, and adds student-initiated GitHub (`/auth/github`) + LinkedIn (`/auth/linkedin`) OAuth linking. Features List rows 3, 17, 23, 44, 45, 68, 75 updated. Open TODOs: onboarding PRN form has no submit endpoint yet; GitHub/LinkedIn linked logins not persisted to the users DB (`main.py:803,835`); OAuth routes don't guard on `configured()`.
 
 ---
 
