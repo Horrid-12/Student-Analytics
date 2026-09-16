@@ -564,7 +564,7 @@ def load_run_history() -> pd.DataFrame:
             if c is None:
                 return pd.DataFrame()
             cur = c.execute(
-                "SELECT id, run_timestamp, status, total_students, valid_accounts, "
+                "SELECT id, roster_id, run_timestamp, status, total_students, valid_accounts, "
                 "invalid_accounts, error_accounts, repos_found, active_repos, "
                 "avg_quality_score, elapsed_seconds, source_file_hash "
                 "FROM analysis_runs ORDER BY id"

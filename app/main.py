@@ -1013,6 +1013,7 @@ def history_page(request: Request):
     for _, row in df.iterrows():
         runs.append(
             {
+                "roster_id": row.get("roster_id") or "",
                 "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
                 "status": row.get("status") or "Complete",
                 "total_students": int(row.get("total_students") or 0),
