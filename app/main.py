@@ -895,6 +895,7 @@ def overview(request: Request, roster: str = ""):
     ctx = _base_context(request, "Overview")
     ctx["view"] = None
     ctx["payload"] = None
+    ctx["past_runs"] = _run_history_rows()
     if roster:
         view = _analysis_view(roster)
         if view is not None and _is_complete(view):
@@ -1004,14 +1005,15 @@ def leaderboards_page(
     )
 
 
-@app.get("/history", response_class=HTMLResponse)
-def history_page(request: Request):
-    ctx = _base_context(request, "History")
+def _run_history_rows(list_all=True) -> list:
     df = db.load_run_history() if database.db_configured() else storage.load_run_history()
-    storage_ok = db.schema_healthy() if database.db_configured() else storage.storage_healthy()
-    runs = []
+    if df.empty:
+        return []
+    if not list_all:
+        df = df.tail(1)
+    rows = []
     for _, row in df.iterrows():
-        runs.append(
+        rows.append(
             {
                 "roster_id": row.get("roster_id") or "",
                 "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
@@ -1026,6 +1028,15 @@ def history_page(request: Request):
                 "elapsed_seconds": float(row.get("elapsed_seconds") or 0.0),
             }
         )
+    return rows
+
+
+@app.get("/history", response_class=HTMLResponse)
+def history_page(request: Request):
+    ctx = _base_context(request, "History")
+    df = db.load_run_history() if database.db_configured() else storage.load_run_history()
+    storage_ok = db.schema_healthy() if database.db_configured() else storage.storage_healthy()
+    runs = _run_history_rows()
     trends_fig = None
     if len(df) > 1:
         try:

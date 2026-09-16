@@ -167,13 +167,50 @@
 </section>
 
 {% else %}
+{% if past_runs %}
+<section class="panel">
+  <div class="panel-title">Recent Analysis Runs</div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Run</th><th>Status</th><th>Students</th><th>Valid</th><th>Invalid</th><th>Errors</th><th>Repos Found</th><th>Active Repos</th><th>Avg Quality</th></tr>
+      </thead>
+      <tbody>
+        {% for run in past_runs %}
+        <tr>
+          <td>
+            {% if run.roster_id %}
+            <a href="/overview?roster={{ run.roster_id }}" class="history-link">{{ run.friendly }}</a>
+            {% else %}
+            {{ run.friendly }}
+            {% endif %}
+          </td>
+          <td>
+            {% if run.status == 'Complete' %}<span class="badge-green">{{ run.status }}</span>
+            {% elif run.status == 'Partial' %}<span class="badge-amber">{{ run.status }}</span>
+            {% else %}<span class="badge-red">{{ run.status }}</span>{% endif %}
+          </td>
+          <td>{{ run.total_students }}</td>
+          <td>{{ run.valid_accounts }}</td>
+          <td>{{ run.invalid_accounts }}</td>
+          <td>{{ run.error_accounts }}</td>
+          <td>{{ run.repos_found }}</td>
+          <td>{{ run.active_repos }}</td>
+          <td>{% if run.avg_quality_score is not none %}{{ run.avg_quality_score | round(1) }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 <div class="empty-state">
   <div>
     <div class="empty-illustration">
       <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
     </div>
     <h2>Student Analytics Workspace</h2>
-    <p>No student data loaded yet. Upload a roster above and click <strong>Run Analysis</strong> to populate this overview.</p>
+    <p>No student data loaded yet. Upload a roster above and click <strong>Run Analysis</strong> to populate this overview, or reopen a past run from the list above.</p>
   </div>
 </div>
 {% endif %}
