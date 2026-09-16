@@ -57,7 +57,7 @@ def admin_url() -> Optional[str]:
     )
 
 
-_pool: Optional[ConnectionPool | _default] = None
+_pool: Optional[ConnectionPool] = None
 _pool_state = "uninit"  # "uninit" | "ok" | "down"
 _build_lock = threading.Lock()
 
@@ -121,7 +121,7 @@ def reset_pool() -> None:
 
 
 # ── admin pool (direct / unpooled connection for DDL) ──────────────────────────
-_admin_pool: Optional[ConnectionPool | _default] = None
+_admin_pool: Optional[ConnectionPool] = None
 _admin_pool_state = "uninit"
 
 
