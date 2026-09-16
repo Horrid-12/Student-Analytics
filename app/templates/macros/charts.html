@@ -5,14 +5,34 @@
 /* <![CDATA[ */
 (function () {
   /* BUG-086: theme-aware Plotly renderer.
-     Palette values mirror theme.css :root (dark) and [data-theme="light"]. */
+     Values mirror the light and dark blocks of static/theme.css.
+     Series colours come from app/charts.py base (light tokens); this macro
+     remaps them per active theme so dark mode uses the brighter tokens. */
   var PALETTES = {
-    dark:  { grid: 'rgba(80,80,90,0.55)', tick: '#aeb4bb', hover_bg: '#414145', hover_border: '#50505A', hover_font: '#f4f1e9', font: '#aeb4bb', heatmap_low: '#3A3A3E', heatmap_mid: '#5B9CF6', heatmap_high: '#55b98b' },
-    light: { grid: 'rgba(203,213,225,0.7)', tick: '#64748B', hover_bg: '#FFFFFF',  hover_border: '#CBD5E1', hover_font: '#0F172A',  font: '#64748B',  heatmap_low: '#F8FAFC', heatmap_mid: '#2563EB', heatmap_high: '#16A34A' }
+    dark:  { grid: 'rgba(80,80,90,0.55)', tick: '#aeb4bb', hover_bg: '#414145', hover_border: '#50505A', hover_font: '#f4f1e9', font: '#aeb4bb',
+             heatmap_low: '#3A3A3E', heatmap_mid: '#5B9CF6', heatmap_high: '#55b98b',
+             accent: '#5B9CF6', success: '#55b98b', warning: '#d39a52', danger: '#ff9d92', purple: '#9aaabd', muted: '#aeb4bb', accent_rgb: '91, 156, 246' },
+    light: { grid: 'rgba(27,38,51,0.16)', tick: '#566271', hover_bg: '#f5f1e9', hover_border: '#1b2633', hover_font: '#142235', font: '#566271',
+             heatmap_low: '#f5f1e9', heatmap_mid: '#60738A', heatmap_high: '#21845D',
+             accent: '#60738A', success: '#21845D', warning: '#A66B25', danger: '#BE342B', purple: '#9AAABD', muted: '#566271', accent_rgb: '96, 115, 138' }
   };
 
   function palette() {
     return PALETTES[document.documentElement.dataset.theme] || PALETTES.dark;
+  }
+
+  /* Maps the base (light-token) hex colours produced by app/charts.py onto the
+     active theme's equivalents so every trace uses the site palette. */
+  var BASE_TO_KEY = {
+    '#60738A': 'accent', '#21845D': 'success', '#A66B25': 'warning',
+    '#BE342B': 'danger', '#9AAABD': 'purple', '#566271': 'muted'
+  };
+  function seriesColor(color, p) {
+    if (typeof color === 'string') {
+      var k = BASE_TO_KEY[color.toUpperCase()];
+      if (k && p[k]) return p[k];
+    }
+    return color;
   }
 
   function themeLayout() {
@@ -32,9 +52,25 @@
       var next = Object.assign({}, trace);
       if (next.type === 'pie') {
         next.textfont = Object.assign({}, next.textfont || {}, { color: p.font });
+        if (next.marker && Array.isArray(next.marker.colors)) {
+          next.marker = Object.assign({}, next.marker, {
+            colors: next.marker.colors.map(function (c) { return seriesColor(c, p); })
+          });
+        }
       }
       if (next.type === 'heatmap') {
         next.colorscale = [[0, p.heatmap_low], [0.5, p.heatmap_mid], [1, p.heatmap_high]];
+      }
+      if (next.type === 'bar' && next.marker) {
+        next.marker = Object.assign({}, next.marker, { color: seriesColor(next.marker.color, p) });
+      }
+      if (next.type === 'scatter') {
+        if (next.line) {
+          next.line = Object.assign({}, next.line, { color: seriesColor(next.line.color, p) });
+        }
+        if (next.fillcolor && typeof next.fillcolor === 'string') {
+          next.fillcolor = next.fillcolor.replace(/96, 115, 138/g, p.accent_rgb);
+        }
       }
       return next;
     });
