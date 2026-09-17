@@ -685,11 +685,10 @@ button {
 .pipeline-index { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; background: var(--blue); color: #f5f1e9; font-size: 13px; font-weight: 800; line-height: 1; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--blue); }
 
 @keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 var(--blue-glow); }
-  70% { box-shadow: 0 0 0 8px transparent; }
-  100% { box-shadow: 0 0 0 0 var(--blue-glow); }
+  0% { box-shadow: 0 0 0 0 var(--blue-glow), 0 0 6px 2px var(--blue-glow); }
+  50% { box-shadow: 0 0 0 7px var(--blue-glow), 0 0 10px 3px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent, 0 0 6px 2px var(--blue-glow); }
 }
-.pipeline-step:first-child .pipeline-index { background: var(--red); box-shadow: 0 0 0 1px var(--red); }
 .pipeline-rule { height: 1px; background: rgba(86, 98, 113, 0.45); margin: 22px 0 16px; }
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
 @media (max-width: 1400px) { .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
