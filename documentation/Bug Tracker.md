@@ -17,8 +17,8 @@ Priority is tracked as P1 (highest), then P2 and P3. Current defects are listed 
 
 | Metric        |      Count |
 | ------------- | ---------: |
-| Fixed / moved |         99 |
-| Open          |          1 |
+| Fixed / moved |        100 |
+| Open          |          0 |
 | Planned       |          5 |
 | Last audit    | 2026-09-16 |
 
@@ -126,7 +126,7 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | Priority | ID      | Status | Area    | Problem                                                                     | Next action                                                                  |
 | -------- | ------- | ------- | ------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | P1 | ✅ BUG-108 | Fixed | Postgres/cold-start | On Vercel, after analysis the Students/Repos/etc. pages stayed empty (they loaded on localhost). Root cause: `db.register_roster()` generated its **own** roster_id (`str(uuid.uuid4())`) and discarded the app-level one, so Postgres rows sat under a different id than every app read (`roster_summary`, `batch`, `_analysis_view`) queried. Localhost masked it because `_analysis_view` fell back to the in-memory `RosterStore`; Vercel's cold serverless instances have no memory → all Postgres reads missed → empty pages. Proved by live-DB mismatch `rosters:5 vs run_summary:3` (run_summary rows hit the FK constraint). Fix: `register_roster(..., roster_id=...)` honors the caller id, upload passes it, and the batch handler rehydrates empty `RosterStore` from Postgres + restores `file_hash`. Simulated cold start end-to-end (upload→batch→fresh empty RosterStore→`get_analysis_view_data`) now renders students+repos. Regression test `test_honors_caller_supplied_roster_id`; DB layer 10/10, full suite 182/179 green. |
-| P2 | BUG-107 | Open | Auth/Tests | `TestOAuthCallback::test_full_flow_sets_session_cookie` expects the Google OAuth post-login redirect to be `/` but the app (main.py:806, and password login main.py:702) intentionally redirects to `/onboarding`. Fails in both test modes and on a clean checkout — pre-existing. | Decide intent: update the test assertion to `/onboarding`, or make the redirect conditional on onboarding completion. |
+| P2 | ✅ BUG-107 | Fixed | Auth/Tests | `TestOAuthCallback::test_full_flow_sets_session_cookie` expected the Google OAuth post-login redirect to be `/` but the app (main.py:806, and password login main.py:702) intentionally redirects to `/onboarding`. Fix: updated the test assertion to `/onboarding` (the app's chosen intent); suite green at 183 passed. Fix commit `b9d2e65`. |
 | P2 | ✅ BUG-101 | Fixed | Routing | No 404 page for typo slugs on dedicated routes (originally labeled BUG-097) | Friendly catch-all 404 page (404.html) and /overview route |
 | P3 | ✅ BUG-095 | Fixed | UI | `color:#8B8B91` hardcoded in `overview.html:57` (dark-only muted color) | Replaced inline style with `var(--muted)` in overview.html and students.html |
 | P3 | ✅ BUG-096 | Fixed | UI | Inline style `grid-column: 1 / -1;` used directly on div | Moved styling rule to `.full-width` CSS class in style.css |
