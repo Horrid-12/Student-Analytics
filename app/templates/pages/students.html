@@ -258,18 +258,19 @@
   .lang-track {
     flex: 1;
     min-width: 0;
-    min-height: 18px;
+    height: 18px;
+    display: flex;
+  }
+  .lang-fill {
     display: flex;
     gap: 4px;
-    flex-wrap: wrap;
-    row-gap: 4px;
-    align-content: flex-start;
+    height: 100%;
+    min-width: 0;
+    color: var(--text);
   }
   .lang-seg {
-    width: 8px;
-    height: 18px;
-    flex-shrink: 0;
-    color: var(--text);
+    flex: 1 1 0;
+    min-width: 0;
     background: currentColor;
     border-radius: 2px;
   }
@@ -595,7 +596,7 @@
               {% for lang in p.top_languages %}
               <div class="lang-row">
                 <span class="lang-name" title="{{ lang.language }}">{{ lang.language }}</span>
-                <span class="lang-track">{% for i in range(lang.count) %}<span class="lang-seg"></span>{% endfor %}</span>
+                <span class="lang-track"><span class="lang-fill" style="width:{{ lang.pct }}%">{% for i in range(lang.count) %}<span class="lang-seg"></span>{% endfor %}</span></span>
                 <span class="lang-count">{{ lang.count }}</span>
               </div>
               {% endfor %}

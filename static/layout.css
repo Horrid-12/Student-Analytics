@@ -82,6 +82,10 @@ button {
 .sidebar-stack .user-name {
     font-size: 16px;
 }
+.sidebar-stack .user-role-line {
+    font-size: 20px;
+    font-weight: 800;
+}
 .sidebar-stack .user-details {
     overflow: visible;
 }
@@ -91,6 +95,13 @@ button {
     overflow: visible;
     text-overflow: clip;
     overflow-wrap: anywhere;
+}
+/* Role label must stay on one line next to the avatar (never wrap mid-word).
+   Placed after the wrap rules above so nowrap wins on equal specificity. */
+.sidebar-stack .user-role-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sidebar-nav {

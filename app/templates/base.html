@@ -12,9 +12,9 @@
     } catch (e) { /* private mode — keep the default */ }
   })();
 </script>
-<link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}?v=3">
 <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 {% block head %}{% endblock %}
@@ -26,7 +26,7 @@
     <div class="sidebar-user-footer">
       <div class="user-avatar-pill">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
       <div class="user-details">
-        <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_status }}</div>
+        <div class="user-role-line">{{ auth_status }}</div>
       </div>
       {% if auth_logged_in %}
       <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out">

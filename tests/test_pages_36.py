@@ -266,6 +266,8 @@ class TestPageRenderingWithData:
         assert "lang-divider" in profile
         # One segment per repo: Alice has 1 Python + 1 JavaScript repo.
         assert profile.count('<span class="lang-seg"></span>') == 2
+        # Top languages fill the track; the rest scale against them.
+        assert profile.count('class="lang-fill" style="width:100%"') == 2
         assert "Activity" in profile
         assert "Contributions in last 30 days" in profile
         assert "Active repositories" in profile
@@ -774,6 +776,14 @@ class TestSidebarIdentityContext:
         assert "Faculty" in settings                 # role status from context, not hardcoded brand
         assert "Open Access" not in settings         # anonymous footer replaced
         assert "Sign out" in settings                # auth footer offers logout
+
+    def test_sidebar_admin_label_has_no_dot(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app)
+        make_user(client, "admin")
+        body = client.get("/settings").text
+        assert '<div class="user-role-line">Admin</div>' in body
 
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
