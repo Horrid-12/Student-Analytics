@@ -229,10 +229,13 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/students?roster={roster_id}").text
         assert "Student Explorer" in body
         assert "Alice Example" in body
-        assert "Subject" in body or "Metrics" in body or "Select a student" in body
+        assert "HackerRank" in body
+        assert 'id="student-modal-backdrop"' not in body
 
         profile = self.client.get(f"/students?roster={roster_id}&select=101").text
         assert "Recent Repositories" in profile
+        assert 'id="student-modal-backdrop"' in profile
+        assert 'role="dialog"' in profile
 
     def test_students_filter_narrows_results(self, tmp_path):
         roster_id = self._setup(tmp_path)
