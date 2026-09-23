@@ -53,19 +53,20 @@
   <div class="pipeline-meta" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
       {% if complete %}
-      <span class="badge-green">{{ payload.status }}</span>
-      <span>Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
+      <span class="badge-green" id="pipeline-status-badge">{{ payload.status }}</span>
+      <span id="pipeline-status-text">Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
       {% else %}
       <span class="badge-muted" id="pipeline-status-badge">Idle</span>
       <span id="pipeline-status-text">Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
       {% endif %}
     </div>
-    {% if complete %}<span style="font-size:12px; color:var(--muted);">Completed {{ payload.last_analysis }}</span>{% endif %}
+    {% if complete %}<span id="pipeline-completed-at" style="font-size:12px; color:var(--muted);">Completed {{ payload.last_analysis }}</span>{% endif %}
   </div>
   <div id="analysis-log" class="run-log-scroll run-log-live" hidden></div>
 </section>
 
 {% if complete %}
+<div id="previous-results">
 <section class="panel">
   <div class="panel-title">Key Metrics</div>
   <div class="metric-grid">
@@ -165,6 +166,7 @@
     {% for line in payload.log %}<div class="batch-log-item">{{ line }}</div>{% endfor %}
   </div>
 </section>
+</div>
 
 {% else %}
 {% if past_runs %}
@@ -235,6 +237,8 @@
   var pipelineEl = document.getElementById('analysis-pipeline');
   var statusBadge = document.getElementById('pipeline-status-badge');
   var statusText = document.getElementById('pipeline-status-text');
+  var prevResults = document.getElementById('previous-results');
+  var completedAt = document.getElementById('pipeline-completed-at');
 
   window.__gsadOnRoster = function (data) { current = data || null; };
 
@@ -266,6 +270,11 @@
     if (statusText) statusText.textContent = text;
   }
 
+  function restorePreviousResults() {
+    if (prevResults) prevResults.hidden = false;
+    if (completedAt) completedAt.hidden = false;
+  }
+
   function chunk(list, size) {
     var out = [];
     for (var i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
@@ -279,8 +288,7 @@
 
   document.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('#upload-result .roster-clear')) {
-      try { localStorage.removeItem(STORE_KEY); } catch (_) {}
-      current = null;
+      resetAll();
     }
   });
 
@@ -310,6 +318,8 @@
     }
     running = true;
     if (runBtn) runBtn.disabled = true;
+    if (prevResults) prevResults.hidden = true;
+    if (completedAt) completedAt.hidden = true;
 
     // Reset pipeline to initial state (step 1 done = upload)
     if (pipelineEl) {
@@ -343,10 +353,12 @@
             window.location.href = '/?roster=' + encodeURIComponent(rosterId);
           }, 300);
         } else {
+          restorePreviousResults();
           updatePipelineStatus('Analysis stopped: ' + summary.text, false, true);
         }
       })
       .catch(function (err) {
+        restorePreviousResults();
         logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
         updatePipelineStatus('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), false, true);
       })

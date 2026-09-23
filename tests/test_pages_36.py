@@ -202,6 +202,19 @@ class TestPageRenderingWithData:
         assert "Run Log" in body
         assert "plotly" in body or "Plotly.react" in body
 
+    def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
+        """BUG-107 regression: a complete Overview must still carry the live
+        pipeline-status ids (so updatePipelineStatus works during a re-run) and
+        the previous-results wrapper the run script hides while a new run starts."""
+        roster_id = self._setup(tmp_path)
+        body = self.client.get(f"/?roster={roster_id}").text
+        assert 'id="pipeline-status-badge"' in body
+        assert 'id="pipeline-status-text"' in body
+        assert 'id="pipeline-completed-at"' in body
+        assert 'id="previous-results"' in body
+        assert "prevResults.hidden = true" in body
+        assert "restorePreviousResults" in body
+
     def test_overview_without_roster_shows_empty_state(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
         self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
@@ -511,20 +524,27 @@ class TestSidebarIdentityContext:
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
         monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app)
-        email = make_user(client, "faculty")
+        make_user(client, "faculty")
         settings = client.get("/settings").text
-        assert "Faculty Workspace" in settings       # sidebar brand edition per role
         assert "Test User" in settings               # signed-in account shown
+        assert "Faculty" in settings                 # role status from context, not hardcoded brand
         assert "Open Access" not in settings         # anonymous footer replaced
         assert "Sign out" in settings                # auth footer offers logout
 
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         source = base.read_text(encoding="utf-8")
-        assert "{{ brand_edition }}" in source
-        assert "{{ auth_user }}" in source
         assert "{{ auth_status }}" in source
-        assert "Faculty Workspace" not in source     # hardcoded string must be gone
+        assert "{{ auth_logout }}" in source
+        assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
+        for hardcoded in (
+            "Faculty Workspace",
+            "GitHub Platform",
+            "brand-edition",
+            "sidebar-foot",
+            "brand-switcher",
+        ):
+            assert hardcoded not in source
 
     def test_settings_template_uses_context_variables(self):
         settings = (

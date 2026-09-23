@@ -274,11 +274,7 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
     return charts.heatmap(batches, divisions, z)
 
 
-ACCENT = "#3B82F6"
-SUCCESS = "#22C55E"
-WARNING = "#F59E0B"
-DANGER = "#EF4444"
-PURPLE = "#8B5CF6"
+from app.charts import ACCENT, DANGER, PURPLE, SUCCESS, WARNING
 
 
 def _donut(labels, values):

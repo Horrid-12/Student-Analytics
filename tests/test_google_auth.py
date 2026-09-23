@@ -116,7 +116,7 @@ class TestOAuthCallback:
         })
         r = client.get(cb, follow_redirects=False)
         assert r.status_code == 302
-        assert r.headers["location"] == "/"
+        assert r.headers["location"] == "/onboarding"
         assert "gsad_session" in client.cookies
         assert auth.read_session_token(client.cookies["gsad_session"])["email"] == "stu1@mitwpu.edu.in"
 

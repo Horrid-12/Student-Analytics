@@ -1,16 +1,24 @@
 """Plotly figure builders — mirrors the legacy Altair chart specs
-(app.py render_*_chart) with the same palette, fonts and readable axis labels.
-Each returns ``fig.to_dict()`` for Jinja ``| tojson`` embedding."""
+(app.py render_*_chart) with the site palette (static/theme.css), fonts and
+readable axis labels. Each returns ``fig.to_dict()`` for Jinja ``| tojson``
+embedding.
+
+Trace colours below mirror the LIGHT theme tokens (the HTML default); the
+charts.html macro remaps them per active theme at render time (dark tokens are
+brighter for dark backgrounds).
+"""
 
 import plotly.graph_objects as go
 
-ACCENT = "#3B82F6"
-SUCCESS = "#22C55E"
-WARNING = "#F59E0B"
-DANGER = "#EF4444"
-PURPLE = "#8B5CF6"
+# light-theme site tokens (static/theme.css [data-theme="light"])
+ACCENT = "#60738A"   # --blue
+SUCCESS = "#21845D"  # --green
+WARNING = "#A66B25"  # --amber
+DANGER = "#BE342B"   # --red
+PURPLE = "#9AAABD"   # --purple-slate (dark-theme --purple; distinct from --blue)
+MUTED = "#566271"    # --muted
 
-DONUT_COLORS = ["#3B82F6", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"]
+DONUT_COLORS = [ACCENT, SUCCESS, WARNING, DANGER, PURPLE, MUTED]
 
 _AXIS = dict(
     # BUG-086: neutral placeholders — theme-aware values injected by charts.html macro at render time.
@@ -88,6 +96,13 @@ def bar(labels, values, color=ACCENT, height=285, title=None):
 
 def area(x, y, color=ACCENT, height=260, title=None):
     """Distribution chart — gradient-to-transparent area (legacy mark_area)."""
+    # Accent tint uses the --blue rgba (96,115,138) light / (91,156,246) dark —
+    # the JS macro rewrites the rgb triple for the active theme. Purple tint stays
+    # the same in both themes.
+    fills = {
+        ACCENT: "rgba(96, 115, 138, 0.15)",
+        PURPLE: "rgba(154, 170, 189, 0.08)",
+    }
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -96,7 +111,7 @@ def area(x, y, color=ACCENT, height=260, title=None):
             mode="lines",
             line=dict(color=color, width=2),
             fill="tozeroy",
-            fillcolor="rgba(139, 92, 246, 0.05)" if color != ACCENT else "rgba(59, 130, 246, 0.12)",
+            fillcolor=fills.get(color, "rgba(96, 115, 138, 0.15)"),
             hovertemplate="%{x}: %{y}<extra></extra>",
         )
     )
@@ -106,16 +121,16 @@ def area(x, y, color=ACCENT, height=260, title=None):
 
 
 def heatmap(batches, divisions, values, title=None):
-    """Division × Batch repo-count heatmap (mark_rect, #18181B→#1D4ED8→#22C55E)."""
+    """Division × Batch repo-count heatmap (site palette, remapped per theme)."""
     fig = go.Figure(
         go.Heatmap(
             x=list(batches),
             y=list(divisions),
             z=list(values),
             colorscale=[
-                [0.0, "#18181B"],
-                [0.5, "#1D4ED8"],
-                [1.0, "#22C55E"],
+                [0.0, "#3A3A3E"],
+                [0.5, "#60738A"],
+                [1.0, "#21845D"],
             ],
             hovertemplate="%{y} · Batch %{x}: %{z} repos<extra></extra>",
         )
