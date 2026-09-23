@@ -58,6 +58,12 @@ button {
     margin-bottom: 0;
 }
 
+/* Account card moved from sidebar foot into the sticky top slot (base.html). */
+.sidebar-sticky-brand .sidebar-user-footer {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
 .sidebar-nav {
     display: flex;
     flex-direction: column;

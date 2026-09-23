@@ -511,20 +511,27 @@ class TestSidebarIdentityContext:
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
         monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app)
-        email = make_user(client, "faculty")
+        make_user(client, "faculty")
         settings = client.get("/settings").text
-        assert "Faculty Workspace" in settings       # sidebar brand edition per role
         assert "Test User" in settings               # signed-in account shown
+        assert "Faculty" in settings                 # role status from context, not hardcoded brand
         assert "Open Access" not in settings         # anonymous footer replaced
         assert "Sign out" in settings                # auth footer offers logout
 
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         source = base.read_text(encoding="utf-8")
-        assert "{{ brand_edition }}" in source
         assert "{{ auth_user }}" in source
         assert "{{ auth_status }}" in source
-        assert "Faculty Workspace" not in source     # hardcoded string must be gone
+        assert "{{ auth_logout }}" in source
+        for hardcoded in (
+            "Faculty Workspace",
+            "GitHub Platform",
+            "brand-edition",
+            "sidebar-foot",
+            "brand-switcher",
+        ):
+            assert hardcoded not in source
 
     def test_settings_template_uses_context_variables(self):
         settings = (
