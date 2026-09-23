@@ -178,13 +178,16 @@ Review of the live new stack (Vercel serverless, FastAPI + HTMX, no real backend
 | ✅ BUG-104 | Fixed  | Export   | CSV exports used `df.to_csv(index=False)` (bare UTF-8, no BOM) so Excel rendered non-ASCII student names as mojibake. Fix: `_export_response` prepends `\ufeff` (BOM) so CSV opens correctly in Excel. Covered by `test_csv_export_has_utf8_bom` (raw bytes start with `EF BB BF`). |
 | ✅ BUG-105 | Fixed  | Security | No session-based auth gate on new FastAPI stack — every route was open or gated only by a Streamlit-era placeholder chip. Fix: email/password auth with cookie sessions (`gsad_session`, HMAC-signed, 7-day TTL), student-only public signup, admin/faculty provisioned via `python -m app.seed_users`; full RBAC middleware gates every page (student: Overview + Leaderboards + Settings, faculty/admin: all pages); API endpoints require a valid session; SQLite `users.db` store (will migrate to Postgres at Phase 4.8); 158 tests pass including dedicated auth suite (`tests/test_auth.py`). |
 | ✅ BUG-106 | Fixed  | Security | Student role could not open `/settings`, which holds user-level controls (Dark/Light theme persisted in localStorage, account card, sign out) — the RBAC middleware redirected student sessions home with a 303. Fix: added `Settings` to the student role's `ROLE_PAGES` in `app/auth.py` so the gear link and `/settings` route work for students; nav now shows it via `nav()` role filtering. Before: student `/settings` returned 303 → `/`. After: 200 and the page renders with the signed-in account. Verified by `tests/test_auth.py::TestRBACGating::test_student_can_open_settings_but_not_students_history` (students/history still 403). |
+| BUG-107 | Open | UI / UX | Running data over existing data Causes visual issues ![1790138738273](image/BugTracker/1790138738273.png) | 
+| BUG-108 | Open | UX | Filtering System needs work |
+| BUG-109 | Open | Backend | Pages sometimes Resets to Blank State without ?roaster id |
 
 ## Verification checklist
 
 - Run `python -m compileall -q app api tests`.
 - Exercise pure service functions with missing, invalid, mixed-case, duplicate, and API-error rows.
 - Verify the Verification page after both non-empty and empty dashboard results.
-- Verify Reset causes the next analysis to make fresh API requests.
+- Verify Reset causes the next analysis to make fresh API requests. 
 - Update the relevant row and proof whenever a bug changes status.
 
 ## Tracker rules
