@@ -231,6 +231,15 @@ class TestPageRenderingWithData:
         assert "Alice Example" in body
         assert "HackerRank" in body
         assert 'id="student-modal-backdrop"' not in body
+        # Labeled filters, no academic-year or rows dropdowns.
+        assert ">Division<" in body
+        assert ">Batch<" in body
+        assert ">Semester<" in body
+        assert 'name="year"' not in body
+        assert " rows</option>" not in body
+        # Export lives in the filter-bar dropdown, not at the bottom.
+        assert "export-dropdown" in body
+        assert "Export CSV" not in body
 
         profile = self.client.get(f"/students?roster={roster_id}&select=101").text
         assert "Recent Repositories" in profile
@@ -238,6 +247,122 @@ class TestPageRenderingWithData:
         assert 'role="dialog"' in profile
         assert "student-table" in profile
         assert ".student-modal .profile-panel" in profile
+
+    def test_students_divisions_sorted_numerically(self, tmp_path):
+        from app.views import dist_options
+
+        assert dist_options(["10", "2", "14", "3"]) == ["All", "2", "3", "10", "14"]
+        assert dist_options(["B", "A"]) == ["All", "A", "B"]
+
+    def test_students_infinite_scroll_markup(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        body = self.client.get(f"/students?roster={roster_id}").text
+        assert 'id="student-tbody"' in body
+        assert 'id="shown-count"' in body
+        # Only 2 students: everything visible, no sentinel row needed.
+        assert 'id="scroll-sentinel"' not in body
+
+    def test_linkedin_display_name_strips_id_suffix(self):
+        from app.views import linkedin_display_name
+
+        assert linkedin_display_name("anshuman-kulkarni-b27b0142a") == "anshuman-kulkarni"
+        assert linkedin_display_name("aaryan-suktekar-114789242") == "aaryan-suktekar"
+        assert linkedin_display_name("lisha-patil") == "lisha-patil"
+        assert linkedin_display_name("purushottam-jadhav-0b910842a") == "purushottam-jadhav"
+        assert linkedin_display_name("single") == "single"
+        assert linkedin_display_name("") == ""
+        assert linkedin_display_name(None) == ""
+
+    def test_students_payload_shortens_linkedin_display(self):
+        import pandas as pd
+
+        from app import views
+
+        students = pd.DataFrame(
+            [
+                {
+                    "Student_ID": "1",
+                    "Student Name": "Anshuman Amit Kulkarni",
+                    "Division": "9",
+                    "Batch": "3",
+                    "Academic_Year": "2026-27",
+                    "Semester": "Semester 1",
+                    "GitHub_Username": "Anshuman-Kulkarni",
+                    "Submitted_GitHub_Username": "Anshuman-Kulkarni",
+                    "Avatar_URL": "",
+                    "Profile_URL": "https://github.com/Anshuman-Kulkarni",
+                    "LinkedIn_Username": "anshuman-kulkarni-b27b0142a",
+                    "LinkedIn_URL": "https://www.linkedin.com/in/anshuman-kulkarni-b27b0142a/",
+                    "HackerRank_Username": "1272261064_a",
+                    "HackerRank_URL": "https://www.hackerrank.com/profile/1272261064_a",
+                }
+            ]
+        )
+        view = {
+            "roster_id": "test",
+            "records": [],
+            "state": {},
+            "students": students,
+            "repos": pd.DataFrame(
+                columns=["Username", "Repository", "Language", "Stars", "Updated", "Repository_URL", "Quality_Band"]
+            ),
+            "issues": pd.DataFrame(),
+        }
+        payload = views.students_payload(view)
+        row = payload["display"].iloc[0]
+        # Table text drops the ID suffix; href/tooltip/export keep the full slug.
+        assert row["LinkedIn_Display"] == "anshuman-kulkarni"
+        assert row["LinkedIn_Username"] == "anshuman-kulkarni-b27b0142a"
+        assert row["LinkedIn_URL"] == "https://www.linkedin.com/in/anshuman-kulkarni-b27b0142a/"
+        assert payload["profile"] is None
+        selected = views.students_payload(view, selected_id="1")["profile"]
+        assert selected["linkedin_display"] == "anshuman-kulkarni"
+        assert selected["linkedin_username"] == "anshuman-kulkarni-b27b0142a"
+
+    def test_students_payload_batches_fifty_at_a_time(self):
+        import pandas as pd
+
+        from app import views
+
+        students = pd.DataFrame(
+            [
+                {
+                    "Student_ID": str(i),
+                    "Student Name": f"Student {i}",
+                    "Division": str(i % 30),
+                    "Batch": "1",
+                    "Academic_Year": "2026-27",
+                    "Semester": "Semester 1",
+                    "GitHub_Username": f"user{i}",
+                    "Submitted_GitHub_Username": f"user{i}",
+                    "Avatar_URL": "",
+                    "Profile_URL": f"https://github.com/user{i}",
+                    "LinkedIn_Username": "",
+                    "LinkedIn_URL": "",
+                    "HackerRank_Username": "",
+                    "HackerRank_URL": "",
+                }
+                for i in range(120)
+            ]
+        )
+        view = {
+            "roster_id": "test",
+            "records": [],
+            "state": {},
+            "students": students,
+            "repos": pd.DataFrame(),
+            "issues": pd.DataFrame(),
+        }
+        payload = views.students_payload(view)
+        assert payload["total"] == 120
+        assert len(payload["display"]) == 120
+        assert payload["showing"] == 50
+        assert payload["initial_visible"] == 50
+        assert payload["batch_size"] == 50
+        # Explicit rows override grows the first paint (modal depth restore).
+        payload = views.students_payload(view, rows=100)
+        assert payload["showing"] == 100
+        assert payload["initial_visible"] == 100
 
     def test_students_filter_narrows_results(self, tmp_path):
         roster_id = self._setup(tmp_path)

@@ -3,6 +3,61 @@
 {% block title %}Students — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
 <style>
+  .filter-bar {
+    align-items: flex-end;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .filter-field.search-box-row {
+    flex: 1 1 260px;
+  }
+  .filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .export-dropdown {
+    position: relative;
+  }
+  .export-dropdown summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .export-dropdown summary::-webkit-details-marker {
+    display: none;
+  }
+  .export-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 36px var(--shadow);
+    z-index: 60;
+  }
+  .export-menu a {
+    padding: 8px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .export-menu a:hover {
+    background: var(--hover-bg);
+  }
   .student-table {
     table-layout: fixed;
     width: 100%;
@@ -43,6 +98,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: bottom;
+  }
+  .scroll-sentinel {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 12px 0 4px;
   }
   .student-modal-backdrop {
     position: fixed;
@@ -113,7 +174,6 @@
     <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
       <div class="topbar-title">Students</div>
       <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
-        <span>{{ topbar_date }}</span><span>&bull;</span>
         <span>{{ payload.total }} students</span>
       </div>
     </div>
@@ -126,37 +186,47 @@
 
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
-  <div class="search-box-row">
-    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="student-search">Search</label>
+    <input id="student-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
   </div>
-  <select class="filter-select" name="division" title="Division">
-    {% for value in payload.divisions %}
-    <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <select class="filter-select" name="batch" title="Batch">
-    {% for value in payload.batches %}
-    <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <select class="filter-select" name="year" title="Academic Year">
-    {% for value in payload.years %}
-    <option value="{{ value }}" {% if value == year %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <select class="filter-select" name="semester" title="Semester">
-    {% for value in payload.semesters %}
-    <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <select class="filter-select" name="rows" title="Rows per page" onchange="this.form.submit()">
-    {% for value in payload.row_options %}
-    <option value="{{ value }}" {% if value == payload.page_size %}selected{% endif %}>{{ value }} rows</option>
-    {% endfor %}
-  </select>
+  <div class="filter-field">
+    <label class="filter-label" for="division-filter">Division</label>
+    <select id="division-filter" class="filter-select" name="division">
+      {% for value in payload.divisions %}
+      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="batch-filter">Batch</label>
+    <select id="batch-filter" class="filter-select" name="batch">
+      {% for value in payload.batches %}
+      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="semester-filter">Semester</label>
+    <select id="semester-filter" class="filter-select" name="semester">
+      {% for value in payload.semesters %}
+      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/students?roster={{ roster_id }}">Clear</a>
-  <span class="filter-count">{{ payload.showing }} of {{ payload.total }} shown</span>
+  <div class="filter-field">
+    <span class="filter-label" id="export-label">Export</span>
+    <details class="export-dropdown" aria-labelledby="export-label">
+      <summary class="btn" aria-haspopup="menu">Export &#9662;</summary>
+      <div class="export-menu" role="menu">
+        <a role="menuitem" href="/students/export?{{ payload.export_query }}">CSV</a>
+        <a role="menuitem" href="/students/export?{{ payload.export_query.replace('format=csv', 'format=xlsx') }}">Excel</a>
+      </div>
+    </details>
+  </div>
+  <span class="filter-count"><span id="shown-count">{{ payload.showing }}</span> of {{ payload.total }} shown</span>
 </form>
 
 <section class="panel">
@@ -175,17 +245,17 @@
           <th class="col-hr">HackerRank</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="student-tbody">
         {% for row in payload.display.to_dict('records') %}
-        <tr class="student-row" data-student-id="{{ row.Student_ID }}">
+        <tr class="student-row" data-student-id="{{ row.Student_ID }}"{% if loop.index > payload.initial_visible %} hidden{% endif %}>
           <td>
             <div class="student-cell">
               {% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL }}" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}
-              <a class="student-name-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&year={{ year|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row['Student Name'] }}</a>
+              <a class="student-name-link student-open-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row['Student Name'] }}</a>
             </div>
           </td>
           <td>
-            <a href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&year={{ year|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row.Student_ID }}</a>
+            <a class="student-open-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row.Student_ID }}</a>
           </td>
           <td>{{ row.Division }}</td>
           <td>{{ row.Batch }}</td>
@@ -197,7 +267,7 @@
           </td>
           <td>
             {% if row.LinkedIn_Username %}
-              <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Username }}</a>
+              <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
             {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
           </td>
           <td>
@@ -212,15 +282,72 @@
       </tbody>
     </table>
   </div>
-  <div class="export-row">
-    <a class="btn" href="/students/export?{{ payload.export_query }}">Export CSV</a>
-    <a class="btn" href="/students/export?{{ payload.export_query.replace('format=csv', 'format=xlsx') }}">Export Excel</a>
-  </div>
+  {% if payload.total > payload.initial_visible %}
+  <div class="scroll-sentinel" id="scroll-sentinel">Scroll down to load more students&hellip;</div>
+  {% endif %}
 </section>
+
+<script>
+  (function () {
+    var batchSize = {{ payload.batch_size }};
+    var total = {{ payload.total }};
+    var shownEl = document.getElementById('shown-count');
+    var shown = {{ payload.showing }};
+    var hiddenRows = Array.prototype.slice.call(
+      document.querySelectorAll('#student-tbody tr.student-row[hidden]')
+    );
+    var sentinel = document.getElementById('scroll-sentinel');
+
+    // Preserve scroll depth when opening a student popup.
+    document.addEventListener('click', function (event) {
+      var link = event.target.closest('a.student-open-link');
+      if (!link) return;
+      try {
+        var url = new URL(link.getAttribute('href'), window.location.origin);
+        url.searchParams.set('rows', String(shown));
+        link.setAttribute('href', url.pathname + url.search);
+      } catch (err) { /* keep the original href */ }
+    });
+
+    // Close the export menu on outside click / Escape.
+    document.addEventListener('click', function (event) {
+      document.querySelectorAll('details.export-dropdown[open]').forEach(function (menu) {
+        if (!menu.contains(event.target)) menu.removeAttribute('open');
+      });
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        document.querySelectorAll('details.export-dropdown[open]').forEach(function (menu) {
+          menu.removeAttribute('open');
+        });
+      }
+    });
+
+    if (!sentinel || hiddenRows.length === 0) {
+      if (sentinel) sentinel.hidden = true;
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        for (var i = 0; i < batchSize && hiddenRows.length; i++) {
+          hiddenRows.shift().hidden = false;
+        }
+        shown = total - hiddenRows.length;
+        if (shownEl) shownEl.textContent = String(shown);
+        if (hiddenRows.length === 0) {
+          observer.disconnect();
+          sentinel.hidden = true;
+        }
+      });
+    }, { rootMargin: '400px' });
+    observer.observe(sentinel);
+  })();
+</script>
 
 {% if payload.profile %}
   {% set p = payload.profile %}
-  {% set close_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&year=" + (year|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (payload.page_size|string) %}
+  {% set close_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (payload.page_size|string) %}
   <div class="student-modal-backdrop" id="student-modal-backdrop" data-close-url="{{ close_url }}">
     <div class="student-modal" role="dialog" aria-modal="true" aria-label="Student details for {{ p.name }}">
       <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
@@ -247,7 +374,7 @@
         {% if p.linkedin_username or p.hackerrank_username %}
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px; font-size:13px;">
           {% if p.linkedin_username %}
-          <div>LinkedIn: <a href="{{ p.linkedin_url }}" target="_blank" rel="noopener">{{ p.linkedin_username }}</a></div>
+          <div>LinkedIn: <a href="{{ p.linkedin_url }}" target="_blank" rel="noopener" title="{{ p.linkedin_username }}">{{ p.linkedin_display }}</a></div>
           {% endif %}
           {% if p.hackerrank_username %}
           <div>HackerRank: <a href="{{ p.hackerrank_url }}" target="_blank" rel="noopener">{{ p.hackerrank_username }}</a></div>

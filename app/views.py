@@ -396,8 +396,41 @@ STUDENT_HEADERS = {
 }
 
 
+def _dist_sort_key(value) -> tuple:
+    """Sort numeric options (Division/Batch) numerically so "10" comes after
+    "2"; non-numeric labels fall back to case-insensitive alphabetical order."""
+    text = str(value).strip()
+    try:
+        return (0, float(text))
+    except ValueError:
+        return (1, text.lower())
+
+
 def dist_options(values) -> list[str]:
-    return ["All"] + sorted(v for v in values if str(v).strip() != "all")
+    return ["All"] + sorted(
+        (v for v in values if str(v).strip() != "all"), key=_dist_sort_key
+    )
+
+
+def linkedin_display_name(slug) -> str:
+    """Shorten a LinkedIn /in/ slug for display by dropping the trailing
+    auto-generated ID segment (e.g. "anshuman-kulkarni-b27b0142a" becomes
+    "anshuman-kulkarni"). Only the last segment is stripped, and only when it
+    contains a digit — real name segments ("lisha-patil") are untouched.
+    Links always keep the full slug."""
+    if pd.isna(slug):
+        return ""
+    text = str(slug).strip()
+    if not text or "-" not in text:
+        return text
+    head, _, tail = text.rpartition("-")
+    if head and any(char.isdigit() for char in tail):
+        return head
+    return text
+
+
+#: Rows shown on first paint; further batches of the same size reveal on scroll.
+STUDENT_BATCH_SIZE = 50
 
 
 def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None) -> dict:
@@ -439,27 +472,34 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
             )
 
     total = len(filtered)
+    # The rows dropdown is gone: first paint shows STUDENT_BATCH_SIZE rows and
+    # the browser reveals further batches on scroll. `rows` survives only as an
+    # initial-visible override (e.g. modal close links preserve scroll depth).
+    try:
+        requested = int(rows or 0)
+    except (TypeError, ValueError):
+        requested = 0
+    page_size = max(STUDENT_BATCH_SIZE, min(requested, total)) if total else 0
     options = sorted({size for size in (15, 25, 50, 100, total) if size > 0})
-    page_size = rows if rows in options else 0
-    if page_size <= 0:
-        page_size = min(25, max(options)) if options else 0
-        page_size = total if page_size == 0 and total else page_size
-        if total:
-            page_size = min(25, total) if 25 in options else (total if total > 0 else 25)
 
     available_cols = [column for column in STUDENT_TABLE_COLS if column in filtered.columns]
     export_cols = available_cols + [c for c in STUDENT_URL_COLS if c in filtered.columns]
     headers = {column: STUDENT_HEADERS.get(column, column) for column in available_cols}
+    # Display-only short LinkedIn name (full slug stays in LinkedIn_Username
+    # for the link href, tooltip and export).
+    if "LinkedIn_Username" in filtered.columns:
+        filtered["LinkedIn_Display"] = filtered["LinkedIn_Username"].apply(linkedin_display_name)
     # Jinja `{% if row.X %}` treats NaN as truthy → normalize blanks to "" so
     # missing handles render as "—" instead of crashing string concatenation.
     for _sanitize in ("Student Name", STUDENT_ID_COL, "Division", "Batch", "Semester",
-                      "GitHub_Username", "LinkedIn_Username", "HackerRank_Username",
+                      "GitHub_Username", "LinkedIn_Username", "LinkedIn_Display",
+                      "HackerRank_Username",
                       "Profile_URL", "LinkedIn_URL", "HackerRank_URL", "Avatar_URL"):
         if _sanitize in filtered.columns:
             filtered[_sanitize] = filtered[_sanitize].where(filtered[_sanitize].notna(), "")
     if total:
-        _display_cols = available_cols + [c for c in STUDENT_URL_COLS if c in filtered.columns]
-        display = filtered[_display_cols].head(page_size).reset_index(drop=True)
+        _display_cols = available_cols + [c for c in STUDENT_URL_COLS + ["LinkedIn_Display"] if c in filtered.columns]
+        display = filtered[_display_cols].reset_index(drop=True)
     else:
         display = filtered
 
@@ -471,7 +511,9 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
 
     return {
         "total": total,
-        "showing": len(display),
+        "showing": min(page_size, total),
+        "initial_visible": page_size,
+        "batch_size": STUDENT_BATCH_SIZE,
         "page_size": page_size,
         "row_options": options,
         "display": display,
@@ -524,6 +566,7 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
         "avatar": row.get("Avatar_URL", ""),
         "profile_url": row.get("Profile_URL", "") or github_profile_url(username),
         "linkedin_username": linkedin_user if pd.notna(linkedin_user) else "",
+        "linkedin_display": linkedin_display_name(linkedin_user),
         "linkedin_url": row.get("LinkedIn_URL", "") or linkedin_profile_url(linkedin_user),
         "hackerrank_username": hackerrank_user if pd.notna(hackerrank_user) else "",
         "hackerrank_url": row.get("HackerRank_URL", "") or hackerrank_profile_url(hackerrank_user),
