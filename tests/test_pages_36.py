@@ -534,9 +534,9 @@ class TestSidebarIdentityContext:
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         source = base.read_text(encoding="utf-8")
-        assert "{{ auth_user }}" in source
         assert "{{ auth_status }}" in source
         assert "{{ auth_logout }}" in source
+        assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
         for hardcoded in (
             "Faculty Workspace",
             "GitHub Platform",

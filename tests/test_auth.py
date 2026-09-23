@@ -92,8 +92,7 @@ class TestLogin:
     def test_logout_clears_session(self, client):
         signup(client)
         login(client)
-        assert "Student One" in client.get("/").text  # account card in the sidebar top slot
-        assert "Sign out" in client.get("/").text     # session is live
+        assert "Sign out" in client.get("/").text     # session is live (sidebar offers logout)
         client.get("/logout")
         body = client.get("/", headers={"Accept": "text/html"}).text
         assert "Welcome back" in body  # bounced back to the login page
