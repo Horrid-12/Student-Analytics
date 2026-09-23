@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros/charts.html" as mc %}
 {% block title %}Students — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
 <style>
@@ -87,6 +86,14 @@
   .student-cell .avatar-fallback {
     flex-shrink: 0;
   }
+  .student-cell .avatar-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    border-radius: 50%;
+  }
+  .student-cell .avatar-link:hover {
+    opacity: 0.85;
+  }
   .student-cell .student-name-link {
     overflow-wrap: anywhere;
     min-width: 0;
@@ -110,9 +117,9 @@
     inset: 0;
     background: rgba(15, 23, 42, 0.55);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding: 24px 16px;
+    padding: 32px 24px;
     overflow: hidden;
     z-index: 100;
   }
@@ -120,15 +127,195 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 16px;
-    max-width: 560px;
+    max-width: 720px;
     width: 100%;
-    max-height: calc(100vh - 48px);
+    max-height: calc(100vh - 64px);
     overflow-y: auto;
     padding: 20px;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
   }
   .student-modal .profile-panel {
     position: static;
+  }
+  .profile-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0 12px;
+  }
+  .profile-tab {
+    flex: 1;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid var(--border);
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .profile-tab:hover {
+    color: var(--text);
+  }
+  .profile-tab[aria-selected="true"] {
+    color: var(--text);
+    border-bottom-color: var(--blue);
+  }
+  .repo-dropdown {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card-soft);
+    overflow: hidden;
+  }
+  .repo-dropdown-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 16px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .repo-dropdown-btn::-webkit-details-marker {
+    display: none;
+  }
+  .repo-dropdown-btn .chev {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    transition: transform 180ms ease;
+  }
+  .repo-dropdown[open] .repo-dropdown-btn .chev {
+    transform: rotate(180deg);
+  }
+  .repo-dropdown-body {
+    border-top: 1px solid var(--border);
+    padding: 6px 16px 12px;
+  }
+  .tab-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 16px 4px;
+    text-align: center;
+  }
+  .lang-split {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    margin-top: 18px;
+  }
+  .lang-half {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .lang-divider {
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--border);
+  }
+  .activity-stats {
+    display: flex;
+    flex-direction: column;
+  }
+  .activity-stat {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .activity-stat:last-child {
+    border-bottom: none;
+  }
+  .activity-number {
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .activity-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .lang-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .lang-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .lang-name {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lang-track {
+    flex: 1;
+    min-width: 0;
+    height: 18px;
+  }
+  .lang-fill {
+    display: block;
+    height: 100%;
+    color: var(--text);
+    /* 12px stripe period (8px bar + 4px gap) — keep in sync with the
+       snapLangBars period in the modal script below. */
+    background: repeating-linear-gradient(
+      to right,
+      currentColor 0 8px,
+      transparent 8px 12px
+    );
+    border-radius: 2px;
+  }
+  .lang-count {
+    width: 28px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .profile-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .profile-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 150ms ease, color 150ms ease, transform 150ms ease;
+  }
+  .profile-icon-btn:hover {
+    transform: translateY(-1px);
+  }
+  .profile-icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .profile-icon-github:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  .profile-icon-linkedin:hover {
+    border-color: #0a66c2;
+    color: #0a66c2;
+  }
+  .profile-icon-hackerrank:hover {
+    border-color: #2ec866;
+    color: #2ec866;
   }
   .student-modal-close {
     margin-left: auto;
@@ -242,15 +429,16 @@
       </thead>
       <tbody id="student-tbody">
         {% for row in payload.display.to_dict('records') %}
+        {% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (payload.page_size|string) + "&select=" + (row.Student_ID|string) %}
         <tr class="student-row" data-student-id="{{ row.Student_ID }}"{% if loop.index > payload.initial_visible %} hidden{% endif %}>
           <td>
             <div class="student-cell">
-              {% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL }}" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}
-              <a class="student-name-link student-open-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row['Student Name'] }}</a>
+              <a class="avatar-link student-open-link" href="{{ open_url }}" aria-label="View profile of {{ row['Student Name'] }}">{% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL }}" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}</a>
+              <a class="student-name-link student-open-link" href="{{ open_url }}">{{ row['Student Name'] }}</a>
             </div>
           </td>
           <td>
-            <a class="student-open-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row.Student_ID }}</a>
+            <a class="student-open-link" href="{{ open_url }}">{{ row.Student_ID }}</a>
           </td>
           <td>{{ row.Division }}</td>
           <td>{{ row.Batch }}</td>
@@ -357,36 +545,91 @@
           <div>
             <div class="profile-name">{{ p.name }}</div>
             <div class="profile-sub">{{ p.student_id }} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
-            <a class="external-link-button" href="{{ p.profile_url }}" target="_blank" rel="noopener">{{ p.username }}</a>
+            <div class="profile-links">
+              {% if p.username %}
+              <a class="profile-icon-btn profile-icon-github" href="{{ p.profile_url }}" target="_blank" rel="noopener" title="GitHub: {{ p.username }}" aria-label="Open GitHub profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
+              </a>
+              {% endif %}
+              {% if p.linkedin_username %}
+              <a class="profile-icon-btn profile-icon-linkedin" href="{{ p.linkedin_url }}" target="_blank" rel="noopener" title="LinkedIn: {{ p.linkedin_username }}" aria-label="Open LinkedIn profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              </a>
+              {% endif %}
+              {% if p.hackerrank_username %}
+              <a class="profile-icon-btn profile-icon-hackerrank" href="{{ p.hackerrank_url }}" target="_blank" rel="noopener" title="HackerRank: {{ p.hackerrank_username }}" aria-label="Open HackerRank profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.508 6.268L12 10.762l4.485-4.495-2.493-2.489-1.992 1.994-1.997-1.996-2.495 2.492zM23.999 20.943l-7.128-7.13 7.128-7.129-2.828-2.828-7.13 7.129-7.122-7.124-2.824 2.828 7.128 7.13-7.128 7.129 2.828 2.828 7.122-7.124 7.13 7.129 2.818-2.834zm-11.129-7.133l-.004-.004.004.004z"/></svg>
+              </a>
+              {% endif %}
+            </div>
           </div>
         </div>
-        <div class="profile-stats">
-          <div class="profile-stat"><div class="stat-number">{{ p.followers }}</div><div class="stat-label">Followers</div></div>
-          <div class="profile-stat"><div class="stat-number">{{ p.repositories }}</div><div class="stat-label">Repos Found</div></div>
-          <div class="profile-stat"><div class="stat-number">{{ p.active_repos }}</div><div class="stat-label">Active (6m)</div></div>
-          <div class="profile-stat"><div class="stat-number">{{ p.primary_language }}</div><div class="stat-label">Primary Lang</div></div>
-        </div>
-        {% if p.linkedin_username or p.hackerrank_username %}
-        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px; font-size:13px;">
-          {% if p.linkedin_username %}
-          <div>LinkedIn: <a href="{{ p.linkedin_url }}" target="_blank" rel="noopener" title="{{ p.linkedin_username }}">{{ p.linkedin_display }}</a></div>
-          {% endif %}
-          {% if p.hackerrank_username %}
-          <div>HackerRank: <a href="{{ p.hackerrank_url }}" target="_blank" rel="noopener">{{ p.hackerrank_username }}</a></div>
-          {% endif %}
-        </div>
-        {% endif %}
       </div>
-      <div class="panel-minor-title">Recent Repositories</div>
-      {% for repo in p.repos.to_dict('records') %}
-      <div class="profile-repo">
-        <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
-        <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
+      <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-github" aria-controls="profile-panel-github" aria-selected="true">GitHub</button>
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-hackerrank" aria-controls="profile-panel-hackerrank" aria-selected="false" tabindex="-1">HackerRank</button>
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-linkedin" aria-controls="profile-panel-linkedin" aria-selected="false" tabindex="-1">LinkedIn</button>
       </div>
-      {% else %}
-      <p style="color:var(--muted); font-size:13px; padding:8px 0;">No public repositories found.</p>
-      {% endfor %}
-      {% if p.language_fig %}<div class="panel-minor-title">Language Mix</div>{{ mc.chart('student-langs', p.language_fig) }}{% endif %}
+      <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
+        <details class="repo-dropdown">
+          <summary class="repo-dropdown-btn">
+            <span>Repositories ({{ p.repos|length }})</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="repo-dropdown-body">
+            {% for repo in p.repos.to_dict('records') %}
+            <div class="profile-repo">
+              <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+              <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
+            </div>
+            {% else %}
+            <p style="color:var(--muted); font-size:13px; padding:8px 0;">No public repositories found.</p>
+            {% endfor %}
+          </div>
+        </details>
+        <div class="lang-split">
+          <div class="lang-half">
+            <div class="panel-minor-title">Top Languages</div>
+            {% if p.top_languages %}
+            <div class="lang-bars">
+              {% for lang in p.top_languages %}
+              <div class="lang-row">
+                <span class="lang-name" title="{{ lang.language }}">{{ lang.language }}</span>
+                <span class="lang-track"><span class="lang-fill" style="width:{{ lang.pct }}%" data-pct="{{ lang.pct }}"></span></span>
+                <span class="lang-count">{{ lang.count }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="tab-empty">No language data yet.</p>
+            {% endif %}
+          </div>
+          <div class="lang-divider" aria-hidden="true"></div>
+          <div class="lang-half">
+            <div class="panel-minor-title">Activity</div>
+            <div class="activity-stats">
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.contributions_30d }}</div>
+                <div class="activity-label">Contributions in last 30 days</div>
+              </div>
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.active_repos }}</div>
+                <div class="activity-label">Active repositories</div>
+              </div>
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.activity_streak }} day{% if p.activity_streak != 1 %}s{% endif %}</div>
+                <div class="activity-label">Current activity streak</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="profile-panel-hackerrank" role="tabpanel" aria-labelledby="profile-tab-hackerrank" hidden>
+        <p class="tab-empty">HackerRank details coming soon.</p>
+      </div>
+      <div id="profile-panel-linkedin" role="tabpanel" aria-labelledby="profile-tab-linkedin" hidden>
+        <p class="tab-empty">LinkedIn details coming soon.</p>
+      </div>
     </div>
   </div>
   <script>
@@ -403,6 +646,40 @@
       });
       var closer = backdrop.querySelector('.student-modal-close');
       if (closer) closer.focus();
+      // Snap each language bar to a whole number of stripe periods so bars
+      // never end mid-segment. Period must match .lang-fill (8px + 4px).
+      var stripePeriod = 12;
+      function snapLangBars() {
+        backdrop.querySelectorAll('.lang-fill').forEach(function (fill) {
+          var track = fill.parentElement;
+          var pct = parseFloat(fill.getAttribute('data-pct'));
+          if (!track || isNaN(pct)) return;
+          var target = track.clientWidth * pct / 100;
+          var snapped = Math.max(stripePeriod, Math.round(target / stripePeriod) * stripePeriod);
+          fill.style.width = snapped + 'px';
+        });
+      }
+      snapLangBars();
+      window.addEventListener('resize', snapLangBars);
+      var tabs = Array.prototype.slice.call(backdrop.querySelectorAll('[role="tab"]'));
+      function selectTab(tab) {
+        tabs.forEach(function (other) {
+          var selected = other === tab;
+          other.setAttribute('aria-selected', selected ? 'true' : 'false');
+          other.tabIndex = selected ? 0 : -1;
+          var panel = document.getElementById(other.getAttribute('aria-controls'));
+          if (panel) panel.hidden = !selected;
+        });
+      }
+      tabs.forEach(function (tab, index) {
+        tab.addEventListener('click', function () { selectTab(tab); });
+        tab.addEventListener('keydown', function (event) {
+          var next = null;
+          if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
+          if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
+          if (next) { next.focus(); selectTab(next); }
+        });
+      });
     })();
   </script>
 {% endif %}

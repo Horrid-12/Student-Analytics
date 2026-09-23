@@ -5,7 +5,7 @@ results) that reproduce the legacy app.py render_* computations with the same
 columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -544,16 +544,65 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(pairs)
 
 
+def _recent_activity(student_repos: pd.DataFrame) -> tuple[int, int]:
+    """Derive 30-day activity from repo update timestamps (no extra API calls).
+
+    Returns (repos updated in the last 30 days, current streak in consecutive
+    days with at least one repo update). The streak counts back from the most
+    recent update day when it is today or yesterday, else it is 0.
+    """
+    if student_repos.empty or "Updated" not in student_repos.columns:
+        return 0, 0
+    updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
+    if updated.empty:
+        return 0, 0
+    today = pd.Timestamp.now(tz="UTC").normalize()
+    days_ago = (today - updated.dt.normalize()).dt.days
+    contributions = int(((days_ago >= 0) & (days_ago <= 30)).sum())
+    active_days = set(updated[updated.dt.normalize() <= today].dt.date)
+    if not active_days:
+        return contributions, 0
+    latest = max(active_days)
+    if (today.date() - latest).days > 1:
+        return contributions, 0
+    streak, cursor = 0, latest
+    while cursor in active_days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return contributions, streak
+
+
 def students_payload_profile(row, repos: pd.DataFrame) -> dict:
     username = row.get("GitHub_Username", "")
-    student_repos = repos[repos["Username"] == username].sort_values("Updated", ascending=False)
-    language_counts = (
-        student_repos["Language"].fillna("Misc").value_counts().head(5).reset_index()
-        if not student_repos.empty
-        else None
+    student_repos = repos[repos["Username"] == username].sort_values("Updated", ascending=False).copy()
+    if not student_repos.empty and "Language" in student_repos.columns:
+        # Display "Unknown", never "nan", for repos without a detected language.
+        student_repos["Language"] = student_repos["Language"].fillna("Unknown")
+    lang_counts = (
+        student_repos["Language"].value_counts()
+        if not student_repos.empty and "Language" in student_repos.columns
+        else pd.Series(dtype=int)
     )
-    if language_counts is not None:
-        language_counts.columns = ["Language", "Repositories"]
+    # "Unknown" is never shown — drop it before ranking so it cannot occupy a
+    # slot or skew the scale. Every remaining language is shown (no cap).
+    if not lang_counts.empty:
+        lang_counts = lang_counts[lang_counts.index != "Unknown"]
+    top_languages = []
+    if not lang_counts.empty and int(lang_counts.max()) > 0:
+        peak = int(lang_counts.max())
+        for language, count in lang_counts.items():
+            raw = int(count) / peak * 100
+            # Ceil to a multiple of 5 so small bars keep a visible minimum
+            # width instead of being cut off to a sliver.
+            pct = min(100, int(-(-raw // 5) * 5))
+            top_languages.append(
+                {
+                    "language": str(language),
+                    "count": int(count),
+                    "pct": pct,
+                }
+            )
+    contributions_30d, activity_streak = _recent_activity(student_repos)
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
@@ -575,8 +624,10 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
         "repositories": _num(row.get("Repository_Count", 0)),
         "active_repos": _num(row.get("Active_Repositories", 0)),
         "primary_language": row.get("Primary_Language", "Unknown"),
-        "repos": student_repos.head(5),
-        "language_fig": _build_language_fig(language_counts) if language_counts is not None else None,
+        "repos": student_repos,
+        "top_languages": top_languages,
+        "contributions_30d": contributions_30d,
+        "activity_streak": activity_streak,
     }
 
 

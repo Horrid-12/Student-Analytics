@@ -240,13 +240,161 @@ class TestPageRenderingWithData:
         # Export lives in the filter-bar dropdown, not at the bottom.
         assert "export-dropdown" in body
         assert "Export CSV" not in body
+        # Avatar opens the same profile popup as the name/ID links.
+        assert 'class="avatar-link student-open-link"' in body
+        assert "View profile of Alice Example" in body
 
         profile = self.client.get(f"/students?roster={roster_id}&select=101").text
-        assert "Recent Repositories" in profile
         assert 'id="student-modal-backdrop"' in profile
         assert 'role="dialog"' in profile
         assert "student-table" in profile
         assert ".student-modal .profile-panel" in profile
+        # Profile tabs: GitHub active with the repositories dropdown, the
+        # other two panels present but hidden and empty for now.
+        assert 'role="tablist"' in profile
+        assert 'id="profile-tab-github"' in profile
+        assert 'id="profile-panel-github"' in profile
+        assert 'id="profile-panel-hackerrank"' in profile
+        assert 'id="profile-panel-linkedin"' in profile
+        assert "repo-dropdown" in profile
+        assert "Repositories (" in profile
+        assert "py1" in profile and "js1" in profile
+        assert "Language Mix" not in profile
+        assert "Top Languages" in profile
+        assert "lang-fill" in profile
+        assert "lang-row" in profile
+        assert "data-pct" in profile
+        assert "snapLangBars" in profile
+        assert "lang-split" in profile
+        assert "lang-divider" in profile
+        assert "Activity" in profile
+        assert "Contributions in last 30 days" in profile
+        assert "Active repositories" in profile
+        assert "Current activity streak" in profile
+        # Icon buttons replace the old text links: GitHub only (no
+        # LinkedIn/HackerRank on this fixture roster).
+        assert 'class="profile-icon-btn profile-icon-github"' in profile
+        assert "https://github.com/alice-dev" in profile
+        assert 'profile-icon-btn profile-icon-linkedin"' not in profile
+        assert 'profile-icon-btn profile-icon-hackerrank"' not in profile
+        assert "external-link-button" not in profile
+
+    def test_profile_top_languages_ranked_with_percentages(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        def repo(name, language, day):
+            return {
+                "Username": "u",
+                "Repository": name,
+                "Language": language,
+                "Stars": 0,
+                "Updated": f"2026-01-{day:02d}T00:00:00Z",
+                "Repository_URL": "",
+                "Quality_Band": "",
+            }
+
+        repos = pd.DataFrame(
+            [repo(f"py{i}", "Python", i) for i in range(1, 10)]
+            + [repo(f"go{i}", "Go", 10 + i) for i in range(1, 5)]
+            + [repo(f"js{i}", "JavaScript", 14 + i) for i in range(1, 4)]
+            + [repo(f"ts{i}", "TypeScript", 17 + i) for i in range(1, 3)]
+            + [repo("rs1", "Rust", 20)]
+            + [repo(f"misc{i}", None, 21 + i) for i in range(1, 21)]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        top = students_payload_profile(row, repos)["top_languages"]
+        # Unknown (20 repos) is excluded entirely; every known language shows
+        # (no cap), widths ceiled to multiples of 5.
+        assert top == [
+            {"language": "Python", "count": 9, "pct": 100},
+            {"language": "Go", "count": 4, "pct": 45},
+            {"language": "JavaScript", "count": 3, "pct": 35},
+            {"language": "TypeScript", "count": 2, "pct": 25},
+            {"language": "Rust", "count": 1, "pct": 15},
+        ]
+        assert all(item["pct"] % 5 == 0 for item in top)
+
+    def test_profile_recent_activity_from_repo_timestamps(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        now = pd.Timestamp.now(tz="UTC").normalize()
+
+        def repo(name, days_ago):
+            updated = (now - pd.Timedelta(days=days_ago)).isoformat()
+            return {
+                "Username": "u",
+                "Repository": name,
+                "Language": "Python",
+                "Stars": 0,
+                "Updated": updated,
+                "Repository_URL": "",
+                "Quality_Band": "",
+            }
+
+        repos = pd.DataFrame(
+            [
+                repo("today", 0),
+                repo("yesterday", 1),
+                repo("day-before", 2),
+                repo("old", 40),
+                repo("older", 200),
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        # today/yesterday/day-before are within 30 days; the old ones are not.
+        assert profile["contributions_30d"] == 3
+        # Three consecutive active days ending today.
+        assert profile["activity_streak"] == 3
+
+    def test_profile_streak_broken_without_recent_updates(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        now = pd.Timestamp.now(tz="UTC").normalize()
+        repos = pd.DataFrame(
+            [
+                {
+                    "Username": "u",
+                    "Repository": "old",
+                    "Language": "Python",
+                    "Stars": 0,
+                    "Updated": (now - pd.Timedelta(days=40)).isoformat(),
+                    "Repository_URL": "",
+                    "Quality_Band": "",
+                }
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        assert profile["contributions_30d"] == 0
+        assert profile["activity_streak"] == 0
 
     def test_students_divisions_sorted_numerically(self, tmp_path):
         from app.views import dist_options
