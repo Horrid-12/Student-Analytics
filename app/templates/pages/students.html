@@ -3,6 +3,47 @@
 {% block title %}Students — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
 <style>
+  .student-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+  .student-table th,
+  .student-table td {
+    padding: 9px 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+  }
+  .student-table .col-student { width: 22%; }
+  .student-table .col-id { width: 12%; }
+  .student-table .col-div,
+  .student-table .col-batch { width: 7%; }
+  .student-table .col-sem { width: 11%; }
+  .student-table .col-gh { width: 13%; }
+  .student-table .col-li { width: 14%; }
+  .student-table .col-hr { width: 14%; }
+  .student-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .student-cell .table-avatar,
+  .student-cell .avatar-fallback {
+    flex-shrink: 0;
+  }
+  .student-cell .student-name-link {
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+  .handle {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
   .student-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -10,8 +51,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 48px 16px;
-    overflow-y: auto;
+    padding: 24px 16px;
+    overflow: hidden;
     z-index: 100;
   }
   .student-modal {
@@ -20,8 +61,13 @@
     border-radius: 16px;
     max-width: 560px;
     width: 100%;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
     padding: 20px;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  }
+  .student-modal .profile-panel {
+    position: static;
   }
   .student-modal-close {
     margin-left: auto;
@@ -116,24 +162,24 @@
 <section class="panel">
   <div class="panel-title">Student Explorer</div>
   <div class="data-table-wrap">
-    <table class="data-table">
+    <table class="data-table student-table">
       <thead>
         <tr>
-          <th>Student</th>
-          <th>Student ID</th>
-          <th>Division</th>
-          <th>Batch</th>
-          <th>Semester</th>
-          <th>GitHub</th>
-          <th>LinkedIn</th>
-          <th>HackerRank</th>
+          <th class="col-student">Student</th>
+          <th class="col-id">Student ID</th>
+          <th class="col-div">Division</th>
+          <th class="col-batch">Batch</th>
+          <th class="col-sem">Semester</th>
+          <th class="col-gh">GitHub</th>
+          <th class="col-li">LinkedIn</th>
+          <th class="col-hr">HackerRank</th>
         </tr>
       </thead>
       <tbody>
         {% for row in payload.display.to_dict('records') %}
         <tr class="student-row" data-student-id="{{ row.Student_ID }}">
           <td>
-            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+            <div class="student-cell">
               {% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL }}" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}
               <a class="student-name-link" href="/students?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&year={{ year|urlencode }}&semester={{ semester|urlencode }}&rows={{ payload.page_size }}&select={{ row.Student_ID }}">{{ row['Student Name'] }}</a>
             </div>
@@ -146,17 +192,17 @@
           <td>{{ row.Semester }}</td>
           <td>
             {% if row.GitHub_Username %}
-              <a href="{{ row.Profile_URL }}" target="_blank" rel="noopener">{{ row.GitHub_Username }}</a>
+              <a class="handle" href="{{ row.Profile_URL }}" target="_blank" rel="noopener" title="{{ row.GitHub_Username }}">{{ row.GitHub_Username }}</a>
             {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
           </td>
           <td>
             {% if row.LinkedIn_Username %}
-              <a href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener">{{ row.LinkedIn_Username }}</a>
+              <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Username }}</a>
             {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
           </td>
           <td>
             {% if row.HackerRank_Username %}
-              <a href="{{ row.HackerRank_URL }}" target="_blank" rel="noopener">{{ row.HackerRank_Username }}</a>
+              <a class="handle" href="{{ row.HackerRank_URL }}" target="_blank" rel="noopener" title="{{ row.HackerRank_Username }}">{{ row.HackerRank_Username }}</a>
             {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
           </td>
         </tr>

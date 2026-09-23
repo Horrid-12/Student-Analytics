@@ -236,6 +236,8 @@ class TestPageRenderingWithData:
         assert "Recent Repositories" in profile
         assert 'id="student-modal-backdrop"' in profile
         assert 'role="dialog"' in profile
+        assert "student-table" in profile
+        assert ".student-modal .profile-panel" in profile
 
     def test_students_filter_narrows_results(self, tmp_path):
         roster_id = self._setup(tmp_path)
