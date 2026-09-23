@@ -470,11 +470,6 @@ def _base_context(request: Request, page_name: str) -> dict:
     role = (user or {}).get("role")
     # BUG-098: sidebar/account identity is context-driven and now reflects the
     # signed-in Phase 4.7 user (Admin/Faculty/Student) without touching HTML.
-    brand = {
-        "admin": "Admin Workspace",
-        "faculty": "Faculty Workspace",
-        "student": "Student Portal",
-    }.get(role, "Public Workspace")
     display = (user.get("name") or user.get("email")) if user else "Guest"
     status = user["role"].title() if user else "Not signed in"
     footer = f"{role.title()} \u2022 {display}" if user else "Open Access"
@@ -482,7 +477,6 @@ def _base_context(request: Request, page_name: str) -> dict:
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name, role=role),
         "last_analysis": views.friendly_timestamp(views.last_analysis_time()),
-        "brand_edition": brand,
         "auth_role": role.title() if role else "",
         "auth_user": display,
         "auth_status": status,
