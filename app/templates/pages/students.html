@@ -258,19 +258,19 @@
   .lang-track {
     flex: 1;
     min-width: 0;
-    height: 18px;
+    min-height: 18px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    align-content: flex-start;
   }
-  .lang-fill {
-    display: block;
-    height: 100%;
+  .lang-seg {
+    width: 8px;
+    height: 18px;
+    flex-shrink: 0;
     color: var(--text);
-    /* 12px stripe period (8px bar + 4px gap) — keep in sync with the
-       snapLangBars period in the modal script below. */
-    background: repeating-linear-gradient(
-      to right,
-      currentColor 0 8px,
-      transparent 8px 12px
-    );
+    background: currentColor;
     border-radius: 2px;
   }
   .lang-count {
@@ -595,7 +595,7 @@
               {% for lang in p.top_languages %}
               <div class="lang-row">
                 <span class="lang-name" title="{{ lang.language }}">{{ lang.language }}</span>
-                <span class="lang-track"><span class="lang-fill" style="width:{{ lang.pct }}%" data-pct="{{ lang.pct }}"></span></span>
+                <span class="lang-track">{% for i in range(lang.count) %}<span class="lang-seg"></span>{% endfor %}</span>
                 <span class="lang-count">{{ lang.count }}</span>
               </div>
               {% endfor %}
@@ -646,21 +646,6 @@
       });
       var closer = backdrop.querySelector('.student-modal-close');
       if (closer) closer.focus();
-      // Snap each language bar to a whole number of stripe periods so bars
-      // never end mid-segment. Period must match .lang-fill (8px + 4px).
-      var stripePeriod = 12;
-      function snapLangBars() {
-        backdrop.querySelectorAll('.lang-fill').forEach(function (fill) {
-          var track = fill.parentElement;
-          var pct = parseFloat(fill.getAttribute('data-pct'));
-          if (!track || isNaN(pct)) return;
-          var target = track.clientWidth * pct / 100;
-          var snapped = Math.max(stripePeriod, Math.round(target / stripePeriod) * stripePeriod);
-          fill.style.width = snapped + 'px';
-        });
-      }
-      snapLangBars();
-      window.addEventListener('resize', snapLangBars);
       var tabs = Array.prototype.slice.call(backdrop.querySelectorAll('[role="tab"]'));
       function selectTab(tab) {
         tabs.forEach(function (other) {

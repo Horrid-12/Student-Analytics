@@ -261,12 +261,11 @@ class TestPageRenderingWithData:
         assert "py1" in profile and "js1" in profile
         assert "Language Mix" not in profile
         assert "Top Languages" in profile
-        assert "lang-fill" in profile
         assert "lang-row" in profile
-        assert "data-pct" in profile
-        assert "snapLangBars" in profile
         assert "lang-split" in profile
         assert "lang-divider" in profile
+        # One segment per repo: Alice has 1 Python + 1 JavaScript repo.
+        assert profile.count('<span class="lang-seg"></span>') == 2
         assert "Activity" in profile
         assert "Contributions in last 30 days" in profile
         assert "Active repositories" in profile
@@ -533,15 +532,10 @@ class TestPageRenderingWithData:
         assert "Top Languages by Repositories" in body
         assert "Alice Example" in body
 
-    def test_verification_page_and_export(self, tmp_path):
+    def test_verification_routes_removed(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        body = self.client.get(f"/verification?roster={roster_id}").text
-        assert "Account Verification Audit" in body
-        assert "Verified" in body
-
-        csv = self.client.get(f"/verification/export?roster={roster_id}").text
-        assert "Student Name" in csv
-        assert "Alice Example" in csv
+        assert self.client.get(f"/verification?roster={roster_id}").status_code == 404
+        assert self.client.get(f"/verification/export?roster={roster_id}").status_code == 404
 
     def test_issues_page_and_workflow_save(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -574,34 +568,6 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         res = self.client.get("/overview/partial")
         assert res.status_code == 404
-
-    def test_verification_export_respects_status_filter(self, tmp_path):
-        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
-        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
-        self.client = TestClient(app)
-        make_user(self.client, "admin")
-        patch_app_pipeline(self.monkeypatch, crash_free_fake())
-        rows = roster_rows() + [
-            {
-                "Timestamp": "2025-08-01 10:10:00",
-                "PRN No": "303.0",
-                "Student Name": "Carol None",
-                "Division": "B",
-                "Batch": "2026",
-                "Actual GitHub Account Link:": "",
-            }
-        ]
-        buf = make_roster_xlsx(rows)
-        data = self.client.post(
-            "/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)}
-        ).json()
-        roster_id = run_all_batches(self.client, data)
-        page = self.client.get(f"/verification?roster={roster_id}&status=Missing").text
-        assert "status=Missing" in page
-        assert "Carol None" in page
-        csv = self.client.get(f"/verification/export?roster={roster_id}&status=Missing").text
-        assert "Carol None" in csv
-        assert "Alice Example" not in csv
 
     def test_csv_export_has_utf8_bom(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -638,7 +604,7 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         data = upload_roster(self.client)
         roster_id = data["roster_id"]
-        for path in ("students", "repositories", "leaderboards", "issues", "verification"):
+        for path in ("students", "repositories", "leaderboards", "issues"):
             body = self.client.get(f"/{path}?roster={roster_id}").text
             assert "populates after you upload a roster" in body
         body = self.client.get("/students").text
