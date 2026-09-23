@@ -177,9 +177,6 @@
         <span>{{ payload.total }} students</span>
       </div>
     </div>
-    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-<span class="badge-purple">Faculty</span>
-</div>
   </div>
 </div>
 
@@ -216,8 +213,7 @@
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/students?roster={{ roster_id }}">Clear</a>
   <div class="filter-field">
-    <span class="filter-label" id="export-label">Export</span>
-    <details class="export-dropdown" aria-labelledby="export-label">
+    <details class="export-dropdown" aria-label="Export">
       <summary class="btn" aria-haspopup="menu">Export &#9662;</summary>
       <div class="export-menu" role="menu">
         <a role="menuitem" href="/students/export?{{ payload.export_query }}">CSV</a>

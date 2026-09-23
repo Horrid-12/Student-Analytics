@@ -319,7 +319,7 @@ class TestPageRenderingWithData:
         assert selected["linkedin_display"] == "anshuman-kulkarni"
         assert selected["linkedin_username"] == "anshuman-kulkarni-b27b0142a"
 
-    def test_students_payload_batches_fifty_at_a_time(self):
+    def test_students_payload_batches_thirty_at_a_time(self):
         import pandas as pd
 
         from app import views
@@ -356,9 +356,9 @@ class TestPageRenderingWithData:
         payload = views.students_payload(view)
         assert payload["total"] == 120
         assert len(payload["display"]) == 120
-        assert payload["showing"] == 50
-        assert payload["initial_visible"] == 50
-        assert payload["batch_size"] == 50
+        assert payload["showing"] == 30
+        assert payload["initial_visible"] == 30
+        assert payload["batch_size"] == 30
         # Explicit rows override grows the first paint (modal depth restore).
         payload = views.students_payload(view, rows=100)
         assert payload["showing"] == 100

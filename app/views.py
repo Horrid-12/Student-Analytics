@@ -430,7 +430,7 @@ def linkedin_display_name(slug) -> str:
 
 
 #: Rows shown on first paint; further batches of the same size reveal on scroll.
-STUDENT_BATCH_SIZE = 50
+STUDENT_BATCH_SIZE = 30
 
 
 def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None) -> dict:
