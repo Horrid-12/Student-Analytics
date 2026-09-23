@@ -15,6 +15,8 @@ from app.ui_helpers import (
     filter_text,
     format_number,
     github_profile_url,
+    hackerrank_profile_url,
+    linkedin_profile_url,
 )
 
 STUDENT_ID_COL = "Student_ID"
@@ -48,6 +50,10 @@ DASHBOARD_COLS = [
     "Primary_Language",
     "Avatar_URL",
     "Profile_URL",
+    "LinkedIn_Username",
+    "LinkedIn_URL",
+    "HackerRank_Username",
+    "HackerRank_URL",
 ]
 REPO_COLS = [
     "Username",
@@ -86,6 +92,73 @@ def _frame(state, key: str, columns: list[str]) -> pd.DataFrame:
     return result[columns]
 
 
+def _enrich_students_with_records(
+    students: pd.DataFrame, records: list[dict] | None
+) -> pd.DataFrame:
+    """Backfill LinkedIn/HackerRank handles + URLs from roster records.
+
+    Old completed runs (pre-Sep-2026) and Postgres rows written before the
+    analysis_results migration have blank profile columns. Records (raw_json)
+    always carry the form links, so merge them by Student_ID — no re-analysis
+    needed. Missing values stay blank and render as "—".
+    """
+    if not records or students.empty:
+        return students
+    try:
+        rec_df = pd.DataFrame(records)
+    except Exception:
+        return students
+    if rec_df.empty or STUDENT_ID_COL not in rec_df.columns:
+        return students
+    wanted = ["LinkedIn_Username", "LinkedIn_URL", "HackerRank_Username", "HackerRank_URL"]
+    available = [c for c in wanted if c in rec_df.columns]
+    if not available:
+        return students
+    lookup = rec_df.drop_duplicates(subset=[STUDENT_ID_COL], keep="last").set_index(
+        rec_df.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")[STUDENT_ID_COL].astype(str)
+    )
+    result = students.copy()
+    for column in wanted:
+        if column not in result.columns:
+            result[column] = None
+        if column not in available:
+            continue
+        needs = result[column].isna() | (result[column].astype(str).str.strip() == "")
+        if not bool(needs.any()):
+            continue
+        mapped = result[STUDENT_ID_COL].astype(str).map(
+            {str(k): v for k, v in lookup[column].items()}
+        )
+        result.loc[needs, column] = result.loc[needs, column].where(
+            mapped.loc[needs].isna(), mapped.loc[needs]
+        )
+        # If the record has a username but the dashboard URL cell is blank,
+        # rebuild the canonical clickable URL.
+        if column == "LinkedIn_URL":
+            still_blank = result[column].isna() | (result[column].astype(str).str.strip() == "")
+            user_col = result.get("LinkedIn_Username")
+            if user_col is not None:
+                result.loc[still_blank, column] = user_col.loc[still_blank].apply(
+                    lambda u: linkedin_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+                )
+        if column == "HackerRank_URL":
+            still_blank = result[column].isna() | (result[column].astype(str).str.strip() == "")
+            user_col = result.get("HackerRank_Username")
+            if user_col is not None:
+                result.loc[still_blank, column] = user_col.loc[still_blank].apply(
+                    lambda u: hackerrank_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+                )
+    # GitHub Profile_URL fallback: canonical URL from the username when the API
+    # payload is missing (e.g. invalid accounts never reach build_github_stats).
+    if "Profile_URL" in result.columns and "GitHub_Username" in result.columns:
+        blank = result["Profile_URL"].isna() | (result["Profile_URL"].astype(str).str.strip() == "")
+        if bool(blank.any()):
+            result.loc[blank, "Profile_URL"] = result.loc[blank, "GitHub_Username"].apply(
+                lambda u: github_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+            )
+    return result
+
+
 def analysis_view(roster_store, roster_id: str):
     """Reconstruct the analysis result shape from stored roster + state.
 
@@ -95,11 +168,13 @@ def analysis_view(roster_store, roster_id: str):
     if records is None:
         return None
     state = roster_store.get_analysis(roster_id)
+    students = _frame(state, "students", DASHBOARD_COLS)
+    students = _enrich_students_with_records(students, records)
     return {
         "roster_id": roster_id,
         "records": records,
         "state": state,
-        "students": _frame(state, "students", DASHBOARD_COLS),
+        "students": students,
         "repos": _frame(state, "repos", REPO_COLS),
         "issues": _frame(state, "issues", ISSUE_COLS),
     }
@@ -287,55 +362,37 @@ def _donut(labels, values):
 # Students (3.6c)
 # ---------------------------------------------------------------------------
 
-STUDENT_DISPLAY_COLS = [
-    "Avatar_URL",
-    STUDENT_ID_COL,
+# Students table (Sep-2026 redesign): avatar + name in one "Student" column,
+# then ID / Division / Batch / Semester, then one clickable-username column per
+# coding profile (GitHub, LinkedIn, HackerRank). URL helper columns travel in
+# the display frame for hrefs but never render as their own <th>.
+STUDENT_TABLE_COLS = [
     "Student Name",
+    STUDENT_ID_COL,
     "Division",
     "Batch",
-    "Academic_Year",
     "Semester",
     "GitHub_Username",
-    "GitHub Profile",
-    "Followers",
-    "Following",
-    "Public_Repos",
-    "Repository_Count",
-    "Active_Repositories",
-    "Pull_Requests",
-    "Open_PRs",
-    "Issues_Opened",
-    "External_PRs",
-    "Account_Age_Years",
-    "Repos_Per_Account_Year",
-    "Followers_Per_Account_Year",
-    "Following_Per_Account_Year",
-    "Username_Changed",
-    "Repo_Fetch_Status",
-    "Primary_Language",
-    "Status",
-    "Profile_URL",
+    "LinkedIn_Username",
+    "HackerRank_Username",
 ]
+STUDENT_URL_COLS = [
+    "Avatar_URL",
+    "Profile_URL",
+    "LinkedIn_URL",
+    "HackerRank_URL",
+]
+# Kept for backward-compatible imports; equals the visible table columns.
+STUDENT_DISPLAY_COLS = STUDENT_TABLE_COLS
 STUDENT_HEADERS = {
-    "Avatar_URL": "Avatar",
+    "Student Name": "Student",
     STUDENT_ID_COL: "Student ID",
-    "Academic_Year": "Academic Year",
+    "Division": "Division",
+    "Batch": "Batch",
     "Semester": "Semester",
-    "GitHub Profile": "GitHub Profile",
-    "Primary_Language": "Most Common Language",
-    "Repo_Fetch_Status": "Repo Data",
-    "Public_Repos": "Public Repos (Profile)",
-    "Repository_Count": "Repos Found (Fetched)",
-    "Active_Repositories": "Active Repos (6m)",
-    "Pull_Requests": "Pull Requests",
-    "Open_PRs": "PRs Open",
-    "Issues_Opened": "Issues Opened",
-    "External_PRs": "PRs to Others' Repos",
-    "Account_Age_Years": "GitHub Account Age (Years)",
-    "Repos_Per_Account_Year": "Repos per Account-Year",
-    "Followers_Per_Account_Year": "Followers per Account-Year",
-    "Following_Per_Account_Year": "Following per Account-Year",
-    "Username_Changed": "Username Changed",
+    "GitHub_Username": "GitHub",
+    "LinkedIn_Username": "LinkedIn",
+    "HackerRank_Username": "HackerRank",
 }
 
 
@@ -345,7 +402,15 @@ def dist_options(values) -> list[str]:
 
 def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None) -> dict:
     students = view["students"].copy()
-    filtered = filter_text(students, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Primary_Language"])
+    # Guarantee the 8 table columns + 4 URL helpers even for legacy runs.
+    for _col in STUDENT_TABLE_COLS + STUDENT_URL_COLS:
+        if _col not in students.columns:
+            students[_col] = "" if "URL" in _col else None
+    filtered = filter_text(
+        students,
+        query,
+        [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+    )
     filtered = apply_value_filter(filtered, "Division", division)
     filtered = apply_value_filter(filtered, "Batch", batch)
     filtered = apply_value_filter(filtered, "Academic_Year", year)
@@ -353,8 +418,25 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
 
     if not filtered.empty:
         filtered = filtered.copy()
-        filtered["Status"] = "Connected"
-        filtered["GitHub Profile"] = filtered["GitHub_Username"].apply(github_profile_url)
+        # Clickable-username hrefs: prefer the stored form URL, fall back to the
+        # canonical profile URL built from the handle.
+        _gh_url = filtered.get("Profile_URL")
+        _gh_user = filtered.get("GitHub_Username")
+        if _gh_url is not None and _gh_user is not None:
+            _blank = _gh_url.isna() | (_gh_url.astype(str).str.strip() == "")
+            filtered.loc[_blank, "Profile_URL"] = _gh_user.loc[_blank].apply(
+                lambda u: github_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+            )
+        if "LinkedIn_URL" in filtered.columns and "LinkedIn_Username" in filtered.columns:
+            _blank = filtered["LinkedIn_URL"].isna() | (filtered["LinkedIn_URL"].astype(str).str.strip() == "")
+            filtered.loc[_blank, "LinkedIn_URL"] = filtered.loc[_blank, "LinkedIn_Username"].apply(
+                lambda u: linkedin_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+            )
+        if "HackerRank_URL" in filtered.columns and "HackerRank_Username" in filtered.columns:
+            _blank = filtered["HackerRank_URL"].isna() | (filtered["HackerRank_URL"].astype(str).str.strip() == "")
+            filtered.loc[_blank, "HackerRank_URL"] = filtered.loc[_blank, "HackerRank_Username"].apply(
+                lambda u: hackerrank_profile_url(u) if pd.notna(u) and str(u).strip() else ""
+            )
 
     total = len(filtered)
     options = sorted({size for size in (15, 25, 50, 100, total) if size > 0})
@@ -365,10 +447,21 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         if total:
             page_size = min(25, total) if 25 in options else (total if total > 0 else 25)
 
-    available_cols = [column for column in STUDENT_DISPLAY_COLS if column in filtered.columns]
-    export_cols = [column for column in available_cols if column != "Avatar_URL"]
+    available_cols = [column for column in STUDENT_TABLE_COLS if column in filtered.columns]
+    export_cols = available_cols + [c for c in STUDENT_URL_COLS if c in filtered.columns]
     headers = {column: STUDENT_HEADERS.get(column, column) for column in available_cols}
-    display = filtered[available_cols].head(page_size).reset_index(drop=True) if total else filtered
+    # Jinja `{% if row.X %}` treats NaN as truthy → normalize blanks to "" so
+    # missing handles render as "—" instead of crashing string concatenation.
+    for _sanitize in ("Student Name", STUDENT_ID_COL, "Division", "Batch", "Semester",
+                      "GitHub_Username", "LinkedIn_Username", "HackerRank_Username",
+                      "Profile_URL", "LinkedIn_URL", "HackerRank_URL", "Avatar_URL"):
+        if _sanitize in filtered.columns:
+            filtered[_sanitize] = filtered[_sanitize].where(filtered[_sanitize].notna(), "")
+    if total:
+        _display_cols = available_cols + [c for c in STUDENT_URL_COLS if c in filtered.columns]
+        display = filtered[_display_cols].head(page_size).reset_index(drop=True)
+    else:
+        display = filtered
 
     profile = None
     if selected_id is not None:
@@ -419,14 +512,21 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
     )
     if language_counts is not None:
         language_counts.columns = ["Language", "Repositories"]
+    linkedin_user = row.get("LinkedIn_Username", "")
+    hackerrank_user = row.get("HackerRank_Username", "")
     return {
         "student_id": str(row.get(STUDENT_ID_COL, "")),
         "name": row.get("Student Name", ""),
         "division": row.get("Division", ""),
         "batch": row.get("Batch", ""),
+        "semester": row.get("Semester", ""),
         "username": username,
         "avatar": row.get("Avatar_URL", ""),
         "profile_url": row.get("Profile_URL", "") or github_profile_url(username),
+        "linkedin_username": linkedin_user if pd.notna(linkedin_user) else "",
+        "linkedin_url": row.get("LinkedIn_URL", "") or linkedin_profile_url(linkedin_user),
+        "hackerrank_username": hackerrank_user if pd.notna(hackerrank_user) else "",
+        "hackerrank_url": row.get("HackerRank_URL", "") or hackerrank_profile_url(hackerrank_user),
         "followers": _num(row.get("Followers", 0)),
         "following": _num(row.get("Following", 0)),
         "repositories": _num(row.get("Repository_Count", 0)),
@@ -446,7 +546,22 @@ def _num(value):
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:
     cols = students_payload["export_cols"]
-    df = students_payload["filtered"][cols].rename(columns={"Primary_Language": "Most Common Language"})
+    df = students_payload["filtered"][cols].rename(
+        columns={
+            STUDENT_ID_COL: "Student ID",
+            "Student Name": "Student Name",
+            "Division": "Division",
+            "Batch": "Batch",
+            "Semester": "Semester",
+            "GitHub_Username": "GitHub Username",
+            "LinkedIn_Username": "LinkedIn Username",
+            "HackerRank_Username": "HackerRank Username",
+            "Avatar_URL": "Avatar URL",
+            "Profile_URL": "GitHub URL",
+            "LinkedIn_URL": "LinkedIn URL",
+            "HackerRank_URL": "HackerRank URL",
+        }
+    )
     return df
 
 

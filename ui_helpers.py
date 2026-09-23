@@ -22,6 +22,18 @@ def github_profile_url(username) -> str:
     return f"https://github.com/{str(username).strip()}"
 
 
+def linkedin_profile_url(username) -> str:
+    if pd.isna(username) or not str(username).strip():
+        return ""
+    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
+
+
+def hackerrank_profile_url(username) -> str:
+    if pd.isna(username) or not str(username).strip():
+        return ""
+    return f"https://www.hackerrank.com/profile/{str(username).strip().lstrip('@')}"
+
+
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:

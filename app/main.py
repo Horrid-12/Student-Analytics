@@ -1231,6 +1231,9 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
                 "division": str(row.get("Division") or ""),
                 "batch": str(row.get("Batch") or ""),
                 "username": row.get("GitHub_Username") or "",
+                "github_username": row.get("GitHub_Username") or "",
+                "linkedin_username": row.get("LinkedIn_Username") or "",
+                "hackerrank_username": row.get("HackerRank_Username") or "",
             }
             for row in records
         ],

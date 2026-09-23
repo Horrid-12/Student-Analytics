@@ -24,6 +24,14 @@ EXCEL_COLUMNS = [
     "GitHub : Repository 1 Link :",
     "GitHub : Repository 2 Link :",
     "GitHub : Repository 3 Link : ",
+    # New roster format (Sep 2026): Email + LinkedIn/HackerRank profile links.
+    # Appended (never reordered) so EXCEL_COLUMNS[8] keeps its trailing-space
+    # contract pinned by the characterization suite.
+    "Email address",
+    "LinkedIn Profile Link",
+    "HackerRank Profile Link",
+    "Alternative Coding Platforms",
+    "Alternative Platform Link(s)",
 ]
 
 # BUG-015 decision: the three "Repository N Link" columns are legacy form fields.
@@ -40,9 +48,41 @@ REQUIRED_EXCEL_COLUMNS = [
 ]
 
 GITHUB_COL = "Actual GitHub Account Link:"
+LINKEDIN_COL = "LinkedIn Profile Link"
+HACKERRANK_COL = "HackerRank Profile Link"
+EMAIL_COL = "Email address"
 GITHUB_API_BASE = "https://api.github.com"
 STUDENT_ID_COL = "Student_ID"
 PRN_COL = "PRN No"
+
+# New-format header aliases → canonical internal names. load_excel normalizes
+# before validate_excel_schema runs, so "PRN number" → "PRN No", "Name" →
+# "Student Name" and "GitHub Profile Link" → "Actual GitHub Account Link:"
+# keep old uploads AND the Sep-2026 form passing the same REQUIRED check.
+# LinkedIn/HackerRank/Email stay optional (blank renders as "—").
+_ALIAS_TO_CANONICAL = {
+    "prnnumber": PRN_COL,
+    "prnno": PRN_COL,
+    "prn": PRN_COL,
+    "name": "Student Name",
+    "studentname": "Student Name",
+    "actualgithubaccountlink": GITHUB_COL,
+    "githubprofilelink": GITHUB_COL,
+    "githublink": GITHUB_COL,
+    "githubaccountlink": GITHUB_COL,
+    "linkedinprofilelink": LINKEDIN_COL,
+    "linkedinlink": LINKEDIN_COL,
+    "hackerrankprofilelink": HACKERRANK_COL,
+    "hackerranklink": HACKERRANK_COL,
+    "emailaddress": EMAIL_COL,
+    "email": EMAIL_COL,
+    "timestamp": "Timestamp",
+    "division": "Division",
+    "batch": "Batch",
+    "alternativecodingplatforms": "Alternative Coding Platforms",
+    "alternativeplatformlinks": "Alternative Platform Link(s)",
+    "alternativeplatformlink": "Alternative Platform Link(s)",
+}
 
 
 class RateLimitError(RuntimeError):
@@ -89,8 +129,13 @@ def extract_username(text):
 
     # Step 1: If input looks like a URL (contains / or .), require github.com.
     if "/" in text or ("." in text and " " not in text):
+        # Messy form input: concatenated links, "Your profile <url>", typos.
+        try:
+            token = _first_url_token(text)
+        except NameError:
+            token = text
         # Strip query string and fragment before matching
-        cleaned = re.split(r"[?#]", text, maxsplit=1)[0]
+        cleaned = re.split(r"[?#]", token, maxsplit=1)[0]
         try:
             parsed = urlsplit(cleaned if "://" in cleaned else f"//{cleaned}")
         except ValueError:
@@ -100,7 +145,14 @@ def extract_username(text):
             # It's a URL but not GitHub — reject it (don't harvest junk tokens)
             return None
         username = parsed.path.strip("/").split("/", 1)[0]
-        return username if re.fullmatch(r"[A-Za-z0-9_-]+", username or "") else None
+        if not username or not re.fullmatch(r"[A-Za-z0-9_-]+", username):
+            return None
+        try:
+            if username.lower() in _GITHUB_INVALID_USERNAMES:
+                return None
+        except NameError:
+            pass
+        return username
 
     # Step 2: Bare username (no slashes, no dots) — must be valid GitHub chars
     bare = text.rstrip(".,;:!?")  # strip trailing punctuation
@@ -108,6 +160,133 @@ def extract_username(text):
         return bare
 
     return None
+
+
+_GITHUB_INVALID_USERNAMES = {
+    "settings", "orgs", "site", "login", "join", "features",
+    "enterprise", "marketplace", "pricing", "about",
+}
+
+_LINKEDIN_IN_RE = re.compile(r"linkedin\.com/in/([^/?#\s]+)", re.IGNORECASE)
+_HACKERRANK_PROFILE_RE = re.compile(
+    r"hackerrank\.com/profile/([^/?#\s]+)", re.IGNORECASE
+)
+
+
+def _first_url_token(text: str) -> str:
+    """Return the first URL-looking token in messy form input.
+
+    Form data contains concatenated links ("...Ritquehttps://..."), space
+    separated junk ("Your profile https://...") and scheme typos ("hhttps://",
+    "htps://", missing scheme "www.linkedin.com/..."). Splitting on whitespace
+    plus a regex hunt for the first https?/www. token recovers the real link.
+    """
+    cleaned = str(text).strip()
+    cleaned = re.sub(r"^h+(https?://)", r"\1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(htps|ttps)://", "https://", cleaned, flags=re.IGNORECASE)
+    match = re.search(r"(https?://[^\s,;]+|www\.[^\s,;]+)", cleaned, re.IGNORECASE)
+    if match:
+        token = match.group(1).rstrip(".,;:!?)")
+        token = re.sub(r"^h+(https?://)", r"\1", token, flags=re.IGNORECASE)
+        # Concatenated paste without a delimiter ("...Ritquehttps://..."):
+        # truncate before the second scheme so the first profile survives.
+        _second = re.search(r"https?://", token[8:], re.IGNORECASE)
+        if _second:
+            token = token[: 8 + _second.start()].rstrip(".,;:!?/")
+        return token
+    return cleaned
+
+
+def clean_profile_url(text, allowed_host_substr: str) -> str:
+    """Return a clickable https:// URL when the input mentions the expected
+    host, else "". Never raises; blank renders as "—" in the Students table."""
+    if pd.isna(text):
+        return ""
+    raw = str(text).strip()
+    if not raw or raw in {"-", "--", "None", "No", "no", "nil", "NIL", "Nothing currently"}:
+        return ""
+    token = _first_url_token(raw)
+    if allowed_host_substr.lower() not in token.lower():
+        return ""
+    if "://" not in token:
+        token = "https://" + token.lstrip("/")
+    token = re.sub(r"^h+(https?://)", r"\1", token, flags=re.IGNORECASE)
+    try:
+        parsed = urlsplit(token)
+    except ValueError:
+        return ""
+    if not parsed.hostname:
+        return ""
+    return token
+
+
+def extract_linkedin_username(text):
+    """Extract the /in/<slug> handle from a LinkedIn URL (or bare slug).
+
+    Rejects feed/me/login URLs (no /in/ segment) → None so the table shows "—"
+    instead of a misleading link. Strips query strings, trailing slashes and
+    URL-encoding.
+    """
+    if pd.isna(text):
+        return None
+    raw = str(text).strip()
+    if not raw or raw in {"-", "--"}:
+        return None
+    # Slugs never contain spaces; the form has "…/in/ slug" typos — strip all
+    # whitespace before tokenizing so the handle survives.
+    token = _first_url_token(raw.replace(" ", ""))
+    match = _LINKEDIN_IN_RE.search(token)
+    if not match:
+        bare = raw.strip().rstrip("/.,;:!?")
+        if "/" not in bare and " " not in bare and "." not in bare:
+            slug = bare.lstrip("@")
+            return slug or None
+        return None
+    slug = match.group(1).strip().strip("/").rstrip(".,;:!?")
+    try:
+        from urllib.parse import unquote
+
+        slug = unquote(slug)
+    except Exception:
+        pass
+    slug = slug.strip()
+    if not slug or "/" in slug or " " in slug:
+        return None
+    lowered = slug.lower()
+    if lowered in {"feed", "me", "login", "jobs", "company", "school"}:
+        return None
+    return slug
+
+
+def extract_hackerrank_username(text):
+    """Extract the /profile/<handle> from a HackerRank URL (or bare handle)."""
+    if pd.isna(text):
+        return None
+    raw = str(text).strip()
+    if not raw or raw in {"-", "--"}:
+        return None
+    token = _first_url_token(raw)
+    match = _HACKERRANK_PROFILE_RE.search(token)
+    if not match:
+        bare = raw.strip().rstrip("/.,;:!?").lstrip("@")
+        if "/" not in bare and " " not in bare and re.fullmatch(r"[A-Za-z0-9_@.-]+", bare or ""):
+            return bare or None
+        return None
+    handle = match.group(1).strip().strip("/").rstrip(".,;:!?").lstrip("@")
+    handle = handle.split("/")[0]
+    return handle or None
+
+
+def linkedin_profile_url(username) -> str:
+    if pd.isna(username) or not str(username).strip():
+        return ""
+    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
+
+
+def hackerrank_profile_url(username) -> str:
+    if pd.isna(username) or not str(username).strip():
+        return ""
+    return f"https://www.hackerrank.com/profile/{str(username).strip().lstrip('@')}"
 
 
 def normalize_student_id(value):
@@ -121,6 +300,27 @@ def normalize_student_id(value):
     return text
 
 
+def _parse_roster_timestamps(values) -> pd.Series:
+    """Parse form timestamps in both ISO (YYYY-MM-DD) and Sep-2026 DD/MM/YYYY.
+
+    Slash-led values ("20/09/2026 ...") parse dayfirst; everything else uses
+    the default. A single dayfirst=True flag would misread ISO "2025-08-01"
+    as 8 Jan, and the default misreads "05/09/2026" as 9 May — hence the split.
+    """
+    series = pd.Series(values) if not isinstance(values, pd.Series) else values
+    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    try:
+        is_slash = series.astype(str).str.match(r"^\s*\d{1,2}/\d{1,2}/\d{2,4}", na=False)
+    except Exception:
+        is_slash = pd.Series(False, index=series.index)
+    if bool(is_slash.any()):
+        out.loc[is_slash] = pd.to_datetime(series.loc[is_slash], errors="coerce", dayfirst=True)
+    rest = ~is_slash
+    if bool(rest.any()):
+        out.loc[rest] = pd.to_datetime(series.loc[rest], errors="coerce")
+    return out
+
+
 def add_academic_periods(df: pd.DataFrame) -> pd.DataFrame:
     """Add consistent academic year and semester labels from form timestamps.
 
@@ -128,7 +328,7 @@ def add_academic_periods(df: pd.DataFrame) -> pd.DataFrame:
     <year>-(next year); January-June is Semester 2 of <previous year>-<year>.
     """
     result = df.copy()
-    timestamp = pd.to_datetime(result.get("Timestamp"), errors="coerce")
+    timestamp = _parse_roster_timestamps(result.get("Timestamp"))
     result["Academic_Year"] = timestamp.apply(
         lambda value: (
             f"{(value.year if value.month >= 7 else value.year - 1)}-"
@@ -155,9 +355,10 @@ def normalize_excel_headers(df: pd.DataFrame) -> pd.DataFrame:
     claimed: set[str] = set()
     for column in df.columns:
         key = _header_key(column)
-        if key in lookup and lookup[key] not in claimed:
-            renamed[column] = lookup[key]
-            claimed.add(lookup[key])
+        canonical = lookup.get(key) or _ALIAS_TO_CANONICAL.get(key)
+        if canonical and canonical not in claimed:
+            renamed[column] = canonical
+            claimed.add(canonical)
     return df.rename(columns=renamed)
 
 
@@ -179,9 +380,49 @@ def load_excel(uploaded_file) -> pd.DataFrame:
 
 def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     prepared = add_academic_periods(df)
-    prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
-    prepared["GitHub_Username"] = prepared[GITHUB_COL].apply(extract_username)
+    # PRN / Student Name may arrive under new-form headers; normalize_excel_headers
+    # already maps them, but direct DataFrame callers (tests) bypass it — resolve
+    # defensively so both paths produce Student_ID + Student Name.
+    if PRN_COL not in prepared.columns:
+        for candidate in ("PRN number", "PRN", "prn"):
+            if candidate in prepared.columns:
+                prepared[PRN_COL] = prepared[candidate]
+                break
+    if "Student Name" not in prepared.columns and "Name" in prepared.columns:
+        prepared["Student Name"] = prepared["Name"]
+    if PRN_COL in prepared.columns:
+        prepared[STUDENT_ID_COL] = prepared[PRN_COL].apply(normalize_student_id)
+    elif STUDENT_ID_COL not in prepared.columns:
+        prepared[STUDENT_ID_COL] = None
+    github_series = prepared[GITHUB_COL] if GITHUB_COL in prepared.columns else pd.Series([None] * len(prepared))
+    prepared["GitHub_Username"] = github_series.apply(extract_username)
     prepared["Submitted_GitHub_Username"] = prepared["GitHub_Username"]
+    # New Sep-2026 columns: LinkedIn + HackerRank handles + clickable URLs.
+    # Optional — missing columns simply yield blank cells in the Students tab.
+    if LINKEDIN_COL in prepared.columns:
+        prepared["LinkedIn_Username"] = prepared[LINKEDIN_COL].apply(extract_linkedin_username)
+        _li_clean = prepared[LINKEDIN_COL].apply(lambda v: clean_profile_url(v, "linkedin.com"))
+        prepared["LinkedIn_URL"] = [
+            clean if pd.notna(user) and str(user).strip() and clean else (
+                linkedin_profile_url(user) if pd.notna(user) and str(user).strip() else ""
+            )
+            for user, clean in zip(prepared["LinkedIn_Username"], _li_clean)
+        ]
+    else:
+        prepared["LinkedIn_Username"] = None
+        prepared["LinkedIn_URL"] = ""
+    if HACKERRANK_COL in prepared.columns:
+        prepared["HackerRank_Username"] = prepared[HACKERRANK_COL].apply(extract_hackerrank_username)
+        _hr_clean = prepared[HACKERRANK_COL].apply(lambda v: clean_profile_url(v, "hackerrank.com"))
+        prepared["HackerRank_URL"] = [
+            clean if pd.notna(user) and str(user).strip() and clean else (
+                hackerrank_profile_url(user) if pd.notna(user) and str(user).strip() else ""
+            )
+            for user, clean in zip(prepared["HackerRank_Username"], _hr_clean)
+        ]
+    else:
+        prepared["HackerRank_Username"] = None
+        prepared["HackerRank_URL"] = ""
     invalid_format = prepared[prepared["GitHub_Username"].isna()].copy()
     invalid_format["Issue"] = "Invalid format"
     return prepared, invalid_format
@@ -568,6 +809,10 @@ def build_dashboard_df(
                 "Primary_Language",
                 "Avatar_URL",
                 "Profile_URL",
+                "LinkedIn_Username",
+                "LinkedIn_URL",
+                "HackerRank_Username",
+                "HackerRank_URL",
             ]
         )
 
@@ -611,17 +856,24 @@ def build_dashboard_df(
     )
     dashboard_df = dashboard_df.drop(columns=["_Contrib_User"], errors="ignore")
 
-    student_info = df[
-        [
-            STUDENT_ID_COL,
-            "Submitted_GitHub_Username",
-            "Student Name",
-            "Division",
-            "Batch",
-            "Academic_Year",
-            "Semester",
-        ]
-    ].copy()
+    _wanted_info = [
+        STUDENT_ID_COL,
+        "Submitted_GitHub_Username",
+        "Student Name",
+        "Division",
+        "Batch",
+        "Academic_Year",
+        "Semester",
+        "LinkedIn_Username",
+        "LinkedIn_URL",
+        "HackerRank_Username",
+        "HackerRank_URL",
+    ]
+    _available_info = [c for c in _wanted_info if c in df.columns]
+    student_info = df[_available_info].copy()
+    for _missing in ("LinkedIn_Username", "LinkedIn_URL", "HackerRank_Username", "HackerRank_URL"):
+        if _missing not in student_info.columns:
+            student_info[_missing] = None if "URL" not in _missing else ""
 
     student_info = student_info.drop_duplicates(subset=[STUDENT_ID_COL], keep="last")
     dashboard_df = dashboard_df.merge(
@@ -652,6 +904,21 @@ def build_dashboard_df(
         "Unavailable" if str(name).strip().lower() in contrib_unavailable_set else "Loaded"
         for name in dashboard_df["GitHub_Username"]
     ]
+
+    for _fill_col, _fill_val in (
+        ("LinkedIn_Username", None),
+        ("LinkedIn_URL", ""),
+        ("HackerRank_Username", None),
+        ("HackerRank_URL", ""),
+    ):
+        if _fill_col not in dashboard_df.columns:
+            dashboard_df[_fill_col] = _fill_val
+        else:
+            dashboard_df[_fill_col] = dashboard_df[_fill_col].where(
+                dashboard_df[_fill_col].notna(), _fill_val
+            )
+    if "Profile_URL" in dashboard_df.columns:
+        dashboard_df["Profile_URL"] = dashboard_df["Profile_URL"].fillna("")
 
     return dashboard_df[
         [
@@ -684,6 +951,10 @@ def build_dashboard_df(
             "Primary_Language",
             "Avatar_URL",
             "Profile_URL",
+            "LinkedIn_Username",
+            "LinkedIn_URL",
+            "HackerRank_Username",
+            "HackerRank_URL",
         ]
     ]
 

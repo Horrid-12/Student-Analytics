@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS run_summary (
 );
 
 -- 5. Dashboard results (one row per student per roster).
---    Stores the full 29-column analysis_results output.
+--    Stores the full 29-column analysis_results output (+ 4 Sep-2026 profile
+--    columns: LinkedIn/HackerRank handles + URLs for the Students tab).
 CREATE TABLE IF NOT EXISTS analysis_results (
     id                          SERIAL PRIMARY KEY,
     roster_id                   UUID NOT NULL REFERENCES rosters(id) ON DELETE CASCADE,
@@ -92,9 +93,19 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     primary_language            TEXT,
     avatar_url                  TEXT,
     profile_url                 TEXT,
+    linkedin_username           TEXT,
+    linkedin_url                TEXT,
+    hackerrank_username         TEXT,
+    hackerrank_url              TEXT,
     outcome                     TEXT,
     UNIQUE (roster_id, student_id)
 );
+-- Sep-2026 migration for pre-existing databases (init_schema runs this file
+-- on every startup; ADD COLUMN IF NOT EXISTS is a no-op when already present).
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS linkedin_username TEXT;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS hackerrank_username TEXT;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS hackerrank_url TEXT;
 
 -- 6. Repository inventory (per-roster snapshot; pruned by retention helper).
 CREATE TABLE IF NOT EXISTS roster_repositories (

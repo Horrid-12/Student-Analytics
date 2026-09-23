@@ -241,44 +241,92 @@ def upsert_batch_results(
                     sid = str(s.get("Student_ID") or "")
                     if not sid:
                         continue
-                    c.execute(
-                        "INSERT INTO analysis_results "
-                        "(roster_id,student_id,student_name,division,batch,academic_year,"
-                        "semester,github_username,submitted_github_username,username_changed,"
-                        "public_repos,repository_count,active_repositories,repo_fetch_status,"
-                        "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
-                        "contrib_fetch_status,followers,following,account_age_years,"
-                        "repos_per_account_year,followers_per_account_year,following_per_account_year,"
-                        "primary_language,avatar_url,profile_url,outcome) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                        "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (
-                            roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
-                            s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
-                            s.get("Submitted_GitHub_Username"), bool(s.get("Username_Changed")),
-                            int(s.get("Public_Repos") or 0),
-                            int(s.get("Repository_Count") or 0),
-                            int(s.get("Active_Repositories") or 0),
-                            s.get("Repo_Fetch_Status", ""),
-                            int(s.get("Pull_Requests") or 0),
-                            int(s.get("Open_PRs") or 0),
-                            int(s.get("Closed_PRs") or 0),
-                            int(s.get("Issues_Opened") or 0),
-                            int(s.get("Open_Issues") or 0),
-                            int(s.get("External_PRs") or 0),
-                            s.get("Contrib_Fetch_Status", ""),
-                            int(s.get("Followers") or 0),
-                            int(s.get("Following") or 0),
-                            float(s.get("Account_Age_Years") or 0),
-                            float(s.get("Repos_Per_Account_Year") or 0),
-                            float(s.get("Followers_Per_Account_Year") or 0),
-                            float(s.get("Following_Per_Account_Year") or 0),
-                            s.get("Primary_Language") or "Unknown",
-                            s.get("Avatar_URL") or "",
-                            s.get("Profile_URL") or "",
-                            partial.get("student_outcomes", {}).get(sid, "valid"),
-                        ),
-                    )
+                    try:
+                        c.execute(
+                            "INSERT INTO analysis_results "
+                            "(roster_id,student_id,student_name,division,batch,academic_year,"
+                            "semester,github_username,submitted_github_username,username_changed,"
+                            "public_repos,repository_count,active_repositories,repo_fetch_status,"
+                            "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
+                            "contrib_fetch_status,followers,following,account_age_years,"
+                            "repos_per_account_year,followers_per_account_year,following_per_account_year,"
+                            "primary_language,avatar_url,profile_url,"
+                            "linkedin_username,linkedin_url,hackerrank_username,hackerrank_url,outcome) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (
+                                roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
+                                s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
+                                s.get("Submitted_GitHub_Username"), bool(s.get("Username_Changed")),
+                                int(s.get("Public_Repos") or 0),
+                                int(s.get("Repository_Count") or 0),
+                                int(s.get("Active_Repositories") or 0),
+                                s.get("Repo_Fetch_Status", ""),
+                                int(s.get("Pull_Requests") or 0),
+                                int(s.get("Open_PRs") or 0),
+                                int(s.get("Closed_PRs") or 0),
+                                int(s.get("Issues_Opened") or 0),
+                                int(s.get("Open_Issues") or 0),
+                                int(s.get("External_PRs") or 0),
+                                s.get("Contrib_Fetch_Status", ""),
+                                int(s.get("Followers") or 0),
+                                int(s.get("Following") or 0),
+                                float(s.get("Account_Age_Years") or 0),
+                                float(s.get("Repos_Per_Account_Year") or 0),
+                                float(s.get("Followers_Per_Account_Year") or 0),
+                                float(s.get("Following_Per_Account_Year") or 0),
+                                s.get("Primary_Language") or "Unknown",
+                                s.get("Avatar_URL") or "",
+                                s.get("Profile_URL") or "",
+                                s.get("LinkedIn_Username"),
+                                s.get("LinkedIn_URL") or "",
+                                s.get("HackerRank_Username"),
+                                s.get("HackerRank_URL") or "",
+                                partial.get("student_outcomes", {}).get(sid, "valid"),
+                            ),
+                        )
+                    except Exception:
+                        # Pre-migration database without the 4 profile columns:
+                        # fall back to the legacy 29-column insert so old
+                        # deployments keep working until init_schema migrates.
+                        c.execute(
+                            "INSERT INTO analysis_results "
+                            "(roster_id,student_id,student_name,division,batch,academic_year,"
+                            "semester,github_username,submitted_github_username,username_changed,"
+                            "public_repos,repository_count,active_repositories,repo_fetch_status,"
+                            "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
+                            "contrib_fetch_status,followers,following,account_age_years,"
+                            "repos_per_account_year,followers_per_account_year,following_per_account_year,"
+                            "primary_language,avatar_url,profile_url,outcome) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (
+                                roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
+                                s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
+                                s.get("Submitted_GitHub_Username"), bool(s.get("Username_Changed")),
+                                int(s.get("Public_Repos") or 0),
+                                int(s.get("Repository_Count") or 0),
+                                int(s.get("Active_Repositories") or 0),
+                                s.get("Repo_Fetch_Status", ""),
+                                int(s.get("Pull_Requests") or 0),
+                                int(s.get("Open_PRs") or 0),
+                                int(s.get("Closed_PRs") or 0),
+                                int(s.get("Issues_Opened") or 0),
+                                int(s.get("Open_Issues") or 0),
+                                int(s.get("External_PRs") or 0),
+                                s.get("Contrib_Fetch_Status", ""),
+                                int(s.get("Followers") or 0),
+                                int(s.get("Following") or 0),
+                                float(s.get("Account_Age_Years") or 0),
+                                float(s.get("Repos_Per_Account_Year") or 0),
+                                float(s.get("Followers_Per_Account_Year") or 0),
+                                float(s.get("Following_Per_Account_Year") or 0),
+                                s.get("Primary_Language") or "Unknown",
+                                s.get("Avatar_URL") or "",
+                                s.get("Profile_URL") or "",
+                                partial.get("student_outcomes", {}).get(sid, "valid"),
+                            ),
+                        )
 
                 # ── repos: replace rows for usernames in this batch ──
                 if batch_usernames:
@@ -412,27 +460,54 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
         with database.conn() as c:
             if c is None:
                 return []
-            cur = c.execute(
-                'SELECT student_id AS "Student_ID", student_name AS "Student Name", '
-                'division AS "Division", batch AS "Batch", academic_year AS "Academic_Year", '
-                'semester AS "Semester", github_username AS "GitHub_Username", '
-                'submitted_github_username AS "Submitted_GitHub_Username", '
-                'username_changed AS "Username_Changed", public_repos AS "Public_Repos", '
-                'repository_count AS "Repository_Count", active_repositories AS "Active_Repositories", '
-                'repo_fetch_status AS "Repo_Fetch_Status", pull_requests AS "Pull_Requests", '
-                'open_prs AS "Open_PRs", closed_prs AS "Closed_PRs", '
-                'issues_opened AS "Issues_Opened", open_issues AS "Open_Issues", '
-                'external_prs AS "External_PRs", contrib_fetch_status AS "Contrib_Fetch_Status", '
-                'followers AS "Followers", following AS "Following", '
-                'account_age_years AS "Account_Age_Years", '
-                'repos_per_account_year AS "Repos_Per_Account_Year", '
-                'followers_per_account_year AS "Followers_Per_Account_Year", '
-                'following_per_account_year AS "Following_Per_Account_Year", '
-                'primary_language AS "Primary_Language", avatar_url AS "Avatar_URL", '
-                'profile_url AS "Profile_URL" '
-                "FROM analysis_results WHERE roster_id = %s ORDER BY id",
-                (roster_id,),
-            )
+            try:
+                cur = c.execute(
+                    'SELECT student_id AS "Student_ID", student_name AS "Student Name", '
+                    'division AS "Division", batch AS "Batch", academic_year AS "Academic_Year", '
+                    'semester AS "Semester", github_username AS "GitHub_Username", '
+                    'submitted_github_username AS "Submitted_GitHub_Username", '
+                    'username_changed AS "Username_Changed", public_repos AS "Public_Repos", '
+                    'repository_count AS "Repository_Count", active_repositories AS "Active_Repositories", '
+                    'repo_fetch_status AS "Repo_Fetch_Status", pull_requests AS "Pull_Requests", '
+                    'open_prs AS "Open_PRs", closed_prs AS "Closed_PRs", '
+                    'issues_opened AS "Issues_Opened", open_issues AS "Open_Issues", '
+                    'external_prs AS "External_PRs", contrib_fetch_status AS "Contrib_Fetch_Status", '
+                    'followers AS "Followers", following AS "Following", '
+                    'account_age_years AS "Account_Age_Years", '
+                    'repos_per_account_year AS "Repos_Per_Account_Year", '
+                    'followers_per_account_year AS "Followers_Per_Account_Year", '
+                    'following_per_account_year AS "Following_Per_Account_Year", '
+                    'primary_language AS "Primary_Language", avatar_url AS "Avatar_URL", '
+                    'profile_url AS "Profile_URL", '
+                    'linkedin_username AS "LinkedIn_Username", linkedin_url AS "LinkedIn_URL", '
+                    'hackerrank_username AS "HackerRank_Username", hackerrank_url AS "HackerRank_URL" '
+                    "FROM analysis_results WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
+            except Exception:
+                # Pre-migration DB: fall back to the legacy column set; the
+                # view layer backfills LinkedIn/HackerRank from roster records.
+                cur = c.execute(
+                    'SELECT student_id AS "Student_ID", student_name AS "Student Name", '
+                    'division AS "Division", batch AS "Batch", academic_year AS "Academic_Year", '
+                    'semester AS "Semester", github_username AS "GitHub_Username", '
+                    'submitted_github_username AS "Submitted_GitHub_Username", '
+                    'username_changed AS "Username_Changed", public_repos AS "Public_Repos", '
+                    'repository_count AS "Repository_Count", active_repositories AS "Active_Repositories", '
+                    'repo_fetch_status AS "Repo_Fetch_Status", pull_requests AS "Pull_Requests", '
+                    'open_prs AS "Open_PRs", closed_prs AS "Closed_PRs", '
+                    'issues_opened AS "Issues_Opened", open_issues AS "Open_Issues", '
+                    'external_prs AS "External_PRs", contrib_fetch_status AS "Contrib_Fetch_Status", '
+                    'followers AS "Followers", following AS "Following", '
+                    'account_age_years AS "Account_Age_Years", '
+                    'repos_per_account_year AS "Repos_Per_Account_Year", '
+                    'followers_per_account_year AS "Followers_Per_Account_Year", '
+                    'following_per_account_year AS "Following_Per_Account_Year", '
+                    'primary_language AS "Primary_Language", avatar_url AS "Avatar_URL", '
+                    'profile_url AS "Profile_URL" '
+                    "FROM analysis_results WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
             return [dict(r) for r in cur.fetchall()]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_dashboard_data failed: %s", exc)
@@ -748,9 +823,12 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS
 
     try:
+        from app.views import _enrich_students_with_records
+
         summary = get_run_summary(roster_id)
         records = get_roster_records(roster_id)
         students = _frame(get_dashboard_data(roster_id), DASHBOARD_COLS)
+        students = _enrich_students_with_records(students, records)
         repos = _frame(get_repositories_data(roster_id), REPO_COLS)
         issues = _frame(get_issues_data(roster_id), ISSUE_COLS)
         state = dict(summary) if summary else None

@@ -467,6 +467,10 @@ class TestDashboard:
             "Primary_Language",
             "Avatar_URL",
             "Profile_URL",
+            "LinkedIn_Username",
+            "LinkedIn_URL",
+            "HackerRank_Username",
+            "HackerRank_URL",
         ]
         dash = services.build_dashboard_df(self._df(), pd.DataFrame(), pd.DataFrame())
         assert list(dash.columns) == expected
