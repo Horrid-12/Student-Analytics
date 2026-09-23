@@ -79,6 +79,17 @@ class TestUploadRoot:
         assert "Roster loaded" not in response.text
         assert "upload-bar" in response.text
 
+    def test_overview_has_exactly_one_upload_bar_and_delegated_clear(self):
+        """BUG-112: the page renders exactly one upload bar and its Clear-roster
+        click is delegated to the page script (full reset + reload), never an
+        embedded hx-post that re-injects the bar."""
+        client = TestClient(app)
+        login_admin(client)
+        body = client.get("/").text
+        assert body.count('id="roster-form"') == 1
+        assert "closest('#upload-result .roster-clear')" in body
+        assert "resetAll();" in body
+
 
 class TestUpload:
     def setup_method(self):
@@ -168,6 +179,22 @@ class TestUpload:
         assert response.status_code == 200
         assert "Roster loaded" in response.text
         assert "student(s) parsed" in response.text
+
+    def test_clear_roster_button_cannot_self_inject_upload_bar(self):
+        """BUG-112: the Clear roster button lives in the upload_result partial,
+        which HTMX swaps into #upload-result right below the page's static
+        upload bar. If the button hx-posts /upload/reset (which returns the full
+        upload_bar partial) another bar renders → duplicated upload button.
+        The button must be a plain, page-script-handled button."""
+        buf = make_roster()
+        partial = self.client.post(
+            "/upload",
+            files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)},
+            headers={"HX-Request": "true"},
+        ).text
+        assert "roster-clear" in partial
+        assert 'hx-post="/upload/reset' not in partial
+        assert "upload-bar" not in partial
 
     def test_htmx_schema_error_returns_partial(self):
         df = pd.DataFrame({"Timestamp": ["2025-08-01"]})

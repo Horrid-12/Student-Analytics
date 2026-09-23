@@ -202,6 +202,19 @@ class TestPageRenderingWithData:
         assert "Run Log" in body
         assert "plotly" in body or "Plotly.react" in body
 
+    def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
+        """BUG-107 regression: a complete Overview must still carry the live
+        pipeline-status ids (so updatePipelineStatus works during a re-run) and
+        the previous-results wrapper the run script hides while a new run starts."""
+        roster_id = self._setup(tmp_path)
+        body = self.client.get(f"/?roster={roster_id}").text
+        assert 'id="pipeline-status-badge"' in body
+        assert 'id="pipeline-status-text"' in body
+        assert 'id="pipeline-completed-at"' in body
+        assert 'id="previous-results"' in body
+        assert "prevResults.hidden = true" in body
+        assert "restorePreviousResults" in body
+
     def test_overview_without_roster_shows_empty_state(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
         self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
