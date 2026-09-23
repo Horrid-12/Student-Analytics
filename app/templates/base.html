@@ -89,8 +89,10 @@
   var rosterId = read();
   if (rosterId) {
     document.querySelectorAll('nav.sidebar-nav a').forEach(function (link) {
-      var sep = link.getAttribute('href').indexOf('?') === -1 ? '?' : '&';
-      link.href = link.getAttribute('href') + sep + 'roster=' + encodeURIComponent(rosterId);
+      var href = link.getAttribute('href') || '';
+      if (href.indexOf('roster=') !== -1) return;
+      var sep = href.indexOf('?') === -1 ? '?' : '&';
+      link.href = href + sep + 'roster=' + encodeURIComponent(rosterId);
     });
   }
 })();

@@ -142,15 +142,16 @@ def slug_for(page: str) -> str:
     return SLUGS.get(page, page.lower())
 
 
-def nav(active: str, role: str | None = None) -> list[dict]:
+def nav(active: str, role: str | None = None, roster_id: str = "") -> list[dict]:
     if role:
         pages = [page for page in PAGES if auth.can_access(role, page)]
     else:
         pages = []
+    suffix = f"?roster={roster_id}" if roster_id else ""
     return [
         {
             "label": page,
-            "href": "/" if page == "Overview" else f"/{slug_for(page)}",
+            "href": ("/" if page == "Overview" else f"/{slug_for(page)}") + suffix,
             "active": page == active,
             "svg": NAV_SVG[page],
         }
@@ -465,7 +466,7 @@ def _is_complete(view) -> bool:
     return bool(state and state.get("status") == "complete")
 
 
-def _base_context(request: Request, page_name: str) -> dict:
+def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict:
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
     # BUG-098: sidebar/account identity is context-driven and now reflects the
@@ -480,7 +481,7 @@ def _base_context(request: Request, page_name: str) -> dict:
     footer = f"{role.title()} \u2022 {display}" if user else "Open Access"
     return {
         "topbar_date": topbar_date(),
-        "nav": nav(active=page_name, role=role),
+        "nav": nav(active=page_name, role=role, roster_id=roster_id),
         "last_analysis": views.friendly_timestamp(views.last_analysis_time()),
         "brand_edition": brand,
         "auth_role": role.title() if role else "",
@@ -489,6 +490,7 @@ def _base_context(request: Request, page_name: str) -> dict:
         "auth_footer": footer,
         "auth_logged_in": bool(user),
         "auth_logout": "/logout",
+        "roster_id": roster_id,
     }
 
 
@@ -892,7 +894,7 @@ def logout(request: Request):
 @app.get("/", response_class=HTMLResponse)
 @app.get("/overview", response_class=HTMLResponse)
 def overview(request: Request, roster: str = ""):
-    ctx = _base_context(request, "Overview")
+    ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
     ctx["payload"] = None
     ctx["past_runs"] = _run_history_rows()
@@ -926,7 +928,7 @@ def students_page(
     rows: int = 0,
     select: str = "",
 ):
-    ctx = _base_context(request, "Students")
+    ctx = _base_context(request, "Students", roster)
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return response
@@ -971,7 +973,7 @@ def students_export(
 def repositories_page(
     request: Request, roster: str = "", q: str = "", language: str = "All", rows: int = 30
 ):
-    ctx = _base_context(request, "Repositories")
+    ctx = _base_context(request, "Repositories", roster)
     view, response = _guard_page(request, ctx, "Repositories", roster)
     if response is not None:
         return response
@@ -993,7 +995,7 @@ def leaderboards_page(
     semester: str = "All",
     anonymize: int = 0,
 ):
-    ctx = _base_context(request, "Leaderboards")
+    ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
@@ -1062,7 +1064,7 @@ def history_page(request: Request):
 
 @app.get("/issues", response_class=HTMLResponse)
 def issues_page(request: Request, roster: str = "", issue: str = "All"):
-    ctx = _base_context(request, "Issues")
+    ctx = _base_context(request, "Issues", roster)
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
         return response
@@ -1095,7 +1097,7 @@ async def issues_workflow_save(request: Request, roster: str = ""):
 def verification_page(
     request: Request, roster: str = "", q: str = "", status: str = "All", rows: int = 50
 ):
-    ctx = _base_context(request, "Verification")
+    ctx = _base_context(request, "Verification", roster)
     view, response = _guard_page(request, ctx, "Verification", roster)
     if response is not None:
         return response
