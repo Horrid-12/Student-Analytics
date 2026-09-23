@@ -22,19 +22,19 @@
 <body>
 <div class="app-shell">
   <aside class="app-sidebar">
-    <div class="sidebar-sticky-brand">
-      <div class="shadcn-brand-header">
-        <div class="brand-avatar-box">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
-        </div>
-        <div class="brand-info">
-          <div class="brand-team">GitHub Platform</div>
-          <div class="brand-edition">{{ brand_edition }}</div>
-        </div>
-        <div class="brand-switcher">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
-        </div>
+    <div class="sidebar-stack">
+    <div class="sidebar-user-footer">
+      <div class="user-avatar-pill">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
+      <div class="user-details">
+        <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_status }}</div>
       </div>
+      {% if auth_logged_in %}
+      <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </a>
+      {% else %}
+      <a href="/login" style="color:var(--blue);font-size:13px;text-decoration:none;margin-left:8px;font-weight:500">Sign in</a>
+      {% endif %}
     </div>
     <div class="sidebar-section-label">Main Navigation</div>
     <nav class="sidebar-nav">
@@ -48,24 +48,6 @@
       <div style="padding:0 24px;margin-top:12px;color:var(--muted);font-size:13px">Sign in to continue.</div>
       {% endif %}
     </nav>
-    <div class="sidebar-foot">
-      <div class="sidebar-user-footer">
-        <div class="user-avatar-pill">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
-        <div class="user-details">
-          <div class="user-name">{{ auth_user }}</div>
-          <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_status }}</div>
-        </div>
-        {% if auth_logged_in %}
-        <a class="sidebar-gear-link" href="/settings" title="Settings" aria-label="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-        </a>
-        <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out" style="margin-left:6px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </a>
-        {% else %}
-        <a href="/login" style="color:var(--blue);font-size:13px;text-decoration:none;margin-left:8px;font-weight:500">Sign in</a>
-        {% endif %}
-      </div>
     </div>
   </aside>
   <main class="main-content">
@@ -89,8 +71,10 @@
   var rosterId = read();
   if (rosterId) {
     document.querySelectorAll('nav.sidebar-nav a').forEach(function (link) {
-      var sep = link.getAttribute('href').indexOf('?') === -1 ? '?' : '&';
-      link.href = link.getAttribute('href') + sep + 'roster=' + encodeURIComponent(rosterId);
+      var href = link.getAttribute('href') || '';
+      if (href.indexOf('roster=') !== -1) return;
+      var sep = href.indexOf('?') === -1 ? '?' : '&';
+      link.href = href + sep + 'roster=' + encodeURIComponent(rosterId);
     });
   }
 })();
