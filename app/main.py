@@ -1226,17 +1226,27 @@ def _update_support_ticket(ticket_id: int, status: str, admin_reply: str) -> boo
     return support.update_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
 
 
+def _reply_support_ticket(ticket_id: int, student_reply: str) -> bool:
+    if database.db_configured():
+        return db.reply_support_ticket(ticket_id, student_reply=student_reply or "")
+    return support.reply_ticket(ticket_id, student_reply)
+
+
 async def _read_upload(attachment: UploadFile | None) -> tuple[str, bytes]:
-    """Read an optional uploaded file. Returns (filename, bytes), or
-    ("", b"") when nothing was chosen. Rejects oversized payloads."""
+    """Read an optional uploaded image. Returns (filename, bytes), or
+    ("", b"") when nothing was chosen. Rejects oversized payloads and
+    non-image files — ticket attachments are images only."""
     if attachment is None or not (attachment.filename or "").strip():
         return "", b""
     filename = (attachment.filename or "").split("/")[-1].split("\\")[-1].strip().replace('"', "'")
     data = await attachment.read()
     if len(data) > support.MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=413, detail="Attachment over 5 MB")
+        raise HTTPException(status_code=413, detail="Image must be under 20 MB")
     if not filename or not data:
         return "", b""
+    error = support.image_upload_error(filename, data)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
     return filename, data
 
 
@@ -1254,16 +1264,16 @@ def _get_support_ticket(ticket_id) -> dict | None:
     return support.get_ticket(ticket_id)
 
 
-def _clear_support_attachment(ticket_id: int, slot: str = "admin") -> bool:
-    if database.db_configured():
-        return db.clear_support_attachment(ticket_id, slot=slot)
-    return support.clear_attachment(ticket_id, slot=slot)
-
-
 def _get_support_attachment(ticket_id: int, slot: str = "admin") -> dict | None:
     if database.db_configured():
         return db.get_support_attachment(ticket_id, slot=slot)
     return support.get_attachment(ticket_id, slot=slot)
+
+
+def _clear_student_reply(ticket_id: int) -> bool:
+    if database.db_configured():
+        return db.clear_student_reply(ticket_id)
+    return support.clear_student_reply(ticket_id)
 
 
 def _ticket_is_resolved(ticket: dict | None) -> bool:
@@ -1287,7 +1297,7 @@ def _ticket_profile(email: str) -> dict | None:
         (row.get("student_name") or "" for row in reversed(rows) if row.get("student_name")),
         email,
     )
-    counts = {"Open": 0, "In Progress": 0, "Resolved": 0}
+    counts = {"Open": 0, "In Progress": 0, "Follow up": 0, "Resolved": 0}
     for row in rows:
         if row.get("status") in counts:
             counts[row["status"]] += 1
@@ -1297,6 +1307,7 @@ def _ticket_profile(email: str) -> dict | None:
         "total": len(rows),
         "open": counts["Open"],
         "in_progress": counts["In Progress"],
+        "follow_up": counts["Follow up"],
         "resolved": counts["Resolved"],
         "tickets": rows,
     }
@@ -1345,7 +1356,20 @@ async def support_create(
         return RedirectResponse("/login", status_code=302)
     if (user.get("role") or "") != "student":
         raise HTTPException(status_code=403, detail="Only students can raise tickets")
-    filename, file_bytes = await _read_upload(attachment)
+    try:
+        filename, file_bytes = await _read_upload(attachment)
+    except HTTPException as exc:
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(
+                request,
+                user,
+                error=str(exc.detail),
+                draft={"subject": subject, "category": category, "message": message},
+            ),
+            status_code=exc.status_code,
+        )
     ticket = _create_support_ticket(
         user.get("email", ""), user.get("name", ""), subject, category, message
     )
@@ -1365,7 +1389,7 @@ async def support_create(
         return templates.TemplateResponse(
             request,
             "pages/support.html",
-            _support_context(request, user, error="Ticket saved, but the attachment could not be stored."),
+            _support_context(request, user, error="Ticket saved, but the image could not be stored."),
             status_code=400,
         )
     return RedirectResponse("/support", status_code=302)
@@ -1394,31 +1418,75 @@ async def support_update(
     filename, file_bytes = await _read_upload(attachment)
     if not _update_support_ticket(ticket_id, status, admin_reply):
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if status == "Follow up":
+        # A fresh follow-up round starts: drop the previous student reply
+        # (and its photo) so the student answers the new question.
+        _clear_student_reply(ticket_id)
     if filename and not _save_attachment(ticket_id, filename, file_bytes, slot="admin"):
         raise HTTPException(status_code=400, detail="Could not save attachment")
     return RedirectResponse("/support", status_code=302)
 
 
-@app.post("/support/attachment/remove")
-async def support_attachment_remove(
-    request: Request, ticket_id: int = Form(...), slot: str = Form("admin")
+@app.post("/support/reply")
+async def support_reply(
+    request: Request,
+    ticket_id: int = Form(...),
+    student_reply: str = Form(""),
+    attachment: UploadFile | None = File(None),
 ):
-    """Delete a ticket's attached file from a slot. Staff only; resolved
-    tickets are read-only."""
+    """Student follow-up on a ticket the staff is actively working on.
+
+    One shot per round: allowed while In Progress, and required while
+    Follow up. Replying to a Follow up ticket flips it back to In Progress
+    so the staff can see the answer arrived. After submitting, the reply
+    (and its photo) become read-only — a new Follow up from staff opens
+    the next round. Students only, own tickets only, resolved tickets stay
+    read-only."""
     user = getattr(request.state, "user", None)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    if (user.get("role") or "") not in _STAFF_ROLES:
-        raise HTTPException(status_code=403, detail="Only staff can remove attachments")
-    if slot not in ("admin", "student"):
-        raise HTTPException(status_code=404, detail="Attachment not found")
+    if (user.get("role") or "") != "student":
+        raise HTTPException(status_code=403, detail="Only students can reply to tickets")
     ticket = _get_support_ticket(ticket_id)
     if ticket is None:
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    if ticket.get("status") == "Resolved":
-        raise HTTPException(status_code=403, detail="Resolved tickets are read-only")
-    if not _clear_support_attachment(ticket_id, slot=slot):
-        raise HTTPException(status_code=404, detail="Attachment not found")
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if (ticket.get("created_by") or "").lower() != (user.get("email") or "").lower():
+        raise HTTPException(status_code=403, detail="Not your ticket")
+    if ticket.get("status") not in ("In Progress", "Follow up"):
+        raise HTTPException(
+            status_code=403,
+            detail="Replies are only available while a ticket is In Progress or Follow up",
+        )
+    if (ticket.get("student_reply") or "").strip():
+        raise HTTPException(status_code=403, detail="Reply already submitted")
+    if not (student_reply or "").strip():
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(request, user, error="Please write a reply before sending."),
+            status_code=400,
+        )
+    try:
+        filename, file_bytes = await _read_upload(attachment)
+    except HTTPException as exc:
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(request, user, error=str(exc.detail)),
+            status_code=exc.status_code,
+        )
+    if not _reply_support_ticket(ticket_id, student_reply):
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if filename and not _save_attachment(ticket_id, filename, file_bytes, slot="reply"):
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(request, user, error="Reply saved, but the image could not be stored."),
+            status_code=400,
+        )
+    if ticket.get("status") == "Follow up":
+        # The requested follow-up arrived — hand the ticket back to staff.
+        _update_support_ticket(ticket_id, "In Progress", ticket.get("admin_reply") or "")
     return RedirectResponse("/support", status_code=302)
 
 
@@ -1440,10 +1508,17 @@ def support_attachment(request: Request, ticket_id: int, slot: str = "admin"):
         raise HTTPException(status_code=403, detail="Not your ticket")
     mime, _ = mimetypes.guess_type(blob["name"])
     safe_name = blob["name"].replace('"', "'")
+    # Images render inline so the preview popup can display them; anything
+    # else (legacy non-image rows) still forces a download.
+    ext = "." + blob["name"].rsplit(".", 1)[-1].lower() if "." in blob["name"] else ""
+    inline = (mime or "").startswith("image/") and ext in support.ALLOWED_IMAGE_EXTENSIONS
     return Response(
         content=blob["data"],
         media_type=mime or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+        headers={
+            "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{safe_name}"',
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

@@ -52,6 +52,19 @@
     white-space: pre-line;
     overflow-wrap: anywhere;
   }
+  .ticket-student-reply {
+    border-left: 3px solid var(--blue);
+  }
+  .ticket-followup-note {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--badge-red-color, #DC2626);
+    font-size: 13px;
+    font-weight: 700;
+  }
   .ticket-update-form {
     margin-top: 10px;
     display: flex;
@@ -150,8 +163,25 @@
   }
   .ticket-attach-name[hidden],
   .ticket-attach-clear[hidden],
+  .ticket-attach-error[hidden],
   .ticket-modal-backdrop[hidden] {
     display: none;
+  }
+  .ticket-attach-error {
+    flex-basis: 100%;
+    font-size: 13px;
+    color: #DC2626;
+  }
+  .ticket-thumb-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: zoom-in;
+    display: inline-block;
+    max-width: 280px;
+  }
+  .ticket-thumb-btn:hover .ticket-preview-img {
+    border-color: var(--blue);
   }
   .ticket-preview-large {
     max-width: 100%;
@@ -239,7 +269,7 @@
   }
   .ticket-stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     margin-top: 16px;
   }
@@ -353,12 +383,14 @@
       <textarea id="ticket-message" class="ticket-textarea" name="message" placeholder="Describe the issue in detail&hellip;">{{ draft.message or '' }}</textarea>
     </div>
     <div class="ticket-actions-row">
-      <label class="btn ticket-attach" for="raise-attach">Attach file</label>
-      <input id="raise-attach" type="file" name="attachment" hidden>
+      <label class="btn ticket-attach" for="raise-attach">Attach image</label>
+      <input id="raise-attach" type="file" name="attachment" accept=".png,.jpg,.jpeg,.webp" hidden>
+      <span class="ticket-file-meta">PNG, JPG, JPEG, WebP · max 20 MB</span>
       <button type="button" class="ticket-attach-name" hidden></button>
       <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
       </button>
+      <span class="ticket-attach-error" role="alert" hidden></span>
       <div class="ticket-submit-right">
         <button class="btn" type="submit">Submit</button>
       </div>
@@ -396,56 +428,54 @@
       </thead>
       <tbody id="support-tbody">
         {% for t in tickets %}
+        {% set needs_reply = not is_staff and t.status == 'Follow up' %}
         <tr>
           <td>{{ t.id }}</td>
           {% if is_staff %}<td><a href="/support?status={{ status }}&profile={{ t.created_by|urlencode }}">{{ t.student_name }}</a><div class="repo-meta">{{ t.created_by }}</div></td>{% endif %}
-          <td class="ticket-subject-cell"><button type="button" class="ticket-subject ticket-toggle" data-target="ticket-detail-{{ t.id }}" aria-expanded="false" aria-controls="ticket-detail-{{ t.id }}"><span class="ticket-marker" aria-hidden="true">&#9656;</span>{{ t.subject }}</button></td>
+          <td class="ticket-subject-cell"><button type="button" class="ticket-subject ticket-toggle" data-target="ticket-detail-{{ t.id }}" aria-expanded="{{ 'true' if needs_reply else 'false' }}" aria-controls="ticket-detail-{{ t.id }}"><span class="ticket-marker" aria-hidden="true">{% if needs_reply %}&#9662;{% else %}&#9656;{% endif %}</span>{{ t.subject }}</button></td>
           <td>{{ t.category }}</td>
           <td>
             {% if t.status == 'Resolved' %}<span class="badge-green">Resolved</span>
             {% elif t.status == 'In Progress' %}<span class="badge-blue">In Progress</span>
+            {% elif t.status == 'Follow up' %}<span class="badge-red">Follow up</span>
             {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
           </td>
           <td>{{ (t.created_at or '')[:16].replace('T', ' ') }}</td>
         </tr>
-        <tr class="ticket-detail-row" id="ticket-detail-{{ t.id }}" hidden>
+        <tr class="ticket-detail-row" id="ticket-detail-{{ t.id }}"{% if not needs_reply %} hidden{% endif %}>
           <td colspan="{% if is_staff %}6{% else %}5{% endif %}">
             <div class="ticket-section-label ticket-indent">Issue</div>
             <div class="ticket-message">{{ t.message }}</div>
             {% if t.student_attachment_name %}
             <div class="ticket-attachment">
               {% if t.student_attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
-              <a href="/support/attachment/{{ t.id }}?slot=student"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=student" alt="Preview of {{ t.student_attachment_name }}"></a>
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}?slot=student" data-preview-name="{{ t.student_attachment_name }}" title="Preview {{ t.student_attachment_name }}" aria-label="Preview {{ t.student_attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=student" alt="Preview of {{ t.student_attachment_name }}" loading="lazy"></button>
               {% else %}
               <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=student">{{ t.student_attachment_name }}</a></span>
-              {% endif %}
-              {% if is_staff and t.status != 'Resolved' %}
-              <form method="post" action="/support/attachment/remove" style="display:inline;">
-                <input type="hidden" name="ticket_id" value="{{ t.id }}">
-                <input type="hidden" name="slot" value="student">
-                <button type="submit" class="ticket-icon-btn" title="Remove attachment" aria-label="Remove attachment {{ t.student_attachment_name }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
-              </form>
               {% endif %}
             </div>
             {% endif %}
             {% if is_staff and t.status != 'Resolved' %}
             <div class="ticket-divider" aria-hidden="true"></div>
+            {% if t.student_reply %}
+            <div class="ticket-reply ticket-student-reply"><strong>Student reply:</strong> {{ t.student_reply }}</div>
+            {% endif %}
+            {% if t.reply_attachment_name %}
+            <div class="ticket-attachment">
+              {% if t.reply_attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}?slot=reply" data-preview-name="{{ t.reply_attachment_name }}" title="Preview {{ t.reply_attachment_name }}" aria-label="Preview {{ t.reply_attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=reply" alt="Preview of {{ t.reply_attachment_name }}" loading="lazy"></button>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=reply">{{ t.reply_attachment_name }}</a></span>
+              {% endif %}
+            </div>
+            {% endif %}
             {% if t.attachment_name %}
             <div class="ticket-attachment">
               {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
-              <a href="/support/attachment/{{ t.id }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}"></a>
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}" data-preview-name="{{ t.attachment_name }}" title="Preview {{ t.attachment_name }}" aria-label="Preview {{ t.attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}" loading="lazy"></button>
               {% else %}
               <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
               {% endif %}
-              <form method="post" action="/support/attachment/remove" style="display:inline;">
-                <input type="hidden" name="ticket_id" value="{{ t.id }}">
-                <input type="hidden" name="slot" value="admin">
-                <button type="submit" class="ticket-icon-btn" title="Remove attachment" aria-label="Remove attachment {{ t.attachment_name }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
-              </form>
             </div>
             {% endif %}
             <form class="ticket-update-form" method="post" action="/support/update" enctype="multipart/form-data">
@@ -455,12 +485,13 @@
                 <textarea id="reply-{{ t.id }}" class="ticket-textarea" name="admin_reply" placeholder="Write a reply&hellip;">{{ t.admin_reply }}</textarea>
               </div>
               <div class="ticket-actions-row">
-                <label class="btn ticket-attach ticket-indent" for="attach-{{ t.id }}">Attach file</label>
-                <input id="attach-{{ t.id }}" type="file" name="attachment" hidden>
+                <label class="btn ticket-attach ticket-indent" for="attach-{{ t.id }}">Attach image</label>
+                <input id="attach-{{ t.id }}" type="file" name="attachment" accept=".png,.jpg,.jpeg,.webp" hidden>
                 <button type="button" class="ticket-attach-name" hidden></button>
                 <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                 </button>
+                <span class="ticket-attach-error" role="alert" hidden></span>
                 <div class="ticket-status-save">
                   <div class="filter-field">
                     <label class="filter-label" for="status-{{ t.id }}">Status</label>
@@ -475,13 +506,13 @@
               </div>
             </form>
             {% else %}
-            {% if t.attachment_name or t.admin_reply or is_staff %}
+            {% if t.attachment_name or t.admin_reply or t.student_reply or is_staff %}
             <div class="ticket-divider" aria-hidden="true"></div>
             {% endif %}
             {% if t.attachment_name %}
             <div class="ticket-attachment">
               {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
-              <a href="/support/attachment/{{ t.id }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}"></a>
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}" data-preview-name="{{ t.attachment_name }}" title="Preview {{ t.attachment_name }}" aria-label="Preview {{ t.attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}" loading="lazy"></button>
               {% else %}
               <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
               {% endif %}
@@ -489,6 +520,43 @@
             {% endif %}
             {% if t.admin_reply %}
             <div class="ticket-reply"><strong>Resolution:</strong> {{ t.admin_reply }}</div>
+            {% endif %}
+            {% set show_reply_form = not is_staff and t.status in ('In Progress', 'Follow up') and not t.student_reply %}
+            {% if t.student_reply and not show_reply_form %}
+            <div class="ticket-reply ticket-student-reply"><strong>{% if is_staff %}Student reply:{% else %}Your reply:{% endif %}</strong> {{ t.student_reply }}</div>
+            {% endif %}
+            {% if t.reply_attachment_name and not show_reply_form %}
+            <div class="ticket-attachment">
+              {% if t.reply_attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}?slot=reply" data-preview-name="{{ t.reply_attachment_name }}" title="Preview {{ t.reply_attachment_name }}" aria-label="Preview {{ t.reply_attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=reply" alt="Preview of {{ t.reply_attachment_name }}" loading="lazy"></button>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=reply">{{ t.reply_attachment_name }}</a></span>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if show_reply_form %}
+            {% if t.status == 'Follow up' %}
+            <div class="ticket-followup-note" role="alert">Staff requested a follow-up — please reply below.</div>
+            {% endif %}
+            <form class="ticket-update-form" method="post" action="/support/reply" enctype="multipart/form-data">
+              <input type="hidden" name="ticket_id" value="{{ t.id }}">
+              <div class="filter-field">
+                <label class="ticket-section-label ticket-indent" for="student-reply-{{ t.id }}">Your reply</label>
+                <textarea id="student-reply-{{ t.id }}" class="ticket-textarea" name="student_reply" placeholder="Answer the staff's question here&hellip;"></textarea>
+              </div>
+              <div class="ticket-actions-row">
+                <label class="btn ticket-attach ticket-indent" for="student-attach-{{ t.id }}">Attach image</label>
+                <input id="student-attach-{{ t.id }}" type="file" name="attachment" accept=".png,.jpg,.jpeg,.webp" hidden>
+                <button type="button" class="ticket-attach-name" hidden></button>
+                <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+                <span class="ticket-attach-error" role="alert" hidden></span>
+                <div class="ticket-status-save">
+                  <button class="btn" type="submit">Reply</button>
+                </div>
+              </div>
+            </form>
             {% endif %}
             {% if is_staff %}
             <div class="repo-meta">Resolved tickets are read-only.</div>
@@ -547,6 +615,13 @@
         img.src = data.url;
         img.alt = 'Preview of ' + data.name;
         body.appendChild(img);
+        var dl = document.createElement('a');
+        dl.href = data.url;
+        dl.textContent = 'Download image';
+        dl.className = 'btn';
+        dl.style.display = 'inline-block';
+        dl.style.marginTop = '12px';
+        body.appendChild(dl);
       } else {
         var meta = document.createElement('div');
         meta.className = 'ticket-file-meta';
@@ -565,16 +640,39 @@
       backdrop.hidden = true;
       if (!document.getElementById('ticket-modal-backdrop')) document.body.style.overflow = '';
     }
+    var MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+    var IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp'];
+    function imageFileError(file) {
+      if (!file) return '';
+      var ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (IMAGE_EXTS.indexOf(ext) === -1) {
+        return 'Only image files are allowed (PNG, JPG, JPEG, WebP).';
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        return 'Image must be under 20 MB.';
+      }
+      return '';
+    }
     document.querySelectorAll('input[type="file"][name="attachment"]').forEach(function (input) {
       var form = input.form;
       if (!form) return;
       var nameBtn = form.querySelector('.ticket-attach-name');
       var clearBtn = form.querySelector('.ticket-attach-clear');
+      var errorBox = form.querySelector('.ticket-attach-error');
       if (!nameBtn || !clearBtn) return;
       var fileURL = null;
       function render() {
         var file = input.files && input.files[0];
         if (fileURL) { URL.revokeObjectURL(fileURL); fileURL = null; }
+        var problem = imageFileError(file);
+        if (problem) {
+          input.value = '';
+          file = null;
+          if (errorBox) { errorBox.textContent = problem; errorBox.hidden = false; }
+        } else if (errorBox) {
+          errorBox.textContent = '';
+          errorBox.hidden = true;
+        }
         if (!file) {
           nameBtn.textContent = '';
           nameBtn.hidden = true;
@@ -603,7 +701,19 @@
       });
     });
     // Delegated so wiring works no matter where the preview markup sits.
+    // Thumbnails of already-uploaded images open the large preview popup
+    // instead of navigating away (which used to force a download).
     document.addEventListener('click', function (event) {
+      if (event.target.closest && event.target.closest('[data-preview-url]')) {
+        var thumb = event.target.closest('[data-preview-url]');
+        openAttachPreview({
+          url: thumb.getAttribute('data-preview-url'),
+          mime: 'image/',
+          size: 0,
+          name: thumb.getAttribute('data-preview-name') || 'Image preview'
+        });
+        return;
+      }
       if (event.target.closest && event.target.closest('#attach-preview-close')) {
         closeAttachPreview();
         return;
@@ -647,6 +757,7 @@
           <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.total }}</div><div class="ticket-stat-label">Tickets</div></div>
           <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.open }}</div><div class="ticket-stat-label">Open</div></div>
           <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.in_progress }}</div><div class="ticket-stat-label">In Progress</div></div>
+          <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.follow_up }}</div><div class="ticket-stat-label">Follow up</div></div>
           <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.resolved }}</div><div class="ticket-stat-label">Resolved</div></div>
         </div>
       </div>
@@ -657,6 +768,7 @@
           <span class="ticket-list-subject" title="{{ t.subject }}">{{ t.subject }}</span>
           {% if t.status == 'Resolved' %}<span class="badge-green">Resolved</span>
           {% elif t.status == 'In Progress' %}<span class="badge-blue">In Progress</span>
+          {% elif t.status == 'Follow up' %}<span class="badge-red">Follow up</span>
           {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
           <span class="ticket-list-meta">{{ (t.created_at or '')[:16].replace('T', ' ') }}</span>
         </li>

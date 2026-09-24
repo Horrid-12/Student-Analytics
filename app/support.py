@@ -24,12 +24,13 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 DB_PATH = Path(__file__).resolve().parent.parent / "support.db"
 
-TICKET_STATUSES = ("Open", "In Progress", "Resolved")
+TICKET_STATUSES = ("Open", "In Progress", "Follow up", "Resolved")
 TICKET_CATEGORIES = ("General", "Technical", "Account", "Roster & Data", "Other")
 
 #: Display order for ticket lists: Open first, then In Progress, then
-#: Resolved — earliest ticket first within each status.
-STATUS_ORDER = {"Open": 0, "In Progress": 1, "Resolved": 2}
+#: Follow up (waiting on the student), then Resolved — earliest first
+#: within each status.
+STATUS_ORDER = {"Open": 0, "In Progress": 1, "Follow up": 2, "Resolved": 3}
 
 
 def order_tickets(rows: list[dict]) -> list[dict]:
@@ -51,6 +52,9 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     message TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'Open',
     admin_reply TEXT NOT NULL DEFAULT '',
+    student_reply TEXT NOT NULL DEFAULT '',
+    reply_attachment_name TEXT NOT NULL DEFAULT '',
+    reply_attachment_data BLOB,
     attachment_name TEXT NOT NULL DEFAULT '',
     attachment_data BLOB,
     student_attachment_name TEXT NOT NULL DEFAULT '',
@@ -65,6 +69,9 @@ _ATTACHMENT_MIGRATION = (
     "ALTER TABLE support_tickets ADD COLUMN attachment_data BLOB",
     "ALTER TABLE support_tickets ADD COLUMN student_attachment_name TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE support_tickets ADD COLUMN student_attachment_data BLOB",
+    "ALTER TABLE support_tickets ADD COLUMN student_reply TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE support_tickets ADD COLUMN reply_attachment_name TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE support_tickets ADD COLUMN reply_attachment_data BLOB",
 )
 
 #: Columns returned for lists/details — the attachment bytes stay out so
@@ -78,6 +85,8 @@ _COLUMNS = (
     "message",
     "status",
     "admin_reply",
+    "student_reply",
+    "reply_attachment_name",
     "attachment_name",
     "student_attachment_name",
     "created_at",
@@ -91,14 +100,44 @@ _SELECT = ", ".join(_COLUMNS)
 _ATTACHMENT_COLUMNS = {
     "admin": ("attachment_name", "attachment_data"),
     "student": ("student_attachment_name", "student_attachment_data"),
+    "reply": ("reply_attachment_name", "reply_attachment_data"),
 }
 
 
 def _slot_columns(slot: str) -> tuple[str, str] | None:
     return _ATTACHMENT_COLUMNS.get(slot or "admin")
 
-#: Attachments larger than this are refused (5 MB).
-MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+#: Attachments larger than this are refused (20 MB).
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+#: Image-only attachments: allowed file extensions (SVG excluded — inline
+#: SVGs can carry scripts, and ``<img>`` previews gain nothing from vectors).
+ALLOWED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+
+#: ``accept`` attribute value for the ticket file inputs (mirrors the above).
+ACCEPT_IMAGE_UPLOADS = ".png,.jpg,.jpeg,.webp"
+
+
+def image_upload_error(filename: str, data: bytes) -> str | None:
+    """Validate an uploaded attachment. Returns an error message, or None
+    when the file is an acceptable image. Checks the extension first, then
+    the magic bytes so a renamed ``.txt`` cannot pass as an image."""
+    ext = "." + (filename.rsplit(".", 1)[-1] if "." in filename else "")
+    ext = ext.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return "Only image files are allowed (PNG, JPG, JPEG, WebP)."
+    blob = bytes(data or b"")
+    if ext == ".png":
+        valid = blob.startswith(b"\x89PNG")
+    elif ext in (".jpg", ".jpeg"):
+        valid = blob.startswith(b"\xff\xd8\xff")
+    elif ext == ".webp":
+        valid = len(blob) >= 12 and blob.startswith(b"RIFF") and blob[8:12] == b"WEBP"
+    else:  # pragma: no cover — unreachable while ext is allowlisted above
+        valid = False
+    if not valid:
+        return f"That file is not a valid {ext[1:].upper()} image."
+    return None
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -380,4 +419,53 @@ def update_ticket(
                 return (cursor.rowcount or 0) > 0
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Support ticket update failed: %s", exc)
+        return False
+
+
+def reply_ticket(ticket_id, student_reply: str | None) -> bool:
+    """Save the student's follow-up reply on a ticket. Returns True when a
+    row was actually changed; False for unknown ids, blank replies, or
+    storage failures. Status gating (In Progress / Follow up) lives in
+    the route."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    if not (student_reply or "").strip():
+        return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                conn.execute(_SCHEMA)
+                cursor = conn.execute(
+                    "UPDATE support_tickets SET student_reply = ?, updated_at = ? WHERE id = ?",
+                    (student_reply.strip(), _now(), ticket_id),
+                )
+                return (cursor.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Support ticket reply failed: %s", exc)
+        return False
+
+
+def clear_student_reply(ticket_id) -> bool:
+    """Reset a ticket's student reply (and its reply photo) so a fresh
+    Follow up round can start. Returns True when a row was actually
+    changed; False for unknown ids or storage failures."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                conn.execute(_SCHEMA)
+                cursor = conn.execute(
+                    "UPDATE support_tickets SET student_reply = '', "
+                    "reply_attachment_name = '', reply_attachment_data = NULL, "
+                    "updated_at = ? WHERE id = ?",
+                    (_now(), ticket_id),
+                )
+                return (cursor.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Support ticket reply reset failed: %s", exc)
         return False

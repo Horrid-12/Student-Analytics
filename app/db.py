@@ -20,7 +20,7 @@ import pandas as pd
 import psycopg.errors
 from psycopg.types.json import Jsonb
 
-from app import database
+from app import database, support
 
 logger = logging.getLogger(__name__)
 
@@ -591,7 +591,8 @@ def put_workflow(roster_id: str, state: dict) -> None:
 
 _SUPPORT_COLUMNS = (
     'id, created_by, student_name, subject, category, message, status, '
-    'admin_reply, attachment_name, student_attachment_name, '
+    'admin_reply, student_reply, reply_attachment_name, '
+    'attachment_name, student_attachment_name, '
     '(created_at AT TIME ZONE \'Asia/Kolkata\')::text AS "created_at", '
     '(updated_at AT TIME ZONE \'Asia/Kolkata\')::text AS "updated_at"'
 )
@@ -601,6 +602,7 @@ _SUPPORT_COLUMNS = (
 _SUPPORT_ATTACHMENT_COLUMNS = {
     "admin": ("attachment_name", "attachment_data"),
     "student": ("student_attachment_name", "student_attachment_data"),
+    "reply": ("reply_attachment_name", "reply_attachment_data"),
 }
 
 
@@ -612,6 +614,7 @@ def _support_slot_columns(slot: str) -> tuple[str, str] | None:
 _DB_ATTACHMENT_COLUMNS = {
     "admin": ("attachment_name", "attachment_data"),
     "student": ("student_attachment_name", "student_attachment_data"),
+    "reply": ("reply_attachment_name", "reply_attachment_data"),
 }
 
 
@@ -626,7 +629,15 @@ def create_support_ticket(
     category: str,
     message: str,
 ) -> Optional[dict]:
-    """Insert one ticket; returns the row as a dict or None on failure."""
+    """Insert one ticket; returns the row as a dict or None on failure.
+
+    The re-read happens after the INSERT transaction commits: the new row
+    is invisible to other connections (including the pool connection used
+    by ``get_support_ticket``) until then, so reading it from inside the
+    ``with`` block would wrongly report the ticket as missing — the caller
+    would show a validation error for a ticket that was actually created,
+    and skip saving the student's attachment.
+    """
     if not (created_by or "").strip() or not (subject or "").strip() or not (message or "").strip():
         return None
     try:
@@ -648,10 +659,11 @@ def create_support_ticket(
             row = cur.fetchone()
             if row is None:
                 return None
-            return get_support_ticket(row["id"])
+            new_id = row["id"]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("create_support_ticket failed: %s", exc)
         return None
+    return get_support_ticket(new_id)
 
 
 def list_support_tickets(limit: int = 200) -> list[dict]:
@@ -729,7 +741,7 @@ def update_support_ticket(
     assignments: list[str] = []
     values: list = []
     if status is not None:
-        if status not in ("Open", "In Progress", "Resolved"):
+        if status not in support.TICKET_STATUSES:
             return False
         assignments.append("status = %s")
         values.append(status)
@@ -751,6 +763,54 @@ def update_support_ticket(
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("update_support_ticket failed: %s", exc)
+        return False
+
+
+def reply_support_ticket(ticket_id, student_reply: Optional[str]) -> bool:
+    """Save the student's follow-up reply on a ticket. Returns True when a
+    row was actually changed. Status gating (In Progress / Follow up)
+    lives in the route."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    if not (student_reply or "").strip():
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE support_tickets SET student_reply = %s, updated_at = NOW() WHERE id = %s",
+                (student_reply.strip(), ticket_id),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("reply_support_ticket failed: %s", exc)
+        return False
+
+
+def clear_student_reply(ticket_id) -> bool:
+    """Reset a ticket's student reply (and its reply photo) so a fresh
+    Follow up round can start. Returns True when a row was actually
+    changed."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE support_tickets SET student_reply = '', "
+                "reply_attachment_name = '', reply_attachment_data = NULL, "
+                "updated_at = NOW() WHERE id = %s",
+                (ticket_id,),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("clear_student_reply failed: %s", exc)
         return False
 
 
@@ -783,7 +843,7 @@ def get_support_attachment(ticket_id, slot: str = "admin") -> Optional[dict]:
 
 def set_support_attachment(ticket_id, filename: str, data: bytes, slot: str = "admin") -> bool:
     """Attach (or replace) a file in a ticket's slot. Rejects unknown slots,
-    empty names, empty payloads, and files over 5 MB."""
+    empty names, empty payloads, and files over support.MAX_ATTACHMENT_BYTES."""
     columns = _support_slot_columns(slot)
     if columns is None:
         return False
@@ -792,7 +852,7 @@ def set_support_attachment(ticket_id, filename: str, data: bytes, slot: str = "a
     except (TypeError, ValueError):
         return False
     filename = (filename or "").strip()
-    if not filename or not data or len(data) > 5 * 1024 * 1024:
+    if not filename or not data or len(data) > support.MAX_ATTACHMENT_BYTES:
         return False
     try:
         with database.conn() as c:
