@@ -55,6 +55,9 @@
   .ticket-student-reply {
     border-left: 3px solid var(--blue);
   }
+  .ticket-followup-q {
+    border-left: 3px solid var(--badge-amber-color, #D97706);
+  }
   .ticket-followup-note {
     margin-top: 10px;
     padding: 10px 12px;
@@ -457,6 +460,18 @@
             {% endif %}
             {% if is_staff and t.status != 'Resolved' %}
             <div class="ticket-divider" aria-hidden="true"></div>
+            {% if t.followup_question %}
+            <div class="ticket-reply ticket-followup-q"><strong>Follow-up question:</strong> {{ t.followup_question }}</div>
+            {% endif %}
+            {% if t.attachment_name %}
+            <div class="ticket-attachment">
+              {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}" data-preview-name="{{ t.attachment_name }}" title="Preview {{ t.attachment_name }}" aria-label="Preview {{ t.attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}" loading="lazy"></button>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
+              {% endif %}
+            </div>
+            {% endif %}
             {% if t.student_reply %}
             <div class="ticket-reply ticket-student-reply"><strong>Student reply:</strong> {{ t.student_reply }}</div>
             {% endif %}
@@ -466,15 +481,6 @@
               <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}?slot=reply" data-preview-name="{{ t.reply_attachment_name }}" title="Preview {{ t.reply_attachment_name }}" aria-label="Preview {{ t.reply_attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=reply" alt="Preview of {{ t.reply_attachment_name }}" loading="lazy"></button>
               {% else %}
               <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=reply">{{ t.reply_attachment_name }}</a></span>
-              {% endif %}
-            </div>
-            {% endif %}
-            {% if t.attachment_name %}
-            <div class="ticket-attachment">
-              {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
-              <button type="button" class="ticket-thumb-btn" data-preview-url="/support/attachment/{{ t.id }}" data-preview-name="{{ t.attachment_name }}" title="Preview {{ t.attachment_name }}" aria-label="Preview {{ t.attachment_name }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}" loading="lazy"></button>
-              {% else %}
-              <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
               {% endif %}
             </div>
             {% endif %}
@@ -496,8 +502,8 @@
                   <div class="filter-field">
                     <label class="filter-label" for="status-{{ t.id }}">Status</label>
                     <select id="status-{{ t.id }}" class="filter-select" name="status">
-                      {% for value in statuses[1:] %}
-                      <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ value }}</option>
+                      {% for value in statuses[2:] %}
+                      <option value="{{ value }}" {% if value == 'Resolved' %}selected{% endif %}>{{ value }}</option>
                       {% endfor %}
                     </select>
                   </div>
@@ -506,8 +512,12 @@
               </div>
             </form>
             {% else %}
-            {% if t.attachment_name or t.admin_reply or t.student_reply or is_staff %}
+            {% if t.attachment_name or t.admin_reply or t.student_reply or t.followup_question or t.reply_attachment_name or is_staff %}
             <div class="ticket-divider" aria-hidden="true"></div>
+            {% endif %}
+            {% set show_reply_form = not is_staff and t.status in ('In Progress', 'Follow up') and not t.student_reply %}
+            {% if t.followup_question %}
+            <div class="ticket-reply ticket-followup-q"><strong>Follow-up question:</strong> {{ t.followup_question }}</div>
             {% endif %}
             {% if t.attachment_name %}
             <div class="ticket-attachment">
@@ -518,10 +528,6 @@
               {% endif %}
             </div>
             {% endif %}
-            {% if t.admin_reply %}
-            <div class="ticket-reply"><strong>Resolution:</strong> {{ t.admin_reply }}</div>
-            {% endif %}
-            {% set show_reply_form = not is_staff and t.status in ('In Progress', 'Follow up') and not t.student_reply %}
             {% if t.student_reply and not show_reply_form %}
             <div class="ticket-reply ticket-student-reply"><strong>{% if is_staff %}Student reply:{% else %}Your reply:{% endif %}</strong> {{ t.student_reply }}</div>
             {% endif %}
@@ -533,6 +539,9 @@
               <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=reply">{{ t.reply_attachment_name }}</a></span>
               {% endif %}
             </div>
+            {% endif %}
+            {% if t.admin_reply %}
+            <div class="ticket-reply"><strong>Resolution:</strong> {{ t.admin_reply }}</div>
             {% endif %}
             {% if show_reply_form %}
             {% if t.status == 'Follow up' %}

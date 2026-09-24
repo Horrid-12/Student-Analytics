@@ -335,10 +335,11 @@ class TestTriageWorkflow:
         assert "old.txt" in faculty.get("/support").text
         assert 'action="/support/attachment/remove"' not in faculty.get("/support").text
         assert 'action="/support/attachment/remove"' not in student.get("/support").text
-        # The retired endpoint is gone; store-level clearing still works.
+        # The retired endpoint is gone (405: the GET download route owns
+        # this path now); store-level clearing still works.
         assert faculty.post(
             "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
-        ).status_code == 404
+        ).status_code == 405
         assert support.get_attachment(tid) is not None
         assert support.clear_attachment(tid) is True
         assert support.get_attachment(tid) is None
@@ -350,12 +351,12 @@ class TestTriageWorkflow:
         assert support.set_attachment(tid, "mine.txt", b"data")
         assert student.post(
             "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
-        ).status_code == 404
+        ).status_code == 405
         assert support.get_attachment(tid) is not None
         admin, _ = login_as("admin")
         assert admin.post(
             "/support/attachment/remove", data={"ticket_id": 999999}, follow_redirects=False
-        ).status_code == 404
+        ).status_code == 405
 
     def test_oversize_attachment_rejected(self):
         student, _ = login_as("student")
@@ -910,6 +911,9 @@ class TestStudentReply:
         raise_ticket(student, subject="Follow me", message="Hi.")
         tid = self._ticket_id("Follow me")
         faculty = self._set_status(tid, "Follow up", "Send your PRN.")
+        row = support.get_ticket(tid)
+        assert row["followup_question"] == "Send your PRN."
+        assert row.get("admin_reply") in (None, "")  # compose cleared on submit
         body = student.get("/support").text
         assert "Follow up" in body
         assert "badge-red" in body
@@ -923,12 +927,65 @@ class TestStudentReply:
         row = support.get_ticket(tid)
         assert row["student_reply"] == "PRN-123"
         assert row["status"] == "In Progress"  # answered follow-up returns to staff
+        assert row["followup_question"] == "Send your PRN."  # question stays in thread
         admin_body = faculty.get("/support").text
+        assert "Follow-up question:" in admin_body
         assert "Student reply:" in admin_body
         assert "PRN-123" in admin_body
+        assert admin_body.index("Follow-up question:") < admin_body.index("Student reply:")
+        student_body = student.get("/support").text
+        assert "Follow-up question:" in student_body
+        assert student_body.index("Follow-up question:") < student_body.index("Your reply:")
         profile_body = faculty.get(f"/support?profile={email}").text
         assert '<div class="ticket-stat-number">0</div><div class="ticket-stat-label">Follow up</div>' in profile_body
         assert '<div class="ticket-stat-number">1</div><div class="ticket-stat-label">In Progress</div>' in profile_body
+
+    def test_follow_up_question_submitted_not_draft(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Snapshot check", message="Hi.")
+        tid = self._ticket_id("Snapshot check")
+        faculty, _ = login_as("faculty")
+        response = faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Follow up", "admin_reply": "What is the correct ID?"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        # Submitted: question stored, compose box cleared for both roles.
+        assert support.get_ticket(tid)["followup_question"] == "What is the correct ID?"
+        assert support.get_ticket(tid).get("admin_reply") in (None, "")
+        admin_body = faculty.get("/support").text
+        assert "Follow-up question:" in admin_body
+        assert "What is the correct ID?" in admin_body
+        assert 'name="admin_reply" placeholder="Write a reply&hellip;"></textarea>' in admin_body
+        student_body = student.get("/support").text
+        assert "Follow-up question:" in student_body
+        assert ">Reply</button>" in student_body  # answer still required
+
+    def test_follow_up_without_question_text(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Bare follow up", message="Hi.")
+        tid = self._ticket_id("Bare follow up")
+        faculty, _ = login_as("faculty")
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Follow up", "admin_reply": "   "},
+            follow_redirects=False,
+        ).status_code == 302
+        assert support.get_ticket(tid)["status"] == "Follow up"
+        assert "Follow-up question:" not in student.get("/support").text
+        assert ">Reply</button>" in student.get("/support").text
+
+    def test_store_followup_validation(self):
+        assert support.submit_followup_question(123456, "q?") is False
+        assert support.submit_followup_question("not-an-id", "q?") is False
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Store followup", message="Hi.")
+        tid = self._ticket_id("Store followup")
+        assert support.submit_followup_question(tid, "Q?") is True
+        row = support.get_ticket(tid)
+        assert row["followup_question"] == "Q?"
+        assert row.get("admin_reply") in (None, "")
 
     def test_follow_up_is_a_valid_status(self):
         assert support.update_ticket(123456, status="Follow up") is False
@@ -950,3 +1007,35 @@ class TestStudentReply:
         admin.post("/support/update", data={"ticket_id": ids["Gamma open"], "status": "Follow up", "admin_reply": ""})
         body = admin.get("/support").text
         assert body.index("Alpha open") < body.index("Gamma open") < body.index("Beta open")
+
+    def test_status_select_drops_open_defaults_resolved(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Select check", message="Hi.")
+        faculty, _ = login_as("faculty")
+        body = faculty.get("/support").text
+        assert body.count('<option value="Open"') == 1  # staff filter only
+        assert body.count('<option value="Resolved" selected>') == 1  # update form default
+        assert '<option value="In Progress"' in body
+        assert '<option value="Follow up"' in body
+
+    def test_thread_renders_in_chat_order(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Chat order", message="Hi.")
+        tid = self._ticket_id("Chat order")
+        faculty, _ = login_as("faculty")
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Follow up", "admin_reply": "QUESTION-XYZ"},
+            files={"attachment": ("qpic.png", b"\x89PNG\r\n\x1a\nq", "image/png")},
+            follow_redirects=False,
+        ).status_code == 302
+        assert student.post(
+            "/support/reply",
+            data={"ticket_id": tid, "student_reply": "answer text"},
+            files={"attachment": ("rpic.png", b"\x89PNG\r\n\x1a\nr", "image/png")},
+            follow_redirects=False,
+        ).status_code == 302
+        for body in (student.get("/support").text, faculty.get("/support").text):
+            assert body.index("QUESTION-XYZ") < body.index("qpic.png")
+            assert body.index("qpic.png") < body.index("answer text")
+            assert body.index("answer text") < body.index("rpic.png")

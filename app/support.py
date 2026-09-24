@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     message TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'Open',
     admin_reply TEXT NOT NULL DEFAULT '',
+    followup_question TEXT NOT NULL DEFAULT '',
     student_reply TEXT NOT NULL DEFAULT '',
     reply_attachment_name TEXT NOT NULL DEFAULT '',
     reply_attachment_data BLOB,
@@ -72,6 +73,7 @@ _ATTACHMENT_MIGRATION = (
     "ALTER TABLE support_tickets ADD COLUMN student_reply TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE support_tickets ADD COLUMN reply_attachment_name TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE support_tickets ADD COLUMN reply_attachment_data BLOB",
+    "ALTER TABLE support_tickets ADD COLUMN followup_question TEXT NOT NULL DEFAULT ''",
 )
 
 #: Columns returned for lists/details — the attachment bytes stay out so
@@ -85,6 +87,7 @@ _COLUMNS = (
     "message",
     "status",
     "admin_reply",
+    "followup_question",
     "student_reply",
     "reply_attachment_name",
     "attachment_name",
@@ -468,4 +471,29 @@ def clear_student_reply(ticket_id) -> bool:
                 return (cursor.rowcount or 0) > 0
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Support ticket reply reset failed: %s", exc)
+        return False
+
+
+def submit_followup_question(ticket_id, question: str | None) -> bool:
+    """Publish the staff's follow-up question as a submitted thread entry,
+    flip the ticket to Follow up, and clear the Resolution compose box.
+    What was in the box is what gets sent (verbatim, even empty). Returns
+    True when a row was actually changed; False for unknown ids or
+    storage failures."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                conn.execute(_SCHEMA)
+                cursor = conn.execute(
+                    "UPDATE support_tickets SET status = 'Follow up', "
+                    "followup_question = ?, admin_reply = '', updated_at = ? WHERE id = ?",
+                    ((question or "").strip(), _now(), ticket_id),
+                )
+                return (cursor.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Support follow-up submit failed: %s", exc)
         return False

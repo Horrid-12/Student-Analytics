@@ -1276,6 +1276,12 @@ def _clear_student_reply(ticket_id: int) -> bool:
     return support.clear_student_reply(ticket_id)
 
 
+def _submit_followup_question(ticket_id: int, question: str) -> bool:
+    if database.db_configured():
+        return db.submit_followup_question(ticket_id, question or "")
+    return support.submit_followup_question(ticket_id, question)
+
+
 def _ticket_is_resolved(ticket: dict | None) -> bool:
     return bool(ticket) and ticket.get("status") == "Resolved"
 
@@ -1416,12 +1422,14 @@ async def support_update(
     if ticket.get("status") == "Resolved":
         raise HTTPException(status_code=403, detail="Resolved tickets are read-only")
     filename, file_bytes = await _read_upload(attachment)
-    if not _update_support_ticket(ticket_id, status, admin_reply):
-        raise HTTPException(status_code=404, detail="Ticket not found")
     if status == "Follow up":
-        # A fresh follow-up round starts: drop the previous student reply
-        # (and its photo) so the student answers the new question.
+        # Publish the question as a submitted thread entry (clearing the
+        # compose box) and open a fresh answer round for the student.
+        if not _submit_followup_question(ticket_id, admin_reply):
+            raise HTTPException(status_code=404, detail="Ticket not found")
         _clear_student_reply(ticket_id)
+    elif not _update_support_ticket(ticket_id, status, admin_reply):
+        raise HTTPException(status_code=404, detail="Ticket not found")
     if filename and not _save_attachment(ticket_id, filename, file_bytes, slot="admin"):
         raise HTTPException(status_code=400, detail="Could not save attachment")
     return RedirectResponse("/support", status_code=302)
@@ -1497,7 +1505,7 @@ def support_attachment(request: Request, ticket_id: int, slot: str = "admin"):
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if slot not in ("admin", "student"):
+    if slot not in ("admin", "student", "reply"):
         raise HTTPException(status_code=404, detail="Attachment not found")
     ticket = _get_support_ticket(ticket_id)
     blob = _get_support_attachment(ticket_id, slot=slot)

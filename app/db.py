@@ -591,7 +591,7 @@ def put_workflow(roster_id: str, state: dict) -> None:
 
 _SUPPORT_COLUMNS = (
     'id, created_by, student_name, subject, category, message, status, '
-    'admin_reply, student_reply, reply_attachment_name, '
+    'admin_reply, student_reply, followup_question, reply_attachment_name, '
     'attachment_name, student_attachment_name, '
     '(created_at AT TIME ZONE \'Asia/Kolkata\')::text AS "created_at", '
     '(updated_at AT TIME ZONE \'Asia/Kolkata\')::text AS "updated_at"'
@@ -811,6 +811,29 @@ def clear_student_reply(ticket_id) -> bool:
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("clear_student_reply failed: %s", exc)
+        return False
+
+
+def submit_followup_question(ticket_id, question: Optional[str]) -> bool:
+    """Publish the staff's follow-up question as a submitted thread entry,
+    flip the ticket to Follow up, and clear the Resolution compose box.
+    Returns True when a row was actually changed."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE support_tickets SET status = 'Follow up', "
+                "followup_question = %s, admin_reply = '', updated_at = NOW() WHERE id = %s",
+                ((question or "").strip(), ticket_id),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("submit_followup_question failed: %s", exc)
         return False
 
 
