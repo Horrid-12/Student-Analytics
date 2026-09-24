@@ -265,6 +265,48 @@ def overview_payload(view) -> dict:
     prs = int(students["Pull_Requests"].sum()) if not students.empty else 0
     opened_issues = int(students["Issues_Opened"].sum()) if not students.empty else 0
 
+    # ── Raw data for ECharts advanced charts ────────────────────────────────
+    # Treemap: account validation categories
+    treemap_data = [
+        {"name": row["Status"], "value": row["Count"]}
+        for row in account_status
+        if row["Count"] > 0
+    ]
+
+    # Bubble: top 10 languages
+    bubble_data = [
+        {"name": str(row["Language"]), "value": int(row["Repositories"])}
+        for _, row in language_counts.iterrows()
+    ] if not language_counts.empty else []
+
+    # Sankey: Division × Batch repo counts (reuse heatmap_rows)
+    sankey_data = [
+        {"division": str(row["Division"]), "batch": str(row["Batch"]),
+         "repo_count": int(row["Repository_Count"])}
+        for _, row in heatmap_rows.iterrows()
+    ] if not heatmap_rows.empty else []
+
+    # Radar: key class metrics (normalised per-axis for balanced shape)
+    _avg_repos = float(students["Repository_Count"].mean()) if not students.empty else 0.0
+    _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
+    _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
+    _sr = float(submission_rate)
+    _total_prs = float(prs)
+
+    def _radar_max(val, floor=10):
+        """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
+        return max(round(val * 1.5, 1), floor)
+
+    radar_data = {
+        "metrics": [
+            {"name": "Avg Repos",       "value": round(_avg_repos, 1),    "max": _radar_max(_avg_repos, 5)},
+            {"name": "Avg Followers",    "value": round(_avg_followers, 1),"max": _radar_max(_avg_followers, 10)},
+            {"name": "Quality Score",    "value": round(_avg_quality, 1),  "max": 100},
+            {"name": "Submission %",     "value": round(_sr, 1),           "max": 100},
+            {"name": "Pull Requests",    "value": round(_total_prs, 0),    "max": _radar_max(_total_prs, 10)},
+        ]
+    }
+
     return {
         "total": total,
         "valid": valid,
@@ -284,6 +326,11 @@ def overview_payload(view) -> dict:
         "repo_dist_fig": _build_area_fig(repo_distribution, "Repository Count", "Students", ACCENT),
         "followers_dist_fig": _build_area_fig(followers_distribution, "Followers", "Students", PURPLE),
         "heatmap_fig": _build_heatmap_fig(heatmap_rows),
+        # ECharts advanced chart data
+        "treemap_data": treemap_data,
+        "bubble_data": bubble_data,
+        "sankey_data": sankey_data,
+        "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
         "elapsed": float(state.get("elapsed") or 0.0),
@@ -349,13 +396,13 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
     return charts.heatmap(batches, divisions, z)
 
 
-from app.charts import ACCENT, DANGER, PURPLE, SUCCESS, WARNING
+from app.charts import ACCENT, PURPLE, SECONDARY, SUCCESS, WARNING
 
 
 def _donut(labels, values):
     from app import charts
 
-    return charts.donut(labels, values, colors=[SUCCESS, DANGER, WARNING])
+    return charts.donut(labels, values, colors=[SUCCESS, ACCENT, WARNING])
 
 
 # ---------------------------------------------------------------------------
