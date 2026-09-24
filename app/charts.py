@@ -4,21 +4,24 @@ readable axis labels. Each returns ``fig.to_dict()`` for Jinja ``| tojson``
 embedding.
 
 Trace colours below mirror the LIGHT theme tokens (the HTML default); the
-charts.html macro remaps them per active theme at render time (dark tokens are
-brighter for dark backgrounds).
+charts.html macro remaps them per active theme at render time.  The primary
+ACCENT is the sidebar-active red (#BE342B) in light mode, swapped to the
+bright blue (#5B9CF6) in dark mode by the JS macro.
 """
 
 import plotly.graph_objects as go
 
 # light-theme site tokens (static/theme.css [data-theme="light"])
-ACCENT = "#60738A"   # --blue
-SUCCESS = "#21845D"  # --green
-WARNING = "#A66B25"  # --amber
-DANGER = "#BE342B"   # --red
-PURPLE = "#9AAABD"   # --purple-slate (dark-theme --purple; distinct from --blue)
-MUTED = "#566271"    # --muted
+# ACCENT is the hero colour — red in light mode (sidebar active), remapped to
+# blue (#5B9CF6) in dark mode by the charts.html JS macro.
+ACCENT    = "#BE342B"  # --red   (light-mode sidebar active accent)
+SECONDARY = "#60738A"  # --blue  (light-mode button / secondary accent)
+SUCCESS   = "#3d7a7a"  # --green (dusty teal)
+WARNING   = "#A66B25"  # --amber
+PURPLE    = "#9AAABD"  # --purple-slate
+MUTED     = "#566271"  # --muted
 
-DONUT_COLORS = [ACCENT, SUCCESS, WARNING, DANGER, PURPLE, MUTED]
+DONUT_COLORS = [ACCENT, SECONDARY, SUCCESS, WARNING, PURPLE, MUTED]
 
 _AXIS = dict(
     # BUG-086: neutral placeholders — theme-aware values injected by charts.html macro at render time.
@@ -96,11 +99,12 @@ def bar(labels, values, color=ACCENT, height=285, title=None):
 
 def area(x, y, color=ACCENT, height=260, title=None):
     """Distribution chart — gradient-to-transparent area (legacy mark_area)."""
-    # Accent tint uses the --blue rgba (96,115,138) light / (91,156,246) dark —
-    # the JS macro rewrites the rgb triple for the active theme. Purple tint stays
-    # the same in both themes.
+    # Accent tint uses the --red rgba (190,52,43) light / remapped to (91,156,246)
+    # dark by the JS macro (charts.html rewrites the rgb triple for the active
+    # theme). SECONDARY keeps the blue-grey tint; purple stays the same.
     fills = {
-        ACCENT: "rgba(96, 115, 138, 0.15)",
+        ACCENT: "rgba(190, 52, 43, 0.15)",
+        SECONDARY: "rgba(96, 115, 138, 0.15)",
         PURPLE: "rgba(154, 170, 189, 0.08)",
     }
     fig = go.Figure()
@@ -111,7 +115,7 @@ def area(x, y, color=ACCENT, height=260, title=None):
             mode="lines",
             line=dict(color=color, width=2),
             fill="tozeroy",
-            fillcolor=fills.get(color, "rgba(96, 115, 138, 0.15)"),
+            fillcolor=fills.get(color, "rgba(190, 52, 43, 0.15)"),
             hovertemplate="%{x}: %{y}<extra></extra>",
         )
     )
@@ -128,8 +132,8 @@ def heatmap(batches, divisions, values, title=None):
             y=list(divisions),
             z=list(values),
             colorscale=[
-                [0.0, "#3A3A3E"],
-                [0.5, "#60738A"],
+                [0.0, "#f5f1e9"],
+                [0.5, "#BE342B"],
                 [1.0, "#21845D"],
             ],
             hovertemplate="%{y} · Batch %{x}: %{z} repos<extra></extra>",

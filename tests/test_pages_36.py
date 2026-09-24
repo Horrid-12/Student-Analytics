@@ -240,13 +240,162 @@ class TestPageRenderingWithData:
         # Export lives in the filter-bar dropdown, not at the bottom.
         assert "export-dropdown" in body
         assert "Export CSV" not in body
+        # Avatar opens the same profile popup as the name/ID links.
+        assert 'class="avatar-link student-open-link"' in body
+        assert "View profile of Alice Example" in body
 
         profile = self.client.get(f"/students?roster={roster_id}&select=101").text
-        assert "Recent Repositories" in profile
         assert 'id="student-modal-backdrop"' in profile
         assert 'role="dialog"' in profile
         assert "student-table" in profile
         assert ".student-modal .profile-panel" in profile
+        # Profile tabs: GitHub active with the repositories dropdown, the
+        # other two panels present but hidden and empty for now.
+        assert 'role="tablist"' in profile
+        assert 'id="profile-tab-github"' in profile
+        assert 'id="profile-panel-github"' in profile
+        assert 'id="profile-panel-hackerrank"' in profile
+        assert 'id="profile-panel-linkedin"' in profile
+        assert "repo-dropdown" in profile
+        assert "Repositories (" in profile
+        assert "py1" in profile and "js1" in profile
+        assert "Language Mix" not in profile
+        assert "Top Languages" in profile
+        assert "lang-row" in profile
+        assert "lang-split" in profile
+        assert "lang-divider" in profile
+        # One segment per repo: Alice has 1 Python + 1 JavaScript repo.
+        assert profile.count('<span class="lang-seg"></span>') == 2
+        # Top languages fill the track; the rest scale against them.
+        assert profile.count('class="lang-fill" style="width:100%"') == 2
+        assert "Activity" in profile
+        assert "Contributions in last 30 days" in profile
+        assert "Active repositories" in profile
+        assert "Current activity streak" in profile
+        # Icon buttons replace the old text links: GitHub only (no
+        # LinkedIn/HackerRank on this fixture roster).
+        assert 'class="profile-icon-btn profile-icon-github"' in profile
+        assert "https://github.com/alice-dev" in profile
+        assert 'profile-icon-btn profile-icon-linkedin"' not in profile
+        assert 'profile-icon-btn profile-icon-hackerrank"' not in profile
+        assert "external-link-button" not in profile
+
+    def test_profile_top_languages_ranked_with_percentages(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        def repo(name, language, day):
+            return {
+                "Username": "u",
+                "Repository": name,
+                "Language": language,
+                "Stars": 0,
+                "Updated": f"2026-01-{day:02d}T00:00:00Z",
+                "Repository_URL": "",
+                "Quality_Band": "",
+            }
+
+        repos = pd.DataFrame(
+            [repo(f"py{i}", "Python", i) for i in range(1, 10)]
+            + [repo(f"go{i}", "Go", 10 + i) for i in range(1, 5)]
+            + [repo(f"js{i}", "JavaScript", 14 + i) for i in range(1, 4)]
+            + [repo(f"ts{i}", "TypeScript", 17 + i) for i in range(1, 3)]
+            + [repo("rs1", "Rust", 20)]
+            + [repo(f"misc{i}", None, 21 + i) for i in range(1, 21)]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        top = students_payload_profile(row, repos)["top_languages"]
+        # Unknown (20 repos) is excluded entirely; every known language shows
+        # (no cap), widths ceiled to multiples of 5.
+        assert top == [
+            {"language": "Python", "count": 9, "pct": 100},
+            {"language": "Go", "count": 4, "pct": 45},
+            {"language": "JavaScript", "count": 3, "pct": 35},
+            {"language": "TypeScript", "count": 2, "pct": 25},
+            {"language": "Rust", "count": 1, "pct": 15},
+        ]
+        assert all(item["pct"] % 5 == 0 for item in top)
+
+    def test_profile_recent_activity_from_repo_timestamps(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        now = pd.Timestamp.now(tz="UTC").normalize()
+
+        def repo(name, days_ago):
+            updated = (now - pd.Timedelta(days=days_ago)).isoformat()
+            return {
+                "Username": "u",
+                "Repository": name,
+                "Language": "Python",
+                "Stars": 0,
+                "Updated": updated,
+                "Repository_URL": "",
+                "Quality_Band": "",
+            }
+
+        repos = pd.DataFrame(
+            [
+                repo("today", 0),
+                repo("yesterday", 1),
+                repo("day-before", 2),
+                repo("old", 40),
+                repo("older", 200),
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        # today/yesterday/day-before are within 30 days; the old ones are not.
+        assert profile["contributions_30d"] == 3
+        # Three consecutive active days ending today.
+        assert profile["activity_streak"] == 3
+
+    def test_profile_streak_broken_without_recent_updates(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        now = pd.Timestamp.now(tz="UTC").normalize()
+        repos = pd.DataFrame(
+            [
+                {
+                    "Username": "u",
+                    "Repository": "old",
+                    "Language": "Python",
+                    "Stars": 0,
+                    "Updated": (now - pd.Timedelta(days=40)).isoformat(),
+                    "Repository_URL": "",
+                    "Quality_Band": "",
+                }
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        assert profile["contributions_30d"] == 0
+        assert profile["activity_streak"] == 0
 
     def test_students_divisions_sorted_numerically(self, tmp_path):
         from app.views import dist_options
@@ -319,7 +468,7 @@ class TestPageRenderingWithData:
         assert selected["linkedin_display"] == "anshuman-kulkarni"
         assert selected["linkedin_username"] == "anshuman-kulkarni-b27b0142a"
 
-    def test_students_payload_batches_fifty_at_a_time(self):
+    def test_students_payload_batches_thirty_at_a_time(self):
         import pandas as pd
 
         from app import views
@@ -356,9 +505,9 @@ class TestPageRenderingWithData:
         payload = views.students_payload(view)
         assert payload["total"] == 120
         assert len(payload["display"]) == 120
-        assert payload["showing"] == 50
-        assert payload["initial_visible"] == 50
-        assert payload["batch_size"] == 50
+        assert payload["showing"] == 30
+        assert payload["initial_visible"] == 30
+        assert payload["batch_size"] == 30
         # Explicit rows override grows the first paint (modal depth restore).
         payload = views.students_payload(view, rows=100)
         assert payload["showing"] == 100
@@ -385,15 +534,10 @@ class TestPageRenderingWithData:
         assert "Top Languages by Repositories" in body
         assert "Alice Example" in body
 
-    def test_verification_page_and_export(self, tmp_path):
+    def test_verification_routes_removed(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        body = self.client.get(f"/verification?roster={roster_id}").text
-        assert "Account Verification Audit" in body
-        assert "Verified" in body
-
-        csv = self.client.get(f"/verification/export?roster={roster_id}").text
-        assert "Student Name" in csv
-        assert "Alice Example" in csv
+        assert self.client.get(f"/verification?roster={roster_id}").status_code == 404
+        assert self.client.get(f"/verification/export?roster={roster_id}").status_code == 404
 
     def test_issues_page_and_workflow_save(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -426,34 +570,6 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         res = self.client.get("/overview/partial")
         assert res.status_code == 404
-
-    def test_verification_export_respects_status_filter(self, tmp_path):
-        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
-        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
-        self.client = TestClient(app)
-        make_user(self.client, "admin")
-        patch_app_pipeline(self.monkeypatch, crash_free_fake())
-        rows = roster_rows() + [
-            {
-                "Timestamp": "2025-08-01 10:10:00",
-                "PRN No": "303.0",
-                "Student Name": "Carol None",
-                "Division": "B",
-                "Batch": "2026",
-                "Actual GitHub Account Link:": "",
-            }
-        ]
-        buf = make_roster_xlsx(rows)
-        data = self.client.post(
-            "/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)}
-        ).json()
-        roster_id = run_all_batches(self.client, data)
-        page = self.client.get(f"/verification?roster={roster_id}&status=Missing").text
-        assert "status=Missing" in page
-        assert "Carol None" in page
-        csv = self.client.get(f"/verification/export?roster={roster_id}&status=Missing").text
-        assert "Carol None" in csv
-        assert "Alice Example" not in csv
 
     def test_csv_export_has_utf8_bom(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -490,7 +606,7 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         data = upload_roster(self.client)
         roster_id = data["roster_id"]
-        for path in ("students", "repositories", "leaderboards", "issues", "verification"):
+        for path in ("students", "repositories", "leaderboards", "issues"):
             body = self.client.get(f"/{path}?roster={roster_id}").text
             assert "populates after you upload a roster" in body
         body = self.client.get("/students").text
@@ -660,6 +776,14 @@ class TestSidebarIdentityContext:
         assert "Faculty" in settings                 # role status from context, not hardcoded brand
         assert "Open Access" not in settings         # anonymous footer replaced
         assert "Sign out" in settings                # auth footer offers logout
+
+    def test_sidebar_admin_label_has_no_dot(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app)
+        make_user(client, "admin")
+        body = client.get("/settings").text
+        assert '<div class="user-role-line">Admin</div>' in body
 
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"

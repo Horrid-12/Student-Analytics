@@ -143,7 +143,7 @@ class TestRBACGating:
         for role in ("faculty", "admin"):
             c = TestClient(app)
             self._session(c, role)
-            for path in ("/students", "/settings", "/history", "/repositories", "/issues", "/verification"):
+            for path in ("/students", "/settings", "/history", "/repositories", "/issues"):
                 assert c.get(path).status_code in (200, 404), f"{role} blocked on {path}"
 
     def test_api_endpoints_require_a_session(self, client):

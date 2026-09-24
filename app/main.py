@@ -110,7 +110,7 @@ def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
     return True
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -121,7 +121,6 @@ NAV_SVG = {
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
     "History": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
-    "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 }
 
@@ -136,7 +135,6 @@ def slug_for(page: str) -> str:
         "Leaderboards": "leaderboards",
         "History": "history",
         "Issues": "issues",
-        "Verification": "verification",
         "Settings": "settings",
     }
     return SLUGS.get(page, page.lower())
@@ -166,7 +164,6 @@ PAGE_PLACEHOLDERS = {
     "Repositories": ("repositories", "Repositories", "Browse every public repository in the roster with language and activity details.", True),
     "Leaderboards": ("leaderboards", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students.", True),
     "Issues": ("issues", "Open Issues", "Review open issues and technical debt across student repositories.", True),
-    "Verification": ("verification", "Verification", "Confirm each GitHub account, review validation results, and export per-student status.", True),
     "History": ("history", "Run History", "Past analysis runs, timings, and outcomes appear here.", False),
     "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
 }
@@ -1179,37 +1176,6 @@ async def issues_workflow_save(request: Request, roster: str = ""):
     if database.db_configured():
         db.put_workflow(roster, body)
     return {"status": "ok", "saved": len(body)}
-
-
-@app.get("/verification", response_class=HTMLResponse)
-def verification_page(
-    request: Request, roster: str = "", q: str = "", status: str = "All", rows: int = 50
-):
-    ctx = _base_context(request, "Verification", roster)
-    view, response = _guard_page(request, ctx, "Verification", roster)
-    if response is not None:
-        return response
-    payload = views.verification_payload(view, q, status, rows)
-    export_query = views.export_query_str(
-        roster_id=roster, q=q, division="All", batch="All", year="All", semester="All", status=status
-    )
-    return templates.TemplateResponse(
-        request,
-        "pages/verification.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "q": q, "status": status, "rows": rows, "export_query": export_query},
-    )
-
-
-@app.get("/verification/export")
-def verification_export(
-    request: Request, roster: str = "", format: str = "csv", q: str = "", status: str = "All", rows: int = 50
-):
-    view, response = _guard_page(request, {}, "Verification", roster)
-    if response is not None:
-        raise HTTPException(status_code=404, detail="No completed analysis to export")
-    payload = views.verification_payload(view, q, status, rows)
-    df = payload["filtered"].copy()
-    return _export_response(df, format, "verification")
 
 
 @app.get("/settings", response_class=HTMLResponse)

@@ -82,6 +82,10 @@ button {
 .sidebar-stack .user-name {
     font-size: 16px;
 }
+.sidebar-stack .user-role-line {
+    font-size: 20px;
+    font-weight: 800;
+}
 .sidebar-stack .user-details {
     overflow: visible;
 }
@@ -91,6 +95,13 @@ button {
     overflow: visible;
     text-overflow: clip;
     overflow-wrap: anywhere;
+}
+/* Role label must stay on one line next to the avatar (never wrap mid-word).
+   Placed after the wrap rules above so nowrap wins on equal specificity. */
+.sidebar-stack .user-role-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sidebar-nav {
@@ -731,7 +742,78 @@ button {
 @media (max-width: 760px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 1100px) { .two-col-grid { grid-template-columns: 1fr; } }
+.radar-grid { display: grid; grid-template-columns: 5fr 3fr; gap: 24px; align-items: start; }
+@media (max-width: 1100px) { .radar-grid { grid-template-columns: 1fr; } }
 .donut-chart { min-height: 200px; }
+.echart-box { width: 100%; min-height: 260px; }
+.full-width .echart-box { min-height: 300px; }
+
+/* ── Segmented Capsule / Stacked Micro-Bar ──────────────────────────── */
+.capsule-wrap { padding: 4px 0; }
+.capsule-stats {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.capsule-stat {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-family: var(--font-sans); color: var(--muted);
+}
+.capsule-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.capsule-dot--connected { background: var(--capsule-connected); }
+.capsule-dot--invalid   { background: var(--capsule-invalid); }
+.capsule-dot--missing   { background: var(--capsule-missing); }
+.capsule-stat strong { font-weight: 700; color: var(--text); margin-right: 2px; }
+.capsule-stat .capsule-pct {
+  font-size: 11.5px; color: var(--muted); opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.capsule-track {
+  width: 100%; height: 10px; border-radius: 999px;
+  background: var(--capsule-track);
+  display: flex; overflow: hidden;
+  position: relative;
+}
+.capsule-seg {
+  height: 100%; transition: transform 0.18s ease, filter 0.18s ease, height 0.18s ease;
+  position: relative; cursor: default;
+  min-width: 3px;        /* keeps tiny segments visible */
+}
+.capsule-seg:first-child { border-radius: 999px 0 0 999px; }
+.capsule-seg:last-child  { border-radius: 0 999px 999px 0; }
+.capsule-seg:only-child  { border-radius: 999px; }
+.capsule-seg--connected { background: var(--capsule-connected); }
+.capsule-seg--invalid   { background: var(--capsule-invalid); }
+.capsule-seg--missing   { background: var(--capsule-missing); }
+
+.capsule-seg:hover {
+  height: 14px; margin-top: -2px;
+  filter: brightness(1.15);
+  z-index: 2;
+}
+
+/* Tooltip */
+.capsule-tip {
+  position: absolute; bottom: calc(100% + 10px); left: 50%;
+  transform: translateX(-50%); pointer-events: none;
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 11px; font-size: 12px; line-height: 1.5;
+  font-family: var(--font-sans); white-space: nowrap;
+  box-shadow: 0 4px 14px var(--shadow);
+  opacity: 0; transition: opacity 0.15s ease;
+  z-index: 10;
+}
+.capsule-tip::after {
+  content: ''; position: absolute; top: 100%; left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--border);
+}
+.capsule-seg:hover .capsule-tip { opacity: 1; }
+.capsule-tip b { font-weight: 700; }
+.capsule-tip span { color: var(--muted); }
 .run-log-snapshot { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
 .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #A78BFA; font-size: 12px; font-weight: 600; border: 1px solid rgba(139, 92, 246, 0.3); }
 .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }

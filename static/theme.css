@@ -43,6 +43,11 @@
     --badge-blue-color: #41546c;
     --badge-purple-color: #41546c;
     --ext-link-color: #176545;
+    /* Capsule segment colors */
+    --capsule-connected: #3d7a7a;
+    --capsule-invalid: #c4553a;
+    --capsule-missing: #c9b99a;
+    --capsule-track: #e2dcd1;
 }
 
 [data-theme="dark"] {
@@ -87,6 +92,11 @@
     --badge-blue-color: #93C5FD;
     --badge-purple-color: #b8c8da;
     --ext-link-color: #7bd6aa;
+    /* Capsule segment colors */
+    --capsule-connected: #6bcfcf;
+    --capsule-invalid: #e06b6b;
+    --capsule-missing: #5a5a60;
+    --capsule-track: #333336;
 }
 
 [data-theme="light"] {

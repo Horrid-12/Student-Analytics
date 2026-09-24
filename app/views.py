@@ -5,7 +5,7 @@ results) that reproduce the legacy app.py render_* computations with the same
 columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -265,6 +265,48 @@ def overview_payload(view) -> dict:
     prs = int(students["Pull_Requests"].sum()) if not students.empty else 0
     opened_issues = int(students["Issues_Opened"].sum()) if not students.empty else 0
 
+    # ── Raw data for ECharts advanced charts ────────────────────────────────
+    # Treemap: account validation categories
+    treemap_data = [
+        {"name": row["Status"], "value": row["Count"]}
+        for row in account_status
+        if row["Count"] > 0
+    ]
+
+    # Bubble: top 10 languages
+    bubble_data = [
+        {"name": str(row["Language"]), "value": int(row["Repositories"])}
+        for _, row in language_counts.iterrows()
+    ] if not language_counts.empty else []
+
+    # Sankey: Division × Batch repo counts (reuse heatmap_rows)
+    sankey_data = [
+        {"division": str(row["Division"]), "batch": str(row["Batch"]),
+         "repo_count": int(row["Repository_Count"])}
+        for _, row in heatmap_rows.iterrows()
+    ] if not heatmap_rows.empty else []
+
+    # Radar: key class metrics (normalised per-axis for balanced shape)
+    _avg_repos = float(students["Repository_Count"].mean()) if not students.empty else 0.0
+    _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
+    _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
+    _sr = float(submission_rate)
+    _total_prs = float(prs)
+
+    def _radar_max(val, floor=10):
+        """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
+        return max(round(val * 1.5, 1), floor)
+
+    radar_data = {
+        "metrics": [
+            {"name": "Avg Repos",       "value": round(_avg_repos, 1),    "max": _radar_max(_avg_repos, 5)},
+            {"name": "Avg Followers",    "value": round(_avg_followers, 1),"max": _radar_max(_avg_followers, 10)},
+            {"name": "Quality Score",    "value": round(_avg_quality, 1),  "max": 100},
+            {"name": "Submission %",     "value": round(_sr, 1),           "max": 100},
+            {"name": "Pull Requests",    "value": round(_total_prs, 0),    "max": _radar_max(_total_prs, 10)},
+        ]
+    }
+
     return {
         "total": total,
         "valid": valid,
@@ -284,6 +326,11 @@ def overview_payload(view) -> dict:
         "repo_dist_fig": _build_area_fig(repo_distribution, "Repository Count", "Students", ACCENT),
         "followers_dist_fig": _build_area_fig(followers_distribution, "Followers", "Students", PURPLE),
         "heatmap_fig": _build_heatmap_fig(heatmap_rows),
+        # ECharts advanced chart data
+        "treemap_data": treemap_data,
+        "bubble_data": bubble_data,
+        "sankey_data": sankey_data,
+        "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
         "elapsed": float(state.get("elapsed") or 0.0),
@@ -349,13 +396,13 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
     return charts.heatmap(batches, divisions, z)
 
 
-from app.charts import ACCENT, DANGER, PURPLE, SUCCESS, WARNING
+from app.charts import ACCENT, PURPLE, SECONDARY, SUCCESS, WARNING
 
 
 def _donut(labels, values):
     from app import charts
 
-    return charts.donut(labels, values, colors=[SUCCESS, DANGER, WARNING])
+    return charts.donut(labels, values, colors=[SUCCESS, ACCENT, WARNING])
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +477,7 @@ def linkedin_display_name(slug) -> str:
 
 
 #: Rows shown on first paint; further batches of the same size reveal on scroll.
-STUDENT_BATCH_SIZE = 50
+STUDENT_BATCH_SIZE = 30
 
 
 def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None) -> dict:
@@ -544,16 +591,65 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(pairs)
 
 
+def _recent_activity(student_repos: pd.DataFrame) -> tuple[int, int]:
+    """Derive 30-day activity from repo update timestamps (no extra API calls).
+
+    Returns (repos updated in the last 30 days, current streak in consecutive
+    days with at least one repo update). The streak counts back from the most
+    recent update day when it is today or yesterday, else it is 0.
+    """
+    if student_repos.empty or "Updated" not in student_repos.columns:
+        return 0, 0
+    updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
+    if updated.empty:
+        return 0, 0
+    today = pd.Timestamp.now(tz="UTC").normalize()
+    days_ago = (today - updated.dt.normalize()).dt.days
+    contributions = int(((days_ago >= 0) & (days_ago <= 30)).sum())
+    active_days = set(updated[updated.dt.normalize() <= today].dt.date)
+    if not active_days:
+        return contributions, 0
+    latest = max(active_days)
+    if (today.date() - latest).days > 1:
+        return contributions, 0
+    streak, cursor = 0, latest
+    while cursor in active_days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return contributions, streak
+
+
 def students_payload_profile(row, repos: pd.DataFrame) -> dict:
     username = row.get("GitHub_Username", "")
-    student_repos = repos[repos["Username"] == username].sort_values("Updated", ascending=False)
-    language_counts = (
-        student_repos["Language"].fillna("Misc").value_counts().head(5).reset_index()
-        if not student_repos.empty
-        else None
+    student_repos = repos[repos["Username"] == username].sort_values("Updated", ascending=False).copy()
+    if not student_repos.empty and "Language" in student_repos.columns:
+        # Display "Unknown", never "nan", for repos without a detected language.
+        student_repos["Language"] = student_repos["Language"].fillna("Unknown")
+    lang_counts = (
+        student_repos["Language"].value_counts()
+        if not student_repos.empty and "Language" in student_repos.columns
+        else pd.Series(dtype=int)
     )
-    if language_counts is not None:
-        language_counts.columns = ["Language", "Repositories"]
+    # "Unknown" is never shown — drop it before ranking so it cannot occupy a
+    # slot or skew the scale. Every remaining language is shown (no cap).
+    if not lang_counts.empty:
+        lang_counts = lang_counts[lang_counts.index != "Unknown"]
+    top_languages = []
+    if not lang_counts.empty and int(lang_counts.max()) > 0:
+        peak = int(lang_counts.max())
+        for language, count in lang_counts.items():
+            raw = int(count) / peak * 100
+            # Ceil to a multiple of 5 so small bars keep a visible minimum
+            # width instead of being cut off to a sliver.
+            pct = min(100, int(-(-raw // 5) * 5))
+            top_languages.append(
+                {
+                    "language": str(language),
+                    "count": int(count),
+                    "pct": pct,
+                }
+            )
+    contributions_30d, activity_streak = _recent_activity(student_repos)
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
@@ -575,8 +671,10 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
         "repositories": _num(row.get("Repository_Count", 0)),
         "active_repos": _num(row.get("Active_Repositories", 0)),
         "primary_language": row.get("Primary_Language", "Unknown"),
-        "repos": student_repos.head(5),
-        "language_fig": _build_language_fig(language_counts) if language_counts is not None else None,
+        "repos": student_repos,
+        "top_languages": top_languages,
+        "contributions_30d": contributions_30d,
+        "activity_streak": activity_streak,
     }
 
 
@@ -732,61 +830,3 @@ def issues_payload(view, issue_type="All", workflow=None) -> dict:
             for _, r in result.iterrows()
         ]
     return {"total": len(filtered), "rows": rows, "types": types}
-
-
-# ---------------------------------------------------------------------------
-# Verification (3.6h)
-# ---------------------------------------------------------------------------
-
-AUDIT_COLS = [
-    STUDENT_ID_COL,
-    "Student Name",
-    "Division",
-    "GitHub_Username",
-    "GitHub Profile",
-    "Validation Status",
-    "Repositories Found",
-    "Followers",
-    "Following",
-    "Last Updated",
-]
-
-
-def verification_payload(view, query="", status="All", rows=50) -> dict:
-    students = view["students"]
-    valid_users = {
-        str(row.get("GitHub_Username", "")).strip().lower()
-        for row in students.to_dict("records")
-        if row.get("GitHub_Username")
-    }
-    stats = {
-        str(row.get(STUDENT_ID_COL, "")): row for row in students.to_dict("records")
-    }
-
-    def validation_status(username) -> str:
-        if pd.isna(username) or not str(username).strip():
-            return "Missing"
-        if str(username).strip().lower() in valid_users:
-            return "Verified"
-        return "Invalid"
-
-    records = view["records"]
-    audit = pd.DataFrame(records)
-    audit = audit[["Student_ID", "Student Name", "Division", "GitHub_Username"]].copy() if not audit.empty else pd.DataFrame(columns=AUDIT_COLS[:4])
-    if not audit.empty:
-        audit["GitHub Profile"] = audit["GitHub_Username"].apply(github_profile_url)
-        audit["Validation Status"] = audit["GitHub_Username"].apply(validation_status)
-        audit["Repositories Found"] = [int(stats.get(str(r.get(STUDENT_ID_COL, "")), {}).get("Repository_Count", 0) or 0) for _, r in audit.iterrows()]
-        audit["Followers"] = [int(stats.get(str(r.get(STUDENT_ID_COL, "")), {}).get("Followers", 0) or 0) for _, r in audit.iterrows()]
-        audit["Following"] = [int(stats.get(str(r.get(STUDENT_ID_COL, "")), {}).get("Following", 0) or 0) for _, r in audit.iterrows()]
-        audit["Last Updated"] = friendly_timestamp(last_analysis_time())
-
-    filtered = filter_text(audit, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Division"])
-    filtered = apply_value_filter(filtered, "Validation Status", status)
-    return {
-        "total": len(filtered),
-        "showing": min(int(rows), len(filtered)) if not filtered.empty else 0,
-        "display": filtered.head(int(rows)),
-        "filtered": filtered,
-        "statuses": ["All"] + sorted(audit["Validation Status"].dropna().unique().tolist()),
-    }

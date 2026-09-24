@@ -1,0 +1,695 @@
+{# ── ECharts rendering macros ─────────────────────────────────────────────
+   Theme-aware ECharts renderer.  Mirrors the Plotly charts.html macro: reads
+   the data-theme attribute and the CSS custom-property palette from
+   static/theme.css so the charts match the active UI.
+
+   Usage:
+     {% import "macros/echarts.html" as ec %}
+     {{ ec.treemap('my-id', data_json) }}
+#}
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SHARED THEME HELPER  (injected once per page via the first macro call)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro _theme_bridge() %}
+<script>
+if (!window.__EC_THEME) {
+/* ECharts ↔ site-theme bridge (loaded once) */
+window.__EC_THEME = (function () {
+  'use strict';
+  var PALETTES = {
+    dark: {
+      accent:    '#5B9CF6',
+      secondary: '#5B9CF6',
+      success:   '#6bcfcf',
+      warning:   '#d39a52',
+      danger:    '#ff9d92',
+      purple:    '#9aaabd',
+      muted:     '#aeb4bb',
+      text:      '#f4f1e9',
+      textSoft:  '#aeb4bb',
+      bg:        '#2C2C2C',
+      card:      '#3A3A3E',
+      cardSoft:  '#414145',
+      border:    '#50505A',
+      grid:      'rgba(80,80,90,0.55)',
+      tooltip_bg:    '#414145',
+      tooltip_border:'#50505A',
+      tooltip_text:  '#f4f1e9',
+      series: ['#5B9CF6','#6bcfcf','#d39a52','#9aaabd','#ff9d92','#aeb4bb',
+               '#7edada','#93C5FD','#e7b877','#b8c8da']
+    },
+    light: {
+      accent:    '#BE342B',
+      secondary: '#60738A',
+      success:   '#3d7a7a',
+      warning:   '#A66B25',
+      danger:    '#BE342B',
+      purple:    '#9AAABD',
+      muted:     '#566271',
+      text:      '#142235',
+      textSoft:  '#566271',
+      bg:        '#eee9df',
+      card:      '#f5f1e9',
+      cardSoft:  '#eee9df',
+      border:    '#1b2633',
+      grid:      'rgba(27,38,51,0.16)',
+      tooltip_bg:    '#f5f1e9',
+      tooltip_border:'#1b2633',
+      tooltip_text:  '#142235',
+      series: ['#BE342B','#3d7a7a','#A66B25','#60738A','#9AAABD','#566271',
+               '#327070','#41546c','#8d591d','#a52c25']
+    }
+  };
+
+  function get() {
+    var t = document.documentElement.dataset.theme || 'dark';
+    return PALETTES[t] || PALETTES.dark;
+  }
+
+  /* Returns a shared tooltip style object for consistency. */
+  function tooltip(extra) {
+    var p = get();
+    var base = {
+      backgroundColor: p.tooltip_bg,
+      borderColor: p.tooltip_border,
+      textStyle: { color: p.tooltip_text, fontFamily: 'Inter', fontSize: 13 },
+      borderWidth: 1,
+      padding: [8, 12]
+    };
+    if (extra) { for (var k in extra) base[k] = extra[k]; }
+    return base;
+  }
+
+  /* Store all ECharts instances for theme-toggle re-render. */
+  var _instances = [];
+  function register(inst, optFn) {
+    _instances.push({ inst: inst, optFn: optFn });
+  }
+  function refreshAll() {
+    _instances.forEach(function (entry) {
+      if (entry.inst && !entry.inst.isDisposed()) {
+        entry.inst.setOption(entry.optFn(), { notMerge: true });
+      }
+    });
+  }
+
+  /* Listen for theme toggles (Settings page writes gsad_theme_v1). */
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'gsad_theme_v1') refreshAll();
+  });
+  /* Also watch for in-page toggles (MutationObserver on data-theme). */
+  var _mo = new MutationObserver(function (muts) {
+    muts.forEach(function (m) {
+      if (m.attributeName === 'data-theme') refreshAll();
+    });
+  });
+  _mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  return { get: get, tooltip: tooltip, register: register };
+})();
+} /* end if (!window.__EC_THEME) */
+</script>
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 1 — TREEMAP  (Account Validation Status)
+   data: [ { name: "Connected", value: 42 }, { name: "Invalid", value: 5 }, ... ]
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro treemap(id, data) %}
+{% if data %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:320px;"></div>
+<script>
+(function () {
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var colorMap = {};
+    colorMap['Connected'] = p.success;
+    colorMap['Invalid']   = p.accent;
+    colorMap['Missing']   = p.warning;
+
+    var total = 0;
+    raw.forEach(function (d) { total += d.value; });
+
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        formatter: function (info) {
+          var pct = total > 0 ? (info.value / total * 100).toFixed(1) : '0';
+          return '<b>' + info.name + '</b><br/>' +
+                 'Count: ' + info.value + '<br/>' +
+                 'Share: ' + pct + '%';
+        }
+      }),
+      series: [{
+        type: 'treemap',
+        data: raw.map(function (d, i) {
+          return {
+            name: d.name,
+            value: d.value,
+            itemStyle: {
+              color: colorMap[d.name] || p.series[i % p.series.length],
+              borderColor: p.card,
+              borderWidth: 3,
+              borderRadius: 6
+            }
+          };
+        }),
+        roam: false,
+        nodeClick: false,
+        breadcrumb: { show: false },
+        label: {
+          show: true,
+          formatter: function (info) {
+            var pct = total > 0 ? (info.value / total * 100).toFixed(0) : '0';
+            return info.name + '\n' + info.value + '  (' + pct + '%)';
+          },
+          color: '#fff',
+          fontSize: 14,
+          fontWeight: 600,
+          fontFamily: 'Inter',
+          lineHeight: 22
+        },
+        upperLabel: { show: false },
+        itemStyle: {
+          borderColor: p.card,
+          borderWidth: 3,
+          gapWidth: 3,
+          borderRadius: 6
+        },
+        emphasis: {
+          itemStyle: {
+            borderColor: p.text,
+            borderWidth: 2,
+            shadowBlur: 12,
+            shadowColor: 'rgba(0,0,0,0.25)'
+          },
+          label: { fontSize: 16 }
+        },
+        animationDuration: 600,
+        animationEasing: 'cubicOut',
+        left: 8, right: 8, top: 8, bottom: 8
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% endif %}
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 2 — PACKED BUBBLE  (Top 10 Languages)
+   data: [ { name: "Python", value: 42 }, ... ]
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro bubble(id, data) %}
+{% if data %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:360px;"></div>
+<script>
+(function () {
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  /* Sort descending so largest bubble is first. */
+  raw.sort(function (a, b) { return b.value - a.value; });
+  var maxVal = raw.length ? raw[0].value : 1;
+  var total = 0;
+  raw.forEach(function (d) { total += d.value; });
+
+  /* Pre-compute base sizes for hover scaling. */
+  var baseSizes = raw.map(function (d) {
+    return Math.max(36, Math.round(130 * Math.sqrt(d.value / maxVal)));
+  });
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        formatter: function (info) {
+          var d = info.data;
+          var pct = total > 0 ? (d.realValue / total * 100).toFixed(1) : '0';
+          return '<b>' + d.name + '</b><br/>' +
+                 'Repositories: ' + d.realValue + '<br/>' +
+                 'Share: ' + pct + '%';
+        }
+      }),
+      animationDuration: 800,
+      animationEasing: 'cubicOut',
+      series: [{
+        type: 'graph',
+        layout: 'force',
+        roam: false,
+        force: {
+          repulsion: 180,
+          gravity: 0.35,
+          edgeLength: 20,
+          friction: 0.28
+        },
+        data: raw.map(function (d, i) {
+          var size = baseSizes[i];
+          return {
+            name: d.name,
+            realValue: d.value,
+            symbolSize: size,
+            value: d.value,
+            x: Math.random() * 200 + 50,
+            y: Math.random() * 200 + 50,
+            itemStyle: {
+              color: p.series[i % p.series.length],
+              borderColor: p.card,
+              borderWidth: 2,
+              shadowBlur: 6,
+              shadowColor: 'rgba(0,0,0,0.12)'
+            },
+            label: {
+              show: size >= 36,
+              formatter: '{b}',
+              color: '#fff',
+              fontSize: Math.max(10, Math.min(14, size / 5.5)),
+              fontWeight: 600,
+              fontFamily: 'Inter'
+            },
+            emphasis: {
+              /* Slightly enlarge the bubble on hover */
+              symbolSize: Math.round(size * 1.15),
+              itemStyle: {
+                borderColor: p.text,
+                borderWidth: 2.5,
+                shadowBlur: 20,
+                shadowColor: 'rgba(0,0,0,0.3)'
+              },
+              label: { show: true, fontSize: 14, fontWeight: 700 }
+            }
+          };
+        }),
+        links: [],
+        lineStyle: { opacity: 0 },
+        /* Enable emphasis on hover */
+        emphasis: {
+          focus: 'self',
+          blurScope: 'series',
+          scale: true,
+          scaleSize: 8
+        }
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+
+  /* ── Subtle floating motion ──────────────────────────────────────────
+     After the force layout settles (~3s) the pack is frozen as a static
+     graph; tiny bounded nudges then keep the cluster feeling alive, and
+     the bubbles can never drift out of the chart.  A theme toggle
+     re-creates the moving force graph, so it is re-frozen on the next
+     tick.                                                                 */
+  var _floatTimer = null;
+  var _centers = null;
+  var _margin = 0;
+
+  function madeNode(i, p, c) {
+    var size = baseSizes[i];
+    return {
+      name: raw[i].name,
+      realValue: raw[i].value,
+      value: raw[i].value,
+      symbolSize: size,
+      x: c.x,
+      y: c.y,
+      itemStyle: {
+        color: p.series[i % p.series.length],
+        borderColor: p.card,
+        borderWidth: 2,
+        shadowBlur: 6,
+        shadowColor: 'rgba(0,0,0,0.12)'
+      },
+      label: {
+        show: size >= 36,
+        formatter: '{b}',
+        color: '#fff',
+        fontSize: Math.max(10, Math.min(14, size / 5.5)),
+        fontWeight: 600,
+        fontFamily: 'Inter'
+      },
+      emphasis: {
+        symbolSize: Math.round(size * 1.15),
+        itemStyle: {
+          borderColor: p.text,
+          borderWidth: 2.5,
+          shadowBlur: 20,
+          shadowColor: 'rgba(0,0,0,0.3)'
+        },
+        label: { show: true, fontSize: 14, fontWeight: 700 }
+      }
+    };
+  }
+
+  function buildNodes(p) {
+    return raw.map(function (d, i) {
+      return madeNode(i, p, _centers[i] || { x: 150, y: 150 });
+    });
+  }
+
+  /* chart.getOption() does NOT expose the settled force-layout result, so
+     read the pixel positions from the series model (private-but-stable
+     API). */
+  function readSettledPositions() {
+    var model = chart.getModel();
+    if (!model) return null;
+    var series = model.getSeries();
+    if (!series || !series.length) return null;
+    var data = series[0].getData();
+    if (!data) return null;
+    var out = [];
+    for (var i = 0; i < data.count(); i++) {
+      var pos = data.getItemLayout(i);
+      out.push(pos ? { x: pos[0], y: pos[1] } : { x: 150, y: 150 });
+    }
+    return out;
+  }
+
+  /* Freeze the settled force pack as a static "none"-layout graph so the
+     drift nudges land exactly where we place them — no physics, and the
+     bubbles are clamped inside the chart so they can never escape. */
+  function freezePack() {
+    var pos = readSettledPositions();
+    if (!pos || pos.length !== raw.length) return false;
+    var w = chart.getWidth();
+    var h = chart.getHeight();
+    _margin = Math.max.apply(null, baseSizes) / 2 + 4;
+    _centers = pos.map(function (c) {
+      return {
+        x: Math.min(Math.max(c.x, _margin), w - _margin),
+        y: Math.min(Math.max(c.y, _margin), h - _margin)
+      };
+    });
+    chart.setOption({
+      animation: false,
+      series: [{
+        type: 'graph',
+        layout: 'none',
+        roam: false,
+        data: buildNodes(window.__EC_THEME.get()),
+        links: [],
+        lineStyle: { opacity: 0 },
+        emphasis: { focus: 'self', blurScope: 'series', scale: true, scaleSize: 8 }
+      }]
+    });
+    return true;
+  }
+
+  function driftOnce() {
+    if (chart.isDisposed()) {
+      clearInterval(_floatTimer);
+      _floatTimer = null;
+      return;
+    }
+    /* A theme toggle re-creates the chart as a moving force graph, so
+       re-freeze it at its new settled pack before drifting again. */
+    var opt = chart.getOption();
+    var cur = opt && opt.series && opt.series[0];
+    if (!cur || _centers === null || cur.layout === 'force') {
+      freezePack();
+      return;
+    }
+    var w = chart.getWidth();
+    var h = chart.getHeight();
+    _centers = _centers.map(function (c) {
+      return {
+        x: Math.min(Math.max(c.x + (Math.random() - 0.5) * 8, _margin), w - _margin),
+        y: Math.min(Math.max(c.y + (Math.random() - 0.5) * 8, _margin), h - _margin)
+      };
+    });
+    chart.setOption({ series: [{ data: buildNodes(window.__EC_THEME.get()) }] });
+  }
+
+  /* Wait for the initial force layout to settle, then freeze and drift. */
+  setTimeout(function () {
+    if (!freezePack()) return;
+    _floatTimer = setInterval(driftOnce, 2500);
+  }, 3000);
+})();
+</script>
+{% endif %}
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 3 — SANKEY  (Repository Activity by Division & Batch)
+   data: [ { division: "A", batch: "2024", repo_count: 42 }, ... ]
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro sankey(id, data) %}
+{% if data %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:360px;"></div>
+<script>
+(function () {
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  /* ── Build Sankey nodes & links ──
+     Left nodes  = Divisions
+     Right nodes = Activity Levels (High / Medium / Low)
+     Each Division→Level link = sum of repo counts that fall in that level.
+
+     Activity thresholds (based on per-group repo counts):
+       High   = top third of values
+       Medium = middle third
+       Low    = bottom third
+  */
+  function buildSankey(rawData, p) {
+    if (!rawData || !rawData.length) return { nodes: [], links: [] };
+
+    /* Collect unique divisions and compute per-division total. */
+    var divTotals = {};
+    rawData.forEach(function (r) {
+      var d = r.division || 'Unknown';
+      divTotals[d] = (divTotals[d] || 0) + r.repo_count;
+    });
+
+    /* Compute thresholds from all per-row repo counts. */
+    var counts = rawData.map(function (r) { return r.repo_count; }).sort(function (a, b) { return a - b; });
+    var t1 = counts[Math.floor(counts.length / 3)] || 0;
+    var t2 = counts[Math.floor(counts.length * 2 / 3)] || 0;
+
+    function level(v) {
+      if (v > t2) return 'High Activity';
+      if (v > t1) return 'Medium Activity';
+      return 'Low Activity';
+    }
+
+    var levelColors = {
+      'High Activity':   p.success,
+      'Medium Activity': p.warning,
+      'Low Activity':    p.muted
+    };
+
+    /* Build links: Division → Activity Level. */
+    var linkMap = {};
+    rawData.forEach(function (r) {
+      var d = r.division || 'Unknown';
+      var lv = level(r.repo_count);
+      var key = d + '→' + lv;
+      linkMap[key] = (linkMap[key] || 0) + r.repo_count;
+    });
+
+    var nodesSet = {};
+    var links = [];
+    Object.keys(linkMap).forEach(function (key) {
+      var parts = key.split('→');
+      var source = parts[0];
+      var target = parts[1];
+      nodesSet[source] = true;
+      nodesSet[target] = true;
+      links.push({ source: source, target: target, value: linkMap[key] });
+    });
+
+    var nodes = Object.keys(nodesSet).map(function (n) {
+      var color = levelColors[n] || p.accent;
+      /* Division nodes get accent-family colors. */
+      if (!levelColors[n]) {
+        var divKeys = Object.keys(divTotals);
+        var idx = divKeys.indexOf(n);
+        color = p.series[idx % p.series.length];
+      }
+      return { name: n, itemStyle: { color: color, borderColor: p.card, borderWidth: 1 } };
+    });
+
+    return { nodes: nodes, links: links };
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var sk = buildSankey(raw, p);
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'item',
+        formatter: function (info) {
+          if (info.dataType === 'edge') {
+            return info.data.source + ' → ' + info.data.target + '<br/>Repos: ' + info.data.value;
+          }
+          return '<b>' + info.name + '</b>';
+        }
+      }),
+      series: [{
+        type: 'sankey',
+        data: sk.nodes,
+        links: sk.links,
+        orient: 'horizontal',
+        nodeAlign: 'justify',
+        nodeWidth: 22,
+        nodeGap: 14,
+        layoutIterations: 32,
+        label: {
+          show: true,
+          color: p.text,
+          fontSize: 12,
+          fontFamily: 'Inter',
+          fontWeight: 500
+        },
+        lineStyle: {
+          color: 'gradient',
+          opacity: 0.35,
+          curveness: 0.5
+        },
+        emphasis: {
+          focus: 'adjacency',
+          lineStyle: { opacity: 0.65 },
+          label: { fontSize: 13, fontWeight: 700 }
+        },
+        animationDuration: 700,
+        animationEasing: 'cubicOut',
+        left: 16, right: 120, top: 12, bottom: 12
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% endif %}
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 4 — RADAR  (Multi-Metric Overview)
+   data: { metrics: [ { name: "Avg Repos", value: 5.2, max: 50 }, ... ] }
+
+   Normalization method: each metric is scaled 0–100 using its own max value.
+   max is the larger of (actual value × 1.5) or a sensible floor to prevent
+   the radar from collapsing when values are tiny.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro radar(id, data) %}
+{% if data %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:320px;"></div>
+<script>
+(function () {
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var indicators = raw.metrics.map(function (m) {
+      return { name: m.name, max: m.max };
+    });
+    var values = raw.metrics.map(function (m) { return m.value; });
+
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'item',
+        formatter: function (info) {
+          var html = '<b>' + (info.name || 'Metrics') + '</b><br/>';
+          raw.metrics.forEach(function (m, i) {
+            html += m.name + ': <b>' + m.value + '</b>' + (m.unit || '') + '<br/>';
+          });
+          return html;
+        }
+      }),
+      radar: {
+        indicator: indicators,
+        shape: 'polygon',
+        radius: '78%',
+        center: ['50%', '52%'],
+        axisName: {
+          color: p.textSoft,
+          fontSize: 12,
+          fontFamily: 'Inter',
+          fontWeight: 500
+        },
+        axisLine: { lineStyle: { color: p.grid } },
+        splitLine: { lineStyle: { color: p.grid } },
+        splitArea: {
+          areaStyle: {
+            color: ['transparent', 'rgba(128,128,128,0.04)']
+          }
+        }
+      },
+      series: [{
+        type: 'radar',
+        data: [{
+          value: values,
+          name: 'Class Metrics',
+          symbol: 'circle',
+          symbolSize: 7,
+          lineStyle: {
+            color: p.accent,
+            width: 2.5
+          },
+          itemStyle: {
+            color: p.accent,
+            borderColor: p.card,
+            borderWidth: 2
+          },
+          areaStyle: {
+            color: (function () {
+              /* Convert hex #RRGGBB to rgba string for gradient. */
+              var hex = p.accent.replace('#', '');
+              var r = parseInt(hex.substring(0, 2), 16);
+              var g = parseInt(hex.substring(2, 4), 16);
+              var b = parseInt(hex.substring(4, 6), 16);
+              return {
+                type: 'radial',
+                x: 0.5, y: 0.5, r: 0.6,
+                colorStops: [
+                  { offset: 0, color: 'rgba(' + r + ',' + g + ',' + b + ',0.35)' },
+                  { offset: 1, color: 'transparent' }
+                ]
+              };
+            })()
+          },
+          emphasis: {
+            lineStyle: { width: 3.5 },
+            areaStyle: { opacity: 0.55 }
+          }
+        }],
+        animationDuration: 800,
+        animationEasing: 'cubicOut'
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% endif %}
+{% endmacro %}

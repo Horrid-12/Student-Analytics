@@ -53,7 +53,6 @@ _EXTRA_COLUMNS = (
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
     ("/settings", "Settings"),
-    ("/verification", "Verification"),
     ("/issues", "Issues"),
     ("/history", "History"),
     ("/leaderboards", "Leaderboards"),
@@ -64,7 +63,7 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Settings")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings")
 
 # BUG-044/045 RBAC: students see Overview + Leaderboards + Settings; faculty
 # and admin see everything. (Anonymized leaderboards are rendered by the page.)
