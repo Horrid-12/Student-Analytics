@@ -397,11 +397,26 @@ class TestPageRenderingWithData:
         assert profile["contributions_30d"] == 0
         assert profile["activity_streak"] == 0
 
+    def test_friendly_timestamp_renders_ist(self):
+        from app.views import friendly_timestamp
+
+        assert friendly_timestamp("2026-09-24T00:00:00Z") == "24 Sep 2026 at 05:30 AM"
+        assert friendly_timestamp("2026-09-23T20:00:00Z") == "24 Sep 2026 at 01:30 AM"
+        assert friendly_timestamp("2026-09-24 06:25:00") == "24 Sep 2026 at 11:55 AM"
+
     def test_students_divisions_sorted_numerically(self, tmp_path):
         from app.views import dist_options
 
         assert dist_options(["10", "2", "14", "3"]) == ["All", "2", "3", "10", "14"]
         assert dist_options(["B", "A"]) == ["All", "A", "B"]
+
+    def test_friendly_timestamp_renders_ist(self):
+        from app.views import friendly_timestamp
+
+        assert friendly_timestamp("2026-09-24T00:00:00Z") == "24 Sep 2026 at 05:30 AM"
+        assert friendly_timestamp("2026-09-24T00:00:00+00:00") == "24 Sep 2026 at 05:30 AM"
+        assert friendly_timestamp("2026-09-23T20:00:00Z") == "24 Sep 2026 at 01:30 AM"
+        assert friendly_timestamp("Never") == "No completed analysis yet"
 
     def test_students_infinite_scroll_markup(self, tmp_path):
         roster_id = self._setup(tmp_path)

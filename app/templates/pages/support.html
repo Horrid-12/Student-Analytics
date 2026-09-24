@@ -89,6 +89,11 @@
     margin: 8px 0;
     font-size: 13px;
   }
+  .ticket-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 14px 0;
+  }
   .ticket-preview-img {
     max-width: 280px;
     max-height: 180px;
@@ -160,8 +165,14 @@
   .ticket-status-save {
     margin-left: auto;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 10px;
+  }
+  .ticket-submit-right {
+    margin-left: auto;
+  }
+  .ticket-submit-right {
+    margin-left: auto;
   }
   .ticket-table th + th,
   .ticket-table td + td {
@@ -348,8 +359,10 @@
       <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
       </button>
+      <div class="ticket-submit-right">
+        <button class="btn" type="submit">Submit</button>
+      </div>
     </div>
-    <div><button class="btn" type="submit">Send ticket</button></div>
   </form>
 </section>
 {% endif %}
@@ -399,6 +412,26 @@
           <td colspan="{% if is_staff %}6{% else %}5{% endif %}">
             <div class="ticket-section-label ticket-indent">Issue</div>
             <div class="ticket-message">{{ t.message }}</div>
+            {% if t.student_attachment_name %}
+            <div class="ticket-attachment">
+              {% if t.student_attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <a href="/support/attachment/{{ t.id }}?slot=student"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}?slot=student" alt="Preview of {{ t.student_attachment_name }}"></a>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}?slot=student">{{ t.student_attachment_name }}</a></span>
+              {% endif %}
+              {% if is_staff and t.status != 'Resolved' %}
+              <form method="post" action="/support/attachment/remove" style="display:inline;">
+                <input type="hidden" name="ticket_id" value="{{ t.id }}">
+                <input type="hidden" name="slot" value="student">
+                <button type="submit" class="ticket-icon-btn" title="Remove attachment" aria-label="Remove attachment {{ t.student_attachment_name }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </form>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if is_staff and t.status != 'Resolved' %}
+            <div class="ticket-divider" aria-hidden="true"></div>
             {% if t.attachment_name %}
             <div class="ticket-attachment">
               {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
@@ -406,17 +439,15 @@
               {% else %}
               <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
               {% endif %}
-              {% if is_staff %}
               <form method="post" action="/support/attachment/remove" style="display:inline;">
                 <input type="hidden" name="ticket_id" value="{{ t.id }}">
+                <input type="hidden" name="slot" value="admin">
                 <button type="submit" class="ticket-icon-btn" title="Remove attachment" aria-label="Remove attachment {{ t.attachment_name }}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
               </form>
-              {% endif %}
             </div>
             {% endif %}
-            {% if is_staff %}
             <form class="ticket-update-form" method="post" action="/support/update" enctype="multipart/form-data">
               <input type="hidden" name="ticket_id" value="{{ t.id }}">
               <div class="filter-field">
@@ -443,8 +474,25 @@
                 </div>
               </div>
             </form>
-            {% elif t.admin_reply %}
+            {% else %}
+            {% if t.attachment_name or t.admin_reply or is_staff %}
+            <div class="ticket-divider" aria-hidden="true"></div>
+            {% endif %}
+            {% if t.attachment_name %}
+            <div class="ticket-attachment">
+              {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <a href="/support/attachment/{{ t.id }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}"></a>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if t.admin_reply %}
             <div class="ticket-reply"><strong>Resolution:</strong> {{ t.admin_reply }}</div>
+            {% endif %}
+            {% if is_staff %}
+            <div class="repo-meta">Resolved tickets are read-only.</div>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

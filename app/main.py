@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -27,6 +27,10 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="GitHub Student Analytics Platform")
 app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="static")
+
+#: Indian Standard Time (UTC+5:30, no daylight saving) — every wall-clock
+#: timestamp shown by the app uses IST.
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 @app.on_event("startup")
@@ -655,7 +659,7 @@ def _upload_failure(request: Request, message: str):
 
 
 def topbar_date() -> str:
-    return datetime.now().strftime("%A, %d %B %Y")
+    return datetime.now(IST).strftime("%A, %d %B %Y")
 
 
 @app.get("/privacy", response_class=HTMLResponse)
@@ -1236,12 +1240,34 @@ async def _read_upload(attachment: UploadFile | None) -> tuple[str, bytes]:
     return filename, data
 
 
-def _save_attachment(ticket_id: int, filename: str, data: bytes) -> bool:
+def _save_attachment(ticket_id: int, filename: str, data: bytes, slot: str = "admin") -> bool:
     if not filename or not data:
         return False
     if database.db_configured():
-        return db.set_support_attachment(ticket_id, filename, data)
-    return support.set_attachment(ticket_id, filename, data)
+        return db.set_support_attachment(ticket_id, filename, data, slot=slot)
+    return support.set_attachment(ticket_id, filename, data, slot=slot)
+
+
+def _get_support_ticket(ticket_id) -> dict | None:
+    if database.db_configured():
+        return db.get_support_ticket(ticket_id)
+    return support.get_ticket(ticket_id)
+
+
+def _clear_support_attachment(ticket_id: int, slot: str = "admin") -> bool:
+    if database.db_configured():
+        return db.clear_support_attachment(ticket_id, slot=slot)
+    return support.clear_attachment(ticket_id, slot=slot)
+
+
+def _get_support_attachment(ticket_id: int, slot: str = "admin") -> dict | None:
+    if database.db_configured():
+        return db.get_support_attachment(ticket_id, slot=slot)
+    return support.get_attachment(ticket_id, slot=slot)
+
+
+def _ticket_is_resolved(ticket: dict | None) -> bool:
+    return bool(ticket) and ticket.get("status") == "Resolved"
 
 
 def _tickets_for(email: str, limit: int = 500) -> list[dict]:
@@ -1335,7 +1361,7 @@ async def support_create(
             ),
             status_code=400,
         )
-    if filename and not _save_attachment(ticket["id"], filename, file_bytes):
+    if filename and not _save_attachment(ticket["id"], filename, file_bytes, slot="student"):
         return templates.TemplateResponse(
             request,
             "pages/support.html",
@@ -1360,44 +1386,53 @@ async def support_update(
         raise HTTPException(status_code=403, detail="Only staff can update tickets")
     if status not in support.TICKET_STATUSES:
         raise HTTPException(status_code=400, detail="Unknown status")
+    ticket = _get_support_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.get("status") == "Resolved":
+        raise HTTPException(status_code=403, detail="Resolved tickets are read-only")
     filename, file_bytes = await _read_upload(attachment)
     if not _update_support_ticket(ticket_id, status, admin_reply):
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if filename and not _save_attachment(ticket_id, filename, file_bytes):
+    if filename and not _save_attachment(ticket_id, filename, file_bytes, slot="admin"):
         raise HTTPException(status_code=400, detail="Could not save attachment")
     return RedirectResponse("/support", status_code=302)
 
 
 @app.post("/support/attachment/remove")
-async def support_attachment_remove(request: Request, ticket_id: int = Form(...)):
-    """Delete a ticket's attached file. Staff only."""
+async def support_attachment_remove(
+    request: Request, ticket_id: int = Form(...), slot: str = Form("admin")
+):
+    """Delete a ticket's attached file from a slot. Staff only; resolved
+    tickets are read-only."""
     user = getattr(request.state, "user", None)
     if not user:
         return RedirectResponse("/login", status_code=302)
     if (user.get("role") or "") not in _STAFF_ROLES:
         raise HTTPException(status_code=403, detail="Only staff can remove attachments")
-    if database.db_configured():
-        removed = db.clear_support_attachment(ticket_id)
-    else:
-        removed = support.clear_attachment(ticket_id)
-    if not removed:
+    if slot not in ("admin", "student"):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    ticket = _get_support_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if ticket.get("status") == "Resolved":
+        raise HTTPException(status_code=403, detail="Resolved tickets are read-only")
+    if not _clear_support_attachment(ticket_id, slot=slot):
         raise HTTPException(status_code=404, detail="Attachment not found")
     return RedirectResponse("/support", status_code=302)
 
 
 @app.get("/support/attachment/{ticket_id}")
-def support_attachment(request: Request, ticket_id: int):
-    """Download a ticket's attached file. Staff may fetch any ticket's file;
-    students only their own."""
+def support_attachment(request: Request, ticket_id: int, slot: str = "admin"):
+    """Download a ticket's attached file from a slot. Staff may fetch any
+    ticket's file; students only their own."""
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if database.db_configured():
-        ticket = db.get_support_ticket(ticket_id)
-        blob = db.get_support_attachment(ticket_id)
-    else:
-        ticket = support.get_ticket(ticket_id)
-        blob = support.get_attachment(ticket_id)
+    if slot not in ("admin", "student"):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    ticket = _get_support_ticket(ticket_id)
+    blob = _get_support_attachment(ticket_id, slot=slot)
     if ticket is None or blob is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
     role = user.get("role") or ""
@@ -1481,7 +1516,7 @@ async def upload_roster(request: Request, file: UploadFile = File(...)):
         {
             "filename": file.filename or "roster.xlsx",
             "file_hash": file_hash,
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "uploaded_at": datetime.now(IST).isoformat(),
         },
     )
     if database.db_configured():

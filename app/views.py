@@ -5,7 +5,7 @@ results) that reproduce the legacy app.py render_* computations with the same
 columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -20,6 +20,10 @@ from app.ui_helpers import (
 )
 
 STUDENT_ID_COL = "Student_ID"
+
+#: Indian Standard Time (UTC+5:30, no daylight saving) — every wall-clock
+#: timestamp shown by the app uses IST.
+IST = timezone(timedelta(hours=5, minutes=30))
 DASHBOARD_COLS = [
     STUDENT_ID_COL,
     "Student Name",
@@ -185,7 +189,9 @@ def friendly_timestamp(value) -> str:
         return "No completed analysis yet"
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        return parsed.strftime("%d %b %Y at %I:%M %p")
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(IST).strftime("%d %b %Y at %I:%M %p")
     except (TypeError, ValueError):
         return str(value)
 
@@ -596,17 +602,20 @@ def _recent_activity(student_repos: pd.DataFrame) -> tuple[int, int]:
 
     Returns (repos updated in the last 30 days, current streak in consecutive
     days with at least one repo update). The streak counts back from the most
-    recent update day when it is today or yesterday, else it is 0.
+    recent update day when it is today or yesterday, else it is 0. Day
+    boundaries follow IST (fixed UTC+5:30 offset — no tz database needed).
     """
     if student_repos.empty or "Updated" not in student_repos.columns:
         return 0, 0
     updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
     if updated.empty:
         return 0, 0
-    today = pd.Timestamp.now(tz="UTC").normalize()
-    days_ago = (today - updated.dt.normalize()).dt.days
+    ist_offset = pd.Timedelta(hours=5, minutes=30)
+    today = (pd.Timestamp.now(tz="UTC") + ist_offset).normalize()
+    updated_ist = (updated + ist_offset).dt.normalize()
+    days_ago = (today - updated_ist).dt.days
     contributions = int(((days_ago >= 0) & (days_ago <= 30)).sum())
-    active_days = set(updated[updated.dt.normalize() <= today].dt.date)
+    active_days = set(updated_ist[updated_ist <= today].dt.date)
     if not active_days:
         return contributions, 0
     latest = max(active_days)

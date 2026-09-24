@@ -80,6 +80,21 @@ class TestRaiseAndList:
             assert response.status_code == 403
         assert support.list_tickets() == []
 
+    def test_raise_form_submit_sits_with_attach_button(self):
+        student, _ = login_as("student")
+        body = student.get("/support").text
+        assert ">Submit</button>" in body
+        assert "Send ticket" not in body
+        attach_pos = body.index("Attach file")
+        submit_pos = body.index(">Submit</button>")
+        assert attach_pos < submit_pos
+
+    def test_ticket_timestamps_use_ist(self):
+        ticket = support.create_ticket("a@college.edu", "A", "Sub", "General", "Msg.")
+        assert ticket is not None
+        assert ticket["created_at"].endswith("+05:30")
+        assert ticket["updated_at"].endswith("+05:30")
+
     def test_raise_form_hidden_from_staff(self):
         student, _ = login_as("student")
         assert "Raise a ticket" in student.get("/support").text
@@ -365,10 +380,11 @@ class TestValidationAndSafety:
         )
         assert response.status_code == 302
         tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "With pic")
-        assert support.get_attachment(tid) == {"name": "pic.png", "data": b"\x89PNG data"}
+        assert support.get_attachment(tid, slot="student") == {"name": "pic.png", "data": b"\x89PNG data"}
+        assert support.get_attachment(tid) is None
         body = student.get("/support").text
         assert "pic.png" in body
-        assert f"/support/attachment/{tid}" in body
+        assert f"/support/attachment/{tid}?slot=student" in body
 
     def test_student_raise_oversize_attachment_rejected_without_ticket(self):
         student, _ = login_as("student")
@@ -393,6 +409,175 @@ class TestValidationAndSafety:
         assert 'id="raise-attach"' not in admin_body
         assert "ticket-attach-clear" in admin_body
         assert 'id="attach-preview-backdrop"' in admin_body
+
+    def test_student_and_admin_files_live_in_separate_slots(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Two files", message="Both slots.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Two files")
+        assert support.set_attachment(tid, "evidence.png", b"student-bytes", slot="student")
+        faculty, _ = login_as("faculty")
+        faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "In Progress", "admin_reply": ""},
+            files={"attachment": ("fix.txt", b"admin-bytes", "text/plain")},
+        )
+        assert support.get_attachment(tid, slot="student") == {"name": "evidence.png", "data": b"student-bytes"}
+        assert support.get_attachment(tid) == {"name": "fix.txt", "data": b"admin-bytes"}
+        body = faculty.get("/support").text
+        assert f"/support/attachment/{tid}?slot=student" in body
+        assert "evidence.png" in body
+        assert "fix.txt" in body
+        assert support.clear_attachment(tid, slot="student") is True
+        assert support.get_attachment(tid, slot="student") is None
+        # Admin slot untouched by the student-slot removal.
+        assert support.get_attachment(tid) is not None
+        assert support.clear_attachment(tid, slot="bogus") is False
+        assert support.get_attachment(tid, slot="bogus") is None
+
+    def test_attachment_slot_in_download_and_remove_routes(self):
+        owner, _ = login_as("student", "Owner")
+        raise_ticket(owner, subject="Slot routes", message="Hi.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Slot routes")
+        assert support.set_attachment(tid, "evidence.txt", b"student-bytes", slot="student")
+        assert owner.get(f"/support/attachment/{tid}?slot=student").content == b"student-bytes"
+        assert owner.get(f"/support/attachment/{tid}?slot=bogus").status_code == 404
+        faculty, _ = login_as("faculty")
+        assert faculty.post(
+            "/support/attachment/remove",
+            data={"ticket_id": tid, "slot": "student"},
+            follow_redirects=False,
+        ).status_code == 302
+        assert support.get_attachment(tid, slot="student") is None
+
+    def test_resolved_tickets_are_read_only(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Lock me", message="Please.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Lock me")
+        faculty, _ = login_as("faculty")
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "Done."},
+            follow_redirects=False,
+        ).status_code == 302
+        # No further replies, files, or removals once resolved.
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Open", "admin_reply": "Reopen?"},
+            follow_redirects=False,
+        ).status_code == 403
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "More."},
+            files={"attachment": ("x.txt", b"x", "text/plain")},
+            follow_redirects=False,
+        ).status_code == 403
+        assert support.set_attachment(tid, "pre.txt", b"pre", slot="admin")
+        assert faculty.post(
+            "/support/attachment/remove",
+            data={"ticket_id": tid, "slot": "admin"},
+            follow_redirects=False,
+        ).status_code == 403
+        assert support.get_attachment(tid) is not None
+        body = faculty.get("/support").text
+        assert "ticket-update-form" not in body
+        assert "Resolved tickets are read-only." in body
+        assert "Done." in body
+        assert "ticket-divider" in body
+
+    def test_student_and_admin_files_live_in_separate_slots(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Both slots", message="Two files.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Both slots")
+        assert support.set_attachment(tid, "evidence.png", b"\x89PNG", slot="student")
+        faculty, _ = login_as("faculty")
+        faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "In Progress", "admin_reply": "On it."},
+            files={"attachment": ("fix.txt", b"fix", "text/plain")},
+        )
+        assert support.get_attachment(tid, slot="student")["name"] == "evidence.png"
+        assert support.get_attachment(tid, slot="admin")["name"] == "fix.txt"
+        body = faculty.get("/support").text
+        assert f"/support/attachment/{tid}?slot=student" in body
+        assert f"/support/attachment/{tid}" in body
+        assert body.index("evidence.png") < body.index("fix.txt")
+
+    def test_remove_accepts_slot_and_rejects_unknown_slot(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Slotted", message="Hi.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Slotted")
+        assert support.set_attachment(tid, "s.png", b"x", slot="student")
+        faculty, _ = login_as("faculty")
+        # Default slot is admin (empty here); unknown slots are rejected.
+        assert faculty.post(
+            "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
+        ).status_code == 404
+        assert faculty.post(
+            "/support/attachment/remove", data={"ticket_id": tid, "slot": "bogus"}, follow_redirects=False
+        ).status_code == 404
+        assert faculty.post(
+            "/support/attachment/remove", data={"ticket_id": tid, "slot": "student"}, follow_redirects=False
+        ).status_code == 302
+        assert support.get_attachment(tid, slot="student") is None
+        assert faculty.get(f"/support/attachment/{tid}?slot=bogus").status_code == 404
+        assert faculty.get(f"/support/attachment/{tid}?slot=student").status_code == 404
+
+    def test_resolved_tickets_are_read_only(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Lock me", message="Please.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Lock me")
+        assert support.set_attachment(tid, "evidence.txt", b"e", slot="student")
+        faculty, _ = login_as("faculty")
+        faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "Done."},
+        )
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Open", "admin_reply": "Reopen?"},
+            follow_redirects=False,
+        ).status_code == 403
+        assert faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "More."},
+            files={"attachment": ("late.txt", b"late", "text/plain")},
+            follow_redirects=False,
+        ).status_code == 403
+        assert faculty.post(
+            "/support/attachment/remove", data={"ticket_id": tid, "slot": "student"}, follow_redirects=False
+        ).status_code == 403
+        assert support.get_ticket(tid)["status"] == "Resolved"
+        assert support.get_attachment(tid, slot="student") is not None
+        body = faculty.get("/support").text
+        assert "Resolved tickets are read-only." in body
+        assert 'id="reply-%d"' % tid not in body
+
+    def test_divider_separates_issue_from_resolution(self):
+        client, _ = login_as("student")
+        raise_ticket(client, subject="Divided", message="Hi.")
+        admin, _ = login_as("admin")
+        assert admin.get("/support").text.count('class="ticket-divider"') == 1
+
+    def test_raise_form_submit_sits_with_attach(self):
+        student, _ = login_as("student")
+        body = student.get("/support").text
+        assert ">Submit</button>" in body
+        assert "Send ticket" not in body
+
+    def test_ticket_timestamps_use_ist(self):
+        from app import support as support_store
+
+        assert "+05:30" in support_store._now()
+        client, _ = login_as("student")
+        raise_ticket(client, subject="Timestamped", message="Hi.")
+        row = next(r for r in support.list_tickets() if r["subject"] == "Timestamped")
+        assert "+05:30" in row["created_at"]
+
+    def test_friendly_timestamps_render_in_ist(self):
+        from app.views import friendly_timestamp
+
+        assert friendly_timestamp("2026-09-24T00:00:00Z") == "24 Sep 2026 at 05:30 AM"
+        assert friendly_timestamp("2026-09-23T20:00:00Z") == "24 Sep 2026 at 01:30 AM"
 
     def test_blank_subject_or_message_rejected(self):
         client, _ = login_as("student")

@@ -11,12 +11,16 @@ a missing or locked database must never crash a successful analysis run.
 import logging
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+#: Indian Standard Time (UTC+5:30, no daylight saving) — every wall-clock
+#: timestamp shown or stored by the app uses IST.
+IST = timezone(timedelta(hours=5, minutes=30))
 
 DB_PATH = Path(__file__).resolve().parent / "analytics_history.db"
 
@@ -109,7 +113,7 @@ def record_analysis_run(
     source_file_hash: str | None = None,
 ) -> bool:
     """Persist one analysis snapshot. Returns True on success."""
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    timestamp = datetime.now(IST).isoformat(timespec="seconds")
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -160,7 +164,7 @@ def last_recorded_run() -> dict | None:
 
 def log_event(event_type: str, detail: str = "") -> bool:
     """Append one security/audit event (BUG-046). Never crashes the caller."""
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    timestamp = datetime.now(IST).isoformat(timespec="seconds")
     try:
         with closing(_connect()) as conn:
             with conn:

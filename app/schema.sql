@@ -185,6 +185,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     admin_reply     TEXT NOT NULL DEFAULT '',
     attachment_name TEXT NOT NULL DEFAULT '',
     attachment_data BYTEA,
+    student_attachment_name TEXT NOT NULL DEFAULT '',
+    student_attachment_data BYTEA,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -192,6 +194,8 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_creator ON support_tickets (creat
 CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS student_attachment_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS student_attachment_data BYTEA;
 
 -- Useful indexes (created only once even under IF NOT EXISTS).
 CREATE INDEX IF NOT EXISTS idx_students_roster        ON students (roster_id);

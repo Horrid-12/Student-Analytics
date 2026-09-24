@@ -13,10 +13,14 @@ a missing or locked database must never crash page renders.
 import logging
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+#: Indian Standard Time — every wall-clock timestamp shown or stored by the
+#: app uses IST (UTC+5:30, no daylight saving).
+IST = timezone(timedelta(hours=5, minutes=30))
 
 DB_PATH = Path(__file__).resolve().parent.parent / "support.db"
 
@@ -31,10 +35,6 @@ STATUS_ORDER = {"Open": 0, "In Progress": 1, "Resolved": 2}
 def order_tickets(rows: list[dict]) -> list[dict]:
     """Sort ticket rows for display (stable: keeps id order within a status)."""
     return sorted(rows, key=lambda row: (STATUS_ORDER.get(row.get("status"), 0), row.get("id", 0)))
-
-#: Display order for ticket lists: Open first, then In Progress, then
-#: Resolved — earliest ticket first within each status.
-STATUS_ORDER = {"Open": 0, "In Progress": 1, "Resolved": 2}
 
 
 def order_tickets(rows: list[dict]) -> list[dict]:
@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     admin_reply TEXT NOT NULL DEFAULT '',
     attachment_name TEXT NOT NULL DEFAULT '',
     attachment_data BLOB,
+    student_attachment_name TEXT NOT NULL DEFAULT '',
+    student_attachment_data BLOB,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 )
@@ -61,6 +63,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 _ATTACHMENT_MIGRATION = (
     "ALTER TABLE support_tickets ADD COLUMN attachment_name TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE support_tickets ADD COLUMN attachment_data BLOB",
+    "ALTER TABLE support_tickets ADD COLUMN student_attachment_name TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE support_tickets ADD COLUMN student_attachment_data BLOB",
 )
 
 #: Columns returned for lists/details — the attachment bytes stay out so
@@ -75,10 +79,23 @@ _COLUMNS = (
     "status",
     "admin_reply",
     "attachment_name",
+    "student_attachment_name",
     "created_at",
     "updated_at",
 )
 _SELECT = ", ".join(_COLUMNS)
+
+#: Attachment slots: staff resolution files live in attachment_* (shown under
+#: Resolution); student evidence files live in student_attachment_* (shown
+#: under Issue). Column names are whitelisted here — never built from input.
+_ATTACHMENT_COLUMNS = {
+    "admin": ("attachment_name", "attachment_data"),
+    "student": ("student_attachment_name", "student_attachment_data"),
+}
+
+
+def _slot_columns(slot: str) -> tuple[str, str] | None:
+    return _ATTACHMENT_COLUMNS.get(slot or "admin")
 
 #: Attachments larger than this are refused (5 MB).
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
@@ -110,7 +127,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(IST).isoformat(timespec="seconds")
 
 
 def init_db() -> bool:
@@ -167,8 +184,24 @@ def create_ticket(
         return None
 
 
+def _as_ist(value: str) -> str:
+    """Render any stored timestamp in IST so rows written before the IST
+    switch (UTC) display correctly alongside new ones."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(IST).isoformat(timespec="seconds")
+
+
 def _rows(cursor) -> list[dict]:
-    return [dict(zip(_COLUMNS, row)) for row in cursor.fetchall()]
+    rows = [dict(zip(_COLUMNS, row)) for row in cursor.fetchall()]
+    for row in rows:
+        row["created_at"] = _as_ist(row.get("created_at"))
+        row["updated_at"] = _as_ist(row.get("updated_at"))
+    return rows
 
 
 def _clamp_limit(limit) -> int:
@@ -217,14 +250,23 @@ def get_ticket(ticket_id) -> dict | None:
                 f"SELECT {_SELECT} FROM support_tickets WHERE id = ?", (ticket_id,)
             )
             row = cursor.fetchone()
-            return dict(zip(_COLUMNS, row)) if row else None
+            if not row:
+                return None
+            record = dict(zip(_COLUMNS, row))
+            record["created_at"] = _as_ist(record.get("created_at"))
+            record["updated_at"] = _as_ist(record.get("updated_at"))
+            return record
     except (sqlite3.Error, OSError):
         return None
 
 
-def get_attachment(ticket_id) -> dict | None:
+def get_attachment(ticket_id, slot: str = "admin") -> dict | None:
     """A ticket's attached file as ``{"name": ..., "data": bytes}``, or None
-    when the ticket has no attachment or cannot be read."""
+    when the slot is empty, unknown, or unreadable. ``slot`` is "admin"
+    (resolution files) or "student" (issue evidence)."""
+    columns = _slot_columns(slot)
+    if columns is None:
+        return None
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -232,7 +274,7 @@ def get_attachment(ticket_id) -> dict | None:
     try:
         with closing(_connect()) as conn:
             cursor = conn.execute(
-                "SELECT attachment_name, attachment_data FROM support_tickets WHERE id = ?",
+                f"SELECT {columns[0]}, {columns[1]} FROM support_tickets WHERE id = ?",
                 (ticket_id,),
             )
             row = cursor.fetchone()
@@ -243,9 +285,12 @@ def get_attachment(ticket_id) -> dict | None:
         return None
 
 
-def set_attachment(ticket_id, filename: str, data: bytes) -> bool:
-    """Attach (or replace) a file on a ticket. Rejects empty names, empty
-    payloads, and files over MAX_ATTACHMENT_BYTES."""
+def set_attachment(ticket_id, filename: str, data: bytes, slot: str = "admin") -> bool:
+    """Attach (or replace) a file in a ticket's slot. Rejects unknown slots,
+    empty names, empty payloads, and files over MAX_ATTACHMENT_BYTES."""
+    columns = _slot_columns(slot)
+    if columns is None:
+        return False
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -258,7 +303,7 @@ def set_attachment(ticket_id, filename: str, data: bytes) -> bool:
             with conn:
                 conn.execute(_SCHEMA)
                 cursor = conn.execute(
-                    "UPDATE support_tickets SET attachment_name = ?, attachment_data = ?, "
+                    f"UPDATE support_tickets SET {columns[0]} = ?, {columns[1]} = ?, "
                     "updated_at = ? WHERE id = ?",
                     (filename, bytes(data), _now(), ticket_id),
                 )
@@ -268,9 +313,13 @@ def set_attachment(ticket_id, filename: str, data: bytes) -> bool:
         return False
 
 
-def clear_attachment(ticket_id) -> bool:
-    """Remove a ticket's attached file. Returns True when an attachment was
-    actually removed; False for unknown ids, missing attachments, or failures."""
+def clear_attachment(ticket_id, slot: str = "admin") -> bool:
+    """Remove a ticket's attached file from a slot. Returns True when an
+    attachment was actually removed; False for unknown slots/ids, missing
+    attachments, or failures."""
+    columns = _slot_columns(slot)
+    if columns is None:
+        return False
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -280,13 +329,13 @@ def clear_attachment(ticket_id) -> bool:
             with conn:
                 conn.execute(_SCHEMA)
                 current = conn.execute(
-                    "SELECT attachment_name FROM support_tickets WHERE id = ?",
+                    f"SELECT {columns[0]} FROM support_tickets WHERE id = ?",
                     (ticket_id,),
                 ).fetchone()
                 if not current or not current[0]:
                     return False
                 cursor = conn.execute(
-                    "UPDATE support_tickets SET attachment_name = '', attachment_data = NULL, "
+                    f"UPDATE support_tickets SET {columns[0]} = '', {columns[1]} = NULL, "
                     "updated_at = ? WHERE id = ?",
                     (_now(), ticket_id),
                 )

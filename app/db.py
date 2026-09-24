@@ -591,9 +591,32 @@ def put_workflow(roster_id: str, state: dict) -> None:
 
 _SUPPORT_COLUMNS = (
     'id, created_by, student_name, subject, category, message, status, '
-    'admin_reply, attachment_name, '
-    'created_at::text AS "created_at", updated_at::text AS "updated_at"'
+    'admin_reply, attachment_name, student_attachment_name, '
+    '(created_at AT TIME ZONE \'Asia/Kolkata\')::text AS "created_at", '
+    '(updated_at AT TIME ZONE \'Asia/Kolkata\')::text AS "updated_at"'
 )
+
+#: Attachment slots (mirrors app/support.py): staff resolution files vs
+#: student evidence files. Column names are whitelisted — never from input.
+_SUPPORT_ATTACHMENT_COLUMNS = {
+    "admin": ("attachment_name", "attachment_data"),
+    "student": ("student_attachment_name", "student_attachment_data"),
+}
+
+
+def _support_slot_columns(slot: str) -> tuple[str, str] | None:
+    return _SUPPORT_ATTACHMENT_COLUMNS.get(slot or "admin")
+
+#: Attachment slots mirror app/support.py: staff resolution files vs student
+#: issue evidence. Column names are whitelisted here, never built from input.
+_DB_ATTACHMENT_COLUMNS = {
+    "admin": ("attachment_name", "attachment_data"),
+    "student": ("student_attachment_name", "student_attachment_data"),
+}
+
+
+def _support_slot_columns(slot: str) -> tuple[str, str] | None:
+    return _DB_ATTACHMENT_COLUMNS.get(slot or "admin")
 
 
 def create_support_ticket(
@@ -731,9 +754,12 @@ def update_support_ticket(
         return False
 
 
-def get_support_attachment(ticket_id) -> Optional[dict]:
-    """A ticket's attached file as ``{"name": ..., "data": bytes}``, or None
-    when the ticket has no attachment or cannot be read."""
+def get_support_attachment(ticket_id, slot: str = "admin") -> Optional[dict]:
+    """A ticket's attached file from a slot as ``{"name": ..., "data": bytes}``,
+    or None when the slot is empty, unknown, or unreadable."""
+    columns = _support_slot_columns(slot)
+    if columns is None:
+        return None
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -743,21 +769,24 @@ def get_support_attachment(ticket_id) -> Optional[dict]:
             if c is None:
                 return None
             cur = c.execute(
-                "SELECT attachment_name, attachment_data FROM support_tickets WHERE id = %s",
+                f"SELECT {columns[0]}, {columns[1]} FROM support_tickets WHERE id = %s",
                 (ticket_id,),
             )
             row = cur.fetchone()
-            if not row or not row["attachment_name"] or row["attachment_data"] is None:
+            if not row or not row[columns[0]] or row[columns[1]] is None:
                 return None
-            return {"name": row["attachment_name"], "data": bytes(row["attachment_data"])}
+            return {"name": row[columns[0]], "data": bytes(row[columns[1]])}
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_support_attachment failed: %s", exc)
         return None
 
 
-def set_support_attachment(ticket_id, filename: str, data: bytes) -> bool:
-    """Attach (or replace) a file on a ticket. Rejects empty names, empty
-    payloads, and files over 5 MB."""
+def set_support_attachment(ticket_id, filename: str, data: bytes, slot: str = "admin") -> bool:
+    """Attach (or replace) a file in a ticket's slot. Rejects unknown slots,
+    empty names, empty payloads, and files over 5 MB."""
+    columns = _support_slot_columns(slot)
+    if columns is None:
+        return False
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -770,7 +799,7 @@ def set_support_attachment(ticket_id, filename: str, data: bytes) -> bool:
             if c is None:
                 return False
             cur = c.execute(
-                "UPDATE support_tickets SET attachment_name = %s, attachment_data = %s, "
+                f"UPDATE support_tickets SET {columns[0]} = %s, {columns[1]} = %s, "
                 "updated_at = NOW() WHERE id = %s",
                 (filename, bytes(data), ticket_id),
             )
@@ -780,9 +809,12 @@ def set_support_attachment(ticket_id, filename: str, data: bytes) -> bool:
         return False
 
 
-def clear_support_attachment(ticket_id) -> bool:
-    """Remove a ticket's attached file. Returns True when an attachment was
-    actually removed."""
+def clear_support_attachment(ticket_id, slot: str = "admin") -> bool:
+    """Remove a ticket's attached file from a slot. Returns True when an
+    attachment was actually removed."""
+    columns = _support_slot_columns(slot)
+    if columns is None:
+        return False
     try:
         ticket_id = int(ticket_id)
     except (TypeError, ValueError):
@@ -792,14 +824,14 @@ def clear_support_attachment(ticket_id) -> bool:
             if c is None:
                 return False
             cur = c.execute(
-                "SELECT attachment_name FROM support_tickets WHERE id = %s",
+                f"SELECT {columns[0]} FROM support_tickets WHERE id = %s",
                 (ticket_id,),
             )
             row = cur.fetchone()
-            if not row or not row["attachment_name"]:
+            if not row or not row[columns[0]]:
                 return False
             cur = c.execute(
-                "UPDATE support_tickets SET attachment_name = '', attachment_data = NULL, "
+                f"UPDATE support_tickets SET {columns[0]} = '', {columns[1]} = NULL, "
                 "updated_at = NOW() WHERE id = %s",
                 (ticket_id,),
             )
