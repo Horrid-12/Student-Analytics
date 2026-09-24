@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "macros/charts.html" as mc %}
+{% import "macros/echarts.html" as ec %}
 {% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
 {% block content %}
 
@@ -103,10 +104,10 @@
 </section>
 
 <section class="panel">
-  <div class="panel-title">Account Validation Status</div>
-  <div class="two-col-grid">
+  <div class="panel-title">Class Metrics Radar</div>
+  <div class="radar-grid">
     <div>
-      {{ mc.chart('account-status-donut', payload.donut_fig) }}
+      {{ ec.radar('metrics-radar', payload.radar_data) }}
     </div>
     <div class="system-grid">
       <div class="system-item">
@@ -138,6 +139,42 @@
 </section>
 
 <section class="panel">
+  <div class="panel-title">Account Validation Status</div>
+  {% set status = payload.account_status %}
+  {% set total  = payload.total %}
+  <div class="capsule-wrap">
+    {# ── Stat labels ── #}
+    <div class="capsule-stats">
+      {% for item in status %}
+      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
+      <div class="capsule-stat">
+        <span class="capsule-dot capsule-dot--{{ item.Status | lower }}"></span>
+        <strong>{{ item.Count }}</strong> {{ item.Status }}
+        <span class="capsule-pct">({{ pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+    {# ── Capsule bar ── #}
+    <div class="capsule-track">
+      {% for item in status %}
+      {% if item.Count > 0 %}
+      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
+      <div class="capsule-seg capsule-seg--{{ item.Status | lower }}"
+           style="width:{{ pct }}%"
+           aria-label="{{ item.Status }}: {{ item.Count }}">
+        <div class="capsule-tip">
+          <b>{{ item.Status }}</b><br>
+          {{ item.Count }} student{{ 's' if item.Count != 1 else '' }}<br>
+          <span>{{ pct }}%</span>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
   <div class="panel-title">Analysis Results</div>
   <div class="two-col-grid">
     <div>
@@ -150,11 +187,11 @@
     </div>
     <div class="full-width">
       <div class="panel-minor-title">Top 10 Languages</div>
-      {{ mc.chart('language-bar', payload.language_fig) }}
+      {{ ec.bubble('language-bubble', payload.bubble_data) }}
     </div>
     <div class="full-width">
-      <div class="panel-minor-title">Repository Activity by Division &amp; Batch</div>
-      {{ mc.chart('activity-heatmap', payload.heatmap_fig) }}
+      <div class="panel-minor-title">Repository Activity Flow by Division</div>
+      {{ ec.sankey('activity-sankey', payload.sankey_data) }}
     </div>
   </div>
 </section>
