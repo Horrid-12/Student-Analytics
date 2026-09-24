@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+{% block title %}Support — GitHub Student Analytics Platform{% endblock %}
+{% block head %}
+<style>
+  .ticket-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ticket-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 110px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .ticket-textarea:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+  .ticket-message {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .ticket-reply {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    font-size: 13px;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+  .ticket-update-form {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ticket-update-form .ticket-textarea {
+    min-height: 140px;
+  }
+  .ticket-subject {
+    text-transform: uppercase;
+  }
+  .ticket-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .ticket-toggle:hover {
+    color: var(--blue);
+    text-decoration: underline;
+  }
+  .ticket-marker {
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .ticket-attachment {
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  .ticket-actions-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .ticket-attach {
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ticket-attach-name {
+    font-size: 13px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+  }
+  .ticket-status-save {
+    margin-left: auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  .ticket-table th + th,
+  .ticket-table td + td {
+    border-left: 1px solid var(--border);
+  }
+  .ticket-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow: hidden;
+    z-index: 100;
+  }
+  .ticket-modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 560px;
+    width: 100%;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  }
+  .ticket-modal-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .ticket-modal-close:hover {
+    border-color: var(--blue);
+  }
+  .ticket-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .ticket-stat {
+    text-align: center;
+  }
+  .ticket-stat-number {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .ticket-stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .ticket-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .ticket-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .ticket-list li:last-child {
+    border-bottom: none;
+  }
+  .ticket-list .ticket-list-subject {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .ticket-list .ticket-list-meta {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .filter-bar {
+    align-items: flex-end;
+  }
+  .ticket-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+  .ticket-table th,
+  .ticket-table td {
+    padding: 9px 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+  .ticket-table .col-ticket-id { width: 5%; }
+  .ticket-table .col-ticket-student { width: 22%; }
+  .ticket-table .col-ticket-subject { width: 33%; }
+  .ticket-table .col-ticket-category { width: 12%; }
+  .ticket-table .col-ticket-status { width: 13%; }
+  .ticket-table .col-ticket-created { width: 15%; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title">Support</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ tickets|length }} ticket(s)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if error %}
+<div class="roster-loaded-card roster-load-error" role="alert">
+  <span class="roster-load-title">Could not send ticket</span>
+  <span class="roster-load-meta">{{ error }}</span>
+</div>
+{% endif %}
+
+{% if not is_staff %}
+<section class="panel">
+  <div class="panel-title">Raise a ticket</div>
+  <form class="ticket-form" method="post" action="/support/new">
+    <div class="filter-field">
+      <label class="filter-label" for="ticket-subject">Subject</label>
+      <input id="ticket-subject" class="search-input" type="text" name="subject" maxlength="120" value="{{ draft.subject or '' }}" placeholder="Brief summary of the issue&hellip;">
+    </div>
+    <div class="filter-field" style="max-width:260px;">
+      <label class="filter-label" for="ticket-category">Category</label>
+      <select id="ticket-category" class="filter-select" name="category">
+        {% for value in categories %}
+        <option value="{{ value }}" {% if (draft.category or 'General') == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label class="filter-label" for="ticket-message">Message</label>
+      <textarea id="ticket-message" class="ticket-textarea" name="message" placeholder="Describe the issue in detail&hellip;">{{ draft.message or '' }}</textarea>
+    </div>
+    <div><button class="btn" type="submit">Send ticket</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-title">{% if is_staff %}All tickets{% else %}My tickets{% endif %}</div>
+  {% if is_staff %}
+  <form class="filter-bar" method="get">
+    <div class="filter-field">
+      <label class="filter-label" for="ticket-status">Status</label>
+      <select id="ticket-status" class="filter-select" name="status">
+        {% for value in statuses %}
+        <option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Apply</button>
+    <span class="filter-count">{{ tickets|length }} shown</span>
+  </form>
+  {% endif %}
+  <div class="data-table-wrap">
+    <table class="data-table ticket-table">
+      <thead>
+        <tr>
+          <th class="col-ticket-id">#</th>
+          {% if is_staff %}<th class="col-ticket-student">Student</th>{% endif %}
+          <th class="col-ticket-subject">Subject</th>
+          <th class="col-ticket-category">Category</th>
+          <th class="col-ticket-status">Status</th>
+          <th class="col-ticket-created">Created</th>
+        </tr>
+      </thead>
+      <tbody id="support-tbody">
+        {% for t in tickets %}
+        <tr>
+          <td>{{ t.id }}</td>
+          {% if is_staff %}<td><a href="/support?status={{ status }}&profile={{ t.created_by|urlencode }}">{{ t.student_name }}</a><div class="repo-meta">{{ t.created_by }}</div></td>{% endif %}
+          <td><button type="button" class="ticket-subject ticket-toggle" data-target="ticket-detail-{{ t.id }}" aria-expanded="false" aria-controls="ticket-detail-{{ t.id }}"><span class="ticket-marker" aria-hidden="true">&#9656;</span>{{ t.subject }}</button></td>
+          <td>{{ t.category }}</td>
+          <td>
+            {% if t.status == 'Resolved' %}<span class="badge-green">Resolved</span>
+            {% elif t.status == 'In Progress' %}<span class="badge-blue">In Progress</span>
+            {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
+          </td>
+          <td>{{ (t.created_at or '')[:16].replace('T', ' ') }}</td>
+        </tr>
+        <tr class="ticket-detail-row" id="ticket-detail-{{ t.id }}" hidden>
+          <td colspan="{% if is_staff %}6{% else %}5{% endif %}">
+            <div class="ticket-message">{{ t.message }}</div>
+            {% if t.attachment_name %}
+            <div class="ticket-attachment">Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></div>
+            {% endif %}
+            {% if is_staff %}
+            <form class="ticket-update-form" method="post" action="/support/update" enctype="multipart/form-data">
+              <input type="hidden" name="ticket_id" value="{{ t.id }}">
+              <div class="filter-field">
+                <label class="filter-label" for="reply-{{ t.id }}">Resolution</label>
+                <textarea id="reply-{{ t.id }}" class="ticket-textarea" name="admin_reply" placeholder="Write a reply&hellip;">{{ t.admin_reply }}</textarea>
+              </div>
+              <div class="ticket-actions-row">
+                <label class="btn ticket-attach" for="attach-{{ t.id }}">Attach file</label>
+                <input id="attach-{{ t.id }}" type="file" name="attachment" hidden>
+                <span class="ticket-attach-name" id="attach-name-{{ t.id }}"></span>
+                <div class="ticket-status-save">
+                  <div class="filter-field">
+                    <label class="filter-label" for="status-{{ t.id }}">Status</label>
+                    <select id="status-{{ t.id }}" class="filter-select" name="status">
+                      {% for value in statuses[1:] %}
+                      <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ value }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <button class="btn" type="submit">Submit</button>
+                </div>
+              </div>
+            </form>
+            {% elif t.admin_reply %}
+            <div class="ticket-reply"><strong>Resolution:</strong> {{ t.admin_reply }}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td class="table-empty" colspan="{% if is_staff %}6{% else %}5{% endif %}">No tickets yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+  (function () {
+    document.querySelectorAll('.ticket-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var row = document.getElementById(btn.getAttribute('data-target'));
+        if (!row) return;
+        var willOpen = row.hidden;
+        row.hidden = !willOpen;
+        btn.setAttribute('aria-expanded', String(willOpen));
+        var marker = btn.querySelector('.ticket-marker');
+        if (marker) marker.innerHTML = willOpen ? '&#9662;' : '&#9656;';
+      });
+    });
+    document.querySelectorAll('input[type="file"][id^="attach-"]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var label = document.getElementById('attach-name-' + input.id.replace('attach-', ''));
+        if (label) label.textContent = input.files.length ? input.files[0].name : '';
+      });
+    });
+  })();
+</script>
+
+{% if profile %}
+  {% set close_url = "/support?status=" + (status|urlencode) %}
+  <div class="ticket-modal-backdrop" id="ticket-modal-backdrop" data-close-url="{{ close_url }}">
+    <div class="ticket-modal" role="dialog" aria-modal="true" aria-label="Ticket profile for {{ profile.name }}">
+      <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
+        <div class="panel-title" style="margin-bottom:0;">Student Profile</div>
+        <a class="ticket-modal-close" href="{{ close_url }}" aria-label="Close student profile">&times;</a>
+      </div>
+      <div class="profile-panel">
+        <div class="profile-header">
+          <div class="profile-avatar-wrap">
+            <div class="profile-avatar-fallback">{{ (profile.name or '')[0:1] }}</div>
+          </div>
+          <div>
+            <div class="profile-name">{{ profile.name }}</div>
+            <div class="profile-sub">{{ profile.email }}</div>
+          </div>
+        </div>
+        <div class="ticket-stats">
+          <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.total }}</div><div class="ticket-stat-label">Tickets</div></div>
+          <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.open }}</div><div class="ticket-stat-label">Open</div></div>
+          <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.in_progress }}</div><div class="ticket-stat-label">In Progress</div></div>
+          <div class="ticket-stat"><div class="ticket-stat-number">{{ profile.resolved }}</div><div class="ticket-stat-label">Resolved</div></div>
+        </div>
+      </div>
+      <div class="panel-minor-title">Tickets</div>
+      <ul class="ticket-list">
+        {% for t in profile.tickets %}
+        <li>
+          <span class="ticket-list-subject" title="{{ t.subject }}">{{ t.subject }}</span>
+          {% if t.status == 'Resolved' %}<span class="badge-green">Resolved</span>
+          {% elif t.status == 'In Progress' %}<span class="badge-blue">In Progress</span>
+          {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
+          <span class="ticket-list-meta">{{ (t.created_at or '')[:16].replace('T', ' ') }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var backdrop = document.getElementById('ticket-modal-backdrop');
+      if (!backdrop) return;
+      document.body.style.overflow = 'hidden';
+      function close() { window.location.href = backdrop.getAttribute('data-close-url'); }
+      backdrop.addEventListener('click', function (event) {
+        if (event.target === backdrop) close();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') close();
+      });
+      var closer = backdrop.querySelector('.ticket-modal-close');
+      if (closer) closer.focus();
+    })();
+  </script>
+{% endif %}
+{% endblock %}

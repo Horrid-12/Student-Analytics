@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import threading
 import time
 import uuid
@@ -13,12 +14,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import auth, batch, charts, database, db, github_client, google_oauth, services, storage, views
+from app import auth, batch, charts, database, db, github_client, google_oauth, services, storage, support, views
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
     return True
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -121,6 +122,7 @@ NAV_SVG = {
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
     "History": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+    "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 }
 
@@ -135,6 +137,7 @@ def slug_for(page: str) -> str:
         "Leaderboards": "leaderboards",
         "History": "history",
         "Issues": "issues",
+        "Support": "support",
         "Settings": "settings",
     }
     return SLUGS.get(page, page.lower())
@@ -1176,6 +1179,200 @@ async def issues_workflow_save(request: Request, roster: str = ""):
     if database.db_configured():
         db.put_workflow(roster, body)
     return {"status": "ok", "saved": len(body)}
+
+
+# ── Support tickets ──────────────────────────────────────────────────────────
+
+_STAFF_ROLES = ("admin", "faculty")
+
+
+def _support_tickets(email: str, role: str, status: str = "All", limit: int = 500) -> list[dict]:
+    """Tickets visible to this user: everything for staff, own tickets for
+    students. The status filter runs in Python so both backends behave alike."""
+    if database.db_configured():
+        if role in _STAFF_ROLES:
+            rows = db.list_support_tickets(limit=limit)
+        else:
+            rows = db.list_support_tickets_for(email, limit=limit)
+    elif role in _STAFF_ROLES:
+        rows = support.list_tickets(limit=limit)
+    else:
+        rows = support.list_tickets_for(email, limit=limit)
+    if status in support.TICKET_STATUSES:
+        rows = [row for row in rows if row.get("status") == status]
+    return rows
+
+
+def _create_support_ticket(
+    email: str, name: str, subject: str, category: str, message: str
+) -> dict | None:
+    subject = (subject or "").strip()[:120]
+    message = (message or "").strip()[:4000]
+    category = (category or "").strip() or "General"
+    if not email or not subject or not message:
+        return None
+    if database.db_configured():
+        return db.create_support_ticket(email, name, subject, category, message)
+    return support.create_ticket(email, name, subject, category, message)
+
+
+def _update_support_ticket(ticket_id: int, status: str, admin_reply: str) -> bool:
+    if database.db_configured():
+        return db.update_support_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+    return support.update_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+
+
+def _tickets_for(email: str, limit: int = 500) -> list[dict]:
+    """Every ticket raised by one account, newest first, either backend."""
+    if database.db_configured():
+        return db.list_support_tickets_for(email, limit=limit)
+    return support.list_tickets_for(email, limit=limit)
+
+
+def _ticket_profile(email: str) -> dict | None:
+    """Profile card data for the ticket modal: identity, per-status counts,
+    and the account's tickets. None when the address never raised a ticket."""
+    rows = _tickets_for((email or "").strip())
+    if not rows:
+        return None
+    name = next(
+        (row.get("student_name") or "" for row in reversed(rows) if row.get("student_name")),
+        email,
+    )
+    counts = {"Open": 0, "In Progress": 0, "Resolved": 0}
+    for row in rows:
+        if row.get("status") in counts:
+            counts[row["status"]] += 1
+    return {
+        "name": name,
+        "email": (email or "").strip(),
+        "total": len(rows),
+        "open": counts["Open"],
+        "in_progress": counts["In Progress"],
+        "resolved": counts["Resolved"],
+        "tickets": rows,
+    }
+
+
+def _support_context(request: Request, user: dict | None, status: str = "All", error: str = "", draft: dict | None = None) -> dict:
+    role = (user or {}).get("role", "")
+    email = (user or {}).get("email", "")
+    ctx = _base_context(request, "Support")
+    status = status if status in ("All", *support.TICKET_STATUSES) else "All"
+    return {
+        **ctx,
+        "tickets": _support_tickets(email, role, status),
+        "is_staff": role in _STAFF_ROLES,
+        "status": status,
+        "statuses": ["All", *support.TICKET_STATUSES],
+        "categories": list(support.TICKET_CATEGORIES),
+        "error": error,
+        "draft": draft or {},
+    }
+
+
+@app.get("/support", response_class=HTMLResponse)
+def support_page(request: Request, status: str = "All", profile: str = ""):
+    user = getattr(request.state, "user", None)
+    context = _support_context(request, user, status)
+    # Ticket profile modal: staff may inspect any raiser; students have no
+    # names to click, so the parameter is ignored for them.
+    profile_data = None
+    if context["is_staff"] and (profile or "").strip():
+        profile_data = _ticket_profile(profile)
+    context["profile"] = profile_data
+    return templates.TemplateResponse(request, "pages/support.html", context)
+
+
+@app.post("/support/new", response_class=HTMLResponse)
+async def support_create(
+    request: Request,
+    subject: str = Form(""),
+    category: str = Form(""),
+    message: str = Form(""),
+):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "") != "student":
+        raise HTTPException(status_code=403, detail="Only students can raise tickets")
+    ticket = _create_support_ticket(
+        user.get("email", ""), user.get("name", ""), subject, category, message
+    )
+    if ticket is None:
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(
+                request,
+                user,
+                error="Please add a subject and a message before sending.",
+                draft={"subject": subject, "category": category, "message": message},
+            ),
+            status_code=400,
+        )
+    return RedirectResponse("/support", status_code=302)
+
+
+@app.post("/support/update")
+async def support_update(
+    request: Request,
+    ticket_id: int = Form(...),
+    status: str = Form(""),
+    admin_reply: str = Form(""),
+    attachment: UploadFile | None = File(None),
+):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "") not in _STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only staff can update tickets")
+    if status not in support.TICKET_STATUSES:
+        raise HTTPException(status_code=400, detail="Unknown status")
+    filename, file_bytes = "", b""
+    if attachment is not None and (attachment.filename or "").strip():
+        filename = (attachment.filename or "").split("/")[-1].split("\\")[-1].strip().replace('"', "'")
+        file_bytes = await attachment.read()
+        if len(file_bytes) > support.MAX_ATTACHMENT_BYTES:
+            raise HTTPException(status_code=413, detail="Attachment over 5 MB")
+    if not _update_support_ticket(ticket_id, status, admin_reply):
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if filename and file_bytes:
+        saved = (
+            db.set_support_attachment(ticket_id, filename, file_bytes)
+            if database.db_configured()
+            else support.set_attachment(ticket_id, filename, file_bytes)
+        )
+        if not saved:
+            raise HTTPException(status_code=400, detail="Could not save attachment")
+    return RedirectResponse("/support", status_code=302)
+
+
+@app.get("/support/attachment/{ticket_id}")
+def support_attachment(request: Request, ticket_id: int):
+    """Download a ticket's attached file. Staff may fetch any ticket's file;
+    students only their own."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if database.db_configured():
+        ticket = db.get_support_ticket(ticket_id)
+        blob = db.get_support_attachment(ticket_id)
+    else:
+        ticket = support.get_ticket(ticket_id)
+        blob = support.get_attachment(ticket_id)
+    if ticket is None or blob is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    role = user.get("role") or ""
+    if role not in _STAFF_ROLES and (ticket.get("created_by") or "").lower() != (user.get("email") or "").lower():
+        raise HTTPException(status_code=403, detail="Not your ticket")
+    mime, _ = mimetypes.guess_type(blob["name"])
+    safe_name = blob["name"].replace('"', "'")
+    return Response(
+        content=blob["data"],
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
 
 
 @app.get("/settings", response_class=HTMLResponse)

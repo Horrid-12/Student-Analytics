@@ -587,6 +587,199 @@ def put_workflow(roster_id: str, state: dict) -> None:
         logger.warning("put_workflow failed: %s", exc)
 
 
+# ── support tickets (mirrors app/support.py signatures) ───────────────────────
+
+_SUPPORT_COLUMNS = (
+    'id, created_by, student_name, subject, category, message, status, '
+    'admin_reply, attachment_name, '
+    'created_at::text AS "created_at", updated_at::text AS "updated_at"'
+)
+
+
+def create_support_ticket(
+    created_by: str,
+    student_name: str,
+    subject: str,
+    category: str,
+    message: str,
+) -> Optional[dict]:
+    """Insert one ticket; returns the row as a dict or None on failure."""
+    if not (created_by or "").strip() or not (subject or "").strip() or not (message or "").strip():
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "INSERT INTO support_tickets "
+                "(created_by, student_name, subject, category, message) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (
+                    created_by.strip(),
+                    (student_name or "").strip(),
+                    subject.strip(),
+                    (category or "").strip() or "General",
+                    message.strip(),
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return get_support_ticket(row["id"])
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("create_support_ticket failed: %s", exc)
+        return None
+
+
+def list_support_tickets(limit: int = 200) -> list[dict]:
+    """Every ticket, newest first; empty list on failure."""
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                f"SELECT {_SUPPORT_COLUMNS} FROM support_tickets "
+                "ORDER BY id ASC LIMIT %s",
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("list_support_tickets failed: %s", exc)
+        return []
+
+
+def list_support_tickets_for(email: str, limit: int = 200) -> list[dict]:
+    """Tickets raised by one account (matched case-insensitively)."""
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                f"SELECT {_SUPPORT_COLUMNS} FROM support_tickets "
+                "WHERE lower(created_by) = lower(%s) ORDER BY id ASC LIMIT %s",
+                ((email or "").strip(), limit),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("list_support_tickets_for failed: %s", exc)
+        return []
+
+
+def get_support_ticket(ticket_id) -> Optional[dict]:
+    """One ticket by id, or None when missing/invalid/unavailable."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                f"SELECT {_SUPPORT_COLUMNS} FROM support_tickets WHERE id = %s",
+                (ticket_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_support_ticket failed: %s", exc)
+        return None
+
+
+def update_support_ticket(
+    ticket_id, status: Optional[str] = None, admin_reply: Optional[str] = None
+) -> bool:
+    """Update a ticket's status and/or staff reply. Returns True when a row
+    was actually changed."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    assignments: list[str] = []
+    values: list = []
+    if status is not None:
+        if status not in ("Open", "In Progress", "Resolved"):
+            return False
+        assignments.append("status = %s")
+        values.append(status)
+    if admin_reply is not None:
+        assignments.append("admin_reply = %s")
+        values.append(admin_reply)
+    if not assignments:
+        return False
+    assignments.append("updated_at = NOW()")
+    values.append(ticket_id)
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                f"UPDATE support_tickets SET {', '.join(assignments)} WHERE id = %s",
+                values,
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("update_support_ticket failed: %s", exc)
+        return False
+
+
+def get_support_attachment(ticket_id) -> Optional[dict]:
+    """A ticket's attached file as ``{"name": ..., "data": bytes}``, or None
+    when the ticket has no attachment or cannot be read."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT attachment_name, attachment_data FROM support_tickets WHERE id = %s",
+                (ticket_id,),
+            )
+            row = cur.fetchone()
+            if not row or not row["attachment_name"] or row["attachment_data"] is None:
+                return None
+            return {"name": row["attachment_name"], "data": bytes(row["attachment_data"])}
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_support_attachment failed: %s", exc)
+        return None
+
+
+def set_support_attachment(ticket_id, filename: str, data: bytes) -> bool:
+    """Attach (or replace) a file on a ticket. Rejects empty names, empty
+    payloads, and files over 5 MB."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    filename = (filename or "").strip()
+    if not filename or not data or len(data) > 5 * 1024 * 1024:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE support_tickets SET attachment_name = %s, attachment_data = %s, "
+                "updated_at = NOW() WHERE id = %s",
+                (filename, bytes(data), ticket_id),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_support_attachment failed: %s", exc)
+        return False
+
+
 # ── run history + audit log (mirrors storage.py signatures) ────────────────────
 
 def record_analysis_run(

@@ -19,6 +19,7 @@ Upload your roster, click **Run Analysis**, and get nine pages:
 | **Leaderboards** | Compare recent activity, public repo counts, follower counts, and language usage across students |
 | **History** | Past analysis runs — timestamps, status, counts, and outcome trends |
 | **Issues** | Follow-up queue: invalid, missing, or malformed submissions, with clickable profile links and an editable workflow |
+| **Support** | Ticket system — students raise help requests; faculty/admin triage them with replies and statuses |
 | **Settings** | Account card, theme, and storage-health for signed-in users |
 
 ### Key features

@@ -173,6 +173,26 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail          TEXT
 );
 
+-- 11. Support tickets (student-raised help requests triaged by staff).
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id              SERIAL PRIMARY KEY,
+    created_by      TEXT NOT NULL,
+    student_name    TEXT NOT NULL DEFAULT '',
+    subject         TEXT NOT NULL,
+    category        TEXT NOT NULL DEFAULT 'General',
+    message         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'Open',
+    admin_reply     TEXT NOT NULL DEFAULT '',
+    attachment_name TEXT NOT NULL DEFAULT '',
+    attachment_data BYTEA,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_creator ON support_tickets (created_by);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
+
 -- Useful indexes (created only once even under IF NOT EXISTS).
 CREATE INDEX IF NOT EXISTS idx_students_roster        ON students (roster_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_roster ON analysis_results (roster_id);

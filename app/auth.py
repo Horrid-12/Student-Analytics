@@ -53,6 +53,7 @@ _EXTRA_COLUMNS = (
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
     ("/settings", "Settings"),
+    ("/support", "Support"),
     ("/issues", "Issues"),
     ("/history", "History"),
     ("/leaderboards", "Leaderboards"),
@@ -63,12 +64,13 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings")
 
-# BUG-044/045 RBAC: students see Overview + Leaderboards + Settings; faculty
-# and admin see everything. (Anonymized leaderboards are rendered by the page.)
+# BUG-044/045 RBAC: students see Overview + Leaderboards + Settings + Support;
+# faculty and admin see everything. (Anonymized leaderboards are rendered by
+# the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Leaderboards", "Settings"),
+    "student": ("Overview", "Onboarding", "Leaderboards", "Settings", "Support"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
