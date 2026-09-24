@@ -780,6 +780,35 @@ def set_support_attachment(ticket_id, filename: str, data: bytes) -> bool:
         return False
 
 
+def clear_support_attachment(ticket_id) -> bool:
+    """Remove a ticket's attached file. Returns True when an attachment was
+    actually removed."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "SELECT attachment_name FROM support_tickets WHERE id = %s",
+                (ticket_id,),
+            )
+            row = cur.fetchone()
+            if not row or not row["attachment_name"]:
+                return False
+            cur = c.execute(
+                "UPDATE support_tickets SET attachment_name = '', attachment_data = NULL, "
+                "updated_at = NOW() WHERE id = %s",
+                (ticket_id,),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("clear_support_attachment failed: %s", exc)
+        return False
+
+
 # ── run history + audit log (mirrors storage.py signatures) ────────────────────
 
 def record_analysis_run(

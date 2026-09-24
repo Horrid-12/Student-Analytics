@@ -25,10 +25,22 @@
     border-color: var(--blue);
   }
   .ticket-message {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card-soft);
+    padding: 12px 14px;
+    font-size: 15px;
     white-space: pre-line;
     overflow-wrap: anywhere;
-    font-size: 13px;
-    margin: 8px 0;
+    margin: 4px 0 0;
+  }
+  .ticket-section-label {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .ticket-indent {
+    margin-left: 14px;
   }
   .ticket-reply {
     margin-top: 10px;
@@ -71,12 +83,43 @@
     margin-right: 6px;
   }
   .ticket-attachment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 8px 0;
     font-size: 13px;
   }
+  .ticket-preview-img {
+    max-width: 280px;
+    max-height: 180px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+  .ticket-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ticket-icon-btn:hover {
+    color: #EF4444;
+    border-color: #EF4444;
+  }
+  .ticket-icon-btn svg {
+    width: 15px;
+    height: 15px;
+  }
   .ticket-actions-row {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 10px;
     flex-wrap: wrap;
   }
@@ -85,12 +128,34 @@
     flex-shrink: 0;
   }
   .ticket-attach-name {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text);
+    cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 220px;
+  }
+  .ticket-attach-name:hover {
+    text-decoration: underline;
+  }
+  .ticket-attach-name[hidden],
+  .ticket-attach-clear[hidden],
+  .ticket-modal-backdrop[hidden] {
+    display: none;
+  }
+  .ticket-preview-large {
+    max-width: 100%;
+    max-height: 50vh;
+  }
+  .ticket-file-meta {
+    font-size: 13px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
   .ticket-status-save {
     margin-left: auto;
@@ -101,6 +166,24 @@
   .ticket-table th + th,
   .ticket-table td + td {
     border-left: 1px solid var(--border);
+  }
+  .ticket-table th:first-child,
+  .ticket-table td:first-child {
+    border-left: 1px solid var(--border);
+  }
+  .ticket-table th:last-child,
+  .ticket-table td:last-child {
+    border-right: 1px solid var(--border);
+  }
+  .ticket-table thead th {
+    border-top: 1px solid var(--border);
+  }
+  .ticket-table .ticket-spacer-row td {
+    height: 10px;
+    padding: 0;
+  }
+  .ticket-subject-cell {
+    cursor: pointer;
   }
   .ticket-modal-backdrop {
     position: fixed;
@@ -206,6 +289,10 @@
     overflow-wrap: anywhere;
     vertical-align: top;
   }
+  .ticket-table tbody td {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
   .ticket-table .col-ticket-id { width: 5%; }
   .ticket-table .col-ticket-student { width: 22%; }
   .ticket-table .col-ticket-subject { width: 33%; }
@@ -237,7 +324,7 @@
 {% if not is_staff %}
 <section class="panel">
   <div class="panel-title">Raise a ticket</div>
-  <form class="ticket-form" method="post" action="/support/new">
+  <form class="ticket-form" method="post" action="/support/new" enctype="multipart/form-data">
     <div class="filter-field">
       <label class="filter-label" for="ticket-subject">Subject</label>
       <input id="ticket-subject" class="search-input" type="text" name="subject" maxlength="120" value="{{ draft.subject or '' }}" placeholder="Brief summary of the issue&hellip;">
@@ -254,6 +341,14 @@
       <label class="filter-label" for="ticket-message">Message</label>
       <textarea id="ticket-message" class="ticket-textarea" name="message" placeholder="Describe the issue in detail&hellip;">{{ draft.message or '' }}</textarea>
     </div>
+    <div class="ticket-actions-row">
+      <label class="btn ticket-attach" for="raise-attach">Attach file</label>
+      <input id="raise-attach" type="file" name="attachment" hidden>
+      <button type="button" class="ticket-attach-name" hidden></button>
+      <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>
     <div><button class="btn" type="submit">Send ticket</button></div>
   </form>
 </section>
@@ -265,13 +360,12 @@
   <form class="filter-bar" method="get">
     <div class="filter-field">
       <label class="filter-label" for="ticket-status">Status</label>
-      <select id="ticket-status" class="filter-select" name="status">
+      <select id="ticket-status" class="filter-select" name="status" onchange="this.form.submit()">
         {% for value in statuses %}
         <option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ value }}</option>
         {% endfor %}
       </select>
     </div>
-    <button class="btn" type="submit">Apply</button>
     <span class="filter-count">{{ tickets|length }} shown</span>
   </form>
   {% endif %}
@@ -292,7 +386,7 @@
         <tr>
           <td>{{ t.id }}</td>
           {% if is_staff %}<td><a href="/support?status={{ status }}&profile={{ t.created_by|urlencode }}">{{ t.student_name }}</a><div class="repo-meta">{{ t.created_by }}</div></td>{% endif %}
-          <td><button type="button" class="ticket-subject ticket-toggle" data-target="ticket-detail-{{ t.id }}" aria-expanded="false" aria-controls="ticket-detail-{{ t.id }}"><span class="ticket-marker" aria-hidden="true">&#9656;</span>{{ t.subject }}</button></td>
+          <td class="ticket-subject-cell"><button type="button" class="ticket-subject ticket-toggle" data-target="ticket-detail-{{ t.id }}" aria-expanded="false" aria-controls="ticket-detail-{{ t.id }}"><span class="ticket-marker" aria-hidden="true">&#9656;</span>{{ t.subject }}</button></td>
           <td>{{ t.category }}</td>
           <td>
             {% if t.status == 'Resolved' %}<span class="badge-green">Resolved</span>
@@ -303,21 +397,39 @@
         </tr>
         <tr class="ticket-detail-row" id="ticket-detail-{{ t.id }}" hidden>
           <td colspan="{% if is_staff %}6{% else %}5{% endif %}">
+            <div class="ticket-section-label ticket-indent">Issue</div>
             <div class="ticket-message">{{ t.message }}</div>
             {% if t.attachment_name %}
-            <div class="ticket-attachment">Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></div>
+            <div class="ticket-attachment">
+              {% if t.attachment_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')) %}
+              <a href="/support/attachment/{{ t.id }}"><img class="ticket-preview-img" src="/support/attachment/{{ t.id }}" alt="Preview of {{ t.attachment_name }}"></a>
+              {% else %}
+              <span>Attached file: <a href="/support/attachment/{{ t.id }}">{{ t.attachment_name }}</a></span>
+              {% endif %}
+              {% if is_staff %}
+              <form method="post" action="/support/attachment/remove" style="display:inline;">
+                <input type="hidden" name="ticket_id" value="{{ t.id }}">
+                <button type="submit" class="ticket-icon-btn" title="Remove attachment" aria-label="Remove attachment {{ t.attachment_name }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </form>
+              {% endif %}
+            </div>
             {% endif %}
             {% if is_staff %}
             <form class="ticket-update-form" method="post" action="/support/update" enctype="multipart/form-data">
               <input type="hidden" name="ticket_id" value="{{ t.id }}">
               <div class="filter-field">
-                <label class="filter-label" for="reply-{{ t.id }}">Resolution</label>
+                <label class="ticket-section-label ticket-indent" for="reply-{{ t.id }}">Resolution</label>
                 <textarea id="reply-{{ t.id }}" class="ticket-textarea" name="admin_reply" placeholder="Write a reply&hellip;">{{ t.admin_reply }}</textarea>
               </div>
               <div class="ticket-actions-row">
-                <label class="btn ticket-attach" for="attach-{{ t.id }}">Attach file</label>
+                <label class="btn ticket-attach ticket-indent" for="attach-{{ t.id }}">Attach file</label>
                 <input id="attach-{{ t.id }}" type="file" name="attachment" hidden>
-                <span class="ticket-attach-name" id="attach-name-{{ t.id }}"></span>
+                <button type="button" class="ticket-attach-name" hidden></button>
+                <button type="button" class="ticket-icon-btn ticket-attach-clear" title="Remove selected file" aria-label="Remove selected file" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
                 <div class="ticket-status-save">
                   <div class="filter-field">
                     <label class="filter-label" for="status-{{ t.id }}">Status</label>
@@ -336,6 +448,9 @@
             {% endif %}
           </td>
         </tr>
+        {% if not loop.last %}
+        <tr class="ticket-spacer-row" aria-hidden="true"><td colspan="{% if is_staff %}6{% else %}5{% endif %}"></td></tr>
+        {% endif %}
         {% else %}
         <tr><td class="table-empty" colspan="{% if is_staff %}6{% else %}5{% endif %}">No tickets yet.</td></tr>
         {% endfor %}
@@ -345,25 +460,122 @@
 </section>
 <script>
   (function () {
+    function toggleTicket(btn) {
+      var row = document.getElementById(btn.getAttribute('data-target'));
+      if (!row) return;
+      var willOpen = row.hidden;
+      row.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', String(willOpen));
+      var marker = btn.querySelector('.ticket-marker');
+      if (marker) marker.innerHTML = willOpen ? '&#9662;' : '&#9656;';
+    }
     document.querySelectorAll('.ticket-toggle').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var row = document.getElementById(btn.getAttribute('data-target'));
-        if (!row) return;
-        var willOpen = row.hidden;
-        row.hidden = !willOpen;
-        btn.setAttribute('aria-expanded', String(willOpen));
-        var marker = btn.querySelector('.ticket-marker');
-        if (marker) marker.innerHTML = willOpen ? '&#9662;' : '&#9656;';
+      btn.addEventListener('click', function () { toggleTicket(btn); });
+    });
+    document.querySelectorAll('.ticket-subject-cell').forEach(function (cell) {
+      cell.addEventListener('click', function (event) {
+        if (event.target.closest('button')) return;
+        var btn = cell.querySelector('.ticket-toggle');
+        if (btn) toggleTicket(btn);
       });
     });
-    document.querySelectorAll('input[type="file"][id^="attach-"]').forEach(function (input) {
-      input.addEventListener('change', function () {
-        var label = document.getElementById('attach-name-' + input.id.replace('attach-', ''));
-        if (label) label.textContent = input.files.length ? input.files[0].name : '';
+    function humanFileSize(bytes) {
+      if (!bytes) return '0 bytes';
+      var units = ['bytes', 'KB', 'MB'];
+      var i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      var size = bytes / Math.pow(1024, i);
+      return (Math.round(size * 10) / 10) + ' ' + units[i];
+    }
+    function openAttachPreview(data) {
+      var backdrop = document.getElementById('attach-preview-backdrop');
+      var body = document.getElementById('attach-preview-body');
+      var title = document.getElementById('attach-preview-title');
+      if (!backdrop || !body) return;
+      title.textContent = data.name || 'File preview';
+      body.innerHTML = '';
+      if ((data.mime || '').toLowerCase().indexOf('image/') === 0 && data.url) {
+        var img = document.createElement('img');
+        img.className = 'ticket-preview-img ticket-preview-large';
+        img.src = data.url;
+        img.alt = 'Preview of ' + data.name;
+        body.appendChild(img);
+      } else {
+        var meta = document.createElement('div');
+        meta.className = 'ticket-file-meta';
+        meta.textContent = (data.name || 'File') + ' · ' + humanFileSize(data.size) +
+          (data.mime ? ' · ' + data.mime : '') + ' — no preview available for this file type.';
+        body.appendChild(meta);
+      }
+      backdrop.hidden = false;
+      document.body.style.overflow = 'hidden';
+      var closer = backdrop.querySelector('.ticket-modal-close');
+      if (closer) closer.focus();
+    }
+    function closeAttachPreview() {
+      var backdrop = document.getElementById('attach-preview-backdrop');
+      if (!backdrop || backdrop.hidden) return;
+      backdrop.hidden = true;
+      if (!document.getElementById('ticket-modal-backdrop')) document.body.style.overflow = '';
+    }
+    document.querySelectorAll('input[type="file"][name="attachment"]').forEach(function (input) {
+      var form = input.form;
+      if (!form) return;
+      var nameBtn = form.querySelector('.ticket-attach-name');
+      var clearBtn = form.querySelector('.ticket-attach-clear');
+      if (!nameBtn || !clearBtn) return;
+      var fileURL = null;
+      function render() {
+        var file = input.files && input.files[0];
+        if (fileURL) { URL.revokeObjectURL(fileURL); fileURL = null; }
+        if (!file) {
+          nameBtn.textContent = '';
+          nameBtn.hidden = true;
+          clearBtn.hidden = true;
+          delete nameBtn.dataset.url;
+          return;
+        }
+        fileURL = URL.createObjectURL(file);
+        nameBtn.textContent = file.name;
+        nameBtn.hidden = false;
+        clearBtn.hidden = false;
+        nameBtn.dataset.url = fileURL;
+        nameBtn.dataset.mime = file.type || '';
+        nameBtn.dataset.size = String(file.size);
+        nameBtn.dataset.name = file.name;
+      }
+      input.addEventListener('change', render);
+      clearBtn.addEventListener('click', function () { input.value = ''; render(); });
+      nameBtn.addEventListener('click', function () {
+        openAttachPreview({
+          url: nameBtn.dataset.url,
+          mime: nameBtn.dataset.mime,
+          size: Number(nameBtn.dataset.size || 0),
+          name: nameBtn.dataset.name || nameBtn.textContent
+        });
       });
+    });
+    // Delegated so wiring works no matter where the preview markup sits.
+    document.addEventListener('click', function (event) {
+      if (event.target.closest && event.target.closest('#attach-preview-close')) {
+        closeAttachPreview();
+        return;
+      }
+      if (event.target.id === 'attach-preview-backdrop') closeAttachPreview();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeAttachPreview();
     });
   })();
 </script>
+<div class="ticket-modal-backdrop" id="attach-preview-backdrop" hidden>
+  <div class="ticket-modal" role="dialog" aria-modal="true" aria-label="File preview">
+    <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
+      <div class="panel-title" style="margin-bottom:0;" id="attach-preview-title">File preview</div>
+      <button type="button" class="ticket-modal-close" id="attach-preview-close" aria-label="Close file preview">&times;</button>
+    </div>
+    <div id="attach-preview-body"></div>
+  </div>
+</div>
 
 {% if profile %}
   {% set close_url = "/support?status=" + (status|urlencode) %}

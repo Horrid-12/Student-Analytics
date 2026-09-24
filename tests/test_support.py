@@ -103,6 +103,24 @@ class TestRaiseAndList:
         body = admin.get("/support").text
         assert ".ticket-table td + td" in body
 
+    def test_tickets_sorted_open_then_progress_then_resolved(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Alpha open", message="A.")
+        raise_ticket(student, subject="Beta open", message="B.")
+        raise_ticket(student, subject="Gamma open", message="C.")
+        ids = {row["subject"]: row["id"] for row in support.list_tickets()}
+        admin, _ = login_as("admin")
+        admin.post(
+            "/support/update",
+            data={"ticket_id": ids["Beta open"], "status": "Resolved", "admin_reply": ""},
+        )
+        admin.post(
+            "/support/update",
+            data={"ticket_id": ids["Gamma open"], "status": "In Progress", "admin_reply": ""},
+        )
+        body = admin.get("/support").text
+        assert body.index("Alpha open") < body.index("Gamma open") < body.index("Beta open")
+
     def test_earliest_ticket_shown_first(self):
         client, _ = login_as("student")
         raise_ticket(client, subject="First raised", message="One.")
@@ -123,6 +141,21 @@ class TestRaiseAndList:
         # heights can never blow out like the old spanned layout did.
         assert "rowspan" not in body
         assert 'class="ticket-detail-row"' in body
+        # Thin gap rows disconnect consecutive tickets (none after the last).
+        raise_ticket(client, subject="Second ticket", message="More.")
+        gap_body = admin.get("/support").text
+        assert gap_body.count('class="ticket-spacer-row"') == 1
+        # Table edges bordered (including the header top), complaint boxed,
+        # Resolution visually distinct.
+        assert ".ticket-table td:first-child" in body
+        assert ".ticket-table td:last-child" in body
+        assert ".ticket-table thead th" in body
+        assert "ticket-section-label" in body
+        assert ">Issue</div>" in body
+        assert 'for="reply-' in body
+        # Whole subject cell toggles the detail row, not just the button text.
+        assert "ticket-subject-cell" in body
+        assert "ticket-indent" in body
 
     def test_support_link_in_sidebar(self):
         student, _ = login_as("student")
@@ -246,6 +279,66 @@ class TestTriageWorkflow:
         assert "attachment" in download.headers["content-disposition"]
         assert admin.get("/support/attachment/999999").status_code == 404
 
+    def test_student_sees_attached_file(self):
+        owner, _ = login_as("student", "Owner")
+        raise_ticket(owner, subject="My file", message="Attached below.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "My file")
+        assert support.set_attachment(tid, "doc.txt", b"data")
+        body = owner.get("/support").text
+        assert "doc.txt" in body
+        assert f"/support/attachment/{tid}" in body
+
+    def test_image_attachment_shows_preview(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Screenshot bug", message="See pic.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Screenshot bug")
+        faculty, _ = login_as("faculty")
+        faculty.post(
+            "/support/update",
+            data={"ticket_id": tid, "status": "Open", "admin_reply": ""},
+            files={"attachment": ("shot.png", b"\x89PNG fakepng", "image/png")},
+        )
+        body = faculty.get("/support").text
+        assert "ticket-preview-img" in body
+        assert f"/support/attachment/{tid}" in body
+
+    def test_non_image_attachment_shows_link_without_preview(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Doc attach", message="See doc.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Doc attach")
+        assert support.set_attachment(tid, "doc.txt", b"text")
+        body = student.get("/support").text
+        assert "doc.txt" in body
+        assert '<img class="ticket-preview-img"' not in body
+
+    def test_staff_can_remove_attachment(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Removable", message="File below.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Removable")
+        assert support.set_attachment(tid, "old.txt", b"bye")
+        faculty, _ = login_as("faculty")
+        assert "old.txt" in faculty.get("/support").text
+        response = faculty.post(
+            "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
+        )
+        assert response.status_code == 302
+        assert support.get_attachment(tid) is None
+        assert "old.txt" not in faculty.get("/support").text
+
+    def test_remove_attachment_forbidden_and_missing(self):
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Mine", message="Hi.")
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Mine")
+        assert support.set_attachment(tid, "mine.txt", b"data")
+        assert student.post(
+            "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
+        ).status_code == 403
+        assert support.get_attachment(tid) is not None
+        admin, _ = login_as("admin")
+        assert admin.post(
+            "/support/attachment/remove", data={"ticket_id": 999999}, follow_redirects=False
+        ).status_code == 404
+
     def test_oversize_attachment_rejected(self):
         student, _ = login_as("student")
         raise_ticket(student, subject="Big file", message="Huge.")
@@ -262,6 +355,45 @@ class TestTriageWorkflow:
 
 
 class TestValidationAndSafety:
+    def test_student_can_raise_ticket_with_attachment(self):
+        student, _ = login_as("student")
+        response = student.post(
+            "/support/new",
+            data={"subject": "With pic", "category": "Technical", "message": "See attached."},
+            files={"attachment": ("pic.png", b"\x89PNG data", "image/png")},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "With pic")
+        assert support.get_attachment(tid) == {"name": "pic.png", "data": b"\x89PNG data"}
+        body = student.get("/support").text
+        assert "pic.png" in body
+        assert f"/support/attachment/{tid}" in body
+
+    def test_student_raise_oversize_attachment_rejected_without_ticket(self):
+        student, _ = login_as("student")
+        response = student.post(
+            "/support/new",
+            data={"subject": "Too big", "category": "General", "message": "Huge file."},
+            files={"attachment": ("big.bin", b"x" * (5 * 1024 * 1024 + 1), "application/octet-stream")},
+            follow_redirects=False,
+        )
+        assert response.status_code == 413
+        assert support.list_tickets() == []
+
+    def test_attach_widgets_present_for_both_roles(self):
+        student, _ = login_as("student")
+        student_body = student.get("/support").text
+        assert 'id="raise-attach"' in student_body
+        assert 'id="attach-preview-backdrop"' in student_body
+        assert "ticket-attach-clear" in student_body
+        raise_ticket(student, subject="Widget check", message="Hi.")
+        admin, _ = login_as("admin")
+        admin_body = admin.get("/support").text
+        assert 'id="raise-attach"' not in admin_body
+        assert "ticket-attach-clear" in admin_body
+        assert 'id="attach-preview-backdrop"' in admin_body
+
     def test_blank_subject_or_message_rejected(self):
         client, _ = login_as("student")
         for data in (

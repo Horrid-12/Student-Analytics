@@ -23,6 +23,24 @@ DB_PATH = Path(__file__).resolve().parent.parent / "support.db"
 TICKET_STATUSES = ("Open", "In Progress", "Resolved")
 TICKET_CATEGORIES = ("General", "Technical", "Account", "Roster & Data", "Other")
 
+#: Display order for ticket lists: Open first, then In Progress, then
+#: Resolved — earliest ticket first within each status.
+STATUS_ORDER = {"Open": 0, "In Progress": 1, "Resolved": 2}
+
+
+def order_tickets(rows: list[dict]) -> list[dict]:
+    """Sort ticket rows for display (stable: keeps id order within a status)."""
+    return sorted(rows, key=lambda row: (STATUS_ORDER.get(row.get("status"), 0), row.get("id", 0)))
+
+#: Display order for ticket lists: Open first, then In Progress, then
+#: Resolved — earliest ticket first within each status.
+STATUS_ORDER = {"Open": 0, "In Progress": 1, "Resolved": 2}
+
+
+def order_tickets(rows: list[dict]) -> list[dict]:
+    """Sort ticket rows for display (stable: keeps id order within a status)."""
+    return sorted(rows, key=lambda row: (STATUS_ORDER.get(row.get("status"), 0), row.get("id", 0)))
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS support_tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,6 +265,34 @@ def set_attachment(ticket_id, filename: str, data: bytes) -> bool:
                 return (cursor.rowcount or 0) > 0
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Support attachment write failed: %s", exc)
+        return False
+
+
+def clear_attachment(ticket_id) -> bool:
+    """Remove a ticket's attached file. Returns True when an attachment was
+    actually removed; False for unknown ids, missing attachments, or failures."""
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                conn.execute(_SCHEMA)
+                current = conn.execute(
+                    "SELECT attachment_name FROM support_tickets WHERE id = ?",
+                    (ticket_id,),
+                ).fetchone()
+                if not current or not current[0]:
+                    return False
+                cursor = conn.execute(
+                    "UPDATE support_tickets SET attachment_name = '', attachment_data = NULL, "
+                    "updated_at = ? WHERE id = ?",
+                    (_now(), ticket_id),
+                )
+                return (cursor.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Support attachment removal failed: %s", exc)
         return False
 
 

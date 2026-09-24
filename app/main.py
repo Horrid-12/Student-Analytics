@@ -1200,7 +1200,7 @@ def _support_tickets(email: str, role: str, status: str = "All", limit: int = 50
         rows = support.list_tickets_for(email, limit=limit)
     if status in support.TICKET_STATUSES:
         rows = [row for row in rows if row.get("status") == status]
-    return rows
+    return support.order_tickets(rows)
 
 
 def _create_support_ticket(
@@ -1220,6 +1220,28 @@ def _update_support_ticket(ticket_id: int, status: str, admin_reply: str) -> boo
     if database.db_configured():
         return db.update_support_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
     return support.update_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+
+
+async def _read_upload(attachment: UploadFile | None) -> tuple[str, bytes]:
+    """Read an optional uploaded file. Returns (filename, bytes), or
+    ("", b"") when nothing was chosen. Rejects oversized payloads."""
+    if attachment is None or not (attachment.filename or "").strip():
+        return "", b""
+    filename = (attachment.filename or "").split("/")[-1].split("\\")[-1].strip().replace('"', "'")
+    data = await attachment.read()
+    if len(data) > support.MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Attachment over 5 MB")
+    if not filename or not data:
+        return "", b""
+    return filename, data
+
+
+def _save_attachment(ticket_id: int, filename: str, data: bytes) -> bool:
+    if not filename or not data:
+        return False
+    if database.db_configured():
+        return db.set_support_attachment(ticket_id, filename, data)
+    return support.set_attachment(ticket_id, filename, data)
 
 
 def _tickets_for(email: str, limit: int = 500) -> list[dict]:
@@ -1290,12 +1312,14 @@ async def support_create(
     subject: str = Form(""),
     category: str = Form(""),
     message: str = Form(""),
+    attachment: UploadFile | None = File(None),
 ):
     user = getattr(request.state, "user", None)
     if not user:
         return RedirectResponse("/login", status_code=302)
     if (user.get("role") or "") != "student":
         raise HTTPException(status_code=403, detail="Only students can raise tickets")
+    filename, file_bytes = await _read_upload(attachment)
     ticket = _create_support_ticket(
         user.get("email", ""), user.get("name", ""), subject, category, message
     )
@@ -1309,6 +1333,13 @@ async def support_create(
                 error="Please add a subject and a message before sending.",
                 draft={"subject": subject, "category": category, "message": message},
             ),
+            status_code=400,
+        )
+    if filename and not _save_attachment(ticket["id"], filename, file_bytes):
+        return templates.TemplateResponse(
+            request,
+            "pages/support.html",
+            _support_context(request, user, error="Ticket saved, but the attachment could not be stored."),
             status_code=400,
         )
     return RedirectResponse("/support", status_code=302)
@@ -1329,22 +1360,28 @@ async def support_update(
         raise HTTPException(status_code=403, detail="Only staff can update tickets")
     if status not in support.TICKET_STATUSES:
         raise HTTPException(status_code=400, detail="Unknown status")
-    filename, file_bytes = "", b""
-    if attachment is not None and (attachment.filename or "").strip():
-        filename = (attachment.filename or "").split("/")[-1].split("\\")[-1].strip().replace('"', "'")
-        file_bytes = await attachment.read()
-        if len(file_bytes) > support.MAX_ATTACHMENT_BYTES:
-            raise HTTPException(status_code=413, detail="Attachment over 5 MB")
+    filename, file_bytes = await _read_upload(attachment)
     if not _update_support_ticket(ticket_id, status, admin_reply):
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if filename and file_bytes:
-        saved = (
-            db.set_support_attachment(ticket_id, filename, file_bytes)
-            if database.db_configured()
-            else support.set_attachment(ticket_id, filename, file_bytes)
-        )
-        if not saved:
-            raise HTTPException(status_code=400, detail="Could not save attachment")
+    if filename and not _save_attachment(ticket_id, filename, file_bytes):
+        raise HTTPException(status_code=400, detail="Could not save attachment")
+    return RedirectResponse("/support", status_code=302)
+
+
+@app.post("/support/attachment/remove")
+async def support_attachment_remove(request: Request, ticket_id: int = Form(...)):
+    """Delete a ticket's attached file. Staff only."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "") not in _STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only staff can remove attachments")
+    if database.db_configured():
+        removed = db.clear_support_attachment(ticket_id)
+    else:
+        removed = support.clear_attachment(ticket_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Attachment not found")
     return RedirectResponse("/support", status_code=302)
 
 
