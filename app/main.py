@@ -83,6 +83,26 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
 
 
+def _ticket_when(value: str) -> dict:
+    """Split a ticket timestamp into ``{"date", "time"}`` for stacked
+    display (``24 Sep 2026`` over ``11:55``). Timezone-aware values are
+    rendered in IST; naive ones (Postgres ``AT TIME ZONE`` output) are
+    already IST wall-clock and used as-is."""
+    raw = (value or "").strip()
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        parsed = None
+    if parsed is None:
+        return {"date": raw[:10], "time": raw[11:16]}
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(IST)
+    return {"date": parsed.strftime("%d %b %Y"), "time": parsed.strftime("%H:%M")}
+
+
+templates.env.filters["ticket_when"] = _ticket_when
+
+
 def _analysis_view(roster_id: str):
     """Page-render helper: read from Postgres first (if configured), fall back
     to the in-memory RosterStore cache. Returns the same dict shape either way."""

@@ -443,7 +443,7 @@
             {% elif t.status == 'Follow up' %}<span class="badge-red">Follow up</span>
             {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
           </td>
-          <td>{{ (t.created_at or '')[:16].replace('T', ' ') }}</td>
+          <td>{% set when = t.created_at|ticket_when %}<div>{{ when.date }}</div><div class="repo-meta">{{ when.time }}</div></td>
         </tr>
         <tr class="ticket-detail-row" id="ticket-detail-{{ t.id }}"{% if not needs_reply %} hidden{% endif %}>
           <td colspan="{% if is_staff %}6{% else %}5{% endif %}">
@@ -779,7 +779,7 @@
           {% elif t.status == 'In Progress' %}<span class="badge-blue">In Progress</span>
           {% elif t.status == 'Follow up' %}<span class="badge-red">Follow up</span>
           {% else %}<span class="badge-amber">{{ t.status or 'Open' }}</span>{% endif %}
-          <span class="ticket-list-meta">{{ (t.created_at or '')[:16].replace('T', ' ') }}</span>
+          <span class="ticket-list-meta">{% set when = t.created_at|ticket_when %}{{ when.date }} · {{ when.time }}</span>
         </li>
         {% endfor %}
       </ul>

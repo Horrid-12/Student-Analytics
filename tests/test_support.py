@@ -1039,3 +1039,25 @@ class TestStudentReply:
             assert body.index("QUESTION-XYZ") < body.index("qpic.png")
             assert body.index("qpic.png") < body.index("answer text")
             assert body.index("answer text") < body.index("rpic.png")
+
+    def test_created_shows_date_over_time(self):
+        from datetime import datetime as _dt
+
+        from app.main import _ticket_when
+        from app.support import IST as _IST
+
+        assert _ticket_when("2026-09-24T11:55:00+05:30") == {
+            "date": "24 Sep 2026",
+            "time": "11:55",
+        }
+        # Naive Postgres wall-clock stays as-is (no UTC shift).
+        assert _ticket_when("2026-09-24 22:29:00") == {
+            "date": "24 Sep 2026",
+            "time": "22:29",
+        }
+        student, _ = login_as("student")
+        raise_ticket(student, subject="Timestamped row", message="Hi.")
+        body = student.get("/support").text
+        today = _dt.now(_IST).strftime("%d %b %Y")
+        assert today in body
+        assert "2026-09-24 11:55" not in body
