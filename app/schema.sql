@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
     name            TEXT NOT NULL DEFAULT '',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     auth_source     TEXT NOT NULL DEFAULT 'password',
-    google_sub      TEXT NOT NULL DEFAULT ''
+    google_sub      TEXT NOT NULL DEFAULT '',
+    github_username TEXT NOT NULL DEFAULT '',
+    linkedin_sub    TEXT NOT NULL DEFAULT ''
 );
 
 -- 2. Roster uploads (one row per uploaded Excel).
@@ -179,3 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_roster_repos_user       ON roster_repositories (u
 CREATE INDEX IF NOT EXISTS idx_roster_issues_roster    ON roster_issues (roster_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_timestamp ON analysis_runs (run_timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type);
+
+-- Backfill columns for GitHub/LinkedIn OAuth (Phase 4.7 extension).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_sub TEXT NOT NULL DEFAULT '';

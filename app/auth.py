@@ -46,6 +46,8 @@ ROLES = ("student", "faculty", "admin")
 _EXTRA_COLUMNS = (
     ("auth_source", 'TEXT NOT NULL DEFAULT "password"'),
     ("google_sub", "TEXT NOT NULL DEFAULT ''"),
+    ("github_username", "TEXT NOT NULL DEFAULT ''"),
+    ("linkedin_sub", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # Guarded page routes by URL prefix. Keep longest prefixes first.
@@ -321,6 +323,122 @@ def upsert_google_user(email: str, name: str, google_sub: str, role: str = "stud
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Google upsert failed for %s: %s", email, exc)
         return None
+
+
+def upsert_github_user(email: str, name: str, github_username: str, role: str = "student") -> dict | None:
+    email = (email or "").strip().lower()
+    if not email or not init_db():
+        return None
+    if role not in ROLES:
+        role = "student"
+    if database.db_configured():
+        user = db.upsert_user(
+            email=email,
+            role=role,
+            name=(name or "").strip(),
+            password_hash=None,
+            auth_source="github",
+            github_username=github_username or "",
+        )
+        if user is None:
+            return None
+        return {"email": user.get("email", email), "role": user.get("role", role), "name": user.get("name", "")}
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO users (email, password_hash, role, name, created_at, auth_source, github_username)
+                    VALUES (?, NULL, ?, ?, ?, 'github', ?)
+                    ON CONFLICT(email) DO UPDATE SET
+                        role = excluded.role,
+                        name = excluded.name,
+                        auth_source = 'github',
+                        github_username = excluded.github_username
+                    """,
+                    (email, role, (name or "").strip(), now, github_username or ""),
+                )
+        user = get_user(email)
+        if user is None:
+            return None
+        return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Github upsert failed for %s: %s", email, exc)
+        return None
+
+
+def upsert_linkedin_user(email: str, name: str, linkedin_sub: str, role: str = "student") -> dict | None:
+    email = (email or "").strip().lower()
+    if not email or not init_db():
+        return None
+    if role not in ROLES:
+        role = "student"
+    if database.db_configured():
+        user = db.upsert_user(
+            email=email,
+            role=role,
+            name=(name or "").strip(),
+            password_hash=None,
+            auth_source="linkedin",
+            linkedin_sub=linkedin_sub or "",
+        )
+        if user is None:
+            return None
+        return {"email": user.get("email", email), "role": user.get("role", role), "name": user.get("name", "")}
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO users (email, password_hash, role, name, created_at, auth_source, linkedin_sub)
+                    VALUES (?, NULL, ?, ?, ?, 'linkedin', ?)
+                    ON CONFLICT(email) DO UPDATE SET
+                        role = excluded.role,
+                        name = excluded.name,
+                        auth_source = 'linkedin',
+                        linkedin_sub = excluded.linkedin_sub
+                    """,
+                    (email, role, (name or "").strip(), now, linkedin_sub or ""),
+                )
+        user = get_user(email)
+        if user is None:
+            return None
+        return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Linkedin upsert failed for %s: %s", email, exc)
+        return None
+
+
+def link_github_username(email: str, github_username: str) -> bool:
+    email = (email or "").strip().lower()
+    if database.db_configured():
+        return db.link_github_username(email, github_username)
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute("UPDATE users SET github_username = ? WHERE email = ?", (github_username, email))
+        return True
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
+    email = (email or "").strip().lower()
+    if database.db_configured():
+        return db.link_linkedin_sub(email, linkedin_sub)
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute("UPDATE users SET linkedin_sub = ? WHERE email = ?", (linkedin_sub, email))
+        return True
+    except (sqlite3.Error, OSError):
+        return False
 
 
 def new_oauth_state() -> str:

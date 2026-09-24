@@ -708,7 +708,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
             if c is None:
                 return None
             cur = c.execute(
-                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub "
+                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, github_username, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -758,6 +758,8 @@ def upsert_user(
     password_hash: Optional[str] = None,
     auth_source: str = "password",
     google_sub: str = "",
+    github_username: str = "",
+    linkedin_sub: str = "",
 ) -> Optional[dict]:
     """Create or update a user by email. Returns the user dict or None."""
     try:
@@ -765,14 +767,16 @@ def upsert_user(
             if c is None:
                 return None
             c.execute(
-                "INSERT INTO users (email, password_hash, role, name, auth_source, google_sub) "
-                "VALUES (%s,%s,%s,%s,%s,%s) "
+                "INSERT INTO users (email, password_hash, role, name, auth_source, google_sub, github_username, linkedin_sub) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
                 "ON CONFLICT (email) DO UPDATE SET "
                 "password_hash = COALESCE(EXCLUDED.password_hash, users.password_hash), "
                 "role = EXCLUDED.role, name = COALESCE(NULLIF(EXCLUDED.name,''), users.name), "
                 "auth_source = EXCLUDED.auth_source, "
-                "google_sub = COALESCE(NULLIF(EXCLUDED.google_sub,''), users.google_sub)",
-                (email, password_hash, role, name, auth_source, google_sub),
+                "google_sub = COALESCE(NULLIF(EXCLUDED.google_sub,''), users.google_sub), "
+                "github_username = COALESCE(NULLIF(EXCLUDED.github_username,''), users.github_username), "
+                "linkedin_sub = COALESCE(NULLIF(EXCLUDED.linkedin_sub,''), users.linkedin_sub)",
+                (email, password_hash, role, name, auth_source, google_sub, github_username, linkedin_sub),
             )
             return get_user_by_email(email)
     except (psycopg.errors.DatabaseError, OSError) as exc:
@@ -896,3 +900,33 @@ def record_analysis_run_if_unrecorded(roster_id: str) -> bool:
     except Exception as exc:
         logger.warning("record_analysis_run_if_unrecorded failed: %s", exc)
         return False
+
+def link_github_username(email: str, github_username: str) -> bool:
+    """Set the github_username column for an existing user."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET github_username = %s WHERE email = %s",
+                (github_username, (email or "").strip().lower()),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError):
+        return False
+
+
+def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
+    """Set the linkedin_sub column for an existing user."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET linkedin_sub = %s WHERE email = %s",
+                (linkedin_sub, (email or "").strip().lower()),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError):
+        return False
+

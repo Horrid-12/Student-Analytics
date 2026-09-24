@@ -37,7 +37,7 @@ async def startup_init():
 
 # /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
 # anonymous browsers can reach the consent redirect and callback.
-_PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico")
+_PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico", "/privacy")
 _API_REQUIRE_LOGIN = ("/upload", "/analysis/", "/roster/")
 
 
@@ -658,6 +658,15 @@ def topbar_date() -> str:
     return datetime.now().strftime("%A, %d %B %Y")
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "pages/privacy.html",
+        {"page_name": "privacy", "user": getattr(request.state, "user", None)},
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, registered: int = 0, error: int = 0, oauth: str = ""):
     if request.state.user:
@@ -673,6 +682,8 @@ def login_page(request: Request, registered: int = 0, error: int = 0, oauth: str
             "oauth_message": oauth,
             "oauth_domains_text": ", ".join(auth.allowed_domains()),
             "google_configured": google_oauth.configured(),
+            "github_configured": github_oauth.configured(),
+            "linkedin_configured": linkedin_oauth.configured(),
         },
     )
 
@@ -815,65 +826,148 @@ from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
 def auth_github(request: Request):
-    if not request.state.user:
-        return RedirectResponse("/login", status_code=302)
+    if not github_oauth.configured():
+        return RedirectResponse("/login?oauth=github_unconfigured", status_code=302)
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
     state = auth.new_oauth_state()
+    # Encode whether this is a sign-in or link in the state cookie value
+    mode = "link" if request.state.user else "signin"
     url = github_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
-    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True)
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
     return response
 
 @app.get("/auth/github/callback")
 async def auth_github_callback(request: Request, state: str = "", error: str = ""):
-    user = request.state.user
-    if not user:
-        return RedirectResponse("/login", status_code=302)
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
-    response = RedirectResponse("/onboarding?github=linked", status_code=302)
-    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
-    if error or not expected or not hmac.compare_digest(state or "", expected):
-        return RedirectResponse("/onboarding?github=error", status_code=302)
+    mode = request.cookies.get("gsad_oauth_mode", "signin")
+    user = request.state.user
+
+    def reject(kind: str) -> RedirectResponse:
+        target = f"/onboarding?github={kind}" if mode == "link" else f"/login?oauth={kind}"
+        response = RedirectResponse(target, status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
+
+    if error:
+        return reject("error")
+    if not expected or not hmac.compare_digest(state or "", expected):
+        logger.warning("GitHub OAuth state mismatch")
+        return reject("error")
+
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
     try:
-        redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
-        user_info = await github_oauth.exchange_code(str(request.url), state, redirect_uri)
-        # TODO: Save user_info["login"] to the DB for this user
-        _db_log_event("github_linked", user["email"])
+        claims = await github_oauth.exchange_code(str(request.url), state, redirect_uri)
     except Exception:
-        logger.exception("GitHub OAuth exchange failed")
-        return RedirectResponse("/onboarding?github=error", status_code=302)
+        logger.exception("GitHub OAuth code exchange failed")
+        return reject("error")
+
+    if mode == "link" and user:
+        # Profile linking — save the GitHub username to the logged-in user
+        auth.link_github_username(user["email"], claims.get("login", ""))
+        _db_log_event("github_linked", user["email"])
+        response = RedirectResponse("/onboarding?github=linked", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
+
+    # Sign-in mode — domain gate required
+    email = (claims.get("email") or "").strip().lower()
+    if not email or not claims.get("email_verified"):
+        return reject("error")
+    if not auth.domain_allowed_email(email):
+        _db_log_event("oauth_denied", email)
+        return reject("domain")
+
+    role = auth.resolve_google_role(email)  # reuse same role resolution
+    gh_user = auth.upsert_github_user(email, claims.get("name", ""), claims.get("login", ""), role)
+    if gh_user is None:
+        gh_user = {"email": email, "role": role, "name": claims.get("name", "")}
+    _db_log_event("oauth_login", email)
+    response = RedirectResponse("/onboarding", status_code=302)
+    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    response.delete_cookie("gsad_oauth_mode")
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(gh_user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
     return response
 
 
 @app.get("/auth/linkedin")
 def auth_linkedin(request: Request):
-    if not request.state.user:
-        return RedirectResponse("/login", status_code=302)
+    if not linkedin_oauth.configured():
+        return RedirectResponse("/login?oauth=linkedin_unconfigured", status_code=302)
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
     state = auth.new_oauth_state()
+    mode = "link" if request.state.user else "signin"
     url = linkedin_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
-    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True)
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
     return response
 
 @app.get("/auth/linkedin/callback")
 async def auth_linkedin_callback(request: Request, state: str = "", error: str = ""):
-    user = request.state.user
-    if not user:
-        return RedirectResponse("/login", status_code=302)
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
-    response = RedirectResponse("/onboarding?linkedin=linked", status_code=302)
-    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
-    if error or not expected or not hmac.compare_digest(state or "", expected):
-        return RedirectResponse("/onboarding?linkedin=error", status_code=302)
+    mode = request.cookies.get("gsad_oauth_mode", "signin")
+    user = request.state.user
+
+    def reject(kind: str) -> RedirectResponse:
+        target = f"/onboarding?linkedin={kind}" if mode == "link" else f"/login?oauth={kind}"
+        response = RedirectResponse(target, status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
+
+    if error:
+        return reject("error")
+    if not expected or not hmac.compare_digest(state or "", expected):
+        logger.warning("LinkedIn OAuth state mismatch")
+        return reject("error")
+
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
     try:
-        redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
-        user_info = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
-        # TODO: Save user_info["sub"] (or public URL) to the DB for this user
-        _db_log_event("linkedin_linked", user["email"])
+        claims = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
     except Exception:
-        logger.exception("LinkedIn OAuth exchange failed")
-        return RedirectResponse("/onboarding?linkedin=error", status_code=302)
+        logger.exception("LinkedIn OAuth code exchange failed")
+        return reject("error")
+
+    if mode == "link" and user:
+        auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
+        _db_log_event("linkedin_linked", user["email"])
+        response = RedirectResponse("/onboarding?linkedin=linked", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
+
+    email = (claims.get("email") or "").strip().lower()
+    if not email or not claims.get("email_verified"):
+        return reject("error")
+    if not auth.domain_allowed_email(email):
+        _db_log_event("oauth_denied", email)
+        return reject("domain")
+
+    role = auth.resolve_google_role(email)
+    li_user = auth.upsert_linkedin_user(email, claims.get("name", ""), claims.get("sub", ""), role)
+    if li_user is None:
+        li_user = {"email": email, "role": role, "name": claims.get("name", "")}
+    _db_log_event("oauth_login", email)
+    response = RedirectResponse("/onboarding", status_code=302)
+    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    response.delete_cookie("gsad_oauth_mode")
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(li_user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
     return response
 
 

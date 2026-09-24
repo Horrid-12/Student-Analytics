@@ -54,5 +54,11 @@ async def exchange_code(url: str, state: str, redirect_uri: str) -> dict:
     resp = await client.get(USERINFO_ENDPOINT)
     resp.raise_for_status()
     user_info = resp.json()
-    return user_info
+    
+    return {
+        "sub": user_info.get("sub"),
+        "email": user_info.get("email"),
+        "email_verified": user_info.get("email_verified", False),
+        "name": user_info.get("name")
+    }
 

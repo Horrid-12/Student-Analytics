@@ -7,7 +7,7 @@ from authlib.integrations.httpx_client import AsyncOAuth2Client
 AUTHORIZATION_ENDPOINT = "https://github.com/login/oauth/authorize"
 TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token"
 USERINFO_ENDPOINT = "https://api.github.com/user"
-SCOPES = "read:user"
+SCOPES = "read:user user:email"
 
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
 
@@ -54,5 +54,24 @@ async def exchange_code(url: str, state: str, redirect_uri: str) -> dict:
     resp = await client.get(USERINFO_ENDPOINT)
     resp.raise_for_status()
     user_info = resp.json()
-    return user_info
+    
+    # Fetch user emails
+    emails_resp = await client.get("https://api.github.com/user/emails")
+    emails_resp.raise_for_status()
+    emails = emails_resp.json()
+    
+    primary_email = next((e for e in emails if e.get("primary")), None)
+    if not primary_email and emails:
+        primary_email = emails[0]
+        
+    email = primary_email.get("email") if primary_email else None
+    email_verified = primary_email.get("verified", False) if primary_email else False
+
+    return {
+        "login": user_info.get("login"),
+        "name": user_info.get("name"),
+        "email": email,
+        "email_verified": email_verified,
+        "avatar_url": user_info.get("avatar_url")
+    }
 

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy{% endblock %}
+{% block content %}
+<div class="topbar-card">
+    <div class="topbar-title">Privacy Policy</div>
+    <div class="topbar-subtitle">How we handle your data and privacy.</div>
+</div>
+
+<div class="panel" style="padding: 32px; line-height: 1.6;">
+    <h2 style="margin-top: 0;">1. Introduction</h2>
+    <p>This Privacy Policy explains how the GitHub Student Analytics Platform ("we", "us", or "our") collects, uses, and protects your information when you use our service.</p>
+    
+    <h2>2. Information We Collect</h2>
+    <p>When you use our platform, we collect the following types of information:</p>
+    <ul style="margin-bottom: 16px;">
+        <li><strong>Account Information:</strong> Your name, university email address, and role.</li>
+        <li><strong>OAuth Data:</strong> If you link your GitHub or LinkedIn accounts, we collect public profile information (such as usernames and avatars) provided by those services.</li>
+        <li><strong>Academic Data:</strong> Student roll numbers (PRN), division, batch, and other enrollment details required for verification.</li>
+    </ul>
+
+    <h2>3. How We Use Your Information</h2>
+    <p>We use the collected information for the following purposes:</p>
+    <ul style="margin-bottom: 16px;">
+        <li>To verify student identity and academic status.</li>
+        <li>To aggregate and display GitHub repository analytics and leaderboards.</li>
+        <li>To provide administrative features for faculty and staff.</li>
+    </ul>
+
+    <h2>4. Data Sharing and Disclosure</h2>
+    <p>We do not sell your personal data. We only share information in the following circumstances:</p>
+    <ul style="margin-bottom: 16px;">
+        <li><strong>Within the Platform:</strong> Certain data (like GitHub statistics) is visible to faculty and other verified students on the leaderboards.</li>
+        <li><strong>Legal Requirements:</strong> If required by law, subpoena, or other legal processes.</li>
+    </ul>
+
+    <h2>5. Third-Party Services</h2>
+    <p>Our platform integrates with third-party APIs (GitHub, LinkedIn, Google). Your interactions with these services are governed by their respective privacy policies.</p>
+
+    <h2>6. Contact Us</h2>
+    <p>If you have questions about this Privacy Policy, please contact your university's academic administration or the platform administrator.</p>
+    
+    <p style="margin-top: 32px; font-size: 13px; color: var(--muted);">Last Updated: September 2026</p>
+</div>
+{% endblock %}
+
