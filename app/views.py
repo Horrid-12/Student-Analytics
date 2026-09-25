@@ -5,6 +5,7 @@ results) that reproduce the legacy app.py render_* computations with the same
 columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -1157,10 +1158,38 @@ def _repo_number(value, cast):
         return None
 
 
+def _dept_tokens(division, batch) -> tuple:
+    """Extract div/batch tokens from free-form roster cells.
+
+    Covers a packed Division cell ("3.1", "3 batch 1", "3B1") and the separate
+    Division/Batch columns; falls back to the raw cleaned strings when nothing
+    numeric is present so non-numeric labels ("A", "2026") still render.
+    """
+    d = _repo_clean(division)
+    b = _repo_clean(batch)
+    digits_d = re.findall(r"\d+", d)
+    if len(digits_d) >= 2:
+        return digits_d[0], digits_d[1]
+    if digits_d:
+        digits_b = re.findall(r"\d+", b)
+        if digits_b:
+            return digits_d[0], digits_b[0]
+        return digits_d[0], ""
+    return d, b
+
+
+def _dept_label(tokens: tuple, separator: str) -> str:
+    div, batch = tokens
+    return f"div {div or '—'}{separator}batch {batch or '—'}"
+
+
 def _repo_card(row) -> dict:
-    """One repository, pre-normalized for the grouped templates. Cleaning rules
-    match the previous card/table rendering exactly (NaN/None/'Unknown' hidden,
-    missing stars shown as 0, missing quality score shown as '—')."""
+    """One repository, pre-normalized for the flat repository list. Cleaning
+    rules match the previous card/table rendering exactly (NaN/None/'Unknown'
+    hidden, missing stars shown as 0, missing quality score shown as '—').
+    Ownership identity and the formatted div/batch labels ride along so the
+    grid, the table and (optionally) future views share one data shape.
+    """
     lang = _repo_clean(row.get("Language"))
     if lang.lower() == "unknown":
         lang = ""
@@ -1170,6 +1199,7 @@ def _repo_card(row) -> dict:
     stars = int(_repo_number(row.get("Stars"), int) or 0)
     forks = int(_repo_number(row.get("Forks"), int) or 0)
     score = _repo_number(row.get("Repository_Quality_Score"), float)
+    tokens = _dept_tokens(row.get("Division"), row.get("Batch"))
     return {
         "repository": _repo_clean(row.get("Repository")),
         "url": _repo_clean(row.get("Repository_URL")),
@@ -1181,51 +1211,62 @@ def _repo_card(row) -> dict:
         "status": status,
         "description": _repo_clean(row.get("Description")),
         "updated": _repo_clean(row.get("Updated"))[:10],
+        "owner_name": _repo_clean(row.get("Student Name")),
+        "owner_username": _repo_clean(row.get("Username")).lstrip("@"),
+        "avatar_url": _repo_clean(row.get("Avatar_URL")),
+        "div": tokens[0],
+        "batch": tokens[1],
+        "dept_table": _dept_label(tokens, " / "),
+        "dept_card": _dept_label(tokens, " "),
     }
 
 
-def _group_repositories(filtered) -> list:
-    """Group repositories by their owner student (GitHub username identity).
+REPO_SORTS = [
+    ("top", "Top Repositories (Default)"),
+    ("recent", "Recently Active"),
+    ("name", "Repo Name"),
+    ("stars", "Most Stars"),
+]
 
-    Grouping happens AFTER filtering so per-group totals/metrics always match
-    what is visible. Repos without an identifiable owner are grouped under an
-    'orphan' key rather than silently attached to another student.
+
+def _repo_sort(filtered: pd.DataFrame, mode: str) -> pd.DataFrame:
+    """Sort a filtered repositories frame by the requested mode.
+
+    top     → Repository_Quality_Score desc, then Stars desc (default)
+    recent  → Updated desc (parseable dates newest first; broken values sink last)
+    name    → Repository name, case-insensitive
+    stars   → Stars desc
+    Returns a fresh frame with a contiguous RangeIndex so template iteration
+    order is deterministic.
     """
-    groups: dict[str, dict] = {}
-    order: list[str] = []
-    for _, row in filtered.iterrows():
-        username = _repo_clean(row.get("Username")).lstrip("@")
-        key = username.lower() or "orphan"
-        if key not in groups:
-            groups[key] = {
-                "key": key,
-                "username": username,
-                "student_name": _repo_clean(row.get("Student Name")),
-                "avatar_url": _repo_clean(row.get("Avatar_URL")),
-                "division": _repo_clean(row.get("Division")),
-                "batch": _repo_clean(row.get("Batch")),
-                "repos": [],
-            }
-            order.append(key)
-        groups[key]["repos"].append(_repo_card(row))
-
-    result = []
-    for key in order:
-        g = groups[key]
-        scores = [r["score"] for r in g["repos"] if r["score"] is not None]
-        g["total_repos"] = len(g["repos"])
-        g["total_stars"] = sum(r["stars"] for r in g["repos"])
-        g["avg_score"] = round(sum(scores) / len(scores), 1) if scores else None
-        result.append(g)
-
-    def display_sort(g):
-        return (g["key"] == "orphan", (g["student_name"] or g["username"] or "").lower())
-
-    result.sort(key=display_sort)
-    return result
+    if filtered.empty:
+        return filtered
+    frame = filtered.copy()
+    if mode == "recent":
+        def _ts(value):
+            try:
+                return pd.to_datetime(_repo_clean(value), utc=True, errors="coerce")
+            except (TypeError, ValueError):
+                return pd.NaT
+        frame["_rg_ts"] = frame.get("Updated", pd.Series(index=frame.index, dtype=object)).apply(_ts)
+        frame = frame.sort_values("_rg_ts", ascending=False, na_position="last", kind="mergesort")
+    elif mode == "name":
+        frame["_rg_name"] = frame["Repository"].astype(str).str.lower()
+        frame = frame.sort_values("_rg_name", kind="mergesort")
+    elif mode == "stars":
+        frame["_rg_stars"] = frame["Stars"].apply(lambda v: int(_repo_number(v, int) or 0))
+        frame = frame.sort_values("_rg_stars", ascending=False, kind="mergesort")
+    else:  # top (default)
+        frame["_rg_score"] = frame["Repository_Quality_Score"].apply(
+            lambda v: float(_repo_number(v, float) or 0)
+        )
+        frame["_rg_stars"] = frame["Stars"].apply(lambda v: int(_repo_number(v, int) or 0))
+        frame = frame.sort_values(["_rg_score", "_rg_stars"], ascending=False, kind="mergesort")
+    drop = [c for c in ("_rg_ts", "_rg_stars", "_rg_score") if c in frame.columns]
+    return frame.drop(columns=drop).reset_index(drop=True)
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All") -> dict:
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
     repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
     team_repos = view.get("team_repos")
     # Merge contributed repos into the same list so team members' work on a
@@ -1286,7 +1327,17 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     if not filtered.empty:
         filtered = filtered.copy()
         filtered["Repository URL"] = filtered["Repository_URL"]
-    groups = _group_repositories(filtered)[: int(rows)]
+    ordered = _repo_sort(filtered, sort)
+    repo_rows = [_repo_card(row) for _, row in ordered.iterrows()] if not ordered.empty else []
+    total = len(repo_rows)
+    # The rows dropdown is gone: first paint shows one batch and the browser
+    # reveals further batches on scroll. `rows` survives only as an
+    # initial-visible override (kept optional for deep links / robustness).
+    try:
+        requested = int(rows or 0)
+    except (TypeError, ValueError):
+        requested = 0
+    initial_visible = max(STUDENT_BATCH_SIZE, min(requested, total)) if total else 0
     students = view.get("students")
     _opts = (
         lambda col: dist_options(students[col].dropna().astype(str).unique().tolist())
@@ -1294,10 +1345,13 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         else ["All"]
     )
     return {
-        "total": len(filtered),
-        "cards": filtered.head(int(rows)),
-        "table": filtered,
-        "groups": groups,
+        "total": total,
+        "showing": min(initial_visible, total),
+        "initial_visible": initial_visible,
+        "batch_size": STUDENT_BATCH_SIZE,
+        "rows": repo_rows,
+        "sort": sort if sort in {s for s, _ in REPO_SORTS} else "top",
+        "sorts": REPO_SORTS,
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
