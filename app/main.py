@@ -1167,6 +1167,7 @@ def repositories_page(
     division: str = "All",
     batch: str = "All",
     semester: str = "All",
+    sort: str = "top",
 ):
     ctx = _base_context(request, "Repositories", roster)
     data, response = _guard_page(request, ctx, "Repositories", roster)
@@ -1174,11 +1175,13 @@ def repositories_page(
         return response
     if view not in ("grid", "table"):
         view = "grid"
-    payload = views.repositories_payload(data, q, language, rows, division, batch, semester)
+    if sort not in ("top", "recent", "name", "stars"):
+        sort = "top"
+    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort)
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort},
     )
 
 
