@@ -1178,20 +1178,18 @@ def leaderboards_page(
     roster: str = "",
     division: str = "All",
     batch: str = "All",
-    year: str = "All",
     semester: str = "All",
-    anonymize: int = 0,
 ):
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
-    payload = views.leaderboards_payload(view, division, batch, year, semester, anonymize=bool(anonymize))
+    payload = views.leaderboards_payload(view, division, batch, semester)
     notifications, notif_count = _own_notifications(request, view, roster)
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "year": year, "semester": semester, "anonymize": bool(anonymize), "notifications": notifications, "notif_count": notif_count},
+        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "semester": semester, "notifications": notifications, "notif_count": notif_count},
     )
 
 

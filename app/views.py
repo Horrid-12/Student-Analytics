@@ -1104,38 +1104,15 @@ def _with_combined_metrics(students: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def leaderboards_payload(view, division="All", batch="All", year="All", semester="All", anonymize=False) -> dict:
+def leaderboards_payload(view, division="All", batch="All", semester="All") -> dict:
     students = _with_combined_metrics(view["students"].copy())
-    repos = view["repos"].copy()
-    for column, value in (("Division", division), ("Batch", batch), ("Academic_Year", year), ("Semester", semester)):
+    for column, value in (("Division", division), ("Batch", batch), ("Semester", semester)):
         students = apply_value_filter(students, column, value)
-    if not students.empty and not repos.empty:
-        repos = repos[repos["Username"].isin(set(students["GitHub_Username"].dropna()))]
-
-    sections = []
-    if not students.empty:
-        sections.append(_section("Most Active Repos (6m, incl. team)", students, "Combined_Active"))
-        sections.append(_section("Most Repositories (owned + contributed)", students, "Combined_Repos"))
-        if "Team_Commits" in students.columns:
-            sections.append(_section("Most Team Commits", students, "Team_Commits"))
-        sections.append(_section("Most-Followed GitHub Profiles", students, "Followers"))
-        sections.append(_section("Most GitHub-Reported Repos", students, "Public_Repos"))
-    languages = (
-        repos["Language"].fillna("Misc").value_counts().head(10).reset_index()
-        if not repos.empty
-        else None
-    )
-    if languages is not None:
-        languages.columns = ["Language", "Repositories"]
     return {
         "total": len(students),
-        "sections": sections,
-        "anonymize": anonymize,
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
-        "years": dist_options(view["students"]["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
-        "languages": languages if languages is not None else None,
     }
 
 

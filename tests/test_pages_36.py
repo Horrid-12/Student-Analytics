@@ -544,12 +544,16 @@ class TestPageRenderingWithData:
     def test_leaderboards_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/leaderboards?roster={roster_id}").text
-        assert "Most Repositories (owned + contributed)" in body
-        assert "Most Active Repos (6m, incl. team)" in body
-        assert "Most Team Commits" in body
-        assert "Most-Followed GitHub Profiles" in body
-        assert "Top Languages by Repositories" in body
-        assert "Alice Example" in body
+        assert "Leaderboards" in body
+        assert "students ranked" in body
+        assert 'name="division"' in body
+        assert 'name="batch"' in body
+        assert 'name="semester"' in body
+        # Stripped: no year filter, no anonymize, no ranking sections.
+        assert 'name="year"' not in body
+        assert "anonymize" not in body.lower()
+        assert "Most Repositories" not in body
+        assert "Top Languages" not in body
 
     def test_verification_routes_removed(self, tmp_path):
         roster_id = self._setup(tmp_path)
