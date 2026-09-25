@@ -11,9 +11,10 @@
         <span>{{ payload.total }} repositories</span>
       </div>
     </div>
-    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-<span class="badge-purple">Faculty</span>
-</div>
+    <div class="topbar-actions">
+      <span class="badge-purple">Faculty <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+      <div class="faculty-avatar">FM</div>
+    </div>
   </div>
 </div>
 
@@ -38,50 +39,118 @@
 </form>
 
 <section class="panel">
-  <div class="panel-title">Repository Cards</div>
-  <div class="repo-grid">
+  {# ── View Switcher ── #}
+  <div class="repo-panel-header">
+    <div class="panel-title" style="margin-bottom:0;">Repositories</div>
+    <div class="view-switcher" id="view-switcher">
+      <button class="vs-btn vs-active" data-view="grid" type="button" aria-label="Grid View">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Grid
+      </button>
+      <button class="vs-btn" data-view="table" type="button" aria-label="Table View">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+        Table
+      </button>
+    </div>
+  </div>
+
+  {# ── Grid View ── #}
+  <div class="repo-grid" id="repo-grid-view">
     {% for repo in payload.cards.to_dict('records') %}
-    <div class="repo-card">
-      <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
-      <div class="repo-meta">
-        <span class="chip">{{ repo.Language or 'Unknown' }}</span>
-        <span>&middot; {{ repo.Stars }} stars &middot; {{ repo.Forks }} forks</span>
+    {% set lang_raw = repo.Language|string %}
+    {% set lang_clean = lang_raw if lang_raw and lang_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', '') else '' %}
+    {% set desc_raw = repo.Description|string if repo.Description else '' %}
+    {% set desc_clean = desc_raw if desc_raw not in ('nan', 'NaN', 'None', 'null', 'undefined') else '' %}
+    {% set status_raw = repo.Maintenance_Status|string if repo.Maintenance_Status else '' %}
+    {% set status_clean = status_raw if status_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', 'Maintenance unknown', '') else '' %}
+    {% set stars = repo.Stars|int if repo.Stars is not none and repo.Stars|string not in ('nan', 'NaN') else 0 %}
+    {% set forks = repo.Forks|int if repo.Forks is not none and repo.Forks|string not in ('nan', 'NaN') else 0 %}
+    {% set score = repo.Repository_Quality_Score %}
+    {% set score_ok = score is not none and score|string not in ('nan', 'NaN', 'None', '') %}
+    {% set username = repo.Username|string if repo.Username else '' %}
+    {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
+    <div class="repo-card-v2">
+      <div class="rc-header">
+        <a class="rc-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+        {% if username_clean %}
+        <span class="rc-handle">@{{ username_clean }}</span>
+        {% endif %}
       </div>
-      {% if repo.Description %}<p class="repo-description">{{ repo.Description }}</p>{% endif %}
-      <div class="repo-meta">
-        {% if repo.License %}<span class="badge-blue">{{ repo.License }}</span>{% endif %}
-        <span class="badge-amber">{{ repo.Maintenance_Status or 'Maintenance unknown' }}</span>
-        {% if repo.Repository_Quality_Score %}<span class="badge-purple">Score {{ repo.Repository_Quality_Score | round(1) }}</span>{% endif %}
+      {% if desc_clean %}
+      <p class="rc-desc">{{ desc_clean }}</p>
+      {% endif %}
+      <div class="rc-footer">
+        {% if lang_clean %}
+        <span class="rc-lang">
+          <span class="rc-lang-dot"></span>{{ lang_clean }}
+        </span>
+        {% endif %}
+        <span class="rc-stat">★ {{ stars }}</span>
+        <span class="rc-stat">⑂ {{ forks }}</span>
+        {% if score_ok %}
+        <span class="rc-score">Score {{ score | round(1) }}</span>
+        {% endif %}
+        {% if status_clean %}
+        <span class="rc-status">{{ status_clean }}</span>
+        {% endif %}
       </div>
-      <div class="repo-owner"><a class="external-link-button" href="{{ repo.Username | e }}">@{{ repo.Username }}</a></div>
     </div>
     {% else %}
     <p class="table-empty" style="grid-column:1/-1;">No repositories match the current filters.</p>
     {% endfor %}
   </div>
-</section>
 
-<section class="panel">
-  <div class="panel-title">All Repositories</div>
-  <div class="data-table-wrap">
+  {# ── Table View ── #}
+  <div class="data-table-wrap" id="repo-table-view" style="display:none;">
     <table class="data-table">
-      <thead><tr><th>Repository</th><th>Owner</th><th>Language</th><th>Stars</th><th>Forks</th><th>License</th><th>Status</th><th>Score</th><th>Updated</th></tr></thead>
+      <thead><tr>
+        <th>Repository</th><th>Owner</th><th>Language</th><th>Stars</th><th>Forks</th><th>License</th><th>Status</th><th>Score</th><th>Updated</th>
+      </tr></thead>
       <tbody>
         {% for repo in payload.table.to_dict('records') %}
+        {% set lang_raw = repo.Language|string %}
+        {% set lang_clean = lang_raw if lang_raw and lang_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', '') else '' %}
+        {% set status_raw = repo.Maintenance_Status|string if repo.Maintenance_Status else '' %}
+        {% set status_clean = status_raw if status_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', 'Maintenance unknown', '') else '' %}
+        {% set license_raw = repo.License|string if repo.License else '' %}
+        {% set license_clean = license_raw if license_raw not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
+        {% set stars = repo.Stars|int if repo.Stars is not none and repo.Stars|string not in ('nan', 'NaN') else 0 %}
+        {% set forks = repo.Forks|int if repo.Forks is not none and repo.Forks|string not in ('nan', 'NaN') else 0 %}
+        {% set score = repo.Repository_Quality_Score %}
+        {% set score_ok = score is not none and score|string not in ('nan', 'NaN', 'None', '') %}
+        {% set username = repo.Username|string if repo.Username else '' %}
+        {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
         <tr>
           <td><a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a></td>
-          <td><a href="?roster={{ roster_id }}&q={{ repo.Username }}">{{ repo.Username }}</a></td>
-          <td>{% if repo.Language %}<span class="chip">{{ repo.Language }}</span>{% endif %}</td>
-          <td>{{ repo.Stars }}</td>
-          <td>{{ repo.Forks }}</td>
-          <td>{{ repo.License or '' }}</td>
-          <td><span class="badge-amber">{{ repo.Maintenance_Status or 'unknown' }}</span></td>
-          <td>{% if repo.Repository_Quality_Score is not none %}{{ repo.Repository_Quality_Score | round(1) }}{% endif %}</td>
-          <td>{% if repo.Updated %}{{ repo.Updated[0:10] }}{% endif %}</td>
+          <td>{% if username_clean %}<a href="?roster={{ roster_id }}&q={{ username_clean }}">{{ username_clean }}</a>{% else %}—{% endif %}</td>
+          <td>{% if lang_clean %}<span class="chip">{{ lang_clean }}</span>{% else %}—{% endif %}</td>
+          <td>{{ stars }}</td>
+          <td>{{ forks }}</td>
+          <td>{{ license_clean if license_clean else '—' }}</td>
+          <td>{% if status_clean %}<span class="rc-status">{{ status_clean }}</span>{% else %}—{% endif %}</td>
+          <td>{% if score_ok %}{{ score | round(1) }}{% else %}—{% endif %}</td>
+          <td>{% if repo.Updated and repo.Updated|string not in ('nan', 'NaN', 'None', 'null', '') %}{{ repo.Updated|string|truncate(10, True, '') }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+
+<script>
+(function () {
+  var btns = document.querySelectorAll('.vs-btn');
+  var grid = document.getElementById('repo-grid-view');
+  var table = document.getElementById('repo-table-view');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btns.forEach(function (b) { b.classList.remove('vs-active'); });
+      btn.classList.add('vs-active');
+      var view = btn.dataset.view;
+      grid.style.display  = view === 'grid'  ? '' : 'none';
+      table.style.display = view === 'table' ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}
