@@ -814,6 +814,78 @@ button {
 .capsule-seg:hover .capsule-tip { opacity: 1; }
 .capsule-tip b { font-weight: 700; }
 .capsule-tip span { color: var(--muted); }
+
+/* ── Deterministic Packed Bubble Chart ──────────────────────────────── */
+.bubble-chart-wrap { position: relative; overflow: hidden; }
+.bub-node { cursor: default; transition: transform 0.2s cubic-bezier(0.16,1,0.3,1); transform-origin: center; }
+.bub-node:hover { transform: scale(1.08); filter: brightness(1.1); z-index: 2; }
+.bubble-tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 11px; font-size: 12px; line-height: 1.5;
+  font-family: var(--font-sans); white-space: nowrap;
+  box-shadow: 0 4px 14px var(--shadow);
+  opacity: 0; transition: opacity 0.15s ease;
+  transform: translateX(-50%) translateY(-100%);
+  z-index: 10;
+}
+.bubble-tooltip b { font-weight: 700; }
+
+/* ── Ranked Stacked Bar Chart (Activity by Division) ───────────────── */
+.activity-bars-wrap { position: relative; padding: 4px 0; }
+.ab-legend {
+  display: flex; gap: 14px; margin-bottom: 12px;
+  font-size: 12px; color: var(--muted); font-family: var(--font-sans);
+}
+.ab-legend-item { display: flex; align-items: center; gap: 5px; }
+.ab-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ab-list { max-height: 380px; overflow-y: auto; }
+.ab-row {
+  display: grid; grid-template-columns: 110px 1fr 48px;
+  align-items: center; gap: 10px;
+  padding: 5px 0; font-family: var(--font-sans);
+}
+.ab-label {
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ab-track {
+  height: 10px; border-radius: 999px; display: flex;
+  overflow: hidden; background: var(--capsule-track);
+}
+.ab-seg {
+  height: 100%; min-width: 2px; transition: filter 0.15s ease;
+  cursor: default;
+}
+.ab-seg:first-child { border-radius: 999px 0 0 999px; }
+.ab-seg:last-child  { border-radius: 0 999px 999px 0; }
+.ab-seg:only-child  { border-radius: 999px; }
+.ab-seg:hover { filter: brightness(1.2); }
+.ab-total {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.ab-toggle {
+  display: block; width: 100%; margin-top: 8px; padding: 6px 0;
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--muted); font-size: 12px; font-family: var(--font-sans);
+  cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+}
+.ab-toggle:hover { background: var(--hover-bg); color: var(--text); }
+.ab-tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 11px; font-size: 12px; line-height: 1.5;
+  font-family: var(--font-sans); white-space: nowrap;
+  box-shadow: 0 4px 14px var(--shadow);
+  opacity: 0; transition: opacity 0.15s ease;
+  transform: translateX(-50%) translateY(-100%);
+  z-index: 10;
+}
+.ab-tooltip b { font-weight: 700; }
+.ab-tooltip span { color: var(--muted); }
 .run-log-snapshot { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
 .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #A78BFA; font-size: 12px; font-weight: 600; border: 1px solid rgba(139, 92, 246, 0.3); }
 .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }

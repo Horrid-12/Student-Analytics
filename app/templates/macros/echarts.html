@@ -210,237 +210,186 @@ window.__EC_THEME = (function () {
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    CHART 2 — PACKED BUBBLE  (Top 10 Languages)
    data: [ { name: "Python", value: 42 }, ... ]
+
+   Deterministic SVG layout: runs a collision simulation for a fixed number
+   of ticks, writes the final positions into SVG once, then stops completely.
+   No setInterval.  No continuous physics.  Hover is CSS-only.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro bubble(id, data) %}
 {% if data %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:360px;"></div>
+<div id="{{ id }}" class="bubble-chart-wrap" style="height:360px; position:relative;">
+  <svg id="{{ id }}-svg" width="100%" height="100%" style="display:block;"></svg>
+  <div id="{{ id }}-tip" class="bubble-tooltip"></div>
+</div>
 <script>
 (function () {
+  'use strict';
   var el = document.getElementById('{{ id }}');
+  var svg = document.getElementById('{{ id }}-svg');
+  var tipEl = document.getElementById('{{ id }}-tip');
   var raw = {{ data | tojson }};
-  var chart = echarts.init(el);
+  if (!raw || !raw.length) return;
 
-  /* Sort descending so largest bubble is first. */
   raw.sort(function (a, b) { return b.value - a.value; });
-  var maxVal = raw.length ? raw[0].value : 1;
   var total = 0;
   raw.forEach(function (d) { total += d.value; });
+  var maxVal = raw[0].value || 1;
 
-  /* Pre-compute base sizes for hover scaling. */
-  var baseSizes = raw.map(function (d) {
-    return Math.max(36, Math.round(130 * Math.sqrt(d.value / maxVal)));
-  });
-
-  function opts() {
-    var p = window.__EC_THEME.get();
-    return {
-      tooltip: window.__EC_THEME.tooltip({
-        formatter: function (info) {
-          var d = info.data;
-          var pct = total > 0 ? (d.realValue / total * 100).toFixed(1) : '0';
-          return '<b>' + d.name + '</b><br/>' +
-                 'Repositories: ' + d.realValue + '<br/>' +
-                 'Share: ' + pct + '%';
-        }
-      }),
-      animationDuration: 800,
-      animationEasing: 'cubicOut',
-      series: [{
-        type: 'graph',
-        layout: 'force',
-        roam: false,
-        force: {
-          repulsion: 180,
-          gravity: 0.35,
-          edgeLength: 20,
-          friction: 0.28
-        },
-        data: raw.map(function (d, i) {
-          var size = baseSizes[i];
-          return {
-            name: d.name,
-            realValue: d.value,
-            symbolSize: size,
-            value: d.value,
-            x: Math.random() * 200 + 50,
-            y: Math.random() * 200 + 50,
-            itemStyle: {
-              color: p.series[i % p.series.length],
-              borderColor: p.card,
-              borderWidth: 2,
-              shadowBlur: 6,
-              shadowColor: 'rgba(0,0,0,0.12)'
-            },
-            label: {
-              show: size >= 36,
-              formatter: '{b}',
-              color: '#fff',
-              fontSize: Math.max(10, Math.min(14, size / 5.5)),
-              fontWeight: 600,
-              fontFamily: 'Inter'
-            },
-            emphasis: {
-              /* Slightly enlarge the bubble on hover */
-              symbolSize: Math.round(size * 1.15),
-              itemStyle: {
-                borderColor: p.text,
-                borderWidth: 2.5,
-                shadowBlur: 20,
-                shadowColor: 'rgba(0,0,0,0.3)'
-              },
-              label: { show: true, fontSize: 14, fontWeight: 700 }
-            }
-          };
-        }),
-        links: [],
-        lineStyle: { opacity: 0 },
-        /* Enable emphasis on hover */
-        emphasis: {
-          focus: 'self',
-          blurScope: 'series',
-          scale: true,
-          scaleSize: 8
-        }
-      }]
-    };
+  /* ── Radius calculation (sqrt scale, bounded) ── */
+  var MIN_R = 32, MAX_R = 76;
+  function calcRadius(v) {
+    var t = Math.sqrt(v / maxVal);
+    return MIN_R + t * (MAX_R - MIN_R);
   }
 
-  chart.setOption(opts());
-  window.__EC_THEME.register(chart, opts);
-  window.addEventListener('resize', function () { chart.resize(); });
+  /* ── Deterministic circle packing via iterative relaxation ──
+     No external library.  Runs a fixed number of passes and stops. */
+  function packCircles(W, H, PAD) {
+    var cx = W / 2, cy = H / 2;
+    var nodes = raw.map(function (d) {
+      var r = calcRadius(d.value);
+      return {
+        name: d.name, value: d.value, r: r,
+        x: cx + (Math.random() - 0.5) * 40,
+        y: cy + (Math.random() - 0.5) * 40
+      };
+    });
 
-  /* ── Subtle floating motion ──────────────────────────────────────────
-     After the force layout settles (~3s) the pack is frozen as a static
-     graph; tiny bounded nudges then keep the cluster feeling alive, and
-     the bubbles can never drift out of the chart.  A theme toggle
-     re-creates the moving force graph, so it is re-frozen on the next
-     tick.                                                                 */
-  var _floatTimer = null;
-  var _centers = null;
-  var _margin = 0;
-
-  function madeNode(i, p, c) {
-    var size = baseSizes[i];
-    return {
-      name: raw[i].name,
-      realValue: raw[i].value,
-      value: raw[i].value,
-      symbolSize: size,
-      x: c.x,
-      y: c.y,
-      itemStyle: {
-        color: p.series[i % p.series.length],
-        borderColor: p.card,
-        borderWidth: 2,
-        shadowBlur: 6,
-        shadowColor: 'rgba(0,0,0,0.12)'
-      },
-      label: {
-        show: size >= 36,
-        formatter: '{b}',
-        color: '#fff',
-        fontSize: Math.max(10, Math.min(14, size / 5.5)),
-        fontWeight: 600,
-        fontFamily: 'Inter'
-      },
-      emphasis: {
-        symbolSize: Math.round(size * 1.15),
-        itemStyle: {
-          borderColor: p.text,
-          borderWidth: 2.5,
-          shadowBlur: 20,
-          shadowColor: 'rgba(0,0,0,0.3)'
-        },
-        label: { show: true, fontSize: 14, fontWeight: 700 }
+    /* 120 relaxation ticks — converges well for up to ~15 circles. */
+    for (var tick = 0; tick < 120; tick++) {
+      /* Gravity toward center */
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].x += (cx - nodes[i].x) * 0.04;
+        nodes[i].y += (cy - nodes[i].y) * 0.04;
       }
-    };
-  }
-
-  function buildNodes(p) {
-    return raw.map(function (d, i) {
-      return madeNode(i, p, _centers[i] || { x: 150, y: 150 });
-    });
-  }
-
-  /* chart.getOption() does NOT expose the settled force-layout result, so
-     read the pixel positions from the series model (private-but-stable
-     API). */
-  function readSettledPositions() {
-    var model = chart.getModel();
-    if (!model) return null;
-    var series = model.getSeries();
-    if (!series || !series.length) return null;
-    var data = series[0].getData();
-    if (!data) return null;
-    var out = [];
-    for (var i = 0; i < data.count(); i++) {
-      var pos = data.getItemLayout(i);
-      out.push(pos ? { x: pos[0], y: pos[1] } : { x: 150, y: 150 });
+      /* Collision resolution */
+      for (var i = 0; i < nodes.length; i++) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = nodes[j].x - nodes[i].x;
+          var dy = nodes[j].y - nodes[i].y;
+          var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          var minDist = nodes[i].r + nodes[j].r + 3; /* 3px gap */
+          if (dist < minDist) {
+            var overlap = (minDist - dist) / dist * 0.5;
+            nodes[i].x -= dx * overlap;
+            nodes[i].y -= dy * overlap;
+            nodes[j].x += dx * overlap;
+            nodes[j].y += dy * overlap;
+          }
+        }
+      }
+      /* Boundary clamping */
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        n.x = Math.max(n.r + PAD, Math.min(W - n.r - PAD, n.x));
+        n.y = Math.max(n.r + PAD, Math.min(H - n.r - PAD, n.y));
+      }
     }
-    return out;
+    return nodes;
   }
 
-  /* Freeze the settled force pack as a static "none"-layout graph so the
-     drift nudges land exactly where we place them — no physics, and the
-     bubbles are clamped inside the chart so they can never escape. */
-  function freezePack() {
-    var pos = readSettledPositions();
-    if (!pos || pos.length !== raw.length) return false;
-    var w = chart.getWidth();
-    var h = chart.getHeight();
-    _margin = Math.max.apply(null, baseSizes) / 2 + 4;
-    _centers = pos.map(function (c) {
-      return {
-        x: Math.min(Math.max(c.x, _margin), w - _margin),
-        y: Math.min(Math.max(c.y, _margin), h - _margin)
-      };
+  /* ── Render ── */
+  function render() {
+    var p = window.__EC_THEME.get();
+    var W = el.clientWidth || 400;
+    var H = el.clientHeight || 360;
+    var PAD = 15;
+    var nodes = packCircles(W, H, PAD);
+
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.innerHTML = '';
+
+    nodes.forEach(function (n, i) {
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'bub-node');
+      g.setAttribute('data-idx', i);
+
+      /* Circle */
+      var circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circ.setAttribute('cx', n.x);
+      circ.setAttribute('cy', n.y);
+      circ.setAttribute('r', n.r);
+      circ.setAttribute('fill', p.series[i % p.series.length]);
+      circ.setAttribute('stroke', p.card);
+      circ.setAttribute('stroke-width', '2');
+      circ.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.12))';
+      g.appendChild(circ);
+
+      /* Label — word-wrap long names, clamp font to inner diameter */
+      var innerD = n.r * 2 * 0.75; /* usable text width ≈ 75% of diameter */
+      var fs = Math.max(9, Math.min(14, n.r * 0.26));
+      var words = n.name.split(/[\s\/]+/);
+      var lines = [];
+      if (words.length === 1) {
+        /* Single word: truncate if needed */
+        var w = n.name;
+        if (w.length * fs * 0.55 > innerD) w = w.substring(0, Math.floor(innerD / (fs * 0.55))) + '…';
+        lines.push(w);
+      } else {
+        /* Multi-word: split into lines */
+        var cur = words[0];
+        for (var wi = 1; wi < words.length; wi++) {
+          if ((cur + ' ' + words[wi]).length * fs * 0.55 > innerD) {
+            lines.push(cur);
+            cur = words[wi];
+          } else {
+            cur += ' ' + words[wi];
+          }
+        }
+        lines.push(cur);
+        /* Truncate any line that's still too long */
+        lines = lines.map(function (l) {
+          if (l.length * fs * 0.55 > innerD) return l.substring(0, Math.floor(innerD / (fs * 0.55))) + '…';
+          return l;
+        });
+      }
+
+      var lineH = fs * 1.25;
+      var textTop = n.y - ((lines.length - 1) * lineH) / 2;
+      lines.forEach(function (ln, li) {
+        var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('x', n.x);
+        t.setAttribute('y', textTop + li * lineH);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('dominant-baseline', 'central');
+        t.setAttribute('fill', '#fff');
+        t.setAttribute('font-size', fs);
+        t.setAttribute('font-weight', '600');
+        t.setAttribute('font-family', 'Inter, sans-serif');
+        t.setAttribute('pointer-events', 'none');
+        t.textContent = ln;
+        g.appendChild(t);
+      });
+
+      /* Hover events */
+      g.addEventListener('mouseenter', function (e) {
+        var pct = total > 0 ? (n.value / total * 100).toFixed(1) : '0';
+        tipEl.innerHTML = '<b>' + n.name + '</b><br>Repositories: ' + n.value + '<br>Share: ' + pct + '%';
+        tipEl.style.opacity = '1';
+        /* Position tooltip above the bubble */
+        var rect = el.getBoundingClientRect();
+        var svgRect = svg.getBoundingClientRect();
+        var scaleX = svgRect.width / W;
+        var scaleY = svgRect.height / H;
+        var tipX = n.x * scaleX;
+        var tipY = n.y * scaleY - n.r * scaleY - 12;
+        tipEl.style.left = tipX + 'px';
+        tipEl.style.top = tipY + 'px';
+      });
+      g.addEventListener('mouseleave', function () {
+        tipEl.style.opacity = '0';
+      });
+
+      svg.appendChild(g);
     });
-    chart.setOption({
-      animation: false,
-      series: [{
-        type: 'graph',
-        layout: 'none',
-        roam: false,
-        data: buildNodes(window.__EC_THEME.get()),
-        links: [],
-        lineStyle: { opacity: 0 },
-        emphasis: { focus: 'self', blurScope: 'series', scale: true, scaleSize: 8 }
-      }]
-    });
-    return true;
   }
 
-  function driftOnce() {
-    if (chart.isDisposed()) {
-      clearInterval(_floatTimer);
-      _floatTimer = null;
-      return;
-    }
-    /* A theme toggle re-creates the chart as a moving force graph, so
-       re-freeze it at its new settled pack before drifting again. */
-    var opt = chart.getOption();
-    var cur = opt && opt.series && opt.series[0];
-    if (!cur || _centers === null || cur.layout === 'force') {
-      freezePack();
-      return;
-    }
-    var w = chart.getWidth();
-    var h = chart.getHeight();
-    _centers = _centers.map(function (c) {
-      return {
-        x: Math.min(Math.max(c.x + (Math.random() - 0.5) * 8, _margin), w - _margin),
-        y: Math.min(Math.max(c.y + (Math.random() - 0.5) * 8, _margin), h - _margin)
-      };
-    });
-    chart.setOption({ series: [{ data: buildNodes(window.__EC_THEME.get()) }] });
-  }
+  render();
 
-  /* Wait for the initial force layout to settle, then freeze and drift. */
-  setTimeout(function () {
-    if (!freezePack()) return;
-    _floatTimer = setInterval(driftOnce, 2500);
-  }, 3000);
+  /* Re-render on theme change */
+  window.__EC_THEME.register({ setOption: function () { render(); }, resize: function () { render(); }, isDisposed: function () { return false; } }, function () { return {}; });
+  window.addEventListener('resize', function () { render(); });
 })();
 </script>
 {% endif %}
@@ -448,139 +397,131 @@ window.__EC_THEME = (function () {
 
 
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   CHART 3 — SANKEY  (Repository Activity by Division & Batch)
+   CHART 3 — RANKED STACKED BAR  (Repository Activity by Division)
    data: [ { division: "A", batch: "2024", repo_count: 42 }, ... ]
+
+   Replaces the Sankey.  Pure HTML/CSS — no ECharts canvas needed.
+   Shows top 8 divisions by default with a "Show All" toggle.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro sankey(id, data) %}
 {% if data %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:360px;"></div>
+<div id="{{ id }}" class="activity-bars-wrap">
+  <div id="{{ id }}-legend" class="ab-legend"></div>
+  <div id="{{ id }}-list" class="ab-list"></div>
+  <button id="{{ id }}-toggle" class="ab-toggle" style="display:none;"></button>
+  <div id="{{ id }}-tip" class="ab-tooltip"></div>
+</div>
 <script>
 (function () {
-  var el = document.getElementById('{{ id }}');
+  'use strict';
   var raw = {{ data | tojson }};
-  var chart = echarts.init(el);
+  if (!raw || !raw.length) return;
+  var wrap  = document.getElementById('{{ id }}');
+  var list  = document.getElementById('{{ id }}-list');
+  var legend = document.getElementById('{{ id }}-legend');
+  var btn   = document.getElementById('{{ id }}-toggle');
+  var tipEl = document.getElementById('{{ id }}-tip');
 
-  /* ── Build Sankey nodes & links ──
-     Left nodes  = Divisions
-     Right nodes = Activity Levels (High / Medium / Low)
-     Each Division→Level link = sum of repo counts that fall in that level.
+  /* ── Aggregate by division and classify activity tiers ── */
+  var divMap = {};
+  var allCounts = raw.map(function (r) { return r.repo_count; }).sort(function (a, b) { return a - b; });
+  var t1 = allCounts[Math.floor(allCounts.length / 3)] || 0;
+  var t2 = allCounts[Math.floor(allCounts.length * 2 / 3)] || 0;
+  function tier(v) {
+    if (v > t2) return 'High';
+    if (v > t1) return 'Medium';
+    return 'Low';
+  }
 
-     Activity thresholds (based on per-group repo counts):
-       High   = top third of values
-       Medium = middle third
-       Low    = bottom third
-  */
-  function buildSankey(rawData, p) {
-    if (!rawData || !rawData.length) return { nodes: [], links: [] };
+  raw.forEach(function (r) {
+    var d = r.division || 'Unknown';
+    if (!divMap[d]) divMap[d] = { high: 0, medium: 0, low: 0, total: 0 };
+    var lv = tier(r.repo_count);
+    if (lv === 'High')   divMap[d].high += r.repo_count;
+    if (lv === 'Medium') divMap[d].medium += r.repo_count;
+    if (lv === 'Low')    divMap[d].low += r.repo_count;
+    divMap[d].total += r.repo_count;
+  });
 
-    /* Collect unique divisions and compute per-division total. */
-    var divTotals = {};
-    rawData.forEach(function (r) {
-      var d = r.division || 'Unknown';
-      divTotals[d] = (divTotals[d] || 0) + r.repo_count;
+  var divisions = Object.keys(divMap).map(function (k) {
+    return { name: k, high: divMap[k].high, medium: divMap[k].medium, low: divMap[k].low, total: divMap[k].total };
+  });
+  divisions.sort(function (a, b) { return b.total - a.total; });
+
+  var DEFAULT_SHOW = 8;
+  var expanded = false;
+
+  function render() {
+    var p = window.__EC_THEME.get();
+    var colors = { high: p.success, medium: p.warning, low: p.muted };
+
+    /* Legend */
+    legend.innerHTML =
+      '<span class="ab-legend-item"><span class="ab-legend-dot" style="background:' + colors.high + '"></span>High</span>' +
+      '<span class="ab-legend-item"><span class="ab-legend-dot" style="background:' + colors.medium + '"></span>Medium</span>' +
+      '<span class="ab-legend-item"><span class="ab-legend-dot" style="background:' + colors.low + '"></span>Low</span>';
+
+    var shown = expanded ? divisions : divisions.slice(0, DEFAULT_SHOW);
+    list.innerHTML = '';
+
+    shown.forEach(function (div) {
+      var row = document.createElement('div');
+      row.className = 'ab-row';
+
+      var hPct = div.total ? (div.high / div.total * 100) : 0;
+      var mPct = div.total ? (div.medium / div.total * 100) : 0;
+      var lPct = div.total ? (div.low / div.total * 100) : 0;
+
+      row.innerHTML =
+        '<span class="ab-label">' + div.name + '</span>' +
+        '<div class="ab-track">' +
+          (hPct > 0 ? '<div class="ab-seg" data-tier="High" data-div="' + div.name + '" data-count="' + div.high + '" data-pct="' + hPct.toFixed(1) + '" style="width:' + hPct + '%;background:' + colors.high + '"></div>' : '') +
+          (mPct > 0 ? '<div class="ab-seg" data-tier="Medium" data-div="' + div.name + '" data-count="' + div.medium + '" data-pct="' + mPct.toFixed(1) + '" style="width:' + mPct + '%;background:' + colors.medium + '"></div>' : '') +
+          (lPct > 0 ? '<div class="ab-seg" data-tier="Low" data-div="' + div.name + '" data-count="' + div.low + '" data-pct="' + lPct.toFixed(1) + '" style="width:' + lPct + '%;background:' + colors.low + '"></div>' : '') +
+        '</div>' +
+        '<span class="ab-total">' + div.total + '</span>';
+
+      list.appendChild(row);
     });
 
-    /* Compute thresholds from all per-row repo counts. */
-    var counts = rawData.map(function (r) { return r.repo_count; }).sort(function (a, b) { return a - b; });
-    var t1 = counts[Math.floor(counts.length / 3)] || 0;
-    var t2 = counts[Math.floor(counts.length * 2 / 3)] || 0;
-
-    function level(v) {
-      if (v > t2) return 'High Activity';
-      if (v > t1) return 'Medium Activity';
-      return 'Low Activity';
+    /* Show All / Show Less toggle */
+    if (divisions.length > DEFAULT_SHOW) {
+      btn.style.display = '';
+      btn.textContent = expanded ? 'Show Less' : 'Show All (' + divisions.length + ' Divisions)';
+    } else {
+      btn.style.display = 'none';
     }
 
-    var levelColors = {
-      'High Activity':   p.success,
-      'Medium Activity': p.warning,
-      'Low Activity':    p.muted
-    };
-
-    /* Build links: Division → Activity Level. */
-    var linkMap = {};
-    rawData.forEach(function (r) {
-      var d = r.division || 'Unknown';
-      var lv = level(r.repo_count);
-      var key = d + '→' + lv;
-      linkMap[key] = (linkMap[key] || 0) + r.repo_count;
+    /* Segment hover → tooltip */
+    list.querySelectorAll('.ab-seg').forEach(function (seg) {
+      seg.addEventListener('mouseenter', function (e) {
+        tipEl.innerHTML =
+          '<b>' + seg.dataset.div + '</b><br>' +
+          seg.dataset.tier + ' Activity<br>' +
+          seg.dataset.count + ' repos<br>' +
+          '<span>' + seg.dataset.pct + '%</span>';
+        tipEl.style.opacity = '1';
+        var rect = seg.getBoundingClientRect();
+        var wrapRect = wrap.getBoundingClientRect();
+        tipEl.style.left = (rect.left - wrapRect.left + rect.width / 2) + 'px';
+        tipEl.style.top = (rect.top - wrapRect.top - 8) + 'px';
+      });
+      seg.addEventListener('mouseleave', function () {
+        tipEl.style.opacity = '0';
+      });
     });
-
-    var nodesSet = {};
-    var links = [];
-    Object.keys(linkMap).forEach(function (key) {
-      var parts = key.split('→');
-      var source = parts[0];
-      var target = parts[1];
-      nodesSet[source] = true;
-      nodesSet[target] = true;
-      links.push({ source: source, target: target, value: linkMap[key] });
-    });
-
-    var nodes = Object.keys(nodesSet).map(function (n) {
-      var color = levelColors[n] || p.accent;
-      /* Division nodes get accent-family colors. */
-      if (!levelColors[n]) {
-        var divKeys = Object.keys(divTotals);
-        var idx = divKeys.indexOf(n);
-        color = p.series[idx % p.series.length];
-      }
-      return { name: n, itemStyle: { color: color, borderColor: p.card, borderWidth: 1 } };
-    });
-
-    return { nodes: nodes, links: links };
   }
 
-  function opts() {
-    var p = window.__EC_THEME.get();
-    var sk = buildSankey(raw, p);
-    return {
-      tooltip: window.__EC_THEME.tooltip({
-        trigger: 'item',
-        formatter: function (info) {
-          if (info.dataType === 'edge') {
-            return info.data.source + ' → ' + info.data.target + '<br/>Repos: ' + info.data.value;
-          }
-          return '<b>' + info.name + '</b>';
-        }
-      }),
-      series: [{
-        type: 'sankey',
-        data: sk.nodes,
-        links: sk.links,
-        orient: 'horizontal',
-        nodeAlign: 'justify',
-        nodeWidth: 22,
-        nodeGap: 14,
-        layoutIterations: 32,
-        label: {
-          show: true,
-          color: p.text,
-          fontSize: 12,
-          fontFamily: 'Inter',
-          fontWeight: 500
-        },
-        lineStyle: {
-          color: 'gradient',
-          opacity: 0.35,
-          curveness: 0.5
-        },
-        emphasis: {
-          focus: 'adjacency',
-          lineStyle: { opacity: 0.65 },
-          label: { fontSize: 13, fontWeight: 700 }
-        },
-        animationDuration: 700,
-        animationEasing: 'cubicOut',
-        left: 16, right: 120, top: 12, bottom: 12
-      }]
-    };
-  }
+  btn.addEventListener('click', function () {
+    expanded = !expanded;
+    render();
+  });
 
-  chart.setOption(opts());
-  window.__EC_THEME.register(chart, opts);
-  window.addEventListener('resize', function () { chart.resize(); });
+  render();
+
+  /* Re-render on theme change */
+  window.__EC_THEME.register({ setOption: function () { render(); }, resize: function () {}, isDisposed: function () { return false; } }, function () { return {}; });
 })();
 </script>
 {% endif %}
