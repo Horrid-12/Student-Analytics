@@ -1086,17 +1086,46 @@ def logout(request: Request):
     return response
 
 
-def _own_notifications(request: Request, view, roster: str) -> tuple[list, int]:
-    """4.11: issue alerts for the student notification bell. Only computed for
-    student logins on a completed run; everyone else gets ([], 0)."""
+def _bell_context(request: Request, view=None, roster: str = "") -> dict:
+    """Topbar bell data for the shared partial. Students get their own issue
+    alerts (needs a completed view); staff get support-ticket alerts (needs no
+    view, so the bell works even before any roster loads). Returns the
+    notifications/notif_count/notif_empty template keys — notif_empty None
+    renders no bell at all."""
     user = getattr(request.state, "user", None) or {}
-    if user.get("role") != "student" or view is None or not _is_complete(view):
-        return [], 0
-    run_time = views.friendly_timestamp(views.last_analysis_time())
-    notifications = views.own_issue_notifications(
-        view, user.get("email", ""), run_time, roster, _workflow_state(roster)
-    )
-    return notifications, len(notifications)
+    role = user.get("role")
+    if role == "student":
+        if view is None or not _is_complete(view):
+            return {"notifications": [], "notif_count": 0, "notif_empty": None}
+        run_time = views.friendly_timestamp(views.last_analysis_time())
+        notifications = views.own_issue_notifications(
+            view, user.get("email", ""), run_time, roster, _workflow_state(roster)
+        )
+        return {
+            "notifications": notifications,
+            "notif_count": len(notifications),
+            "notif_empty": "No open issues — you're all clear.",
+        }
+    if role in _STAFF_ROLES:
+        try:
+            rows = _support_tickets(user.get("email", ""), role)
+        except Exception:
+            rows = []
+        notifications = [
+            {
+                "issue": alert["subject"],
+                "sub": f"{alert['student']} • {alert['status']}" if alert["student"] else alert["status"],
+                "time": views.friendly_timestamp(alert["updated_at"]),
+                "fix_url": alert["fix_url"],
+            }
+            for alert in support.staff_alerts(rows)
+        ]
+        return {
+            "notifications": notifications,
+            "notif_count": len(notifications),
+            "notif_empty": "No ticket updates — all quiet.",
+        }
+    return {"notifications": [], "notif_count": 0, "notif_empty": None}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1106,7 +1135,6 @@ def overview(request: Request, roster: str = ""):
     ctx["view"] = None
     ctx["payload"] = None
     ctx["past_runs"] = _run_history_rows()
-    ctx["notifications"], ctx["notif_count"] = [], 0
     if roster:
         view = _analysis_view(roster)
         if view is not None and _is_complete(view):
@@ -1114,9 +1142,9 @@ def overview(request: Request, roster: str = ""):
                 ctx["view"] = view
                 ctx["payload"] = views.overview_payload(view)
                 ctx["last_analysis"] = views.friendly_timestamp(views.last_analysis_time())
-                ctx["notifications"], ctx["notif_count"] = _own_notifications(request, view, roster)
             except Exception:
                 ctx["view"] = None
+    ctx.update(_bell_context(request, ctx["view"], roster))
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
 
 
@@ -1249,7 +1277,6 @@ def leaderboards_page(
         blacklist=_blacklist_state(roster),
         hidden_repos=_hidden_repos_state(roster),
     )
-    notifications, notif_count = _own_notifications(request, view, roster)
     # Same profile popup as the Students tab: opened from a leaderboard name,
     # closed back to this exact leaderboard view.
     profile = None
@@ -1264,7 +1291,8 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], "notifications": notifications, "notif_count": notif_count},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+    )
     )
 
 
@@ -1603,6 +1631,7 @@ def _support_context(request: Request, user: dict | None, status: str = "All", e
         "categories": list(support.TICKET_CATEGORIES),
         "error": error,
         "draft": draft or {},
+        **_bell_context(request),
     }
 
 

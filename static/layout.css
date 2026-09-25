@@ -1410,6 +1410,11 @@ button {
     font-weight: 600;
     color: var(--text);
 }
+.notif-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+}
 .notif-meta {
     display: flex;
     align-items: center;

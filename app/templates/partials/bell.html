@@ -1,25 +1,28 @@
-{# 4.11 student notification bell (top-right of the topbar). Student logins
-   only; expects `notifications` (issue/time/fix_url dicts) and `notif_count`.
-   Dropdown shows at most 5 at once and scrolls (CSS). #}
-{% if auth_role == 'Student' %}
+{# Shared notification bell (top-right of the topbar). Students get own issue
+   alerts, staff get support-ticket alerts — both arrive as `notifications`
+   (issue/time/fix_url dicts, optional sub line) with `notif_count`.
+   Handlers set `notif_empty` (None renders no bell); the dropdown shows at
+   most 5 at once and scrolls (CSS). #}
+{% if notif_empty %}
 <details class="notif-bell">
   <summary class="notif-bell-btn" aria-label="Notifications{% if notif_count %}, {{ notif_count }} open{% endif %}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
     {% if notif_count %}<span class="notif-badge">{{ notif_count }}</span>{% endif %}
   </summary>
-  <div class="notif-dropdown" role="menu" aria-label="Issue notifications">
+  <div class="notif-dropdown" role="menu" aria-label="Notifications">
     <div class="notif-head">Notifications</div>
     {% if notifications %}
     <div class="notif-list">
       {% for n in notifications %}
       <div class="notif-item">
         <div class="notif-text">{{ n.issue }}</div>
+        {% if n.sub %}<div class="notif-sub">{{ n.sub }}</div>{% endif %}
         <div class="notif-meta"><span class="notif-time">{{ n.time }}</span><a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
       </div>
       {% endfor %}
     </div>
     {% else %}
-    <p class="notif-empty">No open issues — you're all clear.</p>
+    <p class="notif-empty">{{ notif_empty }}</p>
     {% endif %}
   </div>
 </details>
