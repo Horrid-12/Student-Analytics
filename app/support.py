@@ -42,6 +42,40 @@ def order_tickets(rows: list[dict]) -> list[dict]:
     """Sort ticket rows for display (stable: keeps id order within a status)."""
     return sorted(rows, key=lambda row: (STATUS_ORDER.get(row.get("status"), 0), row.get("id", 0)))
 
+
+def staff_alerts(tickets: list[dict] | None) -> list[dict]:
+    """Bell notifications for staff: tickets needing staff action, newest
+    activity first. Actionable = status Open (untouched) or a student reply
+    waiting on review (non-resolved with student_reply set). Resolved tickets
+    never alert. Pure function — no I/O. Each item carries id/subject/student/
+    status/updated_at plus a Fix deep-link to the ticket row."""
+    alerts = []
+    for ticket in tickets or []:
+        if not isinstance(ticket, dict):
+            continue
+        status = str(ticket.get("status") or "")
+        if status == "Resolved":
+            continue
+        replied = bool(str(ticket.get("student_reply") or "").strip())
+        if status != "Open" and not replied:
+            continue
+        try:
+            tid = int(ticket.get("id"))
+        except (TypeError, ValueError):
+            continue
+        alerts.append(
+            {
+                "id": tid,
+                "subject": str(ticket.get("subject") or "Untitled ticket"),
+                "student": str(ticket.get("student_name") or ticket.get("created_by") or ""),
+                "status": status,
+                "updated_at": ticket.get("updated_at") or ticket.get("created_at") or "",
+                "fix_url": f"/support#ticket-detail-{tid}",
+            }
+        )
+    alerts.sort(key=lambda item: str(item["updated_at"]), reverse=True)
+    return alerts
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS support_tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
