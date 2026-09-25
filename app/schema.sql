@@ -180,11 +180,23 @@ CREATE TABLE IF NOT EXISTS roster_repositories (
     commits                     INTEGER NOT NULL DEFAULT 0,
     commits_30d                 INTEGER NOT NULL DEFAULT 0,
     commits_90d                 INTEGER NOT NULL DEFAULT 0,
+    pull_requests               INTEGER NOT NULL DEFAULT 0,
+    issues                      INTEGER NOT NULL DEFAULT 0,
+    contributors                INTEGER NOT NULL DEFAULT 0,
+    has_readme                  INTEGER NOT NULL DEFAULT 0,
+    topics_count                INTEGER NOT NULL DEFAULT 0,
+    total_commits               INTEGER NOT NULL DEFAULT 0,
     UNIQUE (roster_id, username, repository_url)
 );
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_30d INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_90d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS pull_requests INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS issues INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS contributors INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS has_readme INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS topics_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS total_commits INTEGER NOT NULL DEFAULT 0;
 
 -- 6b. Team-contributed repos (per-roster snapshot of external-repo activity
 --     derived from the public events API — the group-project fix).

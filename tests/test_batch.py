@@ -71,7 +71,7 @@ class FakeGitHub:
         self.repo_commits = repo_commits or {}
         self.repo_meta = repo_meta or {}
 
-    def __call__(self, url, token, timeout=None):
+    def __call__(self, url, token, timeout=None, accept=None):
         from services import GITHUB_API_BASE
 
         if "/search/issues" in url:

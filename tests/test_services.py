@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 import services
+import app.services as app_services
 from services import EXCEL_COLUMNS, GITHUB_API_BASE, GITHUB_COL, REQUIRED_EXCEL_COLUMNS, STUDENT_ID_COL
 
 
@@ -604,12 +605,169 @@ class TestQualityMetrics:
         )
         out = services.add_repository_quality_metrics(repo_df)
         assert list(out["Maintenance_Status"]) == ["Active", "Stale"]
-        assert out["Repository_Quality_Score"].tolist() == [100, 10]
-        assert list(out["Quality_Band"]) == ["Strong signals", "Needs attention"]
+        assert out["Repository_Quality_Score"].tolist() == [20, 0]
+        assert list(out["Quality_Band"]) == ["Needs Attention", "Needs Attention"]
 
     def test_empty_stays_empty(self):
         out = services.add_repository_quality_metrics(pd.DataFrame())
         assert out.empty
+
+
+def _quality_row(updated_days_ago, **overrides):
+    """A repo row with recency set via ``updated_days_ago`` (>180 → 0)."""
+    row = {
+        "Username": "u",
+        "Repository": "r",
+        "Description": None,
+        "License": None,
+        "Stars": 0,
+        "Forks": 0,
+        "Total_Commits": 0,
+        "Contributors": 0,
+        "Issues": 0,
+        "Pull_Requests": 0,
+        "Has_README": 0,
+        "Topics_Count": 0,
+        "Updated": (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=updated_days_ago)).isoformat(),
+    }
+    row.update(overrides)
+    return row
+
+
+def _quality_score(scorer, row) -> int:
+    return int(scorer(pd.DataFrame([row])).iloc[0]["Repository_Quality_Score"])
+
+
+class TestStrictProfessionalScoring:
+    """Boundary matrix for the strict 100-point scoring system.
+
+    Each test mirrors ``app_services`` (the live pipeline) and ``services``
+    (the frozen legacy copy) — both must stay identical.
+    """
+
+    SCORERS = [services.add_repository_quality_metrics, app_services.add_repository_quality_metrics]
+
+    @pytest.fixture(params=SCORERS, ids=["legacy", "app"])
+    def scorer(self, request):
+        return request.param
+
+    def test_minimum_all_zero_is_zero(self, scorer):
+        assert _quality_score(scorer, _quality_row(200)) == 0
+
+    def test_maximum_all_components_is_100(self, scorer):
+        row = _quality_row(
+            0,
+            Pull_Requests=1,
+            Issues=1,
+            Contributors=2,
+            Stars=20,
+            Forks=1,
+            Total_Commits=51,
+            Has_README=1,
+            Description="x",
+            License="MIT",
+        )
+        assert _quality_score(scorer, row) == 100
+
+    @pytest.mark.parametrize(
+        "stars,expected", [(0, 0), (1, 5), (4, 5), (5, 10), (19, 10), (20, 15)]
+    )
+    def test_stars_tiers(self, scorer, stars, expected):
+        assert _quality_score(scorer, _quality_row(200, Stars=stars)) == expected
+
+    @pytest.mark.parametrize(
+        "commits,expected", [(0, 0), (1, 5), (9, 5), (10, 10), (50, 10), (51, 15)]
+    )
+    def test_commit_volume_tiers(self, scorer, commits, expected):
+        assert _quality_score(scorer, _quality_row(200, Total_Commits=commits)) == expected
+
+    @pytest.mark.parametrize(
+        "days,expected", [(30, 15), (31, 10), (90, 10), (91, 5), (180, 5), (181, 0)]
+    )
+    def test_recency_tiers(self, scorer, days, expected):
+        assert _quality_score(scorer, _quality_row(days)) == expected
+
+    @pytest.mark.parametrize(
+        "contributors,expected", [(1, 0), (2, 5)]
+    )
+    def test_contributors(self, scorer, contributors, expected):
+        assert _quality_score(scorer, _quality_row(200, Contributors=contributors)) == expected
+
+    @pytest.mark.parametrize("prs,expected", [(0, 0), (1, 15)])
+    def test_pull_requests(self, scorer, prs, expected):
+        assert _quality_score(scorer, _quality_row(200, Pull_Requests=prs)) == expected
+
+    @pytest.mark.parametrize("issues,expected", [(0, 0), (1, 10)])
+    def test_issues(self, scorer, issues, expected):
+        assert _quality_score(scorer, _quality_row(200, Issues=issues)) == expected
+
+    @pytest.mark.parametrize("forks,expected", [(0, 0), (1, 5)])
+    def test_forks(self, scorer, forks, expected):
+        assert _quality_score(scorer, _quality_row(200, Forks=forks)) == expected
+
+    @pytest.mark.parametrize(
+        "description,topics,expected",
+        [("", 0, 0), ("   ", 0, 0), (None, 0, 0), ("", 1, 5), ("x", 0, 5)],
+    )
+    def test_description_or_topics(self, scorer, description, topics, expected):
+        assert _quality_score(scorer, _quality_row(200, Description=description, Topics_Count=topics)) == expected
+
+    @pytest.mark.parametrize("readme,expected", [(0, 0), (1, 10)])
+    def test_readme(self, scorer, readme, expected):
+        assert _quality_score(scorer, _quality_row(200, Has_README=readme)) == expected
+
+    @pytest.mark.parametrize("license_value,expected", [(None, 0), ("MIT", 5)])
+    def test_license(self, scorer, license_value, expected):
+        assert _quality_score(scorer, _quality_row(200, License=license_value)) == expected
+
+    @pytest.mark.parametrize(
+        "row,expected_band",
+        [
+            (_quality_row(0, Pull_Requests=1, Issues=1, Contributors=2, Stars=20, Forks=1, Total_Commits=51, Has_README=1, Description="x", License="MIT"), "Exceptional / Open Source Ready"),
+            (_quality_row(30, Pull_Requests=1, Stars=20, Forks=1, Description="x"), "Strong Signals"),
+            (_quality_row(30, Stars=20, Forks=1), "Developing"),
+            (_quality_row(30, Description="x"), "Needs Attention"),
+            (_quality_row(200), "Needs Attention"),
+        ],
+    )
+    def test_band_boundaries(self, scorer, row, expected_band):
+        out = scorer(pd.DataFrame([row])).iloc[0]
+        score = int(out["Repository_Quality_Score"])
+        assert out["Quality_Band"] == expected_band
+        assert (score >= 80) == (expected_band == "Exceptional / Open Source Ready")
+        assert (80 > score >= 55) == (expected_band == "Strong Signals")
+        assert (55 > score >= 30) == (expected_band == "Developing")
+        assert (score < 30) == (expected_band == "Needs Attention")
+
+    def test_missing_columns_stay_zero_old_runs(self, scorer):
+        """Pre-Phase-2B states lack the collaboration/hygiene columns."""
+        old = {
+            "Username": "u",
+            "Repository": "r",
+            "Language": "Python",
+            "Stars": 0,
+            "Forks": 0,
+            "Description": None,
+            "License": None,
+            "Created": "2021-01-01T00:00:00Z",
+            "Updated": "2021-01-01T00:00:00Z",
+            "Repository_URL": "",
+            "Commits": 0,
+        }
+        out = scorer(pd.DataFrame([old])).iloc[0]
+        assert int(out["Repository_Quality_Score"]) == 0
+        assert out["Quality_Band"] == "Needs Attention"
+
+    def test_nan_updated_is_zero_recency(self, scorer):
+        assert _quality_score(scorer, _quality_row(200, Updated=None)) == 0
+
+    def test_category_caps_exact_total(self, scorer):
+        """Structurally impossible to exceed 100 (30+20+30+20)."""
+        assert _quality_score(
+            scorer,
+            _quality_row(0, Pull_Requests=1, Issues=1, Contributors=2, Stars=20, Forks=1,
+                         Total_Commits=51, Has_README=1, Description="x", License="MIT"),
+        ) == 100
 
 
 class TestDashboard:

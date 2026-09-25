@@ -65,6 +65,8 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
     contributions_df, contrib_unavailable = services.fetch_contribution_data(valid_for_repos, token)
     team_summary_df, team_repos_df, team_unavailable = services.fetch_team_activity(valid_for_repos, token)
     commit_summary_df, repo_df, commit_unavailable = services.fetch_owned_commit_data(repo_df, token)
+    repo_df, _repo_quality_unavailable = services.fetch_repository_quality_data(repo_df, token)
+    repo_df = services.add_repository_quality_metrics(repo_df)
 
     dashboard_df = services.build_dashboard_df(
         df,
