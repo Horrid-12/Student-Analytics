@@ -537,9 +537,9 @@ class TestPageRenderingWithData:
     def test_repositories_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/repositories?roster={roster_id}").text
-        assert "Repository Cards" in body
+        assert "repo-card-v2" in body  # 003d082 revamp renamed the Repository Cards section
         assert "py1" in body
-        assert "All Repositories" in body
+        assert "shown" in body  # revamp replaced the "All Repositories" filter label with a count
 
     def test_leaderboards_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -807,6 +807,10 @@ class TestSidebarIdentityContext:
         source = base.read_text(encoding="utf-8")
         assert "{{ auth_status }}" in source
         assert "{{ auth_logout }}" in source
+        assert "{{ profile_href }}" in source
+        assert "{{ avatar_initial }}" in source
+        assert "{{ sidebar_avatar_url }}" in source
+        assert "{{ sidebar_handle }}" in source
         assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
         for hardcoded in (
             "Faculty Workspace",
@@ -814,6 +818,7 @@ class TestSidebarIdentityContext:
             "brand-edition",
             "sidebar-foot",
             "brand-switcher",
+            "sidebar-user-footer",
         ):
             assert hardcoded not in source
 

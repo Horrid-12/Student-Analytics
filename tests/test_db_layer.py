@@ -308,6 +308,21 @@ class TestUsers:
         assert db.set_user_password(email, "y") is True
         assert db.get_user_by_email(email)["password_hash"] == "y"
 
+    def test_linked_profile_round_trip(self):
+        """4.11 (e): linked GitHub/LinkedIn candidates + confirm on Postgres."""
+        email = "db-test-link@test.local"
+        assert db.upsert_user(email, role="student", name="Link User") is not None
+        assert db.save_linked_profile(email, "github", "octocat", "https://example.com/a.png") is True
+        assert db.confirm_profile_source(email, "github") is True  # candidate present
+        assert db.get_user_by_email(email)["profile_source"] == "github"
+        assert db.save_linked_profile(email, "linkedin", "Link User", "https://example.com/b.png") is True
+        assert db.confirm_profile_source(email, "linkedin") is True
+        row = db.get_user_by_email(email)
+        assert row["linked_linkedin_name"] == "Link User"
+        assert row["profile_source"] == "linkedin"
+        # Confirm without a candidate is refused.
+        assert db.confirm_profile_source("db-test-nocand@test.local", "github") is False
+
 
 class TestRecordCompletion:
     def test_records_once(self):

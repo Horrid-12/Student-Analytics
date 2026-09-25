@@ -65,22 +65,41 @@ button {
     margin: 0;
 }
 
-.sidebar-stack .sidebar-user-footer {
-    margin-top: 0;
-    margin-bottom: 0;
-    padding: 13px 11px;
+/* 4.11: unboxed sidebar identity — plain clickable avatar, no card chrome. */
+.sidebar-stack .sidebar-identity {
+    display: flex;
+    align-items: center;
     gap: 12px;
+    padding: 4px 2px;
 }
-
-/* Admin identity, ~5% above the base card size. */
-.sidebar-stack .user-avatar-pill {
+.sidebar-stack .sidebar-avatar-link {
+    display: inline-flex;
+    border-radius: 9px;
+    flex-shrink: 0;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.sidebar-stack .sidebar-avatar-link:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--shadow);
+}
+.sidebar-stack .sidebar-avatar-link .user-avatar-pill {
     width: 42px;
     height: 42px;
     font-size: 14px;
     border-radius: 9px;
 }
-.sidebar-stack .user-name {
-    font-size: 16px;
+/* 4.11 (e): confirmed OAuth photo in the sidebar slot. */
+.sidebar-avatar-img {
+    width: 42px;
+    height: 42px;
+    border-radius: 9px;
+    object-fit: cover;
+    display: block;
+    flex-shrink: 0;
+}
+/* 4.11 (e): fetched handle above the role line. */
+.sidebar-stack .sidebar-identity .user-name {
+    font-size: 15px;
 }
 .sidebar-stack .user-role-line {
     font-size: 20px;
@@ -89,7 +108,6 @@ button {
 .sidebar-stack .user-details {
     overflow: visible;
 }
-.sidebar-stack .user-name,
 .sidebar-stack .user-role-line {
     white-space: normal;
     overflow: visible;
@@ -1047,4 +1065,303 @@ button {
     background-color: var(--sidebar);
     background-image: linear-gradient(rgba(51, 51, 54, 0.5), rgba(51, 51, 54, 0.5)), url('/static/paper-fiber-texture-dark.png');
     background-image: linear-gradient(rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025)), url('/static/paper-fiber-texture-dark.png');
+}
+
+/* Shared student profile component (4.11: extracted from students.html so
+   /me renders the exact same panel as the Students modal). */
+.profile-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0 12px;
+}
+.profile-tab {
+    flex: 1;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid var(--border);
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+}
+.profile-tab:hover {
+    color: var(--text);
+}
+.profile-tab[aria-selected="true"] {
+    color: var(--text);
+    border-bottom-color: var(--blue);
+}
+.repo-dropdown {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card-soft);
+    overflow: hidden;
+}
+.repo-dropdown-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 16px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    list-style: none;
+}
+.repo-dropdown-btn::-webkit-details-marker {
+    display: none;
+}
+.repo-dropdown-btn .chev {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    transition: transform 180ms ease;
+}
+.repo-dropdown[open] .repo-dropdown-btn .chev {
+    transform: rotate(180deg);
+}
+.repo-dropdown-body {
+    border-top: 1px solid var(--border);
+    padding: 6px 16px 12px;
+}
+.tab-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 16px 4px;
+    text-align: center;
+}
+.lang-split {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    margin-top: 18px;
+}
+.lang-half {
+    flex: 1 1 0;
+    min-width: 0;
+}
+.lang-divider {
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--border);
+}
+.activity-stats {
+    display: flex;
+    flex-direction: column;
+}
+.activity-stat {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+.activity-stat:last-child {
+    border-bottom: none;
+}
+.activity-number {
+    font-size: 22px;
+    font-weight: 800;
+}
+.activity-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.lang-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+}
+.lang-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.lang-name {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lang-track {
+    flex: 1;
+    min-width: 0;
+    height: 18px;
+    display: flex;
+}
+.lang-fill {
+    display: flex;
+    gap: 4px;
+    height: 100%;
+    min-width: 0;
+    color: var(--text);
+}
+.lang-seg {
+    flex: 1 1 0;
+    min-width: 0;
+    background: currentColor;
+    border-radius: 2px;
+}
+.lang-count {
+    width: 28px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 13px;
+    color: var(--muted);
+}
+.profile-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+.profile-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.profile-icon-btn:hover {
+    transform: translateY(-1px);
+}
+.profile-icon-btn svg {
+    width: 18px;
+    height: 18px;
+}
+.profile-icon-github:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+}
+.profile-icon-linkedin:hover {
+    border-color: #0a66c2;
+    color: #0a66c2;
+}
+.profile-icon-hackerrank:hover {
+    border-color: #2ec866;
+    color: #2ec866;
+}
+
+/* 4.11 notification bell (student-only, sits in topbar-actions). The list
+   shows at most ~5 notifications and scrolls for the rest. */
+.notif-bell {
+    position: relative;
+}
+.notif-bell summary {
+    list-style: none;
+    cursor: pointer;
+}
+.notif-bell summary::-webkit-details-marker {
+    display: none;
+}
+.notif-bell-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    position: relative;
+}
+.notif-bell-btn:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+}
+.notif-bell-btn svg {
+    width: 20px;
+    height: 20px;
+}
+.notif-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--red);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 800;
+    display: grid;
+    place-items: center;
+}
+.notif-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: 320px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 36px var(--shadow);
+    z-index: 60;
+    overflow: hidden;
+}
+.notif-head {
+    padding: 12px 14px 8px;
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--text);
+}
+.notif-list {
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.notif-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: var(--card-soft);
+}
+.notif-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+}
+.notif-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+}
+.notif-time {
+    font-size: 12px;
+    color: var(--muted);
+}
+.notif-fix {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--blue-active-bg);
+    border: 1px solid var(--blue-active-border);
+    border-radius: 7px;
+    padding: 3px 12px;
+    text-decoration: none;
+}
+.notif-fix:hover {
+    text-decoration: underline;
+}
+.notif-empty {
+    padding: 2px 14px 14px;
+    font-size: 13px;
+    color: var(--muted);
 }

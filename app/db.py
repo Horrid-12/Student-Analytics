@@ -1169,7 +1169,10 @@ def get_user_by_email(email: str) -> Optional[dict]:
             if c is None:
                 return None
             cur = c.execute(
-                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, github_username, linkedin_sub "
+                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, "
+                "github_username, linkedin_sub, "
+                "linked_github_username, linked_github_avatar, linked_linkedin_name, "
+                "linked_linkedin_avatar, profile_source "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1209,6 +1212,62 @@ def set_user_role(email: str, role: str) -> bool:
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("set_user_role failed: %s", exc)
+        return False
+
+
+def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bool:
+    """4.11 (e): persist an OAuth-fetched candidate identity for later user
+    confirmation. Mirrors auth.save_linked_profile validation (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    handle = (handle or "").strip()
+    email = (email or "").strip().lower()
+    if not handle or not email:
+        return False
+    avatar = (avatar or "").strip()
+    if avatar and not avatar.startswith(("https://", "http://")):
+        avatar = ""
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                f"UPDATE users SET {handle_col} = %s, {avatar_col} = %s WHERE email = %s",
+                (handle, avatar, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_linked_profile failed: %s", exc)
+        return False
+
+
+def confirm_profile_source(email: str, source: str) -> bool:
+    """4.11 (e): activate a previously fetched candidate for sidebar display.
+    Refuses when the candidate is missing (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    user = get_user_by_email(email)
+    if user is None:
+        return False
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    if not (user.get(handle_col) or "").strip():
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET profile_source = %s WHERE email = %s",
+                (source, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("confirm_profile_source failed: %s", exc)
         return False
 
 

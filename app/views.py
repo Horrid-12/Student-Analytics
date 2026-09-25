@@ -6,6 +6,7 @@ columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import pandas as pd
 
@@ -895,6 +896,101 @@ def _num(value):
         return int(float(value))
     except (TypeError, ValueError):
         return 0
+
+
+ROSTER_EMAIL_COL = "Email address"
+
+
+def normalize_email(value) -> str:
+    """Lowercase + strip an email for roster matching; '' for junk/NaN."""
+    if value is None:
+        return ""
+    try:
+        import math
+
+        if isinstance(value, float) and math.isnan(value):
+            return ""
+    except (TypeError, ValueError):
+        return ""
+    text = str(value).strip().lower()
+    return text if "@" in text else ""
+
+
+def find_own_student_row(students: pd.DataFrame, email: str):
+    """Return the roster row (as a dict) whose Email address matches the
+    signed-in user, or None when there is no roster, no email column, or no
+    match. Powers the sidebar avatar link (/me) and issue notifications."""
+    if students is None or email is None:
+        return None
+    needle = normalize_email(email)
+    if not needle or ROSTER_EMAIL_COL not in getattr(students, "columns", []):
+        return None
+    try:
+        matches = students[students[ROSTER_EMAIL_COL].apply(normalize_email) == needle]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if matches.empty:
+        return None
+    return matches.iloc[0].to_dict()
+
+
+def own_profile_payload(view: dict, email: str) -> dict | None:
+    """Build the same profile dict the Students modal shows
+    (students_payload_profile) for the signed-in user's own roster row."""
+    if not view or not email:
+        return None
+    students = view.get("students")
+    row = find_own_student_row(students, email)
+    if row is None:
+        return None
+    repos = view.get("repos")
+    if repos is None:
+        repos = pd.DataFrame(columns=["Username", "Language", "Updated"])
+    try:
+        return students_payload_profile(row, repos)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def own_issue_notifications(view: dict, email: str, run_time: str = "", roster_id: str = "", workflow=None) -> list:
+    """Issue alerts for the signed-in student's notification bell: their own
+    non-resolved issues, each with the analysis run time and a Fix link into
+    the (self-scoped) Issues page pre-filtered to that issue type."""
+    if not view or not email:
+        return []
+    own = find_own_student_row(view.get("students"), email)
+    if own is None:
+        return []
+    own_id = str(own.get(STUDENT_ID_COL, ""))
+    issues = view.get("issues")
+    if issues is None or getattr(issues, "empty", True):
+        return []
+    workflow = workflow or {}
+    notifications = []
+    try:
+        rows = issues[issues[STUDENT_ID_COL].astype(str) == own_id]
+    except (KeyError, TypeError, ValueError):
+        return []
+    for _, record in rows.iterrows():
+        issue = str(record.get("Issue", "") or "").strip()
+        if not issue:
+            continue
+        key = "|".join(
+            str(record.get(c, "") or "") for c in (STUDENT_ID_COL, "Issue", "GitHub_Username")
+        )
+        status = workflow.get(key, {}).get("Status", "Open")
+        if status == "Resolved":
+            continue
+        notifications.append(
+            {
+                "issue": issue,
+                "status": status,
+                "time": run_time,
+                "fix_url": f"/issues?roster={roster_id}&issue={quote(issue)}",
+                "key": key,
+            }
+        )
+    return notifications
 
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:

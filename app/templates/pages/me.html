@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}My Profile — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title">My Profile</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if profile %}
+{% set p = profile %}
+{% include "partials/profile_panel.html" %}
+{% else %}
+<section class="panel">
+  <div class="panel-title">No student record found</div>
+  <p class="tab-empty" style="text-align:left;">We couldn't match your login{% if auth_user and auth_user != "Guest" %} ({{ auth_user }}){% endif %} to a student in{% if has_roster %} this roster{% else %} any loaded roster{% endif %}. Run an analysis first, then make sure the roster's "Email address" matches your login email — or complete onboarding so we can link your account.</p>
+  <div class="export-row" style="margin-top:12px;">
+    <a class="btn" href="/onboarding{% if roster_id %}?roster={{ roster_id }}{% endif %}">Go to Onboarding</a>
+    <a class="btn" href="/settings">Open Settings</a>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

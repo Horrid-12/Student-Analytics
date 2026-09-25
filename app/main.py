@@ -512,6 +512,19 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     display = (user.get("name") or user.get("email")) if user else "Guest"
     status = user["role"].title() if user else "Not signed in"
     footer = f"{role.title()} \u2022 {display}" if user else "Open Access"
+    # 4.11: unboxed sidebar identity — plain avatar linking to the signed-in
+    # user's own profile page (/me); roster stamped server-side like nav hrefs.
+    # 4.11 (e): a confirmed GitHub/LinkedIn fetch replaces the initial pill
+    # with the photo and shows the handle. One get_user lookup per page
+    # render; fail-safe to the pill so auth never breaks rendering.
+    sidebar_avatar_url, sidebar_handle = "", ""
+    if user:
+        try:
+            identity = auth.linked_identity(auth.get_user(user.get("email", "")))
+            sidebar_avatar_url = identity.get("avatar", "")
+            sidebar_handle = identity.get("handle", "")
+        except Exception:
+            sidebar_avatar_url, sidebar_handle = "", ""
     return {
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name, role=role, roster_id=roster_id),
@@ -523,6 +536,10 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         "auth_logged_in": bool(user),
         "auth_logout": "/logout",
         "roster_id": roster_id,
+        "avatar_initial": (display[:1].upper() if display and display != "Guest" else "?"),
+        "profile_href": ("/me?roster=" + roster_id) if roster_id else "/me",
+        "sidebar_avatar_url": sidebar_avatar_url,
+        "sidebar_handle": sidebar_handle,
     }
 
 
@@ -905,8 +922,13 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
     if mode == "link" and user:
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
+        # 4.11 (e): persist the fetched candidate (login + avatar) for user
+        # confirmation on Settings.
+        auth.save_linked_profile(
+            user["email"], "github", claims.get("login"), claims.get("avatar_url")
+        )
         _db_log_event("github_linked", user["email"])
-        response = RedirectResponse("/onboarding?github=linked", status_code=302)
+        response = RedirectResponse("/settings?linked=github", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -978,8 +1000,13 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
 
     if mode == "link" and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
+        # 4.11 (e): persist the fetched candidate (name + picture) for user
+        # confirmation on Settings.
+        auth.save_linked_profile(
+            user["email"], "linkedin", claims.get("name"), claims.get("picture")
+        )
         _db_log_event("linkedin_linked", user["email"])
-        response = RedirectResponse("/onboarding?linkedin=linked", status_code=302)
+        response = RedirectResponse("/settings?linked=linkedin", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -1017,6 +1044,19 @@ def logout(request: Request):
     return response
 
 
+def _own_notifications(request: Request, view, roster: str) -> tuple[list, int]:
+    """4.11: issue alerts for the student notification bell. Only computed for
+    student logins on a completed run; everyone else gets ([], 0)."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") != "student" or view is None or not _is_complete(view):
+        return [], 0
+    run_time = views.friendly_timestamp(views.last_analysis_time())
+    notifications = views.own_issue_notifications(
+        view, user.get("email", ""), run_time, roster, _workflow_state(roster)
+    )
+    return notifications, len(notifications)
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/overview", response_class=HTMLResponse)
 def overview(request: Request, roster: str = ""):
@@ -1024,6 +1064,7 @@ def overview(request: Request, roster: str = ""):
     ctx["view"] = None
     ctx["payload"] = None
     ctx["past_runs"] = _run_history_rows()
+    ctx["notifications"], ctx["notif_count"] = [], 0
     if roster:
         view = _analysis_view(roster)
         if view is not None and _is_complete(view):
@@ -1031,6 +1072,7 @@ def overview(request: Request, roster: str = ""):
                 ctx["view"] = view
                 ctx["payload"] = views.overview_payload(view)
                 ctx["last_analysis"] = views.friendly_timestamp(views.last_analysis_time())
+                ctx["notifications"], ctx["notif_count"] = _own_notifications(request, view, roster)
             except Exception:
                 ctx["view"] = None
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
@@ -1073,6 +1115,25 @@ def students_page(
             "year": year,
             "semester": semester,
         },
+    )
+
+
+@app.get("/me", response_class=HTMLResponse)
+def my_profile_page(request: Request, roster: str = ""):
+    """4.11: the signed-in user's own student profile, rendered with the exact
+    same panel component as the Students modal. Open to every logged-in role
+    (RBAC "My Profile"); non-roster users get a friendly empty state."""
+    ctx = _base_context(request, "My Profile", roster)
+    profile = None
+    if roster:
+        view = _analysis_view(roster)
+        if view is not None and _is_complete(view):
+            user = getattr(request.state, "user", None) or {}
+            profile = views.own_profile_payload(view, user.get("email", ""))
+    return templates.TemplateResponse(
+        request,
+        "pages/me.html",
+        {**ctx, "profile": profile, "has_roster": bool(roster)},
     )
 
 
@@ -1126,10 +1187,11 @@ def leaderboards_page(
     if response is not None:
         return response
     payload = views.leaderboards_payload(view, division, batch, year, semester, anonymize=bool(anonymize))
+    notifications, notif_count = _own_notifications(request, view, roster)
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "year": year, "semester": semester, "anonymize": bool(anonymize)},
+        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "year": year, "semester": semester, "anonymize": bool(anonymize), "notifications": notifications, "notif_count": notif_count},
     )
 
 
@@ -1194,6 +1256,22 @@ def issues_page(request: Request, roster: str = "", issue: str = "All"):
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
         return response
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "student":
+        # 4.11: students see only their own issue rows (read-only). No roster
+        # match means an empty list — never the full roster.
+        own = views.find_own_student_row(view.get("students"), user.get("email", ""))
+        scoped = view.get("issues")
+        if scoped is not None:
+            if own is None or getattr(scoped, "empty", True):
+                scoped = scoped.iloc[0:0]
+            else:
+                own_id = str(own.get(views.STUDENT_ID_COL, ""))
+                try:
+                    scoped = scoped[scoped[views.STUDENT_ID_COL].astype(str) == own_id]
+                except (KeyError, TypeError, ValueError):
+                    scoped = scoped.iloc[0:0]
+            view = {**view, "issues": scoped}
     payload = views.issues_payload(view, issue, _workflow_state(roster))
     return templates.TemplateResponse(
         request,
@@ -1205,6 +1283,9 @@ def issues_page(request: Request, roster: str = "", issue: str = "All"):
 @app.post("/issues/workflow")
 async def issues_workflow_save(request: Request, roster: str = ""):
     """Persist the editable issue workflow per-roster (keyed on roster_id)."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "student":
+        raise HTTPException(status_code=403, detail="Students cannot edit workflow")
     if not roster:
         raise HTTPException(status_code=400, detail="Missing roster")
     try:
@@ -1564,8 +1645,25 @@ def support_attachment(request: Request, ticket_id: int, slot: str = "admin"):
     )
 
 
+@app.post("/profile/confirm")
+async def profile_confirm(request: Request):
+    """4.11 (e): activate a fetched GitHub/LinkedIn identity for sidebar
+    display. The user confirms their own account only."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        if "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse("/login", status_code=302)
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    form = await request.form()
+    source = (form.get("source") or "").strip()
+    if source not in auth.LINK_SOURCES or not auth.confirm_profile_source(user.get("email", ""), source):
+        raise HTTPException(status_code=400, detail="Fetch an identity first, then confirm it")
+    _db_log_event("profile_confirmed", f"{user.get('email', '')}:{source}")
+    return RedirectResponse("/settings", status_code=303)
+
+
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
+def settings_page(request: Request, linked: str = ""):
     """Settings â€” storage health (honest about serverless read-only), theme
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
@@ -1589,6 +1687,22 @@ def settings_page(request: Request):
             }
     except Exception:
         storage_ok = False
+    user = getattr(request.state, "user", None) or {}
+    row = auth.get_user(user.get("email", "")) if user else None
+    identity = auth.linked_identity(row)
+    link_profile = {
+        "github": {
+            "handle": (row.get("linked_github_username") or "") if row else "",
+            "avatar": (row.get("linked_github_avatar") or "") if row else "",
+        },
+        "linkedin": {
+            "handle": (row.get("linked_linkedin_name") or "") if row else "",
+            "avatar": (row.get("linked_linkedin_avatar") or "") if row else "",
+        },
+        "source": identity.get("source", ""),
+        "handle": identity.get("handle", ""),
+        "avatar": identity.get("avatar", ""),
+    }
     return templates.TemplateResponse(
         request,
         "pages/settings.html",
@@ -1598,6 +1712,10 @@ def settings_page(request: Request):
             "db_path": str(storage.DB_PATH) if not database.db_configured() else "Neon Postgres",
             "last_run": last_run,
             "token_present": bool(github_client.load_token()),
+            "linked_flag": (linked or "").strip(),
+            "github_configured": github_oauth.configured(),
+            "linkedin_configured": linkedin_oauth.configured(),
+            "link_profile": link_profile,
         },
     )
 

@@ -1,0 +1,135 @@
+{# Shared student profile component (4.11): same panel the Students modal
+   shows; /me includes it directly. Expects `p` (students_payload_profile
+   dict) in context. #}
+      <div class="profile-panel">
+        <div class="profile-header">
+          <div class="profile-avatar-wrap">
+            {% if p.avatar %}<img src="{{ p.avatar }}" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
+          </div>
+          <div>
+            <div class="profile-name">{{ p.name }}</div>
+            <div class="profile-sub">{{ p.student_id }} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
+            <div class="profile-links">
+              {% if p.username %}
+              <a class="profile-icon-btn profile-icon-github" href="{{ p.profile_url }}" target="_blank" rel="noopener" title="GitHub: {{ p.username }}" aria-label="Open GitHub profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
+              </a>
+              {% endif %}
+              {% if p.linkedin_username %}
+              <a class="profile-icon-btn profile-icon-linkedin" href="{{ p.linkedin_url }}" target="_blank" rel="noopener" title="LinkedIn: {{ p.linkedin_username }}" aria-label="Open LinkedIn profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              </a>
+              {% endif %}
+              {% if p.hackerrank_username %}
+              <a class="profile-icon-btn profile-icon-hackerrank" href="{{ p.hackerrank_url }}" target="_blank" rel="noopener" title="HackerRank: {{ p.hackerrank_username }}" aria-label="Open HackerRank profile of {{ p.name }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.508 6.268L12 10.762l4.485-4.495-2.493-2.489-1.992 1.994-1.997-1.996-2.495 2.492zM23.999 20.943l-7.128-7.13 7.128-7.129-2.828-2.828-7.13 7.129-7.122-7.124-2.824 2.828 7.128 7.13-7.128 7.129 2.828 2.828 7.122-7.124 7.13 7.129 2.818-2.834zm-11.129-7.133l-.004-.004.004.004z"/></svg>
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-github" aria-controls="profile-panel-github" aria-selected="true">GitHub</button>
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-hackerrank" aria-controls="profile-panel-hackerrank" aria-selected="false" tabindex="-1">HackerRank</button>
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-linkedin" aria-controls="profile-panel-linkedin" aria-selected="false" tabindex="-1">LinkedIn</button>
+      </div>
+      <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
+        <details class="repo-dropdown">
+          <summary class="repo-dropdown-btn">
+            <span>Repositories ({{ p.repos|length }})</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="repo-dropdown-body">
+            {% for repo in p.repos.to_dict('records') %}
+            <div class="profile-repo">
+              <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+              <div class="repo-meta-row">
+                <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars</div>
+                <span class="repo-signal">{{ repo.Quality_Band or 'Unrated' }}</span>
+              </div>
+            </div>
+            {% else %}
+            <p style="color:var(--muted); font-size:13px; padding:8px 0;">No public repositories found.</p>
+            {% endfor %}
+          </div>
+        </details>
+        <div class="lang-split">
+          <div class="lang-half">
+            <div class="panel-minor-title">Top Languages</div>
+            {% if p.top_languages %}
+            <div class="lang-bars">
+              {% for lang in p.top_languages %}
+              <div class="lang-row">
+                <span class="lang-name" title="{{ lang.language }}">{{ lang.language }}</span>
+                <span class="lang-track"><span class="lang-fill" style="width:{{ lang.pct }}%">{% for i in range(lang.count) %}<span class="lang-seg"></span>{% endfor %}</span></span>
+                <span class="lang-count">{{ lang.count }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="tab-empty">No language data yet.</p>
+            {% endif %}
+          </div>
+          <div class="lang-divider" aria-hidden="true"></div>
+          <div class="lang-half">
+            <div class="panel-minor-title">Activity</div>
+            <div class="activity-stats">
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.contributions_30d }}</div>
+                <div class="activity-label">Contributions in last 30 days</div>
+              </div>
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.active_repos }}</div>
+                <div class="activity-label">Active repositories</div>
+              </div>
+              <div class="activity-stat">
+                <div class="activity-number">{{ p.activity_streak }} day{% if p.activity_streak != 1 %}s{% endif %}</div>
+                <div class="activity-label">Current activity streak</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="profile-panel-hackerrank" role="tabpanel" aria-labelledby="profile-tab-hackerrank" hidden>
+        <p class="tab-empty">HackerRank details coming soon.</p>
+      </div>
+      <div id="profile-panel-linkedin" role="tabpanel" aria-labelledby="profile-tab-linkedin" hidden>
+        <p class="tab-empty">LinkedIn details coming soon.</p>
+      </div>
+<script>
+  (function () {
+    var backdrop = document.getElementById('student-modal-backdrop');
+    if (backdrop) {
+      document.body.style.overflow = 'hidden';
+      function close() { window.location.href = backdrop.getAttribute('data-close-url'); }
+      backdrop.addEventListener('click', function (event) {
+        if (event.target === backdrop) close();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') close();
+      });
+      var closer = backdrop.querySelector('.student-modal-close');
+      if (closer) closer.focus();
+    }
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.profile-tabs [role="tab"]'));
+    function selectTab(tab) {
+      tabs.forEach(function (other) {
+        var selected = other === tab;
+        other.setAttribute('aria-selected', selected ? 'true' : 'false');
+        other.tabIndex = selected ? 0 : -1;
+        var panel = document.getElementById(other.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !selected;
+      });
+    }
+    tabs.forEach(function (tab, index) {
+      tab.addEventListener('click', function () { selectTab(tab); });
+      tab.addEventListener('keydown', function (event) {
+        var next = null;
+        if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
+        if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
+        if (next) { next.focus(); selectTab(next); }
+      });
+    });
+  })();
+</script>

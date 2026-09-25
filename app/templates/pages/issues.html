@@ -45,10 +45,15 @@
       <tbody>
         {% for issue in payload.rows %}
         <tr data-issue-key="{{ issue.key }}">
-          <td><a href="/students?roster={{ roster_id }}&select={{ issue.student_id }}">{{ issue.name }}</a><div class="repo-meta">{{ issue.student_id }}</div></td>
+          <td>{% if auth_role == 'Student' %}{{ issue.name }}{% else %}<a href="/students?roster={{ roster_id }}&select={{ issue.student_id }}">{{ issue.name }}</a>{% endif %}<div class="repo-meta">{{ issue.student_id }}</div></td>
           <td>{{ issue.division }}</td>
           <td>{% if issue.username %}<code>{{ issue.username }}</code>{% else %}<span class="badge-amber">none</span>{% endif %}</td>
           <td><span class="badge-amber">{{ issue.issue }}</span></td>
+          {% if auth_role == 'Student' %}
+          <td>{{ issue.status }}</td>
+          <td>{{ issue.owner }}</td>
+          <td>{{ issue.notes }}</td>
+          {% else %}
           <td>
             <select class="filter-select issue-status" data-field="Status">
               <option value="Open" {% if issue.status == 'Open' %}selected{% endif %}>Open</option>
@@ -58,14 +63,17 @@
           </td>
           <td><input class="table-input issue-owner" value="{{ issue.owner }}" placeholder="Owner"></td>
           <td><input class="table-input issue-notes" value="{{ issue.notes }}" placeholder="Notes"></td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   <div class="export-row">
+    {% if auth_role != 'Student' %}
     <button class="btn btn-primary" type="button" id="save-workflow">Save Workflow</button>
     <span class="filter-count" id="workflow-saved" hidden>Saved.</span>
+    {% endif %}
   </div>
   {% else %}
   <p class="table-empty">No issues to review for this roster.</p>

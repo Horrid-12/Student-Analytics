@@ -12,8 +12,24 @@ CREATE TABLE IF NOT EXISTS users (
     auth_source     TEXT NOT NULL DEFAULT 'password',
     google_sub      TEXT NOT NULL DEFAULT '',
     github_username TEXT NOT NULL DEFAULT '',
-    linkedin_sub    TEXT NOT NULL DEFAULT ''
+    linkedin_sub    TEXT NOT NULL DEFAULT '',
+    -- 4.11 (e): linked GitHub/LinkedIn identities + confirmed display source.
+    linked_github_username TEXT NOT NULL DEFAULT '',
+    linked_github_avatar   TEXT NOT NULL DEFAULT '',
+    linked_linkedin_name   TEXT NOT NULL DEFAULT '',
+    linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
+    profile_source         TEXT NOT NULL DEFAULT ''
 );
+
+-- Backfill for databases created before the OAuth-identity columns.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_sub TEXT NOT NULL DEFAULT '';
+-- 4.11 (e): backfill for databases created before the linked-identity columns.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_github_username TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_github_avatar TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_avatar TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_source TEXT NOT NULL DEFAULT '';
 
 -- 2. Roster uploads (one row per uploaded Excel).
 CREATE TABLE IF NOT EXISTS rosters (

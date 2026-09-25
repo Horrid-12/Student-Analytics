@@ -48,7 +48,18 @@ _EXTRA_COLUMNS = (
     ("google_sub", "TEXT NOT NULL DEFAULT ''"),
     ("github_username", "TEXT NOT NULL DEFAULT ''"),
     ("linkedin_sub", "TEXT NOT NULL DEFAULT ''"),
+    # 4.11 (e): linked GitHub/LinkedIn identities fetched via OAuth. Candidates
+    # are stored per provider; profile_source ('github'/'linkedin') is the one
+    # the user confirmed for sidebar display.
+    ("linked_github_username", "TEXT NOT NULL DEFAULT ''"),
+    ("linked_github_avatar", "TEXT NOT NULL DEFAULT ''"),
+    ("linked_linkedin_name", "TEXT NOT NULL DEFAULT ''"),
+    ("linked_linkedin_avatar", "TEXT NOT NULL DEFAULT ''"),
+    ("profile_source", "TEXT NOT NULL DEFAULT ''"),
 )
+
+# OAuth providers a student can fetch their picture + username from (4.11 e).
+LINK_SOURCES = ("github", "linkedin")
 
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
@@ -61,16 +72,19 @@ _PAGE_BY_PREFIX = (
     ("/students", "Students"),
     ("/onboarding", "Onboarding"),
     ("/overview", "Overview"),
+    ("/me", "My Profile"),
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings", "My Profile")
 
-# BUG-044/045 RBAC: students see Overview + Leaderboards + Settings + Support;
-# faculty and admin see everything. (Anonymized leaderboards are rendered by
-# the page.)
+# BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
+# Leaderboards + Settings + Support, plus My Profile and self-scoped Issues
+# (4.11: the notification bell's Fix links land there; the handler filters
+# rows to the signed-in student and blocks workflow edits).
+# (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Leaderboards", "Settings", "Support"),
+    "student": ("Overview", "Onboarding", "Leaderboards", "Settings", "Support", "My Profile", "Issues"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
@@ -493,7 +507,9 @@ def get_user(email: str) -> dict | None:
             conn.row_factory = sqlite3.Row
             _ensure_schema(conn)
             row = conn.execute(
-                "SELECT id, email, password_hash, role, name, auth_source, google_sub FROM users WHERE email = ?",
+                "SELECT id, email, password_hash, role, name, auth_source, google_sub, "
+                "linked_github_username, linked_github_avatar, linked_linkedin_name, "
+                "linked_linkedin_avatar, profile_source FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -546,6 +562,90 @@ def set_user_role(email: str, role: str) -> bool:
         return True
     except (sqlite3.Error, OSError):
         return False
+
+
+def _clean_avatar(url: str) -> str:
+    """Accept only http(s) avatar URLs so a hostile provider payload can never
+    turn the sidebar <img> into a javascript:/data: vector."""
+    url = (url or "").strip()
+    return url if url.startswith(("https://", "http://")) else ""
+
+
+def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bool:
+    """4.11 (e): persist an OAuth-fetched candidate identity (picture +
+    username) for later user confirmation. Returns False on bad input or
+    storage failure. Never raises."""
+    if source not in LINK_SOURCES:
+        return False
+    handle = (handle or "").strip()
+    if not handle:
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    avatar = _clean_avatar(avatar)
+    if database.db_configured():
+        return db.save_linked_profile(email, source, handle, avatar)
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute(
+                    f"UPDATE users SET {handle_col} = ?, {avatar_col} = ? WHERE email = ?",
+                    (handle, avatar, email),
+                )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def confirm_profile_source(email: str, source: str) -> bool:
+    """4.11 (e): activate a previously fetched candidate for sidebar display.
+    Refuses when the candidate is missing (confirm requires a fetch first)."""
+    if source not in LINK_SOURCES:
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    user = get_user(email)
+    if user is None:
+        return False
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    if not (user.get(handle_col) or "").strip():
+        return False
+    if database.db_configured():
+        return db.confirm_profile_source(email, source)
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute(
+                    "UPDATE users SET profile_source = ? WHERE email = ?", (source, email)
+                )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def linked_identity(user: dict | None) -> dict:
+    """4.11 (e): resolve the confirmed sidebar identity from a user row.
+    Returns a dict with source/handle/avatar keys (empty strings when the
+    user never confirmed a fetch). Pure function of the row — no I/O."""
+    user = user or {}
+    source = (user.get("profile_source") or "").strip()
+    if source not in LINK_SOURCES:
+        return {"source": "", "handle": "", "avatar": ""}
+    if source == "github":
+        handle = (user.get("linked_github_username") or "").strip()
+        avatar = _clean_avatar(user.get("linked_github_avatar") or "")
+    else:
+        handle = (user.get("linked_linkedin_name") or "").strip()
+        avatar = _clean_avatar(user.get("linked_linkedin_avatar") or "")
+    if not handle:
+        return {"source": "", "handle": "", "avatar": ""}
+    return {"source": source, "handle": handle, "avatar": avatar}
 
 
 def create_session_token(user: dict) -> str:

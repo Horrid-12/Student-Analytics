@@ -24,9 +24,12 @@
 <div class="app-shell">
   <aside class="app-sidebar">
     <div class="sidebar-stack">
-    <div class="sidebar-user-footer">
-      <div class="user-avatar-pill">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
+    <div class="sidebar-identity">
+      <a class="sidebar-avatar-link" href="{{ profile_href }}" title="My profile" aria-label="Open my profile">
+        {% if sidebar_avatar_url %}<img class="sidebar-avatar-img" src="{{ sidebar_avatar_url }}" alt="">{% else %}<div class="user-avatar-pill">{{ avatar_initial }}</div>{% endif %}
+      </a>
       <div class="user-details">
+        {% if sidebar_handle %}<div class="user-name">{{ sidebar_handle }}</div>{% endif %}
         <div class="user-role-line">{{ auth_status }}</div>
       </div>
       {% if auth_logged_in %}
