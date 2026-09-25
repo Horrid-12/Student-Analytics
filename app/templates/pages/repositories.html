@@ -18,23 +18,23 @@
   </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="filter-bar" method="get" id="repo-filter-form">
   <input type="hidden" name="roster" value="{{ roster_id }}">
+  <input type="hidden" name="view" value="{{ view_mode }}">
   <div class="search-box-row">
     <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repositories, owners or languages&hellip;">
   </div>
-  <select class="filter-select" name="language" title="Language">
+  <select class="filter-select" name="language" title="Language" id="repo-language">
     {% for value in payload.languages %}
     <option value="{{ value }}" {% if value == language %}selected{% endif %}>{{ value }}</option>
     {% endfor %}
   </select>
-  <select class="filter-select" name="rows" title="Rows" onchange="this.form.submit()">
+  <select class="filter-select" name="rows" title="Rows" id="repo-rows">
     {% for value in [10, 20, 30, 50] %}
     <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }} repositories</option>
     {% endfor %}
   </select>
-  <button class="btn" type="submit">Apply</button>
-  <a class="btn" href="/repositories?roster={{ roster_id }}">Clear</a>
+  <a class="btn" href="/repositories?roster={{ roster_id }}" id="repo-clear">Clear</a>
   <span class="filter-count">{{ payload.total }} shown</span>
 </form>
 
@@ -43,11 +43,11 @@
   <div class="repo-panel-header">
     <div class="panel-title" style="margin-bottom:0;">Repositories</div>
     <div class="view-switcher" id="view-switcher">
-      <button class="vs-btn vs-active" data-view="grid" type="button" aria-label="Grid View">
+      <button class="vs-btn{% if view_mode == 'grid' %} vs-active{% endif %}" data-view="grid" type="button" aria-label="Grid View">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
         Grid
       </button>
-      <button class="vs-btn" data-view="table" type="button" aria-label="Table View">
+      <button class="vs-btn{% if view_mode == 'table' %} vs-active{% endif %}" data-view="table" type="button" aria-label="Table View">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
         Table
       </button>
@@ -55,7 +55,7 @@
   </div>
 
   {# ── Grid View ── #}
-  <div class="repo-grid" id="repo-grid-view">
+  <div class="repo-grid" id="repo-grid-view"{% if view_mode == 'table' %} style="display:none;"{% endif %}>
     {% for repo in payload.cards.to_dict('records') %}
     {% set lang_raw = repo.Language|string %}
     {% set lang_clean = lang_raw if lang_raw and lang_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', '') else '' %}
@@ -101,7 +101,7 @@
   </div>
 
   {# ── Table View ── #}
-  <div class="data-table-wrap" id="repo-table-view" style="display:none;">
+  <div class="data-table-wrap" id="repo-table-view"{% if view_mode == 'grid' %} style="display:none;"{% endif %}>
     <table class="data-table">
       <thead><tr>
         <th>Repository</th><th>Owner</th><th>Language</th><th>Stars</th><th>Forks</th><th>License</th><th>Status</th><th>Score</th><th>Updated</th>
@@ -139,18 +139,92 @@
 
 <script>
 (function () {
-  var btns = document.querySelectorAll('.vs-btn');
+  var STORE_KEY = 'gsad_repo_prefs_v1';
+  var VALID_ROWS = [10, 20, 30, 50];
+
+  var form = document.getElementById('repo-filter-form');
+  var viewInput = form.querySelector('input[name="view"]');
+  var langSel = document.getElementById('repo-language');
+  var rowsSel = document.getElementById('repo-rows');
+  var clearBtn = document.getElementById('repo-clear');
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.vs-btn'));
   var grid = document.getElementById('repo-grid-view');
   var table = document.getElementById('repo-table-view');
+
+  function isValidView(v) { return v === 'grid' || v === 'table'; }
+
+  function langOptions() {
+    var values = [];
+    for (var i = 0; i < langSel.options.length; i++) { values.push(langSel.options[i].value); }
+    return values;
+  }
+
+  function readPrefs() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      var p = JSON.parse(raw);
+      var opts = langOptions();
+      var out = {};
+      if (typeof p.language === 'string' && opts.indexOf(p.language) !== -1) { out.language = p.language; }
+      if (VALID_ROWS.indexOf(p.rows) !== -1) { out.rows = p.rows; }
+      if (isValidView(p.view)) { out.view = p.view; }
+      return out;
+    } catch (e) { return null; }
+  }
+
+  function savePrefs() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        language: langSel.value,
+        rows: parseInt(rowsSel.value, 10),
+        view: viewInput.value
+      }));
+    } catch (e) { /* private mode — ignore */ }
+  }
+
+  function applyView(view) {
+    btns.forEach(function (b) { b.classList.toggle('vs-active', b.dataset.view === view); });
+    viewInput.value = view;
+    grid.style.display = view === 'grid' ? '' : 'none';
+    table.style.display = view === 'table' ? '' : 'none';
+  }
+
   btns.forEach(function (btn) {
     btn.addEventListener('click', function () {
-      btns.forEach(function (b) { b.classList.remove('vs-active'); });
-      btn.classList.add('vs-active');
-      var view = btn.dataset.view;
-      grid.style.display  = view === 'grid'  ? '' : 'none';
-      table.style.display = view === 'table' ? '' : 'none';
+      applyView(btn.dataset.view);
+      savePrefs();
     });
   });
+
+  langSel.addEventListener('change', function () { savePrefs(); form.submit(); });
+  rowsSel.addEventListener('change', function () { savePrefs(); form.submit(); });
+
+  clearBtn.addEventListener('click', function () {
+    var p = readPrefs() || {};
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        language: 'All',
+        rows: 30,
+        view: isValidView(p.view) ? p.view : 'grid'
+      }));
+    } catch (e) { /* private mode — ignore */ }
+  });
+
+  var saved = readPrefs();
+  if (saved) {
+    var needSubmit = false;
+    if (saved.view) { applyView(saved.view); }
+    if (saved.language && langSel.value !== saved.language) {
+      langSel.value = saved.language;
+      needSubmit = true;
+    }
+    if (saved.rows && parseInt(rowsSel.value, 10) !== saved.rows) {
+      rowsSel.value = String(saved.rows);
+      needSubmit = true;
+    }
+    if (needSubmit) { form.submit(); }
+  }
 })();
 </script>
 {% endblock %}

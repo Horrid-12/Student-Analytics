@@ -1097,17 +1097,24 @@ def students_export(
 
 @app.get("/repositories", response_class=HTMLResponse)
 def repositories_page(
-    request: Request, roster: str = "", q: str = "", language: str = "All", rows: int = 30
+    request: Request,
+    roster: str = "",
+    q: str = "",
+    language: str = "All",
+    rows: int = 30,
+    view: str = "grid",
 ):
     ctx = _base_context(request, "Repositories", roster)
-    view, response = _guard_page(request, ctx, "Repositories", roster)
+    data, response = _guard_page(request, ctx, "Repositories", roster)
     if response is not None:
         return response
-    payload = views.repositories_payload(view, q, language, rows)
+    if view not in ("grid", "table"):
+        view = "grid"
+    payload = views.repositories_payload(data, q, language, rows)
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view},
     )
 
 
