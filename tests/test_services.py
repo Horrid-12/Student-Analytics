@@ -470,6 +470,7 @@ class TestTeamActivity:
         row = summary_df.iloc[0]
         assert int(row["Team_Commits"]) == 3
         assert int(row["Team_Commits_30d"]) == 2
+        assert int(row["Team_Commits_90d"]) == 3
         assert row["Contributed_Repos"] == "leader/proj"
         assert int(repos_df.iloc[0]["Commits"]) == 3
 
@@ -541,6 +542,56 @@ class TestTeamActivity:
         row = repos_df.iloc[0]
         assert row["Language"] is None
         assert int(row["Stars"]) == 0
+
+
+class TestOwnedCommitData:
+    def _commit(self, days_ago):
+        stamp = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days_ago)).isoformat()
+        return {"commit": {"author": {"date": stamp}}}
+
+    def test_windowed_counts(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+        commits = {
+            ("alice-dev", "alice-dev/py1"): [
+                self._commit(0), self._commit(10), self._commit(40),
+                self._commit(100), self._commit(400),
+            ],
+        }
+
+        def fake(url, token, timeout=None):
+            full = url.split("/repos/")[1].split("/commits")[0]
+            author = url.split("author=")[1].split("&")[0]
+            return 200, {}, list(commits[(author, full)])
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        repo_df = pd.DataFrame([{"Username": "alice-dev", "Repository": "py1"}])
+        out, enriched, unavailable = services.fetch_owned_commit_data(repo_df, "t")
+        assert unavailable == []
+        row = out.iloc[0]
+        assert int(row["Owned_Commits"]) == 5
+        assert int(row["Owned_Commits_30d"]) == 2
+        assert int(row["Owned_Commits_90d"]) == 3
+        assert int(enriched.iloc[0]["Commits"]) == 5
+        assert int(enriched.iloc[0]["Commits_30d"]) == 2
+        assert int(enriched.iloc[0]["Commits_90d"]) == 3
+
+    def test_failed_repo_marks_user_unavailable(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+
+        def fake(url, token, timeout=None):
+            return 404, {}, None
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        repo_df = pd.DataFrame([{"Username": "alice-dev", "Repository": "py1"}])
+        out, enriched, unavailable = services.fetch_owned_commit_data(repo_df, "t")
+        assert unavailable == ["alice-dev"]
+        assert int(out.iloc[0]["Owned_Commits"]) == 0
+        assert int(enriched.iloc[0]["Commits"]) == 0
+
+    def test_empty_repos(self):
+        out, enriched, unavailable = services.fetch_owned_commit_data(pd.DataFrame(), None)
+        assert unavailable == []
+        assert list(out.columns) == ["Username", "Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d"]
 
 
 class TestQualityMetrics:
@@ -653,6 +704,7 @@ class TestDashboard:
             "Team_PR_Events",
             "Team_Total_Events",
             "Team_Commits_30d",
+            "Team_Commits_90d",
             "Team_Total_Events_30d",
             "Team_Active_Dates",
             "Team_Active_Repos",
@@ -660,6 +712,10 @@ class TestDashboard:
             "Contributed_Repos",
             "Team_Last_Active_At",
             "Team_Activity_Fetch_Status",
+            "Owned_Commits",
+            "Owned_Commits_30d",
+            "Owned_Commits_90d",
+            "Commit_Fetch_Status",
             "Followers",
             "Following",
             "Account_Age_Years",

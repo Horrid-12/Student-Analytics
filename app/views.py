@@ -51,6 +51,7 @@ DASHBOARD_COLS = [
     "Team_PR_Events",
     "Team_Total_Events",
     "Team_Commits_30d",
+    "Team_Commits_90d",
     "Team_Total_Events_30d",
     "Team_Active_Dates",
     "Team_Active_Repos",
@@ -58,6 +59,10 @@ DASHBOARD_COLS = [
     "Contributed_Repos",
     "Team_Last_Active_At",
     "Team_Activity_Fetch_Status",
+    "Owned_Commits",
+    "Owned_Commits_30d",
+    "Owned_Commits_90d",
+    "Commit_Fetch_Status",
     "Followers",
     "Following",
     "Account_Age_Years",
@@ -196,6 +201,10 @@ def _team_repos_as_owned_rows(team_repos: pd.DataFrame, username: str) -> pd.Dat
                 desc = str(desc)
         except Exception:
             desc = f"Contributed to {full}" if full else "Contributed team repo"
+        try:
+            team_commits = int(float(r.get("Commits") or 0))
+        except (TypeError, ValueError):
+            team_commits = 0
         rows.append(
             {
                 "Username": username,
@@ -211,6 +220,7 @@ def _team_repos_as_owned_rows(team_repos: pd.DataFrame, username: str) -> pd.Dat
                 "Maintenance_Status": "Active" if active_180 else "Aging",
                 "Repository_Quality_Score": 0,
                 "Quality_Band": "Contributed",
+                "Commits": team_commits,
             }
         )
     return pd.DataFrame(rows, columns=REPO_COLS)
@@ -228,6 +238,9 @@ REPO_COLS = [
     "Maintenance_Status",
     "Repository_Quality_Score",
     "Quality_Band",
+    "Commits",
+    "Commits_30d",
+    "Commits_90d",
 ]
 ISSUE_COLS = [
     STUDENT_ID_COL,
@@ -831,6 +844,13 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     if not student_repos.empty and "Language" in student_repos.columns:
         # Display "Unknown", never "nan", for repos without a detected language.
         student_repos["Language"] = student_repos["Language"].fillna("Unknown")
+    if "Repository_URL" in student_repos.columns:
+        # Normalized so the template can key hidden repos by URL-or-name.
+        student_repos["Repository_URL"] = student_repos["Repository_URL"].fillna("")
+    if "Commits" in student_repos.columns:
+        # Exact per-repo author commits; None on runs predating commit history
+        # (and never NaN, so the template can test `is not none`).
+        student_repos["Commits"] = student_repos["Commits"].apply(_clean_repo_commits)
     lang_counts = (
         student_repos["Language"].value_counts()
         if not student_repos.empty and "Language" in student_repos.columns
@@ -861,6 +881,23 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     # counted via commits, so pass owned to avoid double-counting team rows
     # as both a repo-update and commits). Streak still merges team dates.
     contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d)
+    # Exact commit totals per window for the activity tabs; None on runs that
+    # predate commit history (the template then keeps the legacy 30d display).
+    window_pairs = (
+        ("Owned_Commits_30d", "Team_Commits_30d"),
+        ("Owned_Commits_90d", "Team_Commits_90d"),
+        ("Owned_Commits", "Team_Commits"),
+    )
+    window_values = []
+    for owned_col, team_col in window_pairs:
+        owned_v = _opt_int(row, owned_col)
+        team_v = _opt_int(row, team_col)
+        window_values.append(None if owned_v is None or team_v is None else owned_v + team_v)
+    activity_windows = (
+        {"30d": window_values[0], "90d": window_values[1], "all": window_values[2]}
+        if all(value is not None for value in window_values)
+        else None
+    )
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
@@ -885,6 +922,7 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
         "repos": student_repos,
         "top_languages": top_languages,
         "contributions_30d": contributions_30d,
+        "activity_windows": activity_windows,
         "activity_streak": activity_streak,
         "team_commits": _team_int(row, "Team_Commits"),
         "contributed_repos": str(row.get("Contributed_Repos") or "") if not (isinstance(row.get("Contributed_Repos"), float) and pd.isna(row.get("Contributed_Repos"))) else "",
@@ -896,6 +934,42 @@ def _num(value):
         return int(float(value))
     except (TypeError, ValueError):
         return 0
+
+
+def _opt_int(row, column):
+    """int value, or None when the column is missing/blank.
+
+    Distinguishes "no data collected" (pre-commit-history runs) from a real
+    zero so the UI can fall back instead of showing misleading zeros.
+    """
+    try:
+        value = row.get(column, None)
+    except Exception:
+        return None
+    try:
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+    except Exception:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_repo_commits(value):
+    """Per-repo author commits as int-or-None (never NaN) for the template."""
+    try:
+        if value is None or pd.isna(value):
+            return None
+    except Exception:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 ROSTER_EMAIL_COL = "Email address"
@@ -1235,6 +1309,16 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
 # Leaderboards (3.6e)
 # ---------------------------------------------------------------------------
 
+def _commit_col(students: pd.DataFrame, column: str) -> pd.Series:
+    """Safe numeric commit column (0 when the run predates commit history)."""
+    if students.empty or column not in students.columns:
+        return pd.Series(0, index=students.index, dtype=int)
+    try:
+        return pd.to_numeric(students[column], errors="coerce").fillna(0).astype(int)
+    except Exception:
+        return pd.Series(0, index=students.index, dtype=int)
+
+
 def _with_combined_metrics(students: pd.DataFrame) -> pd.DataFrame:
     """Add everywhere-totals: owned + team contributions."""
     if students.empty:
@@ -1252,38 +1336,302 @@ def _with_combined_metrics(students: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def leaderboards_payload(view, division="All", batch="All", year="All", semester="All", anonymize=False) -> dict:
-    students = _with_combined_metrics(view["students"].copy())
-    repos = view["repos"].copy()
-    for column, value in (("Division", division), ("Batch", batch), ("Academic_Year", year), ("Semester", semester)):
-        students = apply_value_filter(students, column, value)
-    if not students.empty and not repos.empty:
-        repos = repos[repos["Username"].isin(set(students["GitHub_Username"].dropna()))]
+#: Time-window options for the activity/commit leaderboard dropdowns.
+WINDOW_OPTIONS = (("1m", "Last month"), ("3m", "Last 3 months"), ("all", "All time"))
+WINDOW_DAYS = {"1m": 30, "3m": 90}
 
-    sections = []
-    if not students.empty:
-        sections.append(_section("Most Active Repos (6m, incl. team)", students, "Combined_Active"))
-        sections.append(_section("Most Repositories (owned + contributed)", students, "Combined_Repos"))
-        if "Team_Commits" in students.columns:
-            sections.append(_section("Most Team Commits", students, "Team_Commits"))
-        sections.append(_section("Most-Followed GitHub Profiles", students, "Followers"))
-        sections.append(_section("Most GitHub-Reported Repos", students, "Public_Repos"))
-    languages = (
-        repos["Language"].fillna("Misc").value_counts().head(10).reset_index()
-        if not repos.empty
-        else None
+#: Leaderboard boards an admin can blacklist a student from (key + popup label).
+LEADERBOARD_BOARDS = (
+    ("active", "Most Active Repositories"),
+    ("commits", "Most Commits"),
+    ("stars", "Most Stars"),
+    ("repos", "Top Starred Repositories"),
+)
+LEADERBOARD_BOARD_KEYS = frozenset(key for key, _ in LEADERBOARD_BOARDS)
+
+
+def _recent_counts(frame, user_col: str, date_col: str, days: int) -> dict:
+    """username -> rows whose date falls within the last `days` days."""
+    if frame is None or frame.empty or user_col not in frame.columns or date_col not in frame.columns:
+        return {}
+    try:
+        dates = pd.to_datetime(frame[date_col], errors="coerce", utc=True, format="mixed")
+    except Exception:
+        return {}
+    now = pd.Timestamp.now(tz="UTC").normalize()
+    try:
+        days_ago = (now - dates.dt.normalize()).dt.days
+    except Exception:
+        return {}
+    mask = ((days_ago >= 0) & (days_ago <= days)).fillna(False)
+    try:
+        return frame.loc[mask, user_col].astype(str).value_counts().to_dict()
+    except Exception:
+        return {}
+
+
+def _totals_by_user(frame, user_col: str, value_col: str) -> dict:
+    """username -> summed `value_col` (numeric, NaN-safe)."""
+    if frame is None or frame.empty or user_col not in frame.columns or value_col not in frame.columns:
+        return {}
+    try:
+        values = pd.to_numeric(frame[value_col], errors="coerce").fillna(0)
+        return frame.assign(_v=values.values).groupby(user_col, dropna=False)["_v"].sum().to_dict()
+    except Exception:
+        return {}
+
+
+def _cohort_usernames(students) -> set:
+    if students is None or students.empty or "GitHub_Username" not in students.columns:
+        return set()
+    try:
+        return set(students["GitHub_Username"].dropna().astype(str))
+    except Exception:
+        return set()
+
+
+def _student_names(view) -> dict:
+    students = view.get("students")
+    if students is None or students.empty:
+        return {}
+    try:
+        if "GitHub_Username" not in students.columns or "Student Name" not in students.columns:
+            return {}
+        frame = students.dropna(subset=["GitHub_Username"]).drop_duplicates(subset=["GitHub_Username"])
+        return {str(user): (str(name) if pd.notna(name) else "Unknown") for user, name in zip(frame["GitHub_Username"].astype(str), frame["Student Name"])}
+    except Exception:
+        return {}
+
+
+def _student_ids(view) -> dict:
+    """GitHub username -> Student_ID (drives profile-popup links)."""
+    students = view.get("students")
+    if students is None or students.empty:
+        return {}
+    try:
+        if "GitHub_Username" not in students.columns or STUDENT_ID_COL not in students.columns:
+            return {}
+        frame = students.dropna(subset=["GitHub_Username"]).drop_duplicates(subset=["GitHub_Username"])
+        return {
+            str(user): str(sid)
+            for user, sid in zip(frame["GitHub_Username"].astype(str), frame[STUDENT_ID_COL].astype(str))
+        }
+    except Exception:
+        return {}
+
+
+def _ranked(scores: dict, names: dict, ids: dict | None = None, limit: int = 10) -> list[dict]:
+    ids = ids or {}
+    rows = [
+        {
+            "name": names.get(str(user), "Unknown"),
+            "username": str(user),
+            "student_id": ids.get(str(user), ""),
+            "score": int(score),
+        }
+        for user, score in scores.items()
+        if str(user).strip().lower() not in ("", "nan", "none") and int(score or 0) > 0
+    ]
+    rows.sort(key=lambda row: (-row["score"], row["name"].lower()))
+    return [{"rank": rank, **row} for rank, row in enumerate(rows[:limit], start=1)]
+
+
+def _blacklisted_users(view, ids: dict, blacklist, board: str) -> set:
+    """GitHub usernames excluded from `board` ({student_id: [boards]})."""
+    if not blacklist or not isinstance(blacklist, dict):
+        return set()
+    user_by_id = {sid: user for user, sid in ids.items()}
+    excluded = set()
+    for student_id, boards in blacklist.items():
+        if board in (boards or []):
+            user = user_by_id.get(str(student_id))
+            if user:
+                excluded.add(user)
+    return excluded
+
+
+def repo_key(username, repo_name, url) -> str:
+    """Stable identity for one repository: its URL, else owner/name."""
+    try:
+        if url is not None and not (isinstance(url, float) and pd.isna(url)):
+            text = str(url).strip()
+            if text and text.lower() != "nan":
+                return text
+    except Exception:
+        pass
+    return f"{str(username or '').strip()}/{str(repo_name or '').strip()}"
+
+
+def leaderboards_payload(
+    view,
+    division="All",
+    batch="All",
+    semester="All",
+    active_window="1m",
+    commits_window="1m",
+    blacklist=None,
+    hidden_repos=None,
+) -> dict:
+    if active_window not in WINDOW_DAYS and active_window != "all":
+        active_window = "1m"
+    if commits_window not in WINDOW_DAYS and commits_window != "all":
+        commits_window = "1m"
+    students = _with_combined_metrics(view["students"].copy())
+    for column, value in (("Division", division), ("Batch", batch), ("Semester", semester)):
+        students = apply_value_filter(students, column, value)
+    cohort = _cohort_usernames(students)
+    names = _student_names(view)
+    ids = _student_ids(view)
+
+    repos = view.get("repos")
+    if repos is not None and not repos.empty and "Username" in repos.columns:
+        try:
+            repos = repos[repos["Username"].astype(str).isin(cohort)].copy()
+        except Exception:
+            pass
+    team = view.get("team_repos")
+    if team is not None and not team.empty and "Username" in team.columns:
+        try:
+            team = team[team["Username"].astype(str).isin(cohort)].copy()
+        except Exception:
+            pass
+
+    # Admin-hidden repositories leave every board (exact: all downstream
+    # sums/counts are computed from these frames, never from aggregates).
+    hidden = hidden_repos if isinstance(hidden_repos, dict) else {}
+    user_to_sid = {user: sid for user, sid in ids.items()}
+
+    def _drop_hidden(frame, user_col: str, repo_col: str, url_col: str):
+        if frame is None or frame.empty:
+            return frame
+        try:
+            def _kept(row):
+                sid = user_to_sid.get(str(row.get(user_col)))
+                if not sid:
+                    return True
+                keys = hidden.get(sid) or []
+                return repo_key(row.get(user_col), row.get(repo_col), row.get(url_col)) not in keys
+
+            mask = frame.apply(_kept, axis=1)
+            try:
+                mask = mask.fillna(True).astype(bool)
+            except Exception:
+                pass
+            return frame[mask].copy()
+        except Exception:
+            return frame
+
+    repos = _drop_hidden(repos, "Username", "Repository", "Repository_URL")
+    team = _drop_hidden(team, "Username", "Team_Repo", "Team_Repo_URL")
+
+    def _combined(owned: dict, contributed: dict) -> dict:
+        totals = dict(owned)
+        for user, score in contributed.items():
+            totals[str(user)] = totals.get(str(user), 0) + score
+        return {user: score for user, score in totals.items() if str(user) in cohort}
+
+    # 1. Most active repos (owned updates + contributed activity in the window).
+    if active_window == "all":
+        owned_active = repos["Username"].astype(str).value_counts().to_dict() if repos is not None and not repos.empty and "Username" in repos.columns else {}
+        team_active = team["Username"].astype(str).value_counts().to_dict() if team is not None and not team.empty and "Username" in team.columns else {}
+    else:
+        days = WINDOW_DAYS[active_window]
+        owned_active = _recent_counts(repos, "Username", "Updated", days)
+        team_active = _recent_counts(team, "Username", "Last_Active_At", days)
+    no_active = _blacklisted_users(view, ids, blacklist, "active")
+    active_rows = _ranked(
+        {user: score for user, score in _combined(owned_active, team_active).items() if user not in no_active},
+        names,
+        ids,
     )
-    if languages is not None:
-        languages.columns = ["Language", "Repositories"]
+
+    # 2. Most commits, owned + contributed combined — exact per-repo
+    # author-commit counts collected at analysis time (no activity proxies).
+    # Owned sums come straight from the (hidden-filtered) repo rows so hiding
+    # a repo subtracts exactly its commits; team all-time likewise. Runs
+    # completed before commit history existed cannot rank accurately.
+    commit_cols = {
+        "all": ("Owned_Commits", "Team_Commits"),
+        "1m": ("Owned_Commits_30d", "Team_Commits_30d"),
+        "3m": ("Owned_Commits_90d", "Team_Commits_90d"),
+    }
+    commit_repo_cols = {"all": "Commits", "1m": "Commits_30d", "3m": "Commits_90d"}
+    owned_col, team_col = commit_cols[commits_window]
+    commits_ready = (
+        not students.empty
+        and owned_col in students.columns
+        and team_col in students.columns
+        and bool(students[owned_col].notna().any())
+    )
+    commit_rows: list[dict] = []
+    if commits_ready and "GitHub_Username" in students.columns:
+        owned_scores = _totals_by_user(repos, "Username", commit_repo_cols[commits_window])
+        if commits_window == "all":
+            team_scores = _totals_by_user(team, "Username", "Commits")
+        else:
+            try:
+                team_scores = dict(zip(students["GitHub_Username"].astype(str), _commit_col(students, team_col)))
+            except Exception:
+                team_scores = {}
+        no_commits = _blacklisted_users(view, ids, blacklist, "commits")
+        commit_rows = _ranked(
+            {user: score for user, score in _combined(owned_scores, team_scores).items() if user not in no_commits},
+            names,
+            ids,
+        )
+
+    # 3. Most stars across a student's own repos.
+    star_totals = _totals_by_user(repos, "Username", "Stars")
+    no_stars = _blacklisted_users(view, ids, blacklist, "stars")
+    star_rows = _ranked(
+        {user: score for user, score in star_totals.items() if str(user) in cohort and user not in no_stars},
+        names,
+        ids,
+    )
+
+    # 4. Top starred repos of all time (cohort-owned, minus blacklisted owners).
+    top_repos: list[dict] = []
+    if repos is not None and not repos.empty:
+        try:
+            ranked = repos.copy()
+            no_repos = _blacklisted_users(view, ids, blacklist, "repos")
+            if no_repos and "Username" in ranked.columns:
+                ranked = ranked[~ranked["Username"].astype(str).isin(no_repos)]
+            ranked["Stars"] = pd.to_numeric(ranked.get("Stars", 0), errors="coerce").fillna(0).astype(int)
+            ranked = ranked[ranked["Stars"] > 0].sort_values(["Stars", "Repository"], ascending=[False, True]).head(10)
+            for rank, (_, row) in enumerate(ranked.iterrows(), start=1):
+                owner = str(row.get("Username", ""))
+                lang = row.get("Language", "")
+                try:
+                    lang = "Unknown" if pd.isna(lang) or not str(lang).strip() else str(lang).strip()
+                except Exception:
+                    lang = "Unknown"
+                top_repos.append(
+                    {
+                        "rank": rank,
+                        "repo": str(row.get("Repository", "Unknown")),
+                        "owner": owner,
+                        "owner_name": names.get(owner, owner or "Unknown"),
+                        "language": lang,
+                        "stars": int(row.get("Stars", 0)),
+                        "url": str(row.get("Repository_URL", "") or ""),
+                    }
+                )
+        except Exception:
+            top_repos = []
     return {
         "total": len(students),
-        "sections": sections,
-        "anonymize": anonymize,
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
-        "years": dist_options(view["students"]["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
-        "languages": languages if languages is not None else None,
+        "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
+        "active_window": active_window,
+        "commits_window": commits_window,
+        "active_rows": active_rows,
+        "commit_rows": commit_rows,
+        "commits_ready": commits_ready,
+        "star_rows": star_rows,
+        "top_repos": top_repos,
     }
 
 

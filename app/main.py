@@ -120,6 +120,20 @@ def _workflow_state(roster_id: str) -> dict:
     return roster_store.get_workflow(roster_id)
 
 
+def _blacklist_state(roster_id: str) -> dict:
+    """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache."""
+    if database.db_configured():
+        return db.get_blacklist(roster_id)
+    return roster_store.get_blacklist(roster_id)
+
+
+def _hidden_repos_state(roster_id: str) -> dict:
+    """Hidden repositories: prefer Postgres; fall back to RosterStore cache."""
+    if database.db_configured():
+        return db.get_hidden_repos(roster_id)
+    return roster_store.get_hidden_repos(roster_id)
+
+
 def _db_log_event(event_type: str, detail: str = "") -> bool:
     """Audit log: prefer Postgres; fall back to SQLite."""
     if database.db_configured():
@@ -270,12 +284,40 @@ class RosterStore:
         except (TypeError, ValueError):
             return {}
 
+    def put_blacklist(self, roster_id: str, blacklist: dict) -> None:
+        self._cache.set(f"blacklist:{roster_id}", json.dumps(blacklist, default=str), self._ttl)
+
+    def get_blacklist(self, roster_id: str) -> dict:
+        raw = self._cache.get(f"blacklist:{roster_id}")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
+    def put_hidden_repos(self, roster_id: str, hidden: dict) -> None:
+        self._cache.set(f"hidden_repos:{roster_id}", json.dumps(hidden, default=str), self._ttl)
+
+    def get_hidden_repos(self, roster_id: str) -> dict:
+        raw = self._cache.get(f"hidden_repos:{roster_id}")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
     def clear(self, roster_id: str) -> None:
         with self._locked(roster_id):
             self._cache.delete(f"roster:{roster_id}")
             self._cache.delete(f"analysis:{roster_id}")
             self._cache.delete(f"meta:{roster_id}")
             self._cache.delete(f"workflow:{roster_id}")
+            self._cache.delete(f"blacklist:{roster_id}")
+            self._cache.delete(f"hidden_repos:{roster_id}")
 
     def init_analysis(self, roster_id: str, record_count: int, file_hash: str | None = None) -> None:
         state = {
@@ -1108,6 +1150,8 @@ def students_page(
             **ctx,
             "view": view,
             "payload": payload,
+            "blacklist": _blacklist_state(roster),
+            "hidden_repos": _hidden_repos_state(roster),
             "roster_id": roster,
             "q": q,
             "division": division,
@@ -1133,7 +1177,7 @@ def my_profile_page(request: Request, roster: str = ""):
     return templates.TemplateResponse(
         request,
         "pages/me.html",
-        {**ctx, "profile": profile, "has_roster": bool(roster)},
+        {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster)},
     )
 
 
@@ -1188,21 +1232,115 @@ def leaderboards_page(
     roster: str = "",
     division: str = "All",
     batch: str = "All",
-    year: str = "All",
     semester: str = "All",
-    anonymize: int = 0,
+    active_window: str = "1m",
+    commits_window: str = "1m",
+    select: str = "",
 ):
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
-    payload = views.leaderboards_payload(view, division, batch, year, semester, anonymize=bool(anonymize))
+    payload = views.leaderboards_payload(
+        view, division, batch, semester, active_window, commits_window,
+        blacklist=_blacklist_state(roster),
+        hidden_repos=_hidden_repos_state(roster),
+    )
     notifications, notif_count = _own_notifications(request, view, roster)
+    # Same profile popup as the Students tab: opened from a leaderboard name,
+    # closed back to this exact leaderboard view.
+    profile = None
+    if select:
+        try:
+            candidates = view.get("students")
+            match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
+            if not match.empty:
+                profile = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+        except Exception:
+            profile = None
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "year": year, "semester": semester, "anonymize": bool(anonymize), "notifications": notifications, "notif_count": notif_count},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], "notifications": notifications, "notif_count": notif_count},
     )
+
+
+@app.post("/leaderboards/blacklist")
+async def leaderboards_blacklist_save(request: Request, roster: str = ""):
+    """Admin-only: blacklist a student from one leaderboard (or whitelist back)."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can edit the leaderboard blacklist")
+    if not roster:
+        raise HTTPException(status_code=400, detail="Missing roster")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    student_id = str(body.get("student_id") or "").strip()
+    board = str(body.get("board") or "").strip()
+    action = str(body.get("action") or "").strip()
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Missing student_id")
+    if board not in views.LEADERBOARD_BOARD_KEYS:
+        raise HTTPException(status_code=400, detail="Unknown leaderboard")
+    if action not in ("blacklist", "whitelist"):
+        raise HTTPException(status_code=400, detail="Action must be blacklist or whitelist")
+    state = _blacklist_state(roster)
+    boards = [b for b in (state.get(student_id) or []) if b in views.LEADERBOARD_BOARD_KEYS]
+    if action == "blacklist" and board not in boards:
+        boards.append(board)
+    if action == "whitelist" and board in boards:
+        boards.remove(board)
+    if boards:
+        state[student_id] = boards
+    else:
+        state.pop(student_id, None)
+    roster_store.put_blacklist(roster, state)
+    if database.db_configured():
+        db.put_blacklist(roster, state)
+    return {"status": "ok", "blacklisted": boards}
+
+
+@app.post("/leaderboards/hidden-repos")
+async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
+    """Admin-only: hide one repository from every leaderboard (or unhide it)."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can hide leaderboard repositories")
+    if not roster:
+        raise HTTPException(status_code=400, detail="Missing roster")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    student_id = str(body.get("student_id") or "").strip()
+    repo = str(body.get("repo") or "").strip()
+    action = str(body.get("action") or "").strip()
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Missing student_id")
+    if not repo:
+        raise HTTPException(status_code=400, detail="Missing repo")
+    if action not in ("hide", "unhide"):
+        raise HTTPException(status_code=400, detail="Action must be hide or unhide")
+    state = _hidden_repos_state(roster)
+    hidden = list(dict.fromkeys(str(key).strip() for key in (state.get(student_id) or []) if str(key).strip()))
+    if action == "hide" and repo not in hidden:
+        hidden.append(repo)
+    if action == "unhide" and repo in hidden:
+        hidden.remove(repo)
+    if hidden:
+        state[student_id] = hidden
+    else:
+        state.pop(student_id, None)
+    roster_store.put_hidden_repos(roster, state)
+    if database.db_configured():
+        db.put_hidden_repos(roster, state)
+    return {"status": "ok", "hidden": hidden}
 
 
 def _run_history_rows(list_all=True) -> list:

@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     team_pr_events              INTEGER NOT NULL DEFAULT 0,
     team_total_events           INTEGER NOT NULL DEFAULT 0,
     team_commits_30d            INTEGER NOT NULL DEFAULT 0,
+    team_commits_90d            INTEGER NOT NULL DEFAULT 0,
     team_total_events_30d       INTEGER NOT NULL DEFAULT 0,
     team_active_dates           TEXT NOT NULL DEFAULT '',
     team_active_repos           INTEGER NOT NULL DEFAULT 0,
@@ -115,6 +116,10 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     contributed_repos           TEXT NOT NULL DEFAULT '',
     team_last_active_at         TEXT NOT NULL DEFAULT '',
     team_activity_fetch_status  TEXT NOT NULL DEFAULT 'Loaded',
+    owned_commits               INTEGER NOT NULL DEFAULT 0,
+    owned_commits_30d           INTEGER NOT NULL DEFAULT 0,
+    owned_commits_90d           INTEGER NOT NULL DEFAULT 0,
+    commit_fetch_status         TEXT NOT NULL DEFAULT 'Loaded',
     followers                   INTEGER,
     following                   INTEGER,
     account_age_years           REAL,
@@ -142,6 +147,7 @@ ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_push_events INTEGER N
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_pr_events INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_total_events INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_commits_30d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_commits_90d INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_total_events_30d INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_active_dates TEXT NOT NULL DEFAULT '';
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_active_repos INTEGER NOT NULL DEFAULT 0;
@@ -149,6 +155,10 @@ ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos_count IN
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos TEXT NOT NULL DEFAULT '';
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_last_active_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_activity_fetch_status TEXT NOT NULL DEFAULT 'Loaded';
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS owned_commits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS owned_commits_30d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS owned_commits_90d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS commit_fetch_status TEXT NOT NULL DEFAULT 'Loaded';
 
 -- 6. Repository inventory (per-roster snapshot; pruned by retention helper).
 CREATE TABLE IF NOT EXISTS roster_repositories (
@@ -167,8 +177,14 @@ CREATE TABLE IF NOT EXISTS roster_repositories (
     maintenance_status          TEXT,
     repository_quality_score    INTEGER,
     quality_band                TEXT,
+    commits                     INTEGER NOT NULL DEFAULT 0,
+    commits_30d                 INTEGER NOT NULL DEFAULT 0,
+    commits_90d                 INTEGER NOT NULL DEFAULT 0,
     UNIQUE (roster_id, username, repository_url)
 );
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_30d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_90d INTEGER NOT NULL DEFAULT 0;
 
 -- 6b. Team-contributed repos (per-roster snapshot of external-repo activity
 --     derived from the public events API — the group-project fix).
@@ -209,6 +225,20 @@ CREATE TABLE IF NOT EXISTS roster_issues (
 
 -- 8. Workflow state (editable issue follow-up state; JSONB mirrors the RosterStore dict).
 CREATE TABLE IF NOT EXISTS workflow_state (
+    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    state       JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- 8b. Leaderboard blacklist ({student_id: [boards]} — students excluded from
+--     specific leaderboards by an admin; mirrors the RosterStore dict).
+CREATE TABLE IF NOT EXISTS leaderboard_blacklist (
+    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    state       JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- 8c. Hidden leaderboard repositories ({student_id: [repo keys]} — single
+--     repositories excluded from every leaderboard by an admin).
+CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
     roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );

@@ -138,6 +138,11 @@ def repo_item(name, language, updated="2026-07-01T00:00:00Z"):
     }
 
 
+def commit_item(days_ago) -> dict:
+    stamp = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days_ago)).isoformat()
+    return {"commit": {"author": {"date": stamp}}}
+
+
 def crash_free_fake() -> FakeGitHub:
     return FakeGitHub(
         users={
@@ -154,6 +159,13 @@ def crash_free_fake() -> FakeGitHub:
                 [{"state": "closed", "repository_url": "https://api.github.com/repos/o/thing"}],
             ),
             "bob-cat": ([], []),
+        },
+        # alice: py1 5 commits (2 in 30d, 3 in 90d) + js1 1 old = 6 all-time;
+        # bob: go1 2 old commits.
+        repo_commits={
+            ("alice-dev/py1", "alice-dev"): [commit_item(d) for d in (0, 10, 40, 100, 400)],
+            ("alice-dev/js1", "alice-dev"): [commit_item(200)],
+            ("bob-cat/go1", "bob-cat"): [commit_item(200), commit_item(300)],
         },
     )
 
