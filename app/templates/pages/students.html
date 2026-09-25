@@ -21,6 +21,12 @@
     text-transform: uppercase;
     color: var(--muted);
   }
+  .filter-hint {
+    font-size: 12.5px;
+    color: var(--muted);
+    font-style: italic;
+    margin-left: 4px;
+  }
   .export-dropdown {
     position: relative;
   }
@@ -217,8 +223,8 @@
       {% endfor %}
     </select>
   </div>
-  <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/students?roster={{ roster_id }}">Clear</a>
+  <span class="filter-hint" id="filter-hint" role="status" aria-live="polite"></span>
   <div class="filter-field">
     <details class="export-dropdown" aria-label="Export">
       <summary class="btn" aria-haspopup="menu">Export &#9662;</summary>
@@ -346,6 +352,54 @@
     }, { rootMargin: '400px' });
     observer.observe(sentinel);
   })();
+</script>
+
+<script>
+(function () {
+  var form = document.querySelector('.filter-bar');
+  var divSel = document.getElementById('division-filter');
+  var batchSel = document.getElementById('batch-filter');
+  var semSel = document.getElementById('semester-filter');
+  var hintEl = document.getElementById('filter-hint');
+  if (!form || !divSel || !batchSel || !semSel) return;
+
+  function setHint(text) {
+    if (hintEl) hintEl.textContent = text || '';
+  }
+  function isBlank(sel) {
+    return sel.value === 'All' || sel.value === '';
+  }
+
+  divSel.addEventListener('change', function () {
+    if (isBlank(batchSel)) {
+      setHint('Next: choose a Batch to narrow the list.');
+      batchSel.focus();
+      return;
+    }
+    if (isBlank(semSel)) {
+      setHint('Next: choose a Semester — your Batch is kept.');
+      semSel.focus();
+      return;
+    }
+    setHint('');
+    form.submit();
+  });
+
+  batchSel.addEventListener('change', function () {
+    if (isBlank(semSel)) {
+      setHint('Next: choose a Semester — your Division is kept.');
+      semSel.focus();
+      return;
+    }
+    setHint('');
+    form.submit();
+  });
+
+  semSel.addEventListener('change', function () {
+    setHint('');
+    form.submit();
+  });
+})();
 </script>
 
 {% if payload.profile %}

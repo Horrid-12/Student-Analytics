@@ -1164,6 +1164,9 @@ def repositories_page(
     language: str = "All",
     rows: int = 30,
     view: str = "grid",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
 ):
     ctx = _base_context(request, "Repositories", roster)
     data, response = _guard_page(request, ctx, "Repositories", roster)
@@ -1171,11 +1174,11 @@ def repositories_page(
         return response
     if view not in ("grid", "table"):
         view = "grid"
-    payload = views.repositories_payload(data, q, language, rows)
+    payload = views.repositories_payload(data, q, language, rows, division, batch, semester)
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester},
     )
 
 
@@ -1225,6 +1228,10 @@ def _run_history_rows(list_all=True) -> list:
                 "elapsed_seconds": float(row.get("elapsed_seconds") or 0.0),
             }
         )
+    # Newest run first — both the Overview "Recent Analysis Runs" list and the
+    # History page render `_run_history_rows` output. The underlying loader
+    # stays oldest-first so the History trends chart keeps chronological order.
+    rows.reverse()
     return rows
 
 

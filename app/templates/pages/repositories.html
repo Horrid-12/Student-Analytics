@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Repositories — GitHub Student Analytics Platform{% endblock %}
+{% block head %}
+<style>
+  .filter-bar { align-items: flex-end; }
+  .filter-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .filter-field.search-box-row { flex: 1 1 320px; }
+  .filter-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .rc-id { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
+  .rc-id .table-avatar, .rc-id .avatar-fallback { flex-shrink: 0; }
+  .rc-id .rc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .repo-owner-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .repo-owner-cell .table-avatar, .repo-owner-cell .avatar-fallback { flex-shrink: 0; }
+  .repo-owner-cell a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="topbar-card">
@@ -21,19 +35,42 @@
 <form class="filter-bar" method="get" id="repo-filter-form">
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="view" value="{{ view_mode }}">
-  <div class="search-box-row">
-    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repositories, owners or languages&hellip;">
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="repo-search">Search</label>
+    <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repositories, owners or languages&hellip;">
   </div>
-  <select class="filter-select" name="language" title="Language" id="repo-language">
-    {% for value in payload.languages %}
-    <option value="{{ value }}" {% if value == language %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <select class="filter-select" name="rows" title="Rows" id="repo-rows">
-    {% for value in [10, 20, 30, 50] %}
-    <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }} repositories</option>
-    {% endfor %}
-  </select>
+  <div class="filter-field">
+    <label class="filter-label" for="repo-division">Division</label>
+    <select id="repo-division" class="filter-select" name="division">
+      {% for value in payload.divisions %}
+      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="repo-batch">Batch</label>
+    <select id="repo-batch" class="filter-select" name="batch">
+      {% for value in payload.batches %}
+      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="repo-semester">Semester</label>
+    <select id="repo-semester" class="filter-select" name="semester">
+      {% for value in payload.semesters %}
+      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="repo-rows">Rows</label>
+    <select id="repo-rows" class="filter-select" name="rows">
+      {% for value in [10, 20, 30, 50] %}
+      <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }} repositories</option>
+      {% endfor %}
+    </select>
+  </div>
   <a class="btn" href="/repositories?roster={{ roster_id }}" id="repo-clear">Clear</a>
   <span class="filter-count">{{ payload.total }} shown</span>
 </form>
@@ -71,7 +108,14 @@
     {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
     <div class="repo-card-v2">
       <div class="rc-header">
-        <a class="rc-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+        <span class="rc-id">
+          {% if repo.Avatar_URL %}
+          <img class="table-avatar" src="{{ repo.Avatar_URL }}" alt="">
+          {% else %}
+          <span class="avatar-fallback">{{ (repo['Student Name'] or username_clean or '?')[0:1] }}</span>
+          {% endif %}
+          <a class="rc-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+        </span>
         {% if username_clean %}
         <span class="rc-handle">@{{ username_clean }}</span>
         {% endif %}
@@ -122,7 +166,16 @@
         {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
         <tr>
           <td><a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a></td>
-          <td>{% if username_clean %}<a href="?roster={{ roster_id }}&q={{ username_clean }}">{{ username_clean }}</a>{% else %}—{% endif %}</td>
+          <td>
+            <div class="repo-owner-cell">
+              {% if repo.Avatar_URL %}
+              <img class="table-avatar" src="{{ repo.Avatar_URL }}" alt="">
+              {% else %}
+              <span class="avatar-fallback">{{ (repo['Student Name'] or username_clean or '?')[0:1] }}</span>
+              {% endif %}
+              {% if username_clean %}<a class="repo-name" href="?roster={{ roster_id }}&q={{ username_clean }}">{{ username_clean }}</a>{% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
+            </div>
+          </td>
           <td>{% if lang_clean %}<span class="chip">{{ lang_clean }}</span>{% else %}—{% endif %}</td>
           <td>{{ stars }}</td>
           <td>{{ forks }}</td>
@@ -144,7 +197,9 @@
 
   var form = document.getElementById('repo-filter-form');
   var viewInput = form.querySelector('input[name="view"]');
-  var langSel = document.getElementById('repo-language');
+  var divSel = document.getElementById('repo-division');
+  var batchSel = document.getElementById('repo-batch');
+  var semSel = document.getElementById('repo-semester');
   var rowsSel = document.getElementById('repo-rows');
   var clearBtn = document.getElementById('repo-clear');
   var btns = Array.prototype.slice.call(document.querySelectorAll('.vs-btn'));
@@ -153,9 +208,9 @@
 
   function isValidView(v) { return v === 'grid' || v === 'table'; }
 
-  function langOptions() {
+  function optionsOf(sel) {
     var values = [];
-    for (var i = 0; i < langSel.options.length; i++) { values.push(langSel.options[i].value); }
+    for (var i = 0; i < sel.options.length; i++) { values.push(sel.options[i].value); }
     return values;
   }
 
@@ -164,9 +219,13 @@
       var raw = localStorage.getItem(STORE_KEY);
       if (!raw) return null;
       var p = JSON.parse(raw);
-      var opts = langOptions();
       var out = {};
-      if (typeof p.language === 'string' && opts.indexOf(p.language) !== -1) { out.language = p.language; }
+      function pick(key, sel) {
+        if (typeof p[key] === 'string' && optionsOf(sel).indexOf(p[key]) !== -1) { out[key] = p[key]; }
+      }
+      pick('division', divSel);
+      pick('batch', batchSel);
+      pick('semester', semSel);
       if (VALID_ROWS.indexOf(p.rows) !== -1) { out.rows = p.rows; }
       if (isValidView(p.view)) { out.view = p.view; }
       return out;
@@ -176,7 +235,9 @@
   function savePrefs() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        language: langSel.value,
+        division: divSel.value,
+        batch: batchSel.value,
+        semester: semSel.value,
         rows: parseInt(rowsSel.value, 10),
         view: viewInput.value
       }));
@@ -197,14 +258,17 @@
     });
   });
 
-  langSel.addEventListener('change', function () { savePrefs(); form.submit(); });
-  rowsSel.addEventListener('change', function () { savePrefs(); form.submit(); });
+  [divSel, batchSel, semSel, rowsSel].forEach(function (sel) {
+    sel.addEventListener('change', function () { savePrefs(); form.submit(); });
+  });
 
   clearBtn.addEventListener('click', function () {
     var p = readPrefs() || {};
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        language: 'All',
+        division: 'All',
+        batch: 'All',
+        semester: 'All',
         rows: 30,
         view: isValidView(p.view) ? p.view : 'grid'
       }));
@@ -215,10 +279,10 @@
   if (saved) {
     var needSubmit = false;
     if (saved.view) { applyView(saved.view); }
-    if (saved.language && langSel.value !== saved.language) {
-      langSel.value = saved.language;
-      needSubmit = true;
-    }
+    [['division', divSel], ['batch', batchSel], ['semester', semSel]].forEach(function (pair) {
+      var key = pair[0], sel = pair[1];
+      if (saved[key] && sel.value !== saved[key]) { sel.value = saved[key]; needSubmit = true; }
+    });
     if (saved.rows && parseInt(rowsSel.value, 10) !== saved.rows) {
       rowsSel.value = String(saved.rows);
       needSubmit = true;

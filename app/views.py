@@ -1018,7 +1018,42 @@ def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.D
 # Repositories (3.6d)
 # ---------------------------------------------------------------------------
 
-def repositories_payload(view, query="", language="All", rows=30) -> dict:
+def _merge_student_fields(repos: pd.DataFrame, students) -> pd.DataFrame:
+    """Attach each repo's owner avatar + name + Division/Batch/Semester.
+
+    Repos are stored without student profile fields (REPO_COLS), so those are
+    joined from the students frame on the GitHub username (case-insensitively).
+    Missing owners stay blank so templates fall back to the initial-letter
+    avatar. Returns the repos frame unchanged if the join data is unavailable.
+    """
+    frame = repos
+    if frame.empty or students is None or students.empty:
+        return frame
+    keys = ("GitHub_Username", "Avatar_URL", "Student Name", "Division", "Batch", "Semester")
+    try:
+        if not all(k in students.columns for k in keys):
+            return frame
+        st = students[list(keys)].copy()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return frame
+    try:
+        st["_owner_key"] = st["GitHub_Username"].astype(str).str.strip().str.lower()
+        frame["_owner_key"] = frame["Username"].astype(str).str.strip().str.lower()
+        merged = frame.merge(
+            st.drop_duplicates("_owner_key"),
+            on="_owner_key",
+            how="left",
+            suffixes=("", "_st"),
+        ).drop(columns=["_owner_key", "GitHub_Username"])
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return frame
+    for col in ("Avatar_URL", "Student Name", "Division", "Batch", "Semester"):
+        if col in merged.columns and merged[col].notna().any():
+            merged[col] = merged[col].where(merged[col].notna(), "").astype(str)
+    return merged
+
+
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All") -> dict:
     repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
     team_repos = view.get("team_repos")
     # Merge contributed repos into the same list so team members' work on a
@@ -1070,16 +1105,29 @@ def repositories_payload(view, query="", language="All", rows=30) -> dict:
             repos = pd.concat([repos, mapped], ignore_index=True) if not repos.empty else mapped
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
+    repos = _merge_student_fields(repos, view.get("students"))
     filtered = filter_text(repos, query, ["Username", "Repository", "Language"])
     filtered = apply_value_filter(filtered, "Language", language)
+    filtered = apply_value_filter(filtered, "Division", division)
+    filtered = apply_value_filter(filtered, "Batch", batch)
+    filtered = apply_value_filter(filtered, "Semester", semester)
     if not filtered.empty:
         filtered = filtered.copy()
         filtered["Repository URL"] = filtered["Repository_URL"]
+    students = view.get("students")
+    _opts = (
+        lambda col: dist_options(students[col].dropna().astype(str).unique().tolist())
+        if students is not None and not students.empty and col in students.columns
+        else ["All"]
+    )
     return {
         "total": len(filtered),
         "cards": filtered.head(int(rows)),
         "table": filtered,
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],
+        "divisions": _opts("Division"),
+        "batches": _opts("Batch"),
+        "semesters": _opts("Semester"),
     }
 
 
