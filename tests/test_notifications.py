@@ -228,10 +228,12 @@ class TestNotificationBell:
         assert "/issues?roster=r1&amp;issue=" in body or "/issues?roster=r1&issue=" in body
         assert "Fix" in body
 
-    def test_admin_overview_has_no_bell(self, client):
+    def test_admin_overview_shows_staff_bell(self, client):
         make_user(client, "admin")
         body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" not in body
+        assert "notif-bell" in body  # staff see ticket alerts, not issue alerts
+        assert "all quiet" in body
+        assert "notif-badge" not in body
 
     def test_student_leaderboards_shows_bell(self, client):
         self._login(client, "student", OWN_EMAIL)
