@@ -32,7 +32,7 @@ Upload your roster, click **Run Analysis**, and get nine pages:
 - **Full public-repo pagination** — fetches all repos, not just the first 100
 - **Batched, concurrent analysis** — students are processed in server-side batches so progress is tracked and the GitHub API is not oversubscribed
 - **Rate-limit handling** — uses a GitHub token when available; shows friendly errors when quota runs out
-- **Authentication & access control** — email+Google / GitHub / LinkedIn OAuth sign-in, role-based pages (student / faculty / admin), and HMAC-signed session cookies
+- **Authentication & access control** — email/password and Google sign-in with college-domain validation, role-based pages (student / faculty / admin), and HMAC-signed session cookies; GitHub/LinkedIn OAuth remain profile-linking-only after sign-in
 - **Postgres-backed storage (optional)** — with `DATABASE_URL` set, storage runs on Neon Postgres; otherwise it falls back to the bundled SQLite files, so local dev/tests work with zero setup
 
 ---

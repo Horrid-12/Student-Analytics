@@ -214,9 +214,12 @@ class TestPasswordDomainGate:
         assert "gsad_session" in client.cookies
 
 
-class TestLoginPageGoogleButton:
-    def test_button_only_when_configured(self, client, monkeypatch):
+class TestLoginPageMethods:
+    def test_google_button_only_when_configured(self, client, monkeypatch):
         monkeypatch.setattr(google_oauth, "configured", lambda: True)
-        assert "Continue with Google" in client.get("/login").text
+        body = client.get("/login").text
+        assert "Continue with Google" in body
+        assert "Continue with GitHub" not in body
+        assert "Continue with LinkedIn" not in body
         monkeypatch.setattr(google_oauth, "configured", lambda: False)
         assert "Continue with Google" not in client.get("/login").text

@@ -779,8 +779,6 @@ def login_page(request: Request, registered: int = 0, error: int = 0, oauth: str
             "oauth_message": oauth,
             "oauth_domains_text": ", ".join(auth.allowed_domains()),
             "google_configured": google_oauth.configured(),
-            "github_configured": github_oauth.configured(),
-            "linkedin_configured": linkedin_oauth.configured(),
         },
     )
 
@@ -923,16 +921,16 @@ from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
 def auth_github(request: Request):
+    if not request.state.user:
+        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not github_oauth.configured():
-        return RedirectResponse("/login?oauth=github_unconfigured", status_code=302)
+        return RedirectResponse("/settings", status_code=302)
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
     state = auth.new_oauth_state()
-    # Encode whether this is a sign-in or link in the state cookie value
-    mode = "link" if request.state.user else "signin"
     url = github_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
     return response
 
 @app.get("/auth/github/callback")
@@ -953,6 +951,13 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
     if not expected or not hmac.compare_digest(state or "", expected):
         logger.warning("GitHub OAuth state mismatch")
         return reject("error")
+
+    if mode != "link" or not user:
+        target = "/login?oauth=link_required" if user is None else "/onboarding?github=link_required"
+        response = RedirectResponse(target, status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
 
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
     try:
@@ -975,43 +980,19 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         response.delete_cookie("gsad_oauth_mode")
         return response
 
-    # Sign-in mode — domain gate required
-    email = (claims.get("email") or "").strip().lower()
-    if not email or not claims.get("email_verified"):
-        return reject("error")
-    if not auth.domain_allowed_email(email):
-        _db_log_event("oauth_denied", email)
-        return reject("domain")
-
-    role = auth.resolve_google_role(email)  # reuse same role resolution
-    gh_user = auth.upsert_github_user(email, claims.get("name", ""), claims.get("login", ""), role)
-    if gh_user is None:
-        gh_user = {"email": email, "role": role, "name": claims.get("name", "")}
-    _db_log_event("oauth_login", email)
-    response = RedirectResponse("/onboarding", status_code=302)
-    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
-    response.delete_cookie("gsad_oauth_mode")
-    response.set_cookie(
-        auth._COOKIE_NAME,
-        auth.create_session_token(gh_user),
-        max_age=auth._SESSION_TTL_SECONDS,
-        httponly=True,
-        samesite="lax",
-    )
-    return response
-
 
 @app.get("/auth/linkedin")
 def auth_linkedin(request: Request):
+    if not request.state.user:
+        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not linkedin_oauth.configured():
-        return RedirectResponse("/login?oauth=linkedin_unconfigured", status_code=302)
+        return RedirectResponse("/settings", status_code=302)
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
     state = auth.new_oauth_state()
-    mode = "link" if request.state.user else "signin"
     url = linkedin_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
     return response
 
 @app.get("/auth/linkedin/callback")
@@ -1033,6 +1014,13 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         logger.warning("LinkedIn OAuth state mismatch")
         return reject("error")
 
+    if mode != "link" or not user:
+        target = "/login?oauth=link_required" if user is None else "/onboarding?linkedin=link_required"
+        response = RedirectResponse(target, status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
+
     redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
     try:
         claims = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
@@ -1053,29 +1041,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         response.delete_cookie("gsad_oauth_mode")
         return response
 
-    email = (claims.get("email") or "").strip().lower()
-    if not email or not claims.get("email_verified"):
-        return reject("error")
-    if not auth.domain_allowed_email(email):
-        _db_log_event("oauth_denied", email)
-        return reject("domain")
 
-    role = auth.resolve_google_role(email)
-    li_user = auth.upsert_linkedin_user(email, claims.get("name", ""), claims.get("sub", ""), role)
-    if li_user is None:
-        li_user = {"email": email, "role": role, "name": claims.get("name", "")}
-    _db_log_event("oauth_login", email)
-    response = RedirectResponse("/onboarding", status_code=302)
-    response.delete_cookie(auth._OAUTH_STATE_COOKIE)
-    response.delete_cookie("gsad_oauth_mode")
-    response.set_cookie(
-        auth._COOKIE_NAME,
-        auth.create_session_token(li_user),
-        max_age=auth._SESSION_TTL_SECONDS,
-        httponly=True,
-        samesite="lax",
-    )
-    return response
 
 
 @app.get("/logout")

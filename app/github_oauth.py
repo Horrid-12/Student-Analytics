@@ -66,12 +66,18 @@ async def exchange_code(url: str, state: str, redirect_uri: str) -> dict:
         
     email = primary_email.get("email") if primary_email else None
     email_verified = primary_email.get("verified", False) if primary_email else False
+    verified_emails = [
+        str(item.get("email") or "").strip().lower()
+        for item in emails
+        if isinstance(item, dict) and item.get("verified") and item.get("email")
+    ]
 
     return {
         "login": user_info.get("login"),
         "name": user_info.get("name"),
         "email": email,
         "email_verified": email_verified,
+        "verified_emails": verified_emails,
         "avatar_url": user_info.get("avatar_url")
     }
 

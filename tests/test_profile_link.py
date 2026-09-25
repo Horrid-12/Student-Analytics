@@ -5,6 +5,8 @@ confirm it on Settings, and the photo + handle replace the sidebar initial
 pill. Confirming without a fetch is refused; avatar URLs are scheme-locked.
 """
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,6 +29,36 @@ def seed_student(client, email="stu@college.edu"):
     assert auth.create_user(email, "secret123", "student", "Stu Dent")
     client.post("/login", data={"email": email, "password": "secret123"})
     return email
+
+
+def test_github_exchange_exposes_all_verified_emails(monkeypatch):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        async def fetch_token(self, *args, **kwargs):
+            return {}
+
+        async def get(self, url):
+            if url == github_oauth.USERINFO_ENDPOINT:
+                return FakeResponse({"login": "octocat", "name": "Octo", "avatar_url": "https://example.com/a.png"})
+            return FakeResponse([
+                {"email": "octocat@gmail.com", "primary": True, "verified": True},
+                {"email": "student@college.edu", "primary": False, "verified": True},
+                {"email": "unverified@college.edu", "primary": False, "verified": False},
+            ])
+
+    monkeypatch.setattr(github_oauth, "load_credentials", lambda: ("client-id", "client-secret"))
+    monkeypatch.setattr(github_oauth, "AsyncOAuth2Client", lambda **kwargs: FakeClient())
+    claims = asyncio.run(github_oauth.exchange_code("https://github.com/callback", "state", "https://app/callback"))
+    assert claims["verified_emails"] == ["octocat@gmail.com", "student@college.edu"]
 
 
 class TestLinkedProfileStorage:
@@ -75,6 +107,20 @@ class TestOAuthCallbacksPersist:
         client.cookies.set(auth._OAUTH_STATE_COOKIE, "s123")
         client.cookies.set("gsad_oauth_mode", "link")
 
+    def test_linkedin_start_requires_existing_session(self, client, monkeypatch):
+        monkeypatch.setattr(linkedin_oauth, "configured", lambda: True)
+        resp = client.get("/auth/linkedin", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login?oauth=link_required"
+        assert auth._OAUTH_STATE_COOKIE not in client.cookies
+
+    def test_linkedin_signin_callback_is_rejected(self, client):
+        client.cookies.set(auth._OAUTH_STATE_COOKIE, "s123")
+        resp = client.get("/auth/linkedin/callback?state=s123", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login?oauth=link_required"
+        assert "gsad_session" not in client.cookies
+
     def test_github_callback_saves_candidate(self, client, monkeypatch):
         async def fake_exchange(url, state, redirect_uri):
             return {"login": "octocat", "avatar_url": "https://example.com/a.png"}
@@ -88,6 +134,42 @@ class TestOAuthCallbacksPersist:
         row = auth.get_user(email)
         assert row["linked_github_username"] == "octocat"
         assert row["linked_github_avatar"] == "https://example.com/a.png"
+
+    def test_github_start_requires_existing_session(self, client, monkeypatch):
+        monkeypatch.setattr(github_oauth, "configured", lambda: True)
+        resp = client.get("/auth/github", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login?oauth=link_required"
+        assert auth._OAUTH_STATE_COOKIE not in client.cookies
+
+    def test_github_start_links_authenticated_student(self, client, monkeypatch):
+        monkeypatch.setattr(github_oauth, "configured", lambda: True)
+        monkeypatch.setattr(
+            github_oauth,
+            "build_authorization_url",
+            lambda redirect_uri, state: f"https://github.com/login/oauth/authorize?state={state}",
+        )
+        seed_student(client)
+        resp = client.get("/auth/github", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"].startswith("https://github.com/login/oauth/authorize")
+        assert client.cookies["gsad_oauth_mode"] == "link"
+
+    def test_github_signin_callback_is_rejected(self, client, monkeypatch):
+        exchange_called = False
+
+        async def fake_exchange(url, state, redirect_uri):
+            nonlocal exchange_called
+            exchange_called = True
+            return {"login": "octocat"}
+
+        monkeypatch.setattr(github_oauth, "exchange_code", fake_exchange)
+        client.cookies.set(auth._OAUTH_STATE_COOKIE, "s123")
+        resp = client.get("/auth/github/callback?state=s123", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login?oauth=link_required"
+        assert exchange_called is False
+        assert "gsad_session" not in client.cookies
 
     def test_linkedin_callback_saves_candidate(self, client, monkeypatch):
         async def fake_exchange(url, state, redirect_uri):
