@@ -242,6 +242,12 @@ REPO_COLS = [
     "Commits",
     "Commits_30d",
     "Commits_90d",
+    "Pull_Requests",
+    "Issues",
+    "Contributors",
+    "Has_README",
+    "Topics_Count",
+    "Total_Commits",
 ]
 ISSUE_COLS = [
     STUDENT_ID_COL,

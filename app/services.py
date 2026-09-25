@@ -428,15 +428,19 @@ def prepare_students(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return prepared, invalid_format
 
 
-def _cached_get_json(url: str, token: str | None, timeout: int | None = None):
+def _cached_get_json(
+    url: str, token: str | None, timeout: int | None = None, accept: str | None = None
+):
     """GitHub API GET via the httpx client (Upstash-cached), same
     ``(status, headers, payload)`` contract as the old requests + st.cache_data
     stack. This is also the seam the test-suite monkeypatches.
 
-    Rate-limit detection intentionally lives in ``check_rate_limit_parts``
-    below (called by every fetcher), so the transport never needs to know.
+    ``accept`` is forwarded for endpoints needing a non-default media type
+    (e.g. topics). Rate-limit detection intentionally lives in
+    ``check_rate_limit_parts`` below (called by every fetcher), so the transport
+    never needs to know.
     """
-    return github_client.get_json(url, token=token, timeout=timeout)
+    return github_client.get_json(url, token=token, timeout=timeout, accept=accept)
 
 
 def clear_api_cache() -> None:
@@ -640,6 +644,151 @@ def get_team_repo_metadata(full_name: str, token: str | None) -> tuple[dict, boo
     if status_code != 200 or not isinstance(payload, dict):
         return {}, False
     return payload, True
+
+
+REPO_ITEMS_PER_PAGE = 100
+REPO_ITEMS_MAX_PAGES = 10  # 1000-item cap per repo listing; newest-first
+_TOPICS_ACCEPT = "application/vnd.github.mercy-preview+json"
+
+
+def _paged_repo_items(url_template: str, token: str | None) -> tuple[list[dict], bool]:
+    """Walk every page of a repo-scoped listing until a short page ends it.
+
+    Shared by pulls/issues/contributors listings (one cached ``GET`` per page,
+    same pacing and loop guard as ``get_repos``). ``state=all`` endpoints return
+    one item per PR/issue so counting items never double counts anything.
+    """
+    items: list[dict] = []
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            url_template.format(page=page),
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, list):
+            return [], False
+        items.extend(payload)
+        if len(payload) < REPO_ITEMS_PER_PAGE:
+            break
+        if page >= REPO_ITEMS_MAX_PAGES:
+            break
+        page += 1
+        time.sleep(0.1)
+    return items, True
+
+
+def get_repo_pull_requests(full_name: str, token: str | None) -> tuple[list[dict], bool]:
+    """List every pull request on a repo (``state=all``, one item per PR).
+
+    Merged PRs report ``state:"closed"``, so counting items once never double
+    counts open/closed/merged. Per-repo quality scoring needs this; the Search
+    ``type:pr`` aggregate is per-account and would miss collaborators' PRs.
+    """
+    return _paged_repo_items(
+        f"{GITHUB_API_BASE}/repos/{full_name}/pulls?state=all&per_page={REPO_ITEMS_PER_PAGE}&page={{page}}",
+        token,
+    )
+
+
+def get_repo_issues(full_name: str, token: str | None) -> tuple[list[dict], bool]:
+    """List a repo's issues (``state=all``), EXCLUDING pull requests.
+
+    The issues endpoint also returns PRs (items carry a ``pull_request`` key);
+    counting those as issues would corrupt the hygiene metric. Mirrors the
+    Search ``type:issue`` filter, per repo.
+    """
+    items, ok = _paged_repo_items(
+        f"{GITHUB_API_BASE}/repos/{full_name}/issues?state=all&per_page={REPO_ITEMS_PER_PAGE}&page={{page}}",
+        token,
+    )
+    if not ok:
+        return [], False
+    return [item for item in items if "pull_request" not in item], True
+
+
+def get_repo_contributors(full_name: str, token: str | None) -> tuple[list[dict], bool]:
+    """List a repo's contributors (commit authors on the default branch).
+
+    GitHub's semantics, not ours: includes bot accounts that authored commits.
+    The score requires ``> 1`` for the collaboration point.
+    """
+    return _paged_repo_items(
+        f"{GITHUB_API_BASE}/repos/{full_name}/contributors?per_page={REPO_ITEMS_PER_PAGE}&page={{page}}",
+        token,
+    )
+
+
+def has_repo_readme(full_name: str, token: str | None) -> tuple[bool, bool]:
+    """(present, definitive) for ``{full}/readme`` on the default branch.
+
+    A 200 proves a README exists; a 404 proves it does not (the client caches
+    both). Anything else (403/transport) is not definitive — the caller must
+    not assume absence. README is never inferred from the description.
+    """
+    status_code, response_headers, payload = _cached_get_json(
+        f"{GITHUB_API_BASE}/repos/{full_name}/readme",
+        token,
+        timeout=15,
+    )
+    check_rate_limit_parts(status_code, response_headers)
+    if status_code == 200:
+        return True, True
+    if status_code == 404:
+        return False, True
+    return False, False
+
+
+def get_repo_topics(full_name: str, token: str | None) -> tuple[list[str], bool]:
+    """List a repo's topic tags (requires the topics preview Accept header).
+
+    The repo object listing omits ``topics`` without this media type, so a
+    dedicated ``GET /repos/{full}/topics`` with the preview Accept is the
+    authoritative source.
+    """
+    status_code, response_headers, payload = _cached_get_json(
+        f"{GITHUB_API_BASE}/repos/{full_name}/topics",
+        token,
+        timeout=15,
+        accept=_TOPICS_ACCEPT,
+    )
+    check_rate_limit_parts(status_code, response_headers)
+    if status_code != 200 or not isinstance(payload, dict):
+        return [], False
+    names = payload.get("names") or []
+    if not isinstance(names, list):
+        return [], False
+    return [str(name).strip() for name in names if str(name).strip()], True
+
+
+def get_repo_total_commits(full_name: str, token: str | None) -> tuple[int, bool]:
+    """Count commits on a repo's default branch (any author).
+
+    ``get_repo_author_commits`` counts only the owner's commits for the
+    contribution graph; repo quality needs total volume. Same newest-first
+    pagination capped at 1000 — a cap only ever under-reports, which cannot
+    cross the 0/1/10/50 quality tier boundaries.
+    """
+    commits = []
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            f"{GITHUB_API_BASE}/repos/{full_name}/commits?per_page={COMMITS_PER_PAGE}&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, list):
+            return 0, False
+        commits.extend(payload)
+        if len(payload) < COMMITS_PER_PAGE:
+            break
+        if page >= COMMITS_MAX_PAGES:
+            break
+        page += 1
+        time.sleep(0.05)
+    return len(commits), True
 
 
 TEAM_SUMMARY_COLS = [
@@ -1178,7 +1327,7 @@ def fetch_repository_data(
         if progress_callback:
             progress_callback(index, total_users, username)
 
-    return add_repository_quality_metrics(pd.DataFrame(repo_data)), unavailable_users
+    return pd.DataFrame(repo_data), unavailable_users
 
 
 OWNED_COMMIT_SUMMARY_COLS = [
@@ -1300,12 +1449,129 @@ def fetch_owned_commit_data(
     return pd.DataFrame(summaries, columns=OWNED_COMMIT_SUMMARY_COLS), enriched, unavailable_users
 
 
-def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
-    """Add explainable metadata and maintenance signals to repository data.
+REPO_QUALITY_COLS = [
+    "Pull_Requests",
+    "Issues",
+    "Contributors",
+    "Has_README",
+    "Topics_Count",
+    "Total_Commits",
+]
 
-    The score intentionally excludes stars and forks so popularity is not
-    presented as code quality. It measures documentation, metadata, licensing,
-    and recent maintenance only.
+
+def fetch_repository_quality_data(
+    repo_df: pd.DataFrame,
+    token: str | None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Fill the per-repo collaboration/hygiene metrics the repo listing lacks.
+
+    The quality score today can only see description/language/license and the
+    updated timestamp. One or two cached calls per repo add exact PR, issue,
+    contributor, README, topic and total-commit numbers so scoring can measure
+    collaboration and maintenance instead of metadata alone. A repo whose data
+    cannot be fetched keeps default zeros and its owner is reported unavailable
+    (mirrors ``fetch_owned_commit_data``) — nothing is invented from partial
+    data. The score itself is recomputed later (Phase 3); this step only moves
+    the numbers into the repo frame.
+    """
+    if (
+        repo_df is None
+        or repo_df.empty
+        or "Username" not in repo_df.columns
+        or "Repository" not in repo_df.columns
+    ):
+        return repo_df, []
+    owners = list(pd.Series(repo_df["Username"].dropna().unique()).astype(str))
+    total_owners = len(owners)
+    per_repo: dict[tuple[str, str], tuple[int, int, int, int, int, int]] = {}
+    unavailable_users: list[str] = []
+    throttled = False
+
+    for index, username in enumerate(owners, start=1):
+        if throttled:
+            unavailable_users.append(username)
+            if progress_callback:
+                progress_callback(index, total_owners, username)
+            continue
+        try:
+            try:
+                owned = repo_df[repo_df["Username"].astype(str) == str(username)]
+            except Exception:
+                owned = repo_df.iloc[0:0]
+            failed = False
+            for _, repo in owned.iterrows():
+                repo_name = str(repo.get("Repository") or "").strip()
+                if not repo_name:
+                    continue
+                full_name = f"{username}/{repo_name}"
+                prs, prs_ok = get_repo_pull_requests(full_name, token)
+                issues, issues_ok = get_repo_issues(full_name, token)
+                contributors, contributors_ok = get_repo_contributors(full_name, token)
+                readme_present, readme_definitive = has_repo_readme(full_name, token)
+                topics, topics_ok = get_repo_topics(full_name, token)
+                total_commits, commits_ok = get_repo_total_commits(full_name, token)
+                if not (
+                    prs_ok and issues_ok and contributors_ok and readme_definitive and topics_ok and commits_ok
+                ):
+                    failed = True
+                per_repo[(username, repo_name)] = (
+                    len(prs or []),
+                    len(issues or []),
+                    len(contributors or []),
+                    1 if readme_present else 0,
+                    len(topics or []),
+                    int(total_commits or 0),
+                )
+            if failed and username not in unavailable_users:
+                unavailable_users.append(username)
+        except RateLimitError:
+            unavailable_users.append(username)
+            throttled = True  # stop further repo calls in this batch if throttled
+        except Exception:
+            unavailable_users.append(username)
+        finally:
+            if progress_callback:
+                progress_callback(index, total_owners, username)
+            time.sleep(0.05)
+
+    enriched = repo_df.copy()
+    try:
+        keys = list(
+            zip(enriched["Username"].astype(str), enriched["Repository"].astype(str))
+        )
+        for position, column in enumerate(REPO_QUALITY_COLS):
+            enriched[column] = [
+                int(per_repo.get(key, (0,) * len(REPO_QUALITY_COLS))[position])
+                for key in keys
+            ]
+    except Exception:
+        for column in REPO_QUALITY_COLS:
+            if column not in enriched.columns:
+                enriched[column] = 0
+    return enriched, unavailable_users
+
+
+def _quality_number(result: pd.DataFrame, column: str) -> pd.Series:
+    """Per-row integer for a quality-metric column (missing/garbage → 0).
+
+    Old runs and team-contributed rows lack the Phase 2B columns entirely; a
+    default of 0 is honest for them (we never invent a metric we did not
+    measure) and keeps scoring non-breaking for pre-migration states.
+    """
+    if column not in result.columns:
+        return pd.Series(0, index=result.index, dtype=int)
+    return pd.to_numeric(result[column], errors="coerce").fillna(0).astype(int)
+
+
+def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
+    """Strict 100-point "Professional Developer" score for a repository.
+
+    Four fixed categories — Collaboration & Workflow (30), Community &
+    Popularity (20), Activity & Maintenance (30), Hygiene & Documentation
+    (20) — use hard tier boundaries and are structurally capped, so the best
+    repo scores exactly 100 and the worst 0. Missing columns (old runs, team
+    rows) read as 0.
     """
     result = repo_df.copy()
     if result.empty:
@@ -1313,20 +1579,76 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
 
     updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
     age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
-    description_score = result["Description"].fillna("").astype(str).str.strip().ne("").astype(int) * 30
-    language_score = result["Language"].notna().astype(int) * 20
-    license_score = result["License"].fillna("").astype(str).str.strip().ne("").astype(int) * 15
-    maintenance_score = age_days.map(
-        lambda days: 35 if pd.notna(days) and days <= 180 else 20 if pd.notna(days) and days <= 365 else 10 if pd.notna(days) and days <= 730 else 0
+
+    # Collaboration & Workflow (max 30): 15 / 10 / 5
+    prs = _quality_number(result, "Pull_Requests")
+    issues = _quality_number(result, "Issues")
+    contributors = _quality_number(result, "Contributors")
+    collaboration = (
+        ((prs > 0).astype(int) * 15)
+        + ((issues > 0).astype(int) * 10)
+        + ((contributors > 1).astype(int) * 5)
     )
+
+    # Community & Popularity (max 20): stars tiers + forks
+    stars = _quality_number(result, "Stars")
+    stars_score = pd.Series(0, index=result.index, dtype=int)
+    stars_score[stars >= 20] = 15
+    stars_score[(stars >= 5) & (stars < 20)] = 10
+    stars_score[(stars >= 1) & (stars < 5)] = 5
+    forks = _quality_number(result, "Forks")
+    community = stars_score + (forks > 0).astype(int) * 5
+
+    # Activity & Maintenance (max 30): commit volume + recency
+    total_commits = _quality_number(result, "Total_Commits")
+    commits_score = pd.Series(0, index=result.index, dtype=int)
+    commits_score[total_commits > 50] = 15
+    commits_score[(total_commits >= 10) & (total_commits <= 50)] = 10
+    commits_score[(total_commits >= 1) & (total_commits < 10)] = 5
+    recency_score = age_days.map(
+        lambda days: 15
+        if pd.notna(days) and days <= 30
+        else 10
+        if pd.notna(days) and days <= 90
+        else 5
+        if pd.notna(days) and days <= 180
+        else 0
+    ).fillna(0).astype(int)
+    activity = commits_score + recency_score
+
+    # Hygiene & Documentation (max 20): readme / description-or-topics / license
+    if "Description" in result.columns:
+        description_present = result["Description"].fillna("").astype(str).str.strip().ne("")
+    else:
+        description_present = pd.Series(False, index=result.index)
+    if "License" in result.columns:
+        license_present = result["License"].fillna("").astype(str).str.strip().ne("")
+    else:
+        license_present = pd.Series(False, index=result.index)
+    has_readme = _quality_number(result, "Has_README") > 0
+    has_topics = _quality_number(result, "Topics_Count") > 0
+    hygiene = (
+        has_readme.astype(int) * 10
+        + ((description_present | has_topics).astype(int) * 5)
+        + license_present.astype(int) * 5
+    )
+
     result["Maintenance_Status"] = age_days.map(
         lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
     ).fillna("Unknown")
     result["Repository_Quality_Score"] = (
-        description_score + language_score + license_score + maintenance_score
+        collaboration + community + activity + hygiene
     ).astype(int)
     result["Quality_Band"] = result["Repository_Quality_Score"].map(
-        lambda score: "Strong signals" if score >= 75 else "Developing" if score >= 50 else "Needs attention"
+        lambda score: (
+            "Exceptional / Open Source Ready"
+            if score >= 80
+            else "Strong Signals"
+            if score >= 55
+            else "Developing"
+            if score >= 30
+            else "Needs Attention"
+        )
     )
     return result
 

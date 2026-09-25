@@ -377,8 +377,9 @@ def upsert_batch_results(
                             "INSERT INTO roster_repositories "
                             "(roster_id,username,repository,language,stars,forks,description,license,"
                             "created_at,updated_at,repository_url,maintenance_status,"
-                            "repository_quality_score,quality_band,commits,commits_30d,commits_90d) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "repository_quality_score,quality_band,commits,commits_30d,commits_90d,"
+                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -397,6 +398,12 @@ def upsert_batch_results(
                                 commits,
                                 commits_30d,
                                 commits_90d,
+                                int(r.get("Pull_Requests") or 0),
+                                int(r.get("Issues") or 0),
+                                int(r.get("Contributors") or 0),
+                                1 if r.get("Has_README") else 0,
+                                int(r.get("Topics_Count") or 0),
+                                int(r.get("Total_Commits") or 0),
                             ),
                         )
                     except Exception:
@@ -672,7 +679,10 @@ def get_repositories_data(roster_id: str) -> list[dict]:
                     'maintenance_status AS "Maintenance_Status", '
                     'repository_quality_score AS "Repository_Quality_Score", '
                     'quality_band AS "Quality_Band", commits AS "Commits", '
-                    'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d" '
+                    'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d", '
+                    'pull_requests AS "Pull_Requests", issues AS "Issues", '
+                    'contributors AS "Contributors", has_readme AS "Has_README", '
+                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits" '
                     "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
                     (roster_id,),
                 )

@@ -233,8 +233,12 @@ class GitHubClient:
     def close(self) -> None:
         self._client.close()
 
-    def get_json(self, url: str, timeout: float | None = None):
+    def get_json(self, url: str, timeout: float | None = None, accept: str | None = None):
         """GET url → ``(status_code, canonical_headers, payload)``, cached TTL 3600.
+
+        ``accept`` overrides the default ``application/vnd.github+json`` header
+        for a single request (e.g. the topics preview media type); when None the
+        request uses the client's default headers.
 
         Retries transient failures (429/5xx/timeouts/connection errors) with
         exponential backoff; 403s are returned straight through so the services
@@ -251,11 +255,12 @@ class GitHubClient:
                 pass  # stale/corrupt entry — refetch
 
         timeout = timeout or self.timeout or DEFAULT_TIMEOUT
+        request_headers = {"Accept": accept} if accept else None
         with self._lock:
             last = (0, {}, None)
             for attempt in range(self.max_retries + 1):
                 try:
-                    response = self._client.get(url, timeout=timeout)
+                    response = self._client.get(url, timeout=timeout, headers=request_headers)
                 except httpx.TransportError:
                     if attempt >= self.max_retries:
                         raise
@@ -283,14 +288,14 @@ class GitHubClient:
 _DEFAULT_CACHE = build_default_cache()
 
 
-def get_json(url: str, token: str | None = None, timeout: float | None = None):
+def get_json(url: str, token: str | None = None, timeout: float | None = None, accept: str | None = None):
     """Module-level convenience: a fresh GitHubClient per call (mirroring the
     legacy per-call ``requests.get``) sharing ONE module-level cache so the
     3.5 batch threads hit the same TTL'd API responses without a shared
     transport lock serializing them."""
     client = GitHubClient(token=token, cache=_DEFAULT_CACHE)
     try:
-        return client.get_json(url, timeout=timeout)
+        return client.get_json(url, timeout=timeout, accept=accept)
     finally:
         client.close()
 

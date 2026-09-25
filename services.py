@@ -1360,12 +1360,21 @@ def fetch_owned_commit_data(
     return pd.DataFrame(summaries, columns=OWNED_COMMIT_SUMMARY_COLS), enriched, unavailable_users
 
 
-def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
-    """Add explainable metadata and maintenance signals to repository data.
+def _quality_number(result: pd.DataFrame, column: str) -> pd.Series:
+    """Per-row integer for a quality-metric column (missing/garbage → 0)."""
+    if column not in result.columns:
+        return pd.Series(0, index=result.index, dtype=int)
+    return pd.to_numeric(result[column], errors="coerce").fillna(0).astype(int)
 
-    The score intentionally excludes stars and forks so popularity is not
-    presented as code quality. It measures documentation, metadata, licensing,
-    and recent maintenance only.
+
+def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
+    """Strict 100-point "Professional Developer" score for a repository.
+
+    Four fixed categories — Collaboration & Workflow (30), Community &
+    Popularity (20), Activity & Maintenance (30), Hygiene & Documentation
+    (20) — use hard tier boundaries and are structurally capped, so the best
+    repo scores exactly 100 and the worst 0. Missing columns (old runs, team
+    rows) read as 0.
     """
     result = repo_df.copy()
     if result.empty:
@@ -1373,20 +1382,76 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
 
     updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
     age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
-    description_score = result["Description"].fillna("").astype(str).str.strip().ne("").astype(int) * 30
-    language_score = result["Language"].notna().astype(int) * 20
-    license_score = result["License"].fillna("").astype(str).str.strip().ne("").astype(int) * 15
-    maintenance_score = age_days.map(
-        lambda days: 35 if pd.notna(days) and days <= 180 else 20 if pd.notna(days) and days <= 365 else 10 if pd.notna(days) and days <= 730 else 0
+
+    # Collaboration & Workflow (max 30): 15 / 10 / 5
+    prs = _quality_number(result, "Pull_Requests")
+    issues = _quality_number(result, "Issues")
+    contributors = _quality_number(result, "Contributors")
+    collaboration = (
+        ((prs > 0).astype(int) * 15)
+        + ((issues > 0).astype(int) * 10)
+        + ((contributors > 1).astype(int) * 5)
     )
+
+    # Community & Popularity (max 20): stars tiers + forks
+    stars = _quality_number(result, "Stars")
+    stars_score = pd.Series(0, index=result.index, dtype=int)
+    stars_score[stars >= 20] = 15
+    stars_score[(stars >= 5) & (stars < 20)] = 10
+    stars_score[(stars >= 1) & (stars < 5)] = 5
+    forks = _quality_number(result, "Forks")
+    community = stars_score + (forks > 0).astype(int) * 5
+
+    # Activity & Maintenance (max 30): commit volume + recency
+    total_commits = _quality_number(result, "Total_Commits")
+    commits_score = pd.Series(0, index=result.index, dtype=int)
+    commits_score[total_commits > 50] = 15
+    commits_score[(total_commits >= 10) & (total_commits <= 50)] = 10
+    commits_score[(total_commits >= 1) & (total_commits < 10)] = 5
+    recency_score = age_days.map(
+        lambda days: 15
+        if pd.notna(days) and days <= 30
+        else 10
+        if pd.notna(days) and days <= 90
+        else 5
+        if pd.notna(days) and days <= 180
+        else 0
+    ).fillna(0).astype(int)
+    activity = commits_score + recency_score
+
+    # Hygiene & Documentation (max 20): readme / description-or-topics / license
+    if "Description" in result.columns:
+        description_present = result["Description"].fillna("").astype(str).str.strip().ne("")
+    else:
+        description_present = pd.Series(False, index=result.index)
+    if "License" in result.columns:
+        license_present = result["License"].fillna("").astype(str).str.strip().ne("")
+    else:
+        license_present = pd.Series(False, index=result.index)
+    has_readme = _quality_number(result, "Has_README") > 0
+    has_topics = _quality_number(result, "Topics_Count") > 0
+    hygiene = (
+        has_readme.astype(int) * 10
+        + ((description_present | has_topics).astype(int) * 5)
+        + license_present.astype(int) * 5
+    )
+
     result["Maintenance_Status"] = age_days.map(
         lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
     ).fillna("Unknown")
     result["Repository_Quality_Score"] = (
-        description_score + language_score + license_score + maintenance_score
+        collaboration + community + activity + hygiene
     ).astype(int)
     result["Quality_Band"] = result["Repository_Quality_Score"].map(
-        lambda score: "Strong signals" if score >= 75 else "Developing" if score >= 50 else "Needs attention"
+        lambda score: (
+            "Exceptional / Open Source Ready"
+            if score >= 80
+            else "Strong Signals"
+            if score >= 55
+            else "Developing"
+            if score >= 30
+            else "Needs Attention"
+        )
     )
     return result
 
