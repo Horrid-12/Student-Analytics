@@ -2,7 +2,8 @@
 
 Runs the shared pipeline stages (services.validate_users → build_github_stats →
 fetch_repository_data → fetch_contribution_data → fetch_team_activity →
-build_dashboard_df + issue builders) over already-prepared roster records (the
+fetch_owned_commit_data → build_dashboard_df + issue builders) over
+already-prepared roster records (the
 JSON rows the 3.4 upload stored behind a roster_id). No logic is duplicated
 here — this module composes the frozen ``services.*`` functions, and the
 legacy-mode parity test pins its output against the frozen ``run_analysis``
@@ -63,6 +64,7 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
     repo_df, repo_unavailable = services.fetch_repository_data(valid_for_repos, token)
     contributions_df, contrib_unavailable = services.fetch_contribution_data(valid_for_repos, token)
     team_summary_df, team_repos_df, team_unavailable = services.fetch_team_activity(valid_for_repos, token)
+    commit_summary_df, repo_df, commit_unavailable = services.fetch_owned_commit_data(repo_df, token)
 
     dashboard_df = services.build_dashboard_df(
         df,
@@ -73,6 +75,8 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         contrib_unavailable,
         team_summary_df,
         team_unavailable,
+        commit_summary_df,
+        commit_unavailable,
     )
 
     issues = services.build_invalid_issues(df, invalid_users, error_users)
@@ -108,6 +112,7 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         "repo_unavailable_users": list(repo_unavailable),
         "contrib_unavailable_users": list(contrib_unavailable),
         "team_unavailable_users": list(team_unavailable),
+        "commit_unavailable_users": list(commit_unavailable),
         "status": views.run_outcome({"valid": len(valid_users), "errors": len(error_users)}),
         "analyzed": len(records),
         "student_outcomes": outcomes,

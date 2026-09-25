@@ -1179,17 +1179,31 @@ def leaderboards_page(
     division: str = "All",
     batch: str = "All",
     semester: str = "All",
+    active_window: str = "1m",
+    commits_window: str = "1m",
+    select: str = "",
 ):
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
-    payload = views.leaderboards_payload(view, division, batch, semester)
+    payload = views.leaderboards_payload(view, division, batch, semester, active_window, commits_window)
     notifications, notif_count = _own_notifications(request, view, roster)
+    # Same profile popup as the Students tab: opened from a leaderboard name,
+    # closed back to this exact leaderboard view.
+    profile = None
+    if select:
+        try:
+            candidates = view.get("students")
+            match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
+            if not match.empty:
+                profile = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+        except Exception:
+            profile = None
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "division": division, "batch": batch, "semester": semester, "notifications": notifications, "notif_count": notif_count},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], "notifications": notifications, "notif_count": notif_count},
     )
 
 

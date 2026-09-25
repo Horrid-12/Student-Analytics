@@ -18,6 +18,78 @@
     text-transform: uppercase;
     color: var(--muted);
   }
+  .leaderboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (max-width: 900px) {
+    .leaderboard-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .board-select-form {
+    margin: 0 0 10px;
+  }
+  .board-select {
+    width: 100%;
+  }
+  .leader-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 12px 4px;
+  }
+  .leader-link {
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .leader-link:hover {
+    color: var(--blue);
+    text-decoration: underline;
+  }
+  .student-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow: hidden;
+    z-index: 100;
+  }
+  .student-modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 720px;
+    width: 100%;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  }
+  .student-modal .profile-panel {
+    position: static;
+  }
+  .student-modal-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .student-modal-close:hover {
+    border-color: var(--blue);
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -66,4 +138,104 @@
   <a class="btn" href="/leaderboards?roster={{ roster_id }}">Clear</a>
   <span class="filter-count">{{ payload.total }} ranked</span>
 </form>
+
+{% set board_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+<div class="leaderboard-grid">
+  <section class="panel leader-card">
+    <div class="panel-title">Most Active Repositories</div>
+    <form class="board-select-form" method="get">
+      <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="division" value="{{ division }}">
+      <input type="hidden" name="batch" value="{{ batch }}">
+      <input type="hidden" name="semester" value="{{ semester }}">
+      <input type="hidden" name="commits_window" value="{{ commits_window }}">
+      <select class="filter-select board-select" name="active_window" title="Time period" onchange="this.form.submit()">
+        {% for option in payload.windows %}
+        <option value="{{ option.value }}" {% if option.value == active_window %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% if payload.active_rows %}
+    {% for row in payload.active_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} repositor{% if row.score == 1 %}y{% else %}ies{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="leader-empty">No active repositories in this period yet.</div>
+    {% endif %}
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Commits (All Projects)</div>
+    <form class="board-select-form" method="get">
+      <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="division" value="{{ division }}">
+      <input type="hidden" name="batch" value="{{ batch }}">
+      <input type="hidden" name="semester" value="{{ semester }}">
+      <input type="hidden" name="active_window" value="{{ active_window }}">
+      <select class="filter-select board-select" name="commits_window" title="Time period" onchange="this.form.submit()">
+        {% for option in payload.windows %}
+        <option value="{{ option.value }}" {% if option.value == commits_window %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% if not payload.commits_ready %}
+    <div class="leader-empty">Commit history isn&rsquo;t available for this run yet &mdash; re-run analysis to populate it.</div>
+    {% elif payload.commit_rows %}
+    {% for row in payload.commit_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} commits</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="leader-empty">No commits in this period yet.</div>
+    {% endif %}
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Stars on Repositories</div>
+    {% if payload.star_rows %}
+    {% for row in payload.star_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} stars</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="leader-empty">No stars yet.</div>
+    {% endif %}
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Top Starred Repositories</div>
+    {% if payload.top_repos %}
+    {% for row in payload.top_repos %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title">{{ row.repo }} <span class="leader-sub">@{{ row.owner }} &middot; {{ row.language }}</span></span>
+      <span class="leader-score">{{ row.stars }} stars</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="leader-empty">No repositories yet.</div>
+    {% endif %}
+  </section>
+</div>
+
+{% if profile %}
+  {% set p = profile %}
+  {% set close_url = "/leaderboards?" + board_qs %}
+  <div class="student-modal-backdrop" id="student-modal-backdrop" data-close-url="{{ close_url }}">
+    <div class="student-modal" role="dialog" aria-modal="true" aria-label="Student details for {{ p.name }}">
+      <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
+        <div class="panel-title" style="margin-bottom:0;">Student Profile</div>
+        <a class="student-modal-close" href="{{ close_url }}" aria-label="Close student details">&times;</a>
+      </div>
+      {% include "partials/profile_panel.html" %}
+    </div>
+  </div>
+{% endif %}
 {% endblock %}

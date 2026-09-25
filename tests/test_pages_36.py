@@ -73,10 +73,13 @@ def roster_rows() -> list[dict]:
 class FakeGitHub:
     """Mirror of tests/test_batch.py::FakeGitHub."""
 
-    def __init__(self, users, repos, contributions=None):
+    def __init__(self, users, repos, contributions=None, events=None, repo_commits=None, repo_meta=None):
         self.users = users
         self.repos = repos
         self.contributions = contributions or {}
+        self.events = events or {}
+        self.repo_commits = repo_commits or {}
+        self.repo_meta = repo_meta or {}
 
     def __call__(self, url, token, timeout=None):
         from services import GITHUB_API_BASE
@@ -86,6 +89,29 @@ class FakeGitHub:
             prs, issues = self.contributions.get(username, ([], []))
             items = prs if "type%3Apr" in url else issues
             return 200, {}, {"items": items}
+        if "/events/public" in url:
+            after_base = url[len(GITHUB_API_BASE):]
+            username = after_base.split("/")[2]
+            return 200, {}, list(self.events.get(username, []))
+        if "/commits?" in url:
+            try:
+                full = url.split("/repos/")[1].split("/commits")[0]
+                author = url.split("author=")[1].split("&")[0]
+            except Exception:
+                return 404, {}, None
+            key = (full, author.lower())
+            if key not in self.repo_commits:
+                return 404, {}, None
+            return 200, {}, list(self.repo_commits[key])
+        if "/repos/" in url and "/commits" not in url:
+            try:
+                full = url.split("/repos/")[1].split("?")[0].strip("/")
+                if full and "/" in full:
+                    if full in self.repo_meta:
+                        return 200, {}, dict(self.repo_meta[full])
+                    return 404, {}, None
+            except Exception:
+                pass
         after_base = url[len(GITHUB_API_BASE):]
         if after_base.startswith("/users/") and "/repos" not in after_base:
             username = after_base.split("/")[2]
@@ -122,6 +148,11 @@ def repo_item(name, language, updated="2026-07-01T00:00:00Z"):
     }
 
 
+def commit_item(days_ago) -> dict:
+    stamp = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days_ago)).isoformat()
+    return {"commit": {"author": {"date": stamp}}}
+
+
 def crash_free_fake() -> FakeGitHub:
     return FakeGitHub(
         users={
@@ -138,6 +169,13 @@ def crash_free_fake() -> FakeGitHub:
                 [{"state": "closed", "repository_url": "https://api.github.com/repos/o/thing"}],
             ),
             "bob-cat": ([], []),
+        },
+        # alice: py1 5 commits (2 in 30d, 3 in 90d) + js1 1 old = 6 all-time;
+        # bob: go1 2 old commits.
+        repo_commits={
+            ("alice-dev/py1", "alice-dev"): [commit_item(d) for d in (0, 10, 40, 100, 400)],
+            ("alice-dev/js1", "alice-dev"): [commit_item(200)],
+            ("bob-cat/go1", "bob-cat"): [commit_item(200), commit_item(300)],
         },
     )
 
@@ -269,9 +307,25 @@ class TestPageRenderingWithData:
         # Top languages fill the track; the rest scale against them.
         assert profile.count('class="lang-fill" style="width:100%"') == 2
         assert "Activity" in profile
-        assert "Contributions in last 30 days" in profile
+        assert "Contributions in" in profile
         assert "Active repositories" in profile
         assert "Current activity streak" in profile
+        # Per-repo exact commit counts: bold on the right, quality band moved
+        # left beside the stars.
+        assert "repo-commits" in profile
+        assert "5 commits" in profile  # alice py1
+        assert "1 commit<" in profile  # alice js1 (singular)
+        assert "Python &middot; 1 stars &middot;" in profile
+        # Activity tabs sit below the number ("Contributions in" + tabs):
+        # 30D / 90D / All with 90D selected by default.
+        # Alice: 2 in 30d, 3 in 90d, 6 all-time (team commits are 0 here).
+        assert "activity-tab" in profile
+        assert 'aria-pressed="true">90D<' in profile
+        assert profile.index("data-activity-number") < profile.index("activity-tab")
+        assert '<div class="activity-number" data-activity-number>3</div>' in profile
+        assert 'data-activity-value="2"' in profile
+        assert 'data-activity-value="3"' in profile
+        assert 'data-activity-value="6"' in profile
         # Icon buttons replace the old text links: GitHub only (no
         # LinkedIn/HackerRank on this fixture roster).
         assert 'class="profile-icon-btn profile-icon-github"' in profile
@@ -549,11 +603,68 @@ class TestPageRenderingWithData:
         assert 'name="division"' in body
         assert 'name="batch"' in body
         assert 'name="semester"' in body
-        # Stripped: no year filter, no anonymize, no ranking sections.
+        # No year filter, no anonymize, no language board.
         assert 'name="year"' not in body
         assert "anonymize" not in body.lower()
-        assert "Most Repositories" not in body
-        assert "Top Languages" not in body
+        assert 'name="language"' not in body
+        # 2x2 grid with the four boards.
+        assert "Most Active Repositories" in body
+        assert "Most Commits (All Projects)" in body
+        assert "Most Stars on Repositories" in body
+        assert "Top Starred Repositories" in body
+        assert 'name="active_window"' in body
+        assert 'name="commits_window"' in body
+        # Windows default to last month; scores never say "repos".
+        assert body.count('<option value="1m" selected>') == 2
+        assert " repos</span>" not in body
+        # Fixture: Alice owns py1 + js1 (2 repos, 2 stars), Bob owns go1.
+        # Default 1m: active board empty (repos updated 2026-07-01), Alice
+        # shows her 2 last-month commits, stars/top-repos unaffected.
+        assert "No active repositories in this period yet." in body
+        assert "Alice Example" in body
+        assert "2 commits" in body
+        assert "py1" in body and "go1" in body
+        assert "re-run analysis" not in body
+        # No profile popup without ?select=.
+        assert 'id="student-modal-backdrop"' not in body
+
+    def test_leaderboards_window_selection(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        # All-time active: Alice 2 repositories, Bob 1 repository (singular).
+        body = self.client.get(f"/leaderboards?roster={roster_id}&active_window=all").text
+        assert '<option value="all" selected>' in body
+        assert "2 repositories</span>" in body
+        assert "1 repository</span>" in body
+        assert " repos</span>" not in body
+        # All-time commits: Alice 5 + 1 = 6, Bob 2.
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=all").text
+        assert "6 commits" in body
+        assert "2 commits" in body
+        # Alice has 3 commits in the last 3 months; Bob has none.
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=3m").text
+        assert "3 commits" in body
+        # Invalid windows fall back to last month.
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=bogus").text
+        assert '<option value="1m" selected>' in body
+
+    def test_leaderboards_name_opens_profile_popup(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        body = self.client.get(f"/leaderboards?roster={roster_id}").text
+        # Leaderboard names link to the same popup profile as Students.
+        assert 'class="leader-link"' in body
+        assert "&select=101" in body
+        popup = self.client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert 'id="student-modal-backdrop"' in popup
+        assert "Student Profile" in popup
+        assert "Alice Example" in popup
+        assert "Repositories (" in popup
+        # Closing returns to this leaderboard view (filters preserved).
+        assert '/leaderboards?roster=' in popup
+        assert 'class="student-modal-close"' in popup
+        # Unknown ids render no popup.
+        assert 'id="student-modal-backdrop"' not in self.client.get(
+            f"/leaderboards?roster={roster_id}&select=999"
+        ).text
 
     def test_verification_routes_removed(self, tmp_path):
         roster_id = self._setup(tmp_path)

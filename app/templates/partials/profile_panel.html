@@ -45,8 +45,12 @@
             <div class="profile-repo">
               <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
               <div class="repo-meta-row">
-                <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars</div>
-                <span class="repo-signal">{{ repo.Quality_Band or 'Unrated' }}</span>
+                <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
+                {% if repo.Commits is not none %}
+                <span class="repo-commits">{{ repo.Commits }} commit{% if repo.Commits != 1 %}s{% endif %}</span>
+                {% else %}
+                <span class="repo-commits is-missing">&ndash;</span>
+                {% endif %}
               </div>
             </div>
             {% else %}
@@ -76,8 +80,19 @@
             <div class="panel-minor-title">Activity</div>
             <div class="activity-stats">
               <div class="activity-stat">
+                {% if p.activity_windows %}
+                <div class="activity-number" data-activity-number>{{ p.activity_windows['90d'] }}</div>
+                <div class="activity-label activity-label-tabs">Contributions in
+                  <span class="activity-tabs" role="group" aria-label="Contribution period">
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['30d'] }}" aria-pressed="false">30D</button>
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['90d'] }}" aria-pressed="true">90D</button>
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['all'] }}" aria-pressed="false">All</button>
+                  </span>
+                </div>
+                {% else %}
                 <div class="activity-number">{{ p.contributions_30d }}</div>
                 <div class="activity-label">Contributions in last 30 days</div>
+                {% endif %}
               </div>
               <div class="activity-stat">
                 <div class="activity-number">{{ p.active_repos }}</div>
@@ -130,6 +145,19 @@
         if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
         if (next) { next.focus(); selectTab(next); }
       });
+    });
+    // Contribution-period switcher (profile Activity stat): swaps the big
+    // number between the pre-rendered 30D / 90D / All values.
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('.activity-tab') : null;
+      if (!btn) return;
+      var stat = btn.closest('.activity-stat');
+      if (!stat) return;
+      stat.querySelectorAll('.activity-tab').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      var number = stat.querySelector('[data-activity-number]');
+      if (number) number.textContent = btn.getAttribute('data-activity-value');
     });
   })();
 </script>

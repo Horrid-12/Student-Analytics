@@ -251,16 +251,17 @@ def upsert_batch_results(
                             "public_repos,repository_count,active_repositories,repo_fetch_status,"
                             "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
                             "contrib_fetch_status,team_commits,team_push_events,team_pr_events,"
-                            "team_total_events,team_commits_30d,team_total_events_30d,"
+                            "team_total_events,team_commits_30d,team_commits_90d,team_total_events_30d,"
                             "team_active_dates,team_active_repos,"
                             "contributed_repos_count,contributed_repos,"
                             "team_last_active_at,team_activity_fetch_status,"
+                            "owned_commits,owned_commits_30d,owned_commits_90d,commit_fetch_status,"
                             "followers,following,account_age_years,"
                             "repos_per_account_year,followers_per_account_year,following_per_account_year,"
                             "primary_language,avatar_url,profile_url,"
                             "linkedin_username,linkedin_url,hackerrank_username,hackerrank_url,outcome) "
                             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
                                 s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
@@ -281,6 +282,7 @@ def upsert_batch_results(
                                 int(s.get("Team_PR_Events") or 0),
                                 int(s.get("Team_Total_Events") or 0),
                                 int(s.get("Team_Commits_30d") or 0),
+                                int(s.get("Team_Commits_90d") or 0),
                                 int(s.get("Team_Total_Events_30d") or 0),
                                 s.get("Team_Active_Dates") or "",
                                 int(s.get("Team_Active_Repos") or 0),
@@ -288,6 +290,10 @@ def upsert_batch_results(
                                 s.get("Contributed_Repos") or "",
                                 s.get("Team_Last_Active_At") or "",
                                 s.get("Team_Activity_Fetch_Status", "Loaded"),
+                                int(s.get("Owned_Commits") or 0),
+                                int(s.get("Owned_Commits_30d") or 0),
+                                int(s.get("Owned_Commits_90d") or 0),
+                                s.get("Commit_Fetch_Status", "Loaded"),
                                 int(s.get("Followers") or 0),
                                 int(s.get("Following") or 0),
                                 float(s.get("Account_Age_Years") or 0),
@@ -354,29 +360,59 @@ def upsert_batch_results(
                         (roster_id, batch_usernames),
                     )
                 for r in batch_repos:
-                    c.execute(
-                        "INSERT INTO roster_repositories "
-                        "(roster_id,username,repository,language,stars,forks,description,license,"
-                        "created_at,updated_at,repository_url,maintenance_status,"
-                        "repository_quality_score,quality_band) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (
-                            roster_id,
-                            r.get("Username", ""),
-                            r.get("Repository", ""),
-                            r.get("Language"),
-                            int(r.get("Stars") or 0),
-                            int(r.get("Forks") or 0),
-                            r.get("Description"),
-                            r.get("License"),
-                            r.get("Created"),
-                            r.get("Updated"),
-                            r.get("Repository_URL") or "",
-                            r.get("Maintenance_Status", ""),
-                            int(r.get("Repository_Quality_Score") or 0),
-                            r.get("Quality_Band", ""),
-                        ),
-                    )
+                    try:
+                        commits = int(r.get("Commits") or 0)
+                    except (TypeError, ValueError):
+                        commits = 0
+                    try:
+                        c.execute(
+                            "INSERT INTO roster_repositories "
+                            "(roster_id,username,repository,language,stars,forks,description,license,"
+                            "created_at,updated_at,repository_url,maintenance_status,"
+                            "repository_quality_score,quality_band,commits) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (
+                                roster_id,
+                                r.get("Username", ""),
+                                r.get("Repository", ""),
+                                r.get("Language"),
+                                int(r.get("Stars") or 0),
+                                int(r.get("Forks") or 0),
+                                r.get("Description"),
+                                r.get("License"),
+                                r.get("Created"),
+                                r.get("Updated"),
+                                r.get("Repository_URL") or "",
+                                r.get("Maintenance_Status", ""),
+                                int(r.get("Repository_Quality_Score") or 0),
+                                r.get("Quality_Band", ""),
+                                commits,
+                            ),
+                        )
+                    except Exception:
+                        c.execute(
+                            "INSERT INTO roster_repositories "
+                            "(roster_id,username,repository,language,stars,forks,description,license,"
+                            "created_at,updated_at,repository_url,maintenance_status,"
+                            "repository_quality_score,quality_band) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (
+                                roster_id,
+                                r.get("Username", ""),
+                                r.get("Repository", ""),
+                                r.get("Language"),
+                                int(r.get("Stars") or 0),
+                                int(r.get("Forks") or 0),
+                                r.get("Description"),
+                                r.get("License"),
+                                r.get("Created"),
+                                r.get("Updated"),
+                                r.get("Repository_URL") or "",
+                                r.get("Maintenance_Status", ""),
+                                int(r.get("Repository_Quality_Score") or 0),
+                                r.get("Quality_Band", ""),
+                            ),
+                        )
 
                 # ── team_repos: replace rows for usernames in this batch ──
                 if batch_usernames:
@@ -557,6 +593,7 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
                     'team_commits AS "Team_Commits", team_push_events AS "Team_Push_Events", '
                     'team_pr_events AS "Team_PR_Events", team_total_events AS "Team_Total_Events", '
                     'team_commits_30d AS "Team_Commits_30d", '
+                    'team_commits_90d AS "Team_Commits_90d", '
                     'team_total_events_30d AS "Team_Total_Events_30d", '
                     'team_active_dates AS "Team_Active_Dates", '
                     'team_active_repos AS "Team_Active_Repos", '
@@ -564,6 +601,10 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
                     'contributed_repos AS "Contributed_Repos", '
                     'team_last_active_at AS "Team_Last_Active_At", '
                     'team_activity_fetch_status AS "Team_Activity_Fetch_Status", '
+                    'owned_commits AS "Owned_Commits", '
+                    'owned_commits_30d AS "Owned_Commits_30d", '
+                    'owned_commits_90d AS "Owned_Commits_90d", '
+                    'commit_fetch_status AS "Commit_Fetch_Status", '
                     'followers AS "Followers", following AS "Following", '
                     'account_age_years AS "Account_Age_Years", '
                     'repos_per_account_year AS "Repos_Per_Account_Year", '
@@ -611,18 +652,32 @@ def get_repositories_data(roster_id: str) -> list[dict]:
         with database.conn() as c:
             if c is None:
                 return []
-            cur = c.execute(
-                'SELECT username AS "Username", repository AS "Repository", '
-                'language AS "Language", stars AS "Stars", forks AS "Forks", '
-                'description AS "Description", license AS "License", '
-                'created_at::text AS "Created", updated_at::text AS "Updated", '
-                'repository_url AS "Repository_URL", '
-                'maintenance_status AS "Maintenance_Status", '
-                'repository_quality_score AS "Repository_Quality_Score", '
-                'quality_band AS "Quality_Band" '
-                "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
-                (roster_id,),
-            )
+            try:
+                cur = c.execute(
+                    'SELECT username AS "Username", repository AS "Repository", '
+                    'language AS "Language", stars AS "Stars", forks AS "Forks", '
+                    'description AS "Description", license AS "License", '
+                    'created_at::text AS "Created", updated_at::text AS "Updated", '
+                    'repository_url AS "Repository_URL", '
+                    'maintenance_status AS "Maintenance_Status", '
+                    'repository_quality_score AS "Repository_Quality_Score", '
+                    'quality_band AS "Quality_Band", commits AS "Commits" '
+                    "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
+            except Exception:
+                cur = c.execute(
+                    'SELECT username AS "Username", repository AS "Repository", '
+                    'language AS "Language", stars AS "Stars", forks AS "Forks", '
+                    'description AS "Description", license AS "License", '
+                    'created_at::text AS "Created", updated_at::text AS "Updated", '
+                    'repository_url AS "Repository_URL", '
+                    'maintenance_status AS "Maintenance_Status", '
+                    'repository_quality_score AS "Repository_Quality_Score", '
+                    'quality_band AS "Quality_Band" '
+                    "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
             return [dict(r) for r in cur.fetchall()]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_repositories_data failed: %s", exc)

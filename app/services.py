@@ -582,7 +582,8 @@ TEAM_CONTRIBUTION_TYPES = {
 }
 
 COMMITS_PER_PAGE = 100
-COMMITS_MAX_PAGES = 3  # 300-commit cap per repo — plenty for students
+COMMITS_MAX_PAGES = 10  # 1000-commit cap per repo; the API returns newest-first
+# so the 30/90-day windows stay exact even past the cap.
 
 
 def get_repo_author_commits(
@@ -648,6 +649,7 @@ TEAM_SUMMARY_COLS = [
     "Team_PR_Events",
     "Team_Total_Events",
     "Team_Commits_30d",
+    "Team_Commits_90d",
     "Team_Total_Events_30d",
     "Team_Active_Dates",
     "Team_Active_Repos",
@@ -687,6 +689,7 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
     pr_events = 0
     total_external = 0
     commits_30d = 0
+    commits_90d = 0
     total_30d = 0
     last_active = ""
     active_dates: set[str] = set()
@@ -694,9 +697,10 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
     try:
         now = pd.Timestamp.now(tz="UTC")
         cut30 = now - pd.Timedelta(days=30)
+        cut90 = now - pd.Timedelta(days=90)
         cut180 = now - pd.Timedelta(days=180)
     except Exception:
-        now = cut30 = cut180 = None
+        now = cut30 = cut90 = cut180 = None
     for event in events or []:
         if not isinstance(event, dict):
             continue
@@ -720,6 +724,12 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
             and not pd.isna(created_dt)
             and cut30 is not None
             and created_dt >= cut30
+        )
+        is_recent_90 = bool(
+            created_dt is not None
+            and not pd.isna(created_dt)
+            and cut90 is not None
+            and created_dt >= cut90
         )
         if created_dt is not None and not pd.isna(created_dt):
             try:
@@ -748,6 +758,8 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
             if is_recent_30:
                 commits_30d += n
                 total_30d += 1
+            if is_recent_90:
+                commits_90d += n
         elif event_type == "PullRequestEvent":
             pr_events += 1
             entry["prs"] += 1
@@ -775,6 +787,7 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
         "Team_PR_Events": int(pr_events),
         "Team_Total_Events": int(total_external),
         "Team_Commits_30d": int(commits_30d),
+        "Team_Commits_90d": int(commits_90d),
         "Team_Total_Events_30d": int(total_30d),
         "Team_Active_Dates": ", ".join(sorted(active_dates)[:90]),
         "Team_Active_Repos": int(active_repos),
@@ -819,11 +832,13 @@ def _reconcile_team_commits(
     try:
         now = pd.Timestamp.now(tz="UTC")
         cut30 = now - pd.Timedelta(days=30)
+        cut90 = now - pd.Timedelta(days=90)
     except Exception:
-        cut30 = None
+        cut30 = cut90 = None
     total = 0
     total_30d = 0
-    by_repo: dict[str, tuple[int, int]] = {}
+    total_90d = 0
+    by_repo: dict[str, tuple[int, int, int]] = {}
     meta: dict[str, dict] = {}
     for row in rows:
         full = str(row.get("Team_Repo") or "").strip()
@@ -837,16 +852,22 @@ def _reconcile_team_commits(
         else:
             n_all = len(commits)
             n_30 = 0
+            n_90 = 0
             if cut30 is not None:
                 for c in commits:
                     dt = pd.to_datetime(_commit_date(c), utc=True, errors="coerce")
-                    if dt is not None and not pd.isna(dt) and dt >= cut30:
-                        n_30 += 1
+                    if dt is not None and not pd.isna(dt):
+                        if dt >= cut30:
+                            n_30 += 1
+                        if cut90 is not None and dt >= cut90:
+                            n_90 += 1
             else:
                 n_30 = n_all
-            by_repo[full] = (n_all, n_30)
+                n_90 = n_all
+            by_repo[full] = (n_all, n_30, n_90)
             total += n_all
             total_30d += n_30
+            total_90d += n_90
         try:
             payload, meta_ok = get_team_repo_metadata(full, token)
             if meta_ok:
@@ -861,12 +882,13 @@ def _reconcile_team_commits(
         summary = dict(summary)
         summary["Team_Commits"] = int(total)
         summary["Team_Commits_30d"] = int(total_30d)
+        summary["Team_Commits_90d"] = int(total_90d)
     new_rows = []
     for row in rows:
         full = str(row.get("Team_Repo") or "").strip()
         row = dict(row)
         if full in by_repo:
-            n_all, _n_30 = by_repo[full]
+            n_all, _n_30, _n_90 = by_repo[full]
             row["Commits"] = int(n_all)
         if full in meta:
             payload = meta[full]
@@ -1159,6 +1181,121 @@ def fetch_repository_data(
     return add_repository_quality_metrics(pd.DataFrame(repo_data)), unavailable_users
 
 
+OWNED_COMMIT_SUMMARY_COLS = [
+    "Username",
+    "Owned_Commits",
+    "Owned_Commits_30d",
+    "Owned_Commits_90d",
+]
+
+
+def _windowed_commit_counts(commits: list[dict]) -> tuple[int, int, int]:
+    """(all-time, 30-day, 90-day) counts from one commits-API listing."""
+    try:
+        now = pd.Timestamp.now(tz="UTC")
+        cut30 = now - pd.Timedelta(days=30)
+        cut90 = now - pd.Timedelta(days=90)
+    except Exception:
+        return len(commits), len(commits), len(commits)
+    recent_30 = recent_90 = 0
+    for commit in commits:
+        dt = pd.to_datetime(_commit_date(commit), utc=True, errors="coerce")
+        if dt is None or pd.isna(dt):
+            continue
+        if dt >= cut30:
+            recent_30 += 1
+        if dt >= cut90:
+            recent_90 += 1
+    return len(commits), recent_30, recent_90
+
+
+def fetch_owned_commit_data(
+    repo_df: pd.DataFrame,
+    token: str | None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Count each account's own commits across their owned repos.
+
+    Owned repo listings carry no commit counts, so commit leaderboards could
+    only rank repo-update activity as a stand-in. One ``GET /repos/{owner}/
+    {repo}/commits?author={username}`` per repo gives exact all-time/30-day/
+    90-day totals matching the GitHub contribution graph; the API returns
+    newest-first so the windows are exact even when the listing is capped at
+    ``COMMITS_MAX_PAGES``. Returns (per-user summary frame, repo frame with
+    an exact per-repo ``Commits`` column, unavailable users). A repo whose
+    listing fails marks its owner unavailable (their total would otherwise be
+    a silent lower bound) while keeping the partial counts already collected.
+    """
+    if (
+        repo_df is None
+        or repo_df.empty
+        or "Username" not in repo_df.columns
+        or "Repository" not in repo_df.columns
+    ):
+        empty_repos = pd.DataFrame(columns=list(repo_df.columns) if repo_df is not None else [])
+        return pd.DataFrame(columns=OWNED_COMMIT_SUMMARY_COLS), empty_repos, []
+    summaries: list[dict] = []
+    per_repo: dict[tuple[str, str], int] = {}
+    unavailable_users: list[str] = []
+    owners = list(pd.Series(repo_df["Username"].dropna().unique()).astype(str))
+    total_owners = len(owners)
+    throttled = False
+    for index, username in enumerate(owners, start=1):
+        if throttled:
+            unavailable_users.append(username)
+            if progress_callback:
+                progress_callback(index, total_owners, username)
+            continue
+        try:
+            try:
+                owned = repo_df[repo_df["Username"].astype(str) == str(username)]
+            except Exception:
+                owned = repo_df.iloc[0:0]
+            total = recent_30 = recent_90 = 0
+            failed = False
+            for _, repo in owned.iterrows():
+                repo_name = str(repo.get("Repository") or "").strip()
+                if not repo_name:
+                    continue
+                commits, ok = get_repo_author_commits(f"{username}/{repo_name}", username, token)
+                if not ok:
+                    failed = True
+                    continue
+                n_all, n_30, n_90 = _windowed_commit_counts(commits)
+                per_repo[(str(username), repo_name)] = int(n_all)
+                total += n_all
+                recent_30 += n_30
+                recent_90 += n_90
+            if failed and username not in unavailable_users:
+                unavailable_users.append(username)
+            summaries.append(
+                {
+                    "Username": username,
+                    "Owned_Commits": int(total),
+                    "Owned_Commits_30d": int(recent_30),
+                    "Owned_Commits_90d": int(recent_90),
+                }
+            )
+        except RateLimitError:
+            unavailable_users.append(username)
+            throttled = True  # stop further commit calls in this batch if throttled
+        except Exception:
+            unavailable_users.append(username)
+        finally:
+            if progress_callback:
+                progress_callback(index, total_owners, username)
+            time.sleep(0.05)
+    enriched = repo_df.copy()
+    try:
+        keys = list(
+            zip(enriched["Username"].astype(str), enriched["Repository"].astype(str))
+        )
+        enriched["Commits"] = [int(per_repo.get(key, 0)) for key in keys]
+    except Exception:
+        enriched["Commits"] = 0
+    return pd.DataFrame(summaries, columns=OWNED_COMMIT_SUMMARY_COLS), enriched, unavailable_users
+
+
 def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
     """Add explainable metadata and maintenance signals to repository data.
 
@@ -1230,6 +1367,7 @@ _EMPTY_DASHBOARD_COLS = [
     "Team_PR_Events",
     "Team_Total_Events",
     "Team_Commits_30d",
+    "Team_Commits_90d",
     "Team_Total_Events_30d",
     "Team_Active_Dates",
     "Team_Active_Repos",
@@ -1237,6 +1375,10 @@ _EMPTY_DASHBOARD_COLS = [
     "Contributed_Repos",
     "Team_Last_Active_At",
     "Team_Activity_Fetch_Status",
+    "Owned_Commits",
+    "Owned_Commits_30d",
+    "Owned_Commits_90d",
+    "Commit_Fetch_Status",
     "Followers",
     "Following",
     "Account_Age_Years",
@@ -1263,14 +1405,19 @@ def build_dashboard_df(
     contrib_unavailable_users: Iterable[str] = (),
     team_summary_df: pd.DataFrame | None = None,
     team_unavailable_users: Iterable[str] = (),
+    commit_summary_df: pd.DataFrame | None = None,
+    commit_unavailable_users: Iterable[str] = (),
 ) -> pd.DataFrame:
     unavailable_set = {str(user).strip().lower() for user in unavailable_users}
     contrib_unavailable_set = {str(user).strip().lower() for user in contrib_unavailable_users}
     team_unavailable_set = {str(user).strip().lower() for user in team_unavailable_users}
+    commit_unavailable_set = {str(user).strip().lower() for user in commit_unavailable_users}
     if contributions_df is None or contributions_df.empty:
         contributions_df = pd.DataFrame(columns=["Username"])
     if team_summary_df is None or team_summary_df.empty:
         team_summary_df = pd.DataFrame(columns=["Username"])
+    if commit_summary_df is None or commit_summary_df.empty:
+        commit_summary_df = pd.DataFrame(columns=["Username"])
     if github_stats.empty:
         return pd.DataFrame(columns=list(_EMPTY_DASHBOARD_COLS))
 
@@ -1326,6 +1473,16 @@ def build_dashboard_df(
     )
     dashboard_df = dashboard_df.drop(columns=["_Team_User"], errors="ignore")
 
+    # Owned commit counts (exact per-repo author totals): same rename trick.
+    commit_merge = commit_summary_df.rename(columns={"Username": "_Commit_User"})
+    dashboard_df = dashboard_df.merge(
+        commit_merge,
+        left_on="GitHub_Username",
+        right_on="_Commit_User",
+        how="left",
+    )
+    dashboard_df = dashboard_df.drop(columns=["_Commit_User"], errors="ignore")
+
     _wanted_info = [
         STUDENT_ID_COL,
         "Submitted_GitHub_Username",
@@ -1380,13 +1537,21 @@ def build_dashboard_df(
         "Team_PR_Events",
         "Team_Total_Events",
         "Team_Commits_30d",
+        "Team_Commits_90d",
         "Team_Total_Events_30d",
         "Team_Active_Repos",
         "Contributed_Repos_Count",
+        "Owned_Commits",
+        "Owned_Commits_30d",
+        "Owned_Commits_90d",
     ):
         if column not in dashboard_df.columns:
             dashboard_df[column] = 0
         dashboard_df[column] = dashboard_df[column].fillna(0).astype(int)
+    dashboard_df["Commit_Fetch_Status"] = [
+        "Unavailable" if str(name).strip().lower() in commit_unavailable_set else "Loaded"
+        for name in dashboard_df["GitHub_Username"]
+    ]
     for column, default in (
         ("Contributed_Repos", ""),
         ("Team_Last_Active_At", ""),
@@ -1443,6 +1608,7 @@ def build_dashboard_df(
             "Team_PR_Events",
             "Team_Total_Events",
             "Team_Commits_30d",
+            "Team_Commits_90d",
             "Team_Total_Events_30d",
             "Team_Active_Dates",
             "Team_Active_Repos",
@@ -1450,6 +1616,10 @@ def build_dashboard_df(
             "Contributed_Repos",
             "Team_Last_Active_At",
             "Team_Activity_Fetch_Status",
+            "Owned_Commits",
+            "Owned_Commits_30d",
+            "Owned_Commits_90d",
+            "Commit_Fetch_Status",
             "Followers",
             "Following",
             "Account_Age_Years",
