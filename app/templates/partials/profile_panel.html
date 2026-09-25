@@ -7,7 +7,31 @@
             {% if p.avatar %}<img src="{{ p.avatar }}" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
           </div>
           <div>
-            <div class="profile-name">{{ p.name }}</div>
+            <div class="profile-name-row">
+              <div class="profile-name">{{ p.name }}</div>
+              {% if auth_role == 'Admin' and roster_id %}
+              {% set bl_boards = blacklist.get(p.student_id, []) if blacklist is defined and blacklist else [] %}
+              <details class="blacklist-dropdown">
+                <summary class="blacklist-btn{% if bl_boards %} is-active{% endif %}" title="Leaderboard blacklist" aria-label="Leaderboard blacklist options">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
+                  {% if bl_boards %}<span class="bl-dot" aria-hidden="true"></span>{% endif %}
+                </summary>
+                <div class="blacklist-menu" role="menu" aria-label="Blacklist from leaderboards" data-blacklist-menu data-roster="{{ roster_id }}" data-student="{{ p.student_id }}">
+                  <div class="blacklist-head">Leaderboards</div>
+                  {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories')] %}
+                  <div class="bl-row{% if key in bl_boards %} is-blacklisted{% endif %}">
+                    <span class="bl-label">{{ label }}</span>
+                    {% if key in bl_boards %}
+                    <button type="button" class="bl-btn" data-board="{{ key }}" data-action="whitelist">Whitelist</button>
+                    {% else %}
+                    <button type="button" class="bl-btn" data-board="{{ key }}" data-action="blacklist">Blacklist</button>
+                    {% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+              </details>
+              {% endif %}
+            </div>
             <div class="profile-sub">{{ p.student_id }} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
             <div class="profile-links">
               {% if p.username %}
@@ -41,17 +65,30 @@
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </summary>
           <div class="repo-dropdown-body">
+            {% set hidden_keys = hidden_repos.get(p.student_id, []) if hidden_repos is defined and hidden_repos else [] %}
             {% for repo in p.repos.to_dict('records') %}
-            <div class="profile-repo">
+            {% set rkey = repo.Repository_URL if repo.Repository_URL else (p.username ~ '/' ~ repo.Repository) %}
+            {% set rhidden = rkey in hidden_keys %}
+            <div class="profile-repo{% if rhidden %} is-hidden{% endif %}">
               <a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
               <div class="repo-meta-row">
                 <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
-                {% if repo.Commits is not none %}
-                <span class="repo-commits">{{ repo.Commits }} commit{% if repo.Commits != 1 %}s{% endif %}</span>
-                {% else %}
-                <span class="repo-commits is-missing">&ndash;</span>
-                {% endif %}
+                <div class="repo-right">
+                  {% if auth_role == 'Admin' and roster_id %}
+                  <button type="button" class="repo-hide-btn{% if rhidden %} is-active{% endif %}" title="{% if rhidden %}Unhide from leaderboard{% else %}Hide from leaderboard{% endif %}" aria-label="{% if rhidden %}Unhide {{ repo.Repository }} from leaderboards{% else %}Hide {{ repo.Repository }} from leaderboards{% endif %}" data-hide-repo data-roster="{{ roster_id }}" data-student="{{ p.student_id }}" data-repo="{{ rkey }}" data-hidden="{{ '1' if rhidden else '0' }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
+                  </button>
+                  {% endif %}
+                  {% if repo.Commits is not none %}
+                  <span class="repo-commits">{{ repo.Commits }} commit{% if repo.Commits != 1 %}s{% endif %}</span>
+                  {% else %}
+                  <span class="repo-commits is-missing">&ndash;</span>
+                  {% endif %}
+                </div>
               </div>
+              {% if rhidden %}
+              <div class="repo-hidden-note">Repository hidden from leaderboard</div>
+              {% endif %}
             </div>
             {% else %}
             <p style="color:var(--muted); font-size:13px; padding:8px 0;">No public repositories found.</p>
@@ -158,6 +195,51 @@
       });
       var number = stat.querySelector('[data-activity-number]');
       if (number) number.textContent = btn.getAttribute('data-activity-value');
+    });
+    // Leaderboard blacklist popup (admin only): POST the toggle, then reload
+    // so the boards and the popup re-render from the saved state.
+    document.addEventListener('click', function (event) {
+      var target = event.target.closest ? event.target.closest('.bl-btn') : null;
+      if (target) {
+        var menu = target.closest('[data-blacklist-menu]');
+        if (!menu || target.disabled) return;
+        target.disabled = true;
+        fetch('/leaderboards/blacklist?roster=' + encodeURIComponent(menu.getAttribute('data-roster')), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            student_id: menu.getAttribute('data-student'),
+            board: target.getAttribute('data-board'),
+            action: target.getAttribute('data-action'),
+          }),
+        }).then(function (resp) {
+          if (!resp.ok) throw new Error('save failed');
+          window.location.reload();
+        }).catch(function () { target.disabled = false; });
+        return;
+      }
+      document.querySelectorAll('details.blacklist-dropdown[open]').forEach(function (openMenu) {
+        if (!openMenu.contains(event.target)) openMenu.removeAttribute('open');
+      });
+    });
+    // Per-repository hide toggle (admin only): hides/unhides one repository
+    // from every leaderboard, then reloads to re-render boards and rows.
+    document.addEventListener('click', function (event) {
+      var hideBtn = event.target.closest ? event.target.closest('[data-hide-repo]') : null;
+      if (!hideBtn || hideBtn.disabled) return;
+      hideBtn.disabled = true;
+      fetch('/leaderboards/hidden-repos?roster=' + encodeURIComponent(hideBtn.getAttribute('data-roster')), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          student_id: hideBtn.getAttribute('data-student'),
+          repo: hideBtn.getAttribute('data-repo'),
+          action: hideBtn.getAttribute('data-hidden') === '1' ? 'unhide' : 'hide',
+        }),
+      }).then(function (resp) {
+        if (!resp.ok) throw new Error('save failed');
+        window.location.reload();
+      }).catch(function () { hideBtn.disabled = false; });
     });
   })();
 </script>

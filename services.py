@@ -1295,7 +1295,7 @@ def fetch_owned_commit_data(
         empty_repos = pd.DataFrame(columns=list(repo_df.columns) if repo_df is not None else [])
         return pd.DataFrame(columns=OWNED_COMMIT_SUMMARY_COLS), empty_repos, []
     summaries: list[dict] = []
-    per_repo: dict[tuple[str, str], int] = {}
+    per_repo: dict[tuple[str, str], tuple[int, int, int]] = {}
     unavailable_users: list[str] = []
     owners = list(pd.Series(repo_df["Username"].dropna().unique()).astype(str))
     total_owners = len(owners)
@@ -1322,7 +1322,7 @@ def fetch_owned_commit_data(
                     failed = True
                     continue
                 n_all, n_30, n_90 = _windowed_commit_counts(commits)
-                per_repo[(str(username), repo_name)] = int(n_all)
+                per_repo[(str(username), repo_name)] = (int(n_all), int(n_30), int(n_90))
                 total += n_all
                 recent_30 += n_30
                 recent_90 += n_90
@@ -1350,9 +1350,13 @@ def fetch_owned_commit_data(
         keys = list(
             zip(enriched["Username"].astype(str), enriched["Repository"].astype(str))
         )
-        enriched["Commits"] = [int(per_repo.get(key, 0)) for key in keys]
+        enriched["Commits"] = [int(per_repo.get(key, (0, 0, 0))[0]) for key in keys]
+        enriched["Commits_30d"] = [int(per_repo.get(key, (0, 0, 0))[1]) for key in keys]
+        enriched["Commits_90d"] = [int(per_repo.get(key, (0, 0, 0))[2]) for key in keys]
     except Exception:
         enriched["Commits"] = 0
+        enriched["Commits_30d"] = 0
+        enriched["Commits_90d"] = 0
     return pd.DataFrame(summaries, columns=OWNED_COMMIT_SUMMARY_COLS), enriched, unavailable_users
 
 

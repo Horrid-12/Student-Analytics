@@ -365,12 +365,20 @@ def upsert_batch_results(
                     except (TypeError, ValueError):
                         commits = 0
                     try:
+                        commits_30d = int(r.get("Commits_30d") or 0)
+                    except (TypeError, ValueError):
+                        commits_30d = 0
+                    try:
+                        commits_90d = int(r.get("Commits_90d") or 0)
+                    except (TypeError, ValueError):
+                        commits_90d = 0
+                    try:
                         c.execute(
                             "INSERT INTO roster_repositories "
                             "(roster_id,username,repository,language,stars,forks,description,license,"
                             "created_at,updated_at,repository_url,maintenance_status,"
-                            "repository_quality_score,quality_band,commits) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "repository_quality_score,quality_band,commits,commits_30d,commits_90d) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -387,6 +395,8 @@ def upsert_batch_results(
                                 int(r.get("Repository_Quality_Score") or 0),
                                 r.get("Quality_Band", ""),
                                 commits,
+                                commits_30d,
+                                commits_90d,
                             ),
                         )
                     except Exception:
@@ -661,7 +671,8 @@ def get_repositories_data(roster_id: str) -> list[dict]:
                     'repository_url AS "Repository_URL", '
                     'maintenance_status AS "Maintenance_Status", '
                     'repository_quality_score AS "Repository_Quality_Score", '
-                    'quality_band AS "Quality_Band", commits AS "Commits" '
+                    'quality_band AS "Quality_Band", commits AS "Commits", '
+                    'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d" '
                     "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
                     (roster_id,),
                 )
@@ -764,6 +775,66 @@ def put_workflow(roster_id: str, state: dict) -> None:
                 )
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("put_workflow failed: %s", exc)
+
+
+def get_blacklist(roster_id: str) -> dict:
+    """Return the leaderboard blacklist ({student_id: [boards]})."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return {}
+            cur = c.execute(
+                "SELECT state FROM leaderboard_blacklist WHERE roster_id = %s",
+                (roster_id,),
+            )
+            row = cur.fetchone()
+            state = row["state"] if row else {}
+            return state if isinstance(state, dict) else {}
+    except (psycopg.errors.DatabaseError, OSError):
+        return {}
+
+
+def put_blacklist(roster_id: str, state: dict) -> None:
+    try:
+        with database.conn() as c:
+            if c is not None:
+                c.execute(
+                    "INSERT INTO leaderboard_blacklist (roster_id, state) VALUES (%s, %s) "
+                    "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
+                    (roster_id, Jsonb(state)),
+                )
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("put_blacklist failed: %s", exc)
+
+
+def get_hidden_repos(roster_id: str) -> dict:
+    """Return the hidden repositories ({student_id: [repo keys]})."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return {}
+            cur = c.execute(
+                "SELECT state FROM leaderboard_hidden_repos WHERE roster_id = %s",
+                (roster_id,),
+            )
+            row = cur.fetchone()
+            state = row["state"] if row else {}
+            return state if isinstance(state, dict) else {}
+    except (psycopg.errors.DatabaseError, OSError):
+        return {}
+
+
+def put_hidden_repos(roster_id: str, state: dict) -> None:
+    try:
+        with database.conn() as c:
+            if c is not None:
+                c.execute(
+                    "INSERT INTO leaderboard_hidden_repos (roster_id, state) VALUES (%s, %s) "
+                    "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
+                    (roster_id, Jsonb(state)),
+                )
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("put_hidden_repos failed: %s", exc)
 
 
 # ── support tickets (mirrors app/support.py signatures) ───────────────────────

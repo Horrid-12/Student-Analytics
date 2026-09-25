@@ -572,6 +572,8 @@ class TestOwnedCommitData:
         assert int(row["Owned_Commits_30d"]) == 2
         assert int(row["Owned_Commits_90d"]) == 3
         assert int(enriched.iloc[0]["Commits"]) == 5
+        assert int(enriched.iloc[0]["Commits_30d"]) == 2
+        assert int(enriched.iloc[0]["Commits_90d"]) == 3
 
     def test_failed_repo_marks_user_unavailable(self, monkeypatch):
         monkeypatch.setattr(services.time, "sleep", lambda _: None)

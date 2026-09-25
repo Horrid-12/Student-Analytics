@@ -188,7 +188,7 @@
     <div class="leader-row">
       <span class="leader-rank">{{ row.rank }}</span>
       <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
-      <span class="leader-score">{{ row.score }} commits</span>
+      <span class="leader-score">{{ row.score }} commit{% if row.score != 1 %}s{% endif %}</span>
     </div>
     {% endfor %}
     {% else %}
@@ -202,7 +202,7 @@
     <div class="leader-row">
       <span class="leader-rank">{{ row.rank }}</span>
       <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
-      <span class="leader-score">{{ row.score }} stars</span>
+      <span class="leader-score">{{ row.score }} star{% if row.score != 1 %}s{% endif %}</span>
     </div>
     {% endfor %}
     {% else %}
@@ -216,7 +216,7 @@
     <div class="leader-row">
       <span class="leader-rank">{{ row.rank }}</span>
       <span class="leader-title">{{ row.repo }} <span class="leader-sub">@{{ row.owner }} &middot; {{ row.language }}</span></span>
-      <span class="leader-score">{{ row.stars }} stars</span>
+      <span class="leader-score">{{ row.stars }} star{% if row.stars != 1 %}s{% endif %}</span>
     </div>
     {% endfor %}
     {% else %}

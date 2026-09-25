@@ -239,6 +239,8 @@ REPO_COLS = [
     "Repository_Quality_Score",
     "Quality_Band",
     "Commits",
+    "Commits_30d",
+    "Commits_90d",
 ]
 ISSUE_COLS = [
     STUDENT_ID_COL,
@@ -842,6 +844,9 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     if not student_repos.empty and "Language" in student_repos.columns:
         # Display "Unknown", never "nan", for repos without a detected language.
         student_repos["Language"] = student_repos["Language"].fillna("Unknown")
+    if "Repository_URL" in student_repos.columns:
+        # Normalized so the template can key hidden repos by URL-or-name.
+        student_repos["Repository_URL"] = student_repos["Repository_URL"].fillna("")
     if "Commits" in student_repos.columns:
         # Exact per-repo author commits; None on runs predating commit history
         # (and never NaN, so the template can test `is not none`).
@@ -1187,6 +1192,15 @@ def _with_combined_metrics(students: pd.DataFrame) -> pd.DataFrame:
 WINDOW_OPTIONS = (("1m", "Last month"), ("3m", "Last 3 months"), ("all", "All time"))
 WINDOW_DAYS = {"1m": 30, "3m": 90}
 
+#: Leaderboard boards an admin can blacklist a student from (key + popup label).
+LEADERBOARD_BOARDS = (
+    ("active", "Most Active Repositories"),
+    ("commits", "Most Commits"),
+    ("stars", "Most Stars"),
+    ("repos", "Top Starred Repositories"),
+)
+LEADERBOARD_BOARD_KEYS = frozenset(key for key, _ in LEADERBOARD_BOARDS)
+
 
 def _recent_counts(frame, user_col: str, date_col: str, days: int) -> dict:
     """username -> rows whose date falls within the last `days` days."""
@@ -1274,6 +1288,32 @@ def _ranked(scores: dict, names: dict, ids: dict | None = None, limit: int = 10)
     return [{"rank": rank, **row} for rank, row in enumerate(rows[:limit], start=1)]
 
 
+def _blacklisted_users(view, ids: dict, blacklist, board: str) -> set:
+    """GitHub usernames excluded from `board` ({student_id: [boards]})."""
+    if not blacklist or not isinstance(blacklist, dict):
+        return set()
+    user_by_id = {sid: user for user, sid in ids.items()}
+    excluded = set()
+    for student_id, boards in blacklist.items():
+        if board in (boards or []):
+            user = user_by_id.get(str(student_id))
+            if user:
+                excluded.add(user)
+    return excluded
+
+
+def repo_key(username, repo_name, url) -> str:
+    """Stable identity for one repository: its URL, else owner/name."""
+    try:
+        if url is not None and not (isinstance(url, float) and pd.isna(url)):
+            text = str(url).strip()
+            if text and text.lower() != "nan":
+                return text
+    except Exception:
+        pass
+    return f"{str(username or '').strip()}/{str(repo_name or '').strip()}"
+
+
 def leaderboards_payload(
     view,
     division="All",
@@ -1281,6 +1321,8 @@ def leaderboards_payload(
     semester="All",
     active_window="1m",
     commits_window="1m",
+    blacklist=None,
+    hidden_repos=None,
 ) -> dict:
     if active_window not in WINDOW_DAYS and active_window != "all":
         active_window = "1m"
@@ -1306,6 +1348,34 @@ def leaderboards_payload(
         except Exception:
             pass
 
+    # Admin-hidden repositories leave every board (exact: all downstream
+    # sums/counts are computed from these frames, never from aggregates).
+    hidden = hidden_repos if isinstance(hidden_repos, dict) else {}
+    user_to_sid = {user: sid for user, sid in ids.items()}
+
+    def _drop_hidden(frame, user_col: str, repo_col: str, url_col: str):
+        if frame is None or frame.empty:
+            return frame
+        try:
+            def _kept(row):
+                sid = user_to_sid.get(str(row.get(user_col)))
+                if not sid:
+                    return True
+                keys = hidden.get(sid) or []
+                return repo_key(row.get(user_col), row.get(repo_col), row.get(url_col)) not in keys
+
+            mask = frame.apply(_kept, axis=1)
+            try:
+                mask = mask.fillna(True).astype(bool)
+            except Exception:
+                pass
+            return frame[mask].copy()
+        except Exception:
+            return frame
+
+    repos = _drop_hidden(repos, "Username", "Repository", "Repository_URL")
+    team = _drop_hidden(team, "Username", "Team_Repo", "Team_Repo_URL")
+
     def _combined(owned: dict, contributed: dict) -> dict:
         totals = dict(owned)
         for user, score in contributed.items():
@@ -1320,16 +1390,24 @@ def leaderboards_payload(
         days = WINDOW_DAYS[active_window]
         owned_active = _recent_counts(repos, "Username", "Updated", days)
         team_active = _recent_counts(team, "Username", "Last_Active_At", days)
-    active_rows = _ranked(_combined(owned_active, team_active), names, ids)
+    no_active = _blacklisted_users(view, ids, blacklist, "active")
+    active_rows = _ranked(
+        {user: score for user, score in _combined(owned_active, team_active).items() if user not in no_active},
+        names,
+        ids,
+    )
 
     # 2. Most commits, owned + contributed combined — exact per-repo
     # author-commit counts collected at analysis time (no activity proxies).
-    # Runs completed before commit history existed cannot rank accurately.
+    # Owned sums come straight from the (hidden-filtered) repo rows so hiding
+    # a repo subtracts exactly its commits; team all-time likewise. Runs
+    # completed before commit history existed cannot rank accurately.
     commit_cols = {
         "all": ("Owned_Commits", "Team_Commits"),
         "1m": ("Owned_Commits_30d", "Team_Commits_30d"),
         "3m": ("Owned_Commits_90d", "Team_Commits_90d"),
     }
+    commit_repo_cols = {"all": "Commits", "1m": "Commits_30d", "3m": "Commits_90d"}
     owned_col, team_col = commit_cols[commits_window]
     commits_ready = (
         not students.empty
@@ -1339,22 +1417,38 @@ def leaderboards_payload(
     )
     commit_rows: list[dict] = []
     if commits_ready and "GitHub_Username" in students.columns:
-        try:
-            owned_scores = dict(zip(students["GitHub_Username"].astype(str), _commit_col(students, owned_col)))
-            team_scores = dict(zip(students["GitHub_Username"].astype(str), _commit_col(students, team_col)))
-        except Exception:
-            owned_scores, team_scores = {}, {}
-        commit_rows = _ranked(_combined(owned_scores, team_scores), names, ids)
+        owned_scores = _totals_by_user(repos, "Username", commit_repo_cols[commits_window])
+        if commits_window == "all":
+            team_scores = _totals_by_user(team, "Username", "Commits")
+        else:
+            try:
+                team_scores = dict(zip(students["GitHub_Username"].astype(str), _commit_col(students, team_col)))
+            except Exception:
+                team_scores = {}
+        no_commits = _blacklisted_users(view, ids, blacklist, "commits")
+        commit_rows = _ranked(
+            {user: score for user, score in _combined(owned_scores, team_scores).items() if user not in no_commits},
+            names,
+            ids,
+        )
 
     # 3. Most stars across a student's own repos.
     star_totals = _totals_by_user(repos, "Username", "Stars")
-    star_rows = _ranked({user: score for user, score in star_totals.items() if str(user) in cohort}, names, ids)
+    no_stars = _blacklisted_users(view, ids, blacklist, "stars")
+    star_rows = _ranked(
+        {user: score for user, score in star_totals.items() if str(user) in cohort and user not in no_stars},
+        names,
+        ids,
+    )
 
-    # 4. Top starred repos of all time (cohort-owned).
+    # 4. Top starred repos of all time (cohort-owned, minus blacklisted owners).
     top_repos: list[dict] = []
     if repos is not None and not repos.empty:
         try:
             ranked = repos.copy()
+            no_repos = _blacklisted_users(view, ids, blacklist, "repos")
+            if no_repos and "Username" in ranked.columns:
+                ranked = ranked[~ranked["Username"].astype(str).isin(no_repos)]
             ranked["Stars"] = pd.to_numeric(ranked.get("Stars", 0), errors="coerce").fillna(0).astype(int)
             ranked = ranked[ranked["Stars"] > 0].sort_values(["Stars", "Repository"], ascending=[False, True]).head(10)
             for rank, (_, row) in enumerate(ranked.iterrows(), start=1):

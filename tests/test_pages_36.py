@@ -647,6 +647,116 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=bogus").text
         assert '<option value="1m" selected>' in body
 
+    def test_leaderboards_blacklist_flow(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        # Admin sees the blacklist button + popup in the profile.
+        popup = self.client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert 'class="blacklist-dropdown"' in popup
+        assert 'class="blacklist-menu"' in popup
+        assert 'data-board="commits"' in popup
+        assert "is-blacklisted" not in popup
+        # Blacklist Alice (101) from the commits board.
+        res = self.client.post(
+            f"/leaderboards/blacklist?roster={roster_id}",
+            json={"student_id": "101", "board": "commits", "action": "blacklist"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"status": "ok", "blacklisted": ["commits"]}
+        # Alice leaves the commits board; Bob stays. Stars untouched.
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=all").text
+        assert "6 commits" not in body
+        assert "2 commits" in body
+        assert "2 stars" in body
+        # Popup now highlights the option in red with a whitelist button.
+        popup = self.client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert "is-blacklisted" in popup
+        assert 'data-board="commits" data-action="whitelist"' in popup
+        # Blacklisting from the repos board hides her repositories too.
+        res = self.client.post(
+            f"/leaderboards/blacklist?roster={roster_id}",
+            json={"student_id": "101", "board": "repos", "action": "blacklist"},
+        )
+        assert res.json() == {"status": "ok", "blacklisted": ["commits", "repos"]}
+        body = self.client.get(f"/leaderboards?roster={roster_id}").text
+        assert "py1" not in body and "js1" not in body
+        assert "go1" in body
+        # Whitelisting resumes consideration.
+        res = self.client.post(
+            f"/leaderboards/blacklist?roster={roster_id}",
+            json={"student_id": "101", "board": "commits", "action": "whitelist"},
+        )
+        assert res.json() == {"status": "ok", "blacklisted": ["repos"]}
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=all").text
+        assert "6 commits" in body
+
+    def test_leaderboards_hide_repo_flow(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        py1 = "https://github.com/alice-dev/py1"
+        # Admin sees a hide button on every repo row.
+        popup = self.client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert "repo-hide-btn" in popup
+        assert f'data-repo="{py1}"' in popup
+        assert "is-hidden" not in popup
+        # Hide py1: Alice's commits drop 6 -> 1, stars 2 -> 1, and py1 leaves
+        # the top-repos board while js1/go1 stay.
+        res = self.client.post(
+            f"/leaderboards/hidden-repos?roster={roster_id}",
+            json={"student_id": "101", "repo": py1, "action": "hide"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"status": "ok", "hidden": [py1]}
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=all").text
+        assert "6 commits" not in body
+        assert "1 commit<" in body
+        assert "2 stars" not in body
+        assert "py1" not in body
+        assert "js1" in body and "go1" in body
+        # The row turns red with the hidden note; button toggles to unhide.
+        popup = self.client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert "profile-repo is-hidden" in popup
+        assert "Repository hidden from leaderboard" in popup
+        assert 'data-hidden="1"' in popup
+        # Unhiding restores everything.
+        res = self.client.post(
+            f"/leaderboards/hidden-repos?roster={roster_id}",
+            json={"student_id": "101", "repo": py1, "action": "unhide"},
+        )
+        assert res.json() == {"status": "ok", "hidden": []}
+        body = self.client.get(f"/leaderboards?roster={roster_id}&commits_window=all").text
+        assert "6 commits" in body
+        assert "py1" in body
+
+    def test_leaderboards_hide_repo_validation_and_roles(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        url = f"/leaderboards/hidden-repos?roster={roster_id}"
+        assert self.client.post(url, json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 200
+        assert self.client.post(url, json={"student_id": "", "repo": "x/y", "action": "hide"}).status_code == 400
+        assert self.client.post(url, json={"student_id": "101", "repo": "", "action": "hide"}).status_code == 400
+        assert self.client.post(url, json={"student_id": "101", "repo": "x/y", "action": "ban"}).status_code == 400
+        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 400
+        student_client = TestClient(app)
+        make_user(student_client, "student")
+        assert student_client.post(url, json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 403
+        student_popup = student_client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert "repo-hide-btn" not in student_popup
+
+    def test_leaderboards_blacklist_validation_and_roles(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        url = f"/leaderboards/blacklist?roster={roster_id}"
+        assert self.client.post(url, json={"student_id": "101", "board": "nope", "action": "blacklist"}).status_code == 400
+        assert self.client.post(url, json={"student_id": "", "board": "commits", "action": "blacklist"}).status_code == 400
+        assert self.client.post(url, json={"student_id": "101", "board": "commits", "action": "ban"}).status_code == 400
+        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 400
+        # Non-admins are refused, and see no button.
+        student_client = TestClient(app)
+        make_user(student_client, "student")
+        assert student_client.post(url, json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 403
+        faculty_client = TestClient(app)
+        make_user(faculty_client, "faculty")
+        assert faculty_client.post(url, json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 403
+        student_popup = student_client.get(f"/leaderboards?roster={roster_id}&select=101").text
+        assert 'class="blacklist-dropdown"' not in student_popup
+
     def test_leaderboards_name_opens_profile_popup(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/leaderboards?roster={roster_id}").text
