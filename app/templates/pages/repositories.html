@@ -12,6 +12,72 @@
   .repo-owner-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .repo-owner-cell .table-avatar, .repo-owner-cell .avatar-fallback { flex-shrink: 0; }
   .repo-owner-cell a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* ── Grouped student-portfolio layout ──────────────────────────────── */
+  :root {
+    --rg-master-bg: var(--repo-card-bg);
+    --rg-open-bg: color-mix(in srgb, var(--bg) 45%, var(--card));
+    --rg-divider: color-mix(in srgb, var(--border) 40%, transparent);
+  }
+  [data-theme="dark"] {
+    --rg-divider: var(--border);
+  }
+  .rg-master.repo-card-v2 { background: var(--rg-master-bg); }
+  .rg-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .rg-id { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+  .rg-id .table-avatar, .rg-id .avatar-fallback { width: 34px; height: 34px; font-size: 15px; flex-shrink: 0; }
+  .rg-meta { display: flex; flex-direction: column; min-width: 0; }
+  .rg-name { font-weight: 800; font-size: 15px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rg-handle { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rg-dept { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--muted); display: inline-flex; gap: 10px; white-space: nowrap; }
+  .rg-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .rg-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--muted); background: var(--icon-bg); border: 1px solid var(--icon-border); padding: 2px 10px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+  .rg-pill b { font-weight: 800; color: var(--text); }
+  .rg-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; margin-top: 14px; padding: 8px 10px; box-sizing: border-box;
+    background: var(--hover-bg); border: 1px solid var(--icon-border); border-radius: 9px;
+    color: var(--blue); font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+  .rg-toggle:hover { background: var(--blue-active-bg); border-color: var(--blue-active-border); }
+  .rg-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .rg-toggle svg { width: 14px; height: 14px; flex-shrink: 0; transition: transform 180ms ease; }
+  .rg-master.is-open .rg-toggle svg { transform: rotate(180deg); }
+  .rg-collapse { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 200ms ease, visibility 0s linear 200ms; }
+  .rg-master.is-open .rg-collapse { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows 200ms ease, visibility 0s; }
+  .rg-collapse-inner { overflow: hidden; min-height: 0; }
+  .rg-repos { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rg-divider); }
+  .rg-repo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; border: 1px solid var(--rg-divider); border-radius: 10px; background: var(--rg-open-bg); }
+  .rg-repo .repo-name { font-size: 13px; flex: 1 1 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rg-repo-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 12px; color: var(--muted); }
+  .rg-desc { flex: 1 1 100%; margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* ── grouped table ─────────────────────────────────────────────────── */
+  .rg-row-toggle {
+    display: inline-flex; align-items: center; gap: 8px; padding: 2px 6px 2px 0;
+    background: none; border: none; cursor: pointer; font-family: inherit; text-align: left;
+  }
+  .rg-row-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+  .rg-row-toggle svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--blue); transition: transform 180ms ease; }
+  tr.rg-master-row.is-open .rg-row-toggle svg { transform: rotate(90deg); }
+  .rg-row-id { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .rg-row-id .table-avatar, .rg-row-id .avatar-fallback { width: 28px; height: 28px; flex-shrink: 0; }
+  .rg-row-name { font-weight: 700; color: var(--text); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rg-row-handle { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  tr.rg-master-row td { background: var(--rg-master-bg); }
+  tr.rg-master-row:hover td { background: var(--hover-bg); }
+  tr.rg-child-row td { background: var(--rg-open-bg); border-top: 1px solid var(--rg-divider); padding: 8px 12px 8px 34px; }
+  .rg-child-inner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+  .rg-child-inner .repo-name { font-size: 13px; }
+  .rg-child-inner .rc-stat, .rg-child-inner .rg-muted { white-space: nowrap; }
+  .rg-muted { color: var(--muted); }
+  tr.rg-child-row.show { animation: rg-fade 160ms ease; }
+  @keyframes rg-fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rg-collapse, .rg-toggle svg, .rg-row-toggle svg { transition: none !important; }
+    tr.rg-child-row.show { animation: none !important; }
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -67,7 +133,7 @@
     <label class="filter-label" for="repo-rows">Rows</label>
     <select id="repo-rows" class="filter-select" name="rows">
       {% for value in [10, 20, 30, 50] %}
-      <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }} repositories</option>
+      <option value="{{ value }}" {% if value == rows_page %}selected{% endif %}>{{ value }}</option>
       {% endfor %}
     </select>
   </div>
@@ -93,52 +159,53 @@
 
   {# ── Grid View ── #}
   <div class="repo-grid" id="repo-grid-view"{% if view_mode == 'table' %} style="display:none;"{% endif %}>
-    {% for repo in payload.cards.to_dict('records') %}
-    {% set lang_raw = repo.Language|string %}
-    {% set lang_clean = lang_raw if lang_raw and lang_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', '') else '' %}
-    {% set desc_raw = repo.Description|string if repo.Description else '' %}
-    {% set desc_clean = desc_raw if desc_raw not in ('nan', 'NaN', 'None', 'null', 'undefined') else '' %}
-    {% set status_raw = repo.Maintenance_Status|string if repo.Maintenance_Status else '' %}
-    {% set status_clean = status_raw if status_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', 'Maintenance unknown', '') else '' %}
-    {% set stars = repo.Stars|int if repo.Stars is not none and repo.Stars|string not in ('nan', 'NaN') else 0 %}
-    {% set forks = repo.Forks|int if repo.Forks is not none and repo.Forks|string not in ('nan', 'NaN') else 0 %}
-    {% set score = repo.Repository_Quality_Score %}
-    {% set score_ok = score is not none and score|string not in ('nan', 'NaN', 'None', '') %}
-    {% set username = repo.Username|string if repo.Username else '' %}
-    {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
-    <div class="repo-card-v2">
-      <div class="rc-header">
-        <span class="rc-id">
-          {% if repo.Avatar_URL %}
-          <img class="table-avatar" src="{{ repo.Avatar_URL }}" alt="">
+    {% for group in payload.groups %}
+    <article class="repo-card-v2 rg-master" data-group-key="{{ group.key }}">
+      <div class="rg-head">
+        <span class="rg-id">
+          {% if group.avatar_url %}
+          <img class="table-avatar" src="{{ group.avatar_url }}" alt="">
           {% else %}
-          <span class="avatar-fallback">{{ (repo['Student Name'] or username_clean or '?')[0:1] }}</span>
+          <span class="avatar-fallback">{{ (group.student_name or group.username or '?')[0:1] }}</span>
           {% endif %}
-          <a class="rc-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a>
+          <span class="rg-meta">
+            <span class="rg-name">{{ group.student_name or (group.username or 'Unknown student') }}</span>
+            <span class="rg-handle">{% if group.username %}@{{ group.username }}{% else %}No linked GitHub account{% endif %}</span>
+          </span>
         </span>
-        {% if username_clean %}
-        <span class="rc-handle">@{{ username_clean }}</span>
-        {% endif %}
-      </div>
-      {% if desc_clean %}
-      <p class="rc-desc">{{ desc_clean }}</p>
-      {% endif %}
-      <div class="rc-footer">
-        {% if lang_clean %}
-        <span class="rc-lang">
-          <span class="rc-lang-dot"></span>{{ lang_clean }}
+        <span class="rg-dept">
+          {% if group.division %}<span>{{ group.division }}</span>{% endif %}
+          {% if group.batch %}<span>Batch {{ group.batch }}</span>{% endif %}
         </span>
-        {% endif %}
-        <span class="rc-stat">★ {{ stars }}</span>
-        <span class="rc-stat">⑂ {{ forks }}</span>
-        {% if score_ok %}
-        <span class="rc-score">Score {{ score | round(1) }}</span>
-        {% endif %}
-        {% if status_clean %}
-        <span class="rc-status">{{ status_clean }}</span>
-        {% endif %}
       </div>
-    </div>
+      <div class="rg-stats">
+        <span class="rg-pill">Repos <b>{{ group.total_repos }}</b></span>
+        <span class="rg-pill">Avg Score {% if group.avg_score is not none %}<b>{{ group.avg_score }}</b>{% else %}<b>&mdash;</b>{% endif %}</span>
+      </div>
+      <button class="rg-toggle" type="button" aria-expanded="false" aria-controls="rg-repos-{{ loop.index }}">
+        View Repositories ({{ group.total_repos }})
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="rg-collapse" id="rg-repos-{{ loop.index }}">
+        <div class="rg-collapse-inner">
+          <div class="rg-repos">
+            {% for repo in group.repos %}
+            <div class="rg-repo">
+              <a class="repo-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
+              <span class="rg-repo-meta">
+                {% if repo.lang %}<span class="rc-lang"><span class="rc-lang-dot"></span>{{ repo.lang }}</span>{% endif %}
+                <span class="rc-stat">★ {{ repo.stars }}</span>
+                <span class="rc-stat">⑂ {{ repo.forks }}</span>
+                {% if repo.score is not none %}<span class="rc-score">Score {{ repo.score }}</span>{% endif %}
+                {% if repo.status %}<span class="rc-status">{{ repo.status }}</span>{% endif %}
+              </span>
+              {% if repo.description %}<p class="rg-desc">{{ repo.description }}</p>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </article>
     {% else %}
     <p class="table-empty" style="grid-column:1/-1;">No repositories match the current filters.</p>
     {% endfor %}
@@ -148,42 +215,48 @@
   <div class="data-table-wrap" id="repo-table-view"{% if view_mode == 'grid' %} style="display:none;"{% endif %}>
     <table class="data-table">
       <thead><tr>
-        <th>Repository</th><th>Owner</th><th>Language</th><th>Stars</th><th>Forks</th><th>License</th><th>Status</th><th>Score</th><th>Updated</th>
+        <th>Student</th><th>Division / Batch</th><th>Total Repos</th><th>Total Stars</th><th>Avg Score</th>
       </tr></thead>
       <tbody>
-        {% for repo in payload.table.to_dict('records') %}
-        {% set lang_raw = repo.Language|string %}
-        {% set lang_clean = lang_raw if lang_raw and lang_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', '') else '' %}
-        {% set status_raw = repo.Maintenance_Status|string if repo.Maintenance_Status else '' %}
-        {% set status_clean = status_raw if status_raw not in ('nan', 'NaN', 'Unknown', 'None', 'null', 'undefined', 'Maintenance unknown', '') else '' %}
-        {% set license_raw = repo.License|string if repo.License else '' %}
-        {% set license_clean = license_raw if license_raw not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
-        {% set stars = repo.Stars|int if repo.Stars is not none and repo.Stars|string not in ('nan', 'NaN') else 0 %}
-        {% set forks = repo.Forks|int if repo.Forks is not none and repo.Forks|string not in ('nan', 'NaN') else 0 %}
-        {% set score = repo.Repository_Quality_Score %}
-        {% set score_ok = score is not none and score|string not in ('nan', 'NaN', 'None', '') %}
-        {% set username = repo.Username|string if repo.Username else '' %}
-        {% set username_clean = username if username not in ('nan', 'NaN', 'None', 'null', 'undefined', '') else '' %}
-        <tr>
-          <td><a class="repo-name" href="{{ repo.Repository_URL }}" target="_blank" rel="noopener">{{ repo.Repository }}</a></td>
+        {% for group in payload.groups %}
+        <tr class="rg-master-row" data-group-key="{{ group.key }}">
           <td>
-            <div class="repo-owner-cell">
-              {% if repo.Avatar_URL %}
-              <img class="table-avatar" src="{{ repo.Avatar_URL }}" alt="">
-              {% else %}
-              <span class="avatar-fallback">{{ (repo['Student Name'] or username_clean or '?')[0:1] }}</span>
-              {% endif %}
-              {% if username_clean %}<a class="repo-name" href="?roster={{ roster_id }}&q={{ username_clean }}">{{ username_clean }}</a>{% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
+            <button class="rg-row-toggle" type="button" aria-expanded="false" aria-controls="rg-table-rows-{{ loop.index0 }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              <span class="rg-row-id">
+                {% if group.avatar_url %}
+                <img class="table-avatar" src="{{ group.avatar_url }}" alt="">
+                {% else %}
+                <span class="avatar-fallback">{{ (group.student_name or group.username or '?')[0:1] }}</span>
+                {% endif %}
+                <span class="rg-row-name">{{ group.student_name or (group.username or 'Unknown student') }}</span>
+                {% if group.username %}<span class="rg-row-handle">@{{ group.username }}</span>{% endif %}
+              </span>
+            </button>
+          </td>
+          <td>{% if group.division or group.batch %}{{ group.division or '—' }}{% if group.division and group.batch %} · {% endif %}{{ group.batch or '—' }}{% else %}—{% endif %}</td>
+          <td>{{ group.total_repos }}</td>
+          <td>{{ group.total_stars }}</td>
+          <td>{% if group.avg_score is not none %}{{ group.avg_score }}{% else %}—{% endif %}</td>
+        </tr>
+        {% for repo in group.repos %}
+        <tr class="rg-child-row" data-parent-key="{{ group.key }}" hidden>
+          <td colspan="5">
+            <div class="rg-child-inner">
+              <a class="repo-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
+              {% if repo.lang %}<span class="chip">{{ repo.lang }}</span>{% endif %}
+              <span class="rc-stat">★ {{ repo.stars }}</span>
+              <span class="rc-stat">⑂ {{ repo.forks }}</span>
+              {% if repo.score is not none %}<span class="rc-score">Score {{ repo.score }}</span>{% endif %}
+              {% if repo.license %}<span class="rg-muted">{{ repo.license }}</span>{% endif %}
+              {% if repo.status %}<span class="rc-status">{{ repo.status }}</span>{% endif %}
+              {% if repo.updated %}<span class="rg-muted">{{ repo.updated }}</span>{% endif %}
             </div>
           </td>
-          <td>{% if lang_clean %}<span class="chip">{{ lang_clean }}</span>{% else %}—{% endif %}</td>
-          <td>{{ stars }}</td>
-          <td>{{ forks }}</td>
-          <td>{{ license_clean if license_clean else '—' }}</td>
-          <td>{% if status_clean %}<span class="rc-status">{{ status_clean }}</span>{% else %}—{% endif %}</td>
-          <td>{% if score_ok %}{{ score | round(1) }}{% else %}—{% endif %}</td>
-          <td>{% if repo.Updated and repo.Updated|string not in ('nan', 'NaN', 'None', 'null', '') %}{{ repo.Updated|string|truncate(10, True, '') }}{% else %}—{% endif %}</td>
         </tr>
+        {% endfor %}
+        {% else %}
+        <tr><td class="table-empty" colspan="5">No repositories match the current filters.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -288,6 +361,78 @@
       needSubmit = true;
     }
     if (needSubmit) { form.submit(); }
+  }
+})();
+
+(function () {
+  var OPEN_KEY = 'gsad_repo_open_v1';
+
+  function readOpen() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(OPEN_KEY));
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
+  }
+
+  function setOpen(key, on) {
+    var list = readOpen();
+    var i = list.indexOf(key);
+    if (on && i === -1) { list.push(key); }
+    if (!on && i !== -1) { list.splice(i, 1); }
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(list)); } catch (e) { /* private mode */ }
+  }
+
+  function childRows(key) {
+    return document.querySelectorAll('tr.rg-child-row[data-parent-key="' + key + '"]');
+  }
+
+  // GRID
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.rg-master'));
+  cards.forEach(function (card) {
+    var btn = card.querySelector('.rg-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var open = card.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      setOpen(card.getAttribute('data-group-key'), open);
+    });
+  });
+
+  // TABLE
+  var rows = Array.prototype.slice.call(document.querySelectorAll('tr.rg-master-row'));
+  rows.forEach(function (tr) {
+    var btn = tr.querySelector('.rg-row-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var key = tr.getAttribute('data-group-key');
+      var open = tr.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      Array.prototype.forEach.call(childRows(key), function (kid) {
+        kid.hidden = !open;
+        if (open) { kid.classList.remove('show'); void kid.offsetWidth; kid.classList.add('show'); }
+      });
+      setOpen(key, open);
+    });
+  });
+
+  // Restore previously open groups (survives filter-driven reloads)
+  var openKeys = readOpen();
+  if (openKeys.length) {
+    cards.forEach(function (card) {
+      if (openKeys.indexOf(card.getAttribute('data-group-key')) === -1) return;
+      card.classList.add('is-open');
+      var b = card.querySelector('.rg-toggle');
+      if (b) b.setAttribute('aria-expanded', 'true');
+    });
+    rows.forEach(function (tr) {
+      if (openKeys.indexOf(tr.getAttribute('data-group-key')) === -1) return;
+      tr.classList.add('is-open');
+      var b = tr.querySelector('.rg-row-toggle');
+      if (b) b.setAttribute('aria-expanded', 'true');
+      Array.prototype.forEach.call(childRows(tr.getAttribute('data-group-key')), function (kid) {
+        kid.hidden = false;
+      });
+    });
   }
 })();
 </script>

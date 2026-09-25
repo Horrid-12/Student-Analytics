@@ -1053,6 +1053,104 @@ def _merge_student_fields(repos: pd.DataFrame, students) -> pd.DataFrame:
     return merged
 
 
+_BAD_VALUES = ("nan", "none", "null", "undefined", "unknown")
+
+
+def _repo_clean(value):
+    """Normalize a cell so NaN/None/'nan' render as '' instead of raw junk."""
+    if value is None:
+        return ""
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return ""
+        s = str(value).strip()
+    except (TypeError, ValueError):
+        return ""
+    if s.lower() in _BAD_VALUES:
+        return ""
+    return s
+
+
+def _repo_number(value, cast):
+    """Coerce a cell to int/float; returns None when not a valid number."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return None
+        return cast(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _repo_card(row) -> dict:
+    """One repository, pre-normalized for the grouped templates. Cleaning rules
+    match the previous card/table rendering exactly (NaN/None/'Unknown' hidden,
+    missing stars shown as 0, missing quality score shown as '—')."""
+    lang = _repo_clean(row.get("Language"))
+    if lang.lower() == "unknown":
+        lang = ""
+    status = _repo_clean(row.get("Maintenance_Status"))
+    if status.lower() in ("maintenance unknown",):
+        status = ""
+    stars = int(_repo_number(row.get("Stars"), int) or 0)
+    forks = int(_repo_number(row.get("Forks"), int) or 0)
+    score = _repo_number(row.get("Repository_Quality_Score"), float)
+    return {
+        "repository": _repo_clean(row.get("Repository")),
+        "url": _repo_clean(row.get("Repository_URL")),
+        "lang": lang,
+        "stars": stars,
+        "forks": forks,
+        "score": round(score, 1) if score is not None else None,
+        "license": _repo_clean(row.get("License")),
+        "status": status,
+        "description": _repo_clean(row.get("Description")),
+        "updated": _repo_clean(row.get("Updated"))[:10],
+    }
+
+
+def _group_repositories(filtered) -> list:
+    """Group repositories by their owner student (GitHub username identity).
+
+    Grouping happens AFTER filtering so per-group totals/metrics always match
+    what is visible. Repos without an identifiable owner are grouped under an
+    'orphan' key rather than silently attached to another student.
+    """
+    groups: dict[str, dict] = {}
+    order: list[str] = []
+    for _, row in filtered.iterrows():
+        username = _repo_clean(row.get("Username")).lstrip("@")
+        key = username.lower() or "orphan"
+        if key not in groups:
+            groups[key] = {
+                "key": key,
+                "username": username,
+                "student_name": _repo_clean(row.get("Student Name")),
+                "avatar_url": _repo_clean(row.get("Avatar_URL")),
+                "division": _repo_clean(row.get("Division")),
+                "batch": _repo_clean(row.get("Batch")),
+                "repos": [],
+            }
+            order.append(key)
+        groups[key]["repos"].append(_repo_card(row))
+
+    result = []
+    for key in order:
+        g = groups[key]
+        scores = [r["score"] for r in g["repos"] if r["score"] is not None]
+        g["total_repos"] = len(g["repos"])
+        g["total_stars"] = sum(r["stars"] for r in g["repos"])
+        g["avg_score"] = round(sum(scores) / len(scores), 1) if scores else None
+        result.append(g)
+
+    def display_sort(g):
+        return (g["key"] == "orphan", (g["student_name"] or g["username"] or "").lower())
+
+    result.sort(key=display_sort)
+    return result
+
+
 def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All") -> dict:
     repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
     team_repos = view.get("team_repos")
@@ -1114,6 +1212,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     if not filtered.empty:
         filtered = filtered.copy()
         filtered["Repository URL"] = filtered["Repository_URL"]
+    groups = _group_repositories(filtered)[: int(rows)]
     students = view.get("students")
     _opts = (
         lambda col: dist_options(students[col].dropna().astype(str).unique().tolist())
@@ -1124,6 +1223,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "total": len(filtered),
         "cards": filtered.head(int(rows)),
         "table": filtered,
+        "groups": groups,
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
