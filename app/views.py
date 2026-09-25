@@ -45,6 +45,14 @@ DASHBOARD_COLS = [
     "Open_Issues",
     "External_PRs",
     "Contrib_Fetch_Status",
+    "Team_Commits",
+    "Team_Push_Events",
+    "Team_PR_Events",
+    "Team_Total_Events",
+    "Contributed_Repos_Count",
+    "Contributed_Repos",
+    "Team_Last_Active_At",
+    "Team_Activity_Fetch_Status",
     "Followers",
     "Following",
     "Account_Age_Years",
@@ -58,6 +66,16 @@ DASHBOARD_COLS = [
     "LinkedIn_URL",
     "HackerRank_Username",
     "HackerRank_URL",
+]
+TEAM_REPOS_COLS = [
+    "Username",
+    "Team_Repo",
+    "Team_Repo_URL",
+    "Commits",
+    "Push_Events",
+    "PR_Events",
+    "Total_Events",
+    "Last_Active_At",
 ]
 REPO_COLS = [
     "Username",
@@ -167,7 +185,7 @@ def analysis_view(roster_store, roster_id: str):
     """Reconstruct the analysis result shape from stored roster + state.
 
     Returns None when the roster is gone; otherwise a dict with records, state
-    and normalized frames (students/repos/issues)."""
+    and normalized frames (students/repos/team_repos/issues)."""
     records = roster_store.get(roster_id)
     if records is None:
         return None
@@ -180,6 +198,7 @@ def analysis_view(roster_store, roster_id: str):
         "state": state,
         "students": students,
         "repos": _frame(state, "repos", REPO_COLS),
+        "team_repos": _frame(state, "team_repos", TEAM_REPOS_COLS),
         "issues": _frame(state, "issues", ISSUE_COLS),
     }
 

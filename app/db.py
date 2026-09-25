@@ -219,9 +219,11 @@ def upsert_batch_results(
     try:
         batch_students: list[dict] = partial.get("students") or []
         batch_repos: list[dict] = partial.get("repos") or []
+        batch_team_repos: list[dict] = partial.get("team_repos") or []
         batch_issues: list[dict] = partial.get("issues") or []
         batch_usernames: list[str] = sorted(
             {r["Username"].lower() for r in batch_repos if r.get("Username")}
+            | {r["Username"].lower() for r in batch_team_repos if r.get("Username")}
         )
         valid = int(partial.get("valid_users") or partial.get("valid") or 0)
         invalid = int(partial.get("invalid_users") or partial.get("invalid") or 0)
@@ -248,12 +250,15 @@ def upsert_batch_results(
                             "semester,github_username,submitted_github_username,username_changed,"
                             "public_repos,repository_count,active_repositories,repo_fetch_status,"
                             "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
-                            "contrib_fetch_status,followers,following,account_age_years,"
+                            "contrib_fetch_status,team_commits,team_push_events,team_pr_events,"
+                            "team_total_events,contributed_repos_count,contributed_repos,"
+                            "team_last_active_at,team_activity_fetch_status,"
+                            "followers,following,account_age_years,"
                             "repos_per_account_year,followers_per_account_year,following_per_account_year,"
                             "primary_language,avatar_url,profile_url,"
                             "linkedin_username,linkedin_url,hackerrank_username,hackerrank_url,outcome) "
                             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
                                 s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
@@ -269,6 +274,14 @@ def upsert_batch_results(
                                 int(s.get("Open_Issues") or 0),
                                 int(s.get("External_PRs") or 0),
                                 s.get("Contrib_Fetch_Status", ""),
+                                int(s.get("Team_Commits") or 0),
+                                int(s.get("Team_Push_Events") or 0),
+                                int(s.get("Team_PR_Events") or 0),
+                                int(s.get("Team_Total_Events") or 0),
+                                int(s.get("Contributed_Repos_Count") or 0),
+                                s.get("Contributed_Repos") or "",
+                                s.get("Team_Last_Active_At") or "",
+                                s.get("Team_Activity_Fetch_Status", "Loaded"),
                                 int(s.get("Followers") or 0),
                                 int(s.get("Following") or 0),
                                 float(s.get("Account_Age_Years") or 0),
@@ -358,6 +371,37 @@ def upsert_batch_results(
                             r.get("Quality_Band", ""),
                         ),
                     )
+
+                # ── team_repos: replace rows for usernames in this batch ──
+                if batch_usernames:
+                    try:
+                        c.execute(
+                            "DELETE FROM roster_team_repos WHERE roster_id = %s AND lower(username) = ANY(%s)",
+                            (roster_id, batch_usernames),
+                        )
+                    except Exception:
+                        pass  # pre-migration DB without the table — repos still saved
+                for r in batch_team_repos:
+                    try:
+                        c.execute(
+                            "INSERT INTO roster_team_repos "
+                            "(roster_id,username,team_repo,team_repo_url,commits,"
+                            "push_events,pr_events,total_events,last_active_at) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (
+                                roster_id,
+                                r.get("Username", ""),
+                                r.get("Team_Repo", ""),
+                                r.get("Team_Repo_URL") or "",
+                                int(r.get("Commits") or 0),
+                                int(r.get("Push_Events") or 0),
+                                int(r.get("PR_Events") or 0),
+                                int(r.get("Total_Events") or 0),
+                                r.get("Last_Active_At") or "",
+                            ),
+                        )
+                    except Exception:
+                        break  # pre-migration DB — skip remaining team rows
 
                 # ── issues: delete for analyzed students, re-insert ──
                 if analyzed_keys:
@@ -472,6 +516,12 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
                     'open_prs AS "Open_PRs", closed_prs AS "Closed_PRs", '
                     'issues_opened AS "Issues_Opened", open_issues AS "Open_Issues", '
                     'external_prs AS "External_PRs", contrib_fetch_status AS "Contrib_Fetch_Status", '
+                    'team_commits AS "Team_Commits", team_push_events AS "Team_Push_Events", '
+                    'team_pr_events AS "Team_PR_Events", team_total_events AS "Team_Total_Events", '
+                    'contributed_repos_count AS "Contributed_Repos_Count", '
+                    'contributed_repos AS "Contributed_Repos", '
+                    'team_last_active_at AS "Team_Last_Active_At", '
+                    'team_activity_fetch_status AS "Team_Activity_Fetch_Status", '
                     'followers AS "Followers", following AS "Following", '
                     'account_age_years AS "Account_Age_Years", '
                     'repos_per_account_year AS "Repos_Per_Account_Year", '
@@ -534,6 +584,26 @@ def get_repositories_data(roster_id: str) -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_repositories_data failed: %s", exc)
+        return []
+
+
+def get_team_repos_data(roster_id: str) -> list[dict]:
+    """Return all team-contributed repo rows for a roster (empty on old DBs)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                'SELECT username AS "Username", team_repo AS "Team_Repo", '
+                'team_repo_url AS "Team_Repo_URL", commits AS "Commits", '
+                'push_events AS "Push_Events", pr_events AS "PR_Events", '
+                'total_events AS "Total_Events", last_active_at AS "Last_Active_At" '
+                "FROM roster_team_repos WHERE roster_id = %s ORDER BY id",
+                (roster_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as exc:
+        logger.warning("get_team_repos_data failed: %s", exc)
         return []
 
 
@@ -1157,11 +1227,11 @@ def _frame(rows: list[dict], columns: list[str]) -> pd.DataFrame:
 
 def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     """Return the full view-data dict expected by the page-rendering helpers:
-    ``{roster_id, records, state, students, repos, issues}`` where students,
-    repos and issues are DataFrames with the canonical column ordering.
-    Reconstructs the state dict from run_summary + result tables so callers
-    (and ``run_metrics``) need no changes."""
-    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS
+    ``{roster_id, records, state, students, repos, team_repos, issues}`` where
+    students, repos, team_repos and issues are DataFrames with the canonical
+    column ordering. Reconstructs the state dict from run_summary + result
+    tables so callers (and ``run_metrics``) need no changes."""
+    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS, TEAM_REPOS_COLS
 
     try:
         from app.views import _enrich_students_with_records
@@ -1171,6 +1241,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
         students = _frame(get_dashboard_data(roster_id), DASHBOARD_COLS)
         students = _enrich_students_with_records(students, records)
         repos = _frame(get_repositories_data(roster_id), REPO_COLS)
+        team_repos = _frame(get_team_repos_data(roster_id), TEAM_REPOS_COLS)
         issues = _frame(get_issues_data(roster_id), ISSUE_COLS)
         state = dict(summary) if summary else None
         if state is None and records is None:
@@ -1187,6 +1258,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
             "state": state,
             "students": students,
             "repos": repos,
+            "team_repos": team_repos,
             "issues": issues,
         }
     except Exception as exc:

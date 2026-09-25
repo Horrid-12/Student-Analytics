@@ -518,6 +518,252 @@ def get_repos(username: str, token: str | None) -> tuple[list[dict], bool]:
 
 SEARCH_PAGE_GUARD = 10  # search results are hard-capped at 1000 items anyway
 
+EVENTS_PER_PAGE = 100
+EVENTS_MAX_PAGES = 2  # 200 most-recent public events (~90 days); 2 core-API calls/user max
+
+
+def get_user_events(username: str, token: str | None) -> tuple[list[dict], bool]:
+    """Fetch a user's recent public events (incl. pushes to repos they don't own).
+
+    ``GET /users/{username}/events/public`` is core-API quota (not the strict
+    Search quota) and returns PushEvent/PullRequestEvent/etc. across ANY repo —
+    including a team leader's repo a member pushes to daily. Own-repo lookups
+    (``/users/{u}/repos``) miss all of that, which is why group members showed
+    zero activity.
+    """
+    events: list[dict] = []
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            f"{GITHUB_API_BASE}/users/{username}/events/public?per_page={EVENTS_PER_PAGE}&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, list):
+            return [], False
+        events.extend(payload)
+        if len(payload) < EVENTS_PER_PAGE:
+            break
+        if page >= EVENTS_MAX_PAGES:
+            break
+        page += 1
+        time.sleep(0.05)
+    return events, True
+
+
+def _team_repo_name(event: dict) -> str | None:
+    """Return the ``owner/repo`` full name from an events payload, else None."""
+    try:
+        full = (event.get("repo") or {}).get("name") or ""
+    except AttributeError:
+        return None
+    full = str(full).strip()
+    if "/" not in full:
+        return None
+    return full
+
+
+def _team_repo_url(full_name: str) -> str:
+    return f"https://github.com/{full_name}"
+
+
+TEAM_SUMMARY_COLS = [
+    "Username",
+    "Team_Commits",
+    "Team_Push_Events",
+    "Team_PR_Events",
+    "Team_Total_Events",
+    "Team_Commits_30d",
+    "Team_Total_Events_30d",
+    "Team_Active_Dates",
+    "Team_Active_Repos",
+    "Contributed_Repos_Count",
+    "Contributed_Repos",
+    "Team_Last_Active_At",
+]
+
+TEAM_REPOS_COLS = [
+    "Username",
+    "Team_Repo",
+    "Team_Repo_URL",
+    "Commits",
+    "Push_Events",
+    "PR_Events",
+    "Total_Events",
+    "Last_Active_At",
+]
+
+
+def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list[dict]]:
+    """Summarize EXTERNAL (team) activity from public events.
+
+    Own-repo events are skipped — owned activity is already counted via
+    ``Repository_Count``/``Active_Repositories``. Only pushes/PRs to someone
+    else's repo (e.g. the team leader's) count here, so daily collaborators
+    finally get credit. Also derives 30-day commits/events, distinct active
+    dates (for streaks) and 180-day active contributed repos.
+    """
+    lowered = str(username).strip().lower()
+    push_events = 0
+    commits = 0
+    pr_events = 0
+    total_external = 0
+    commits_30d = 0
+    total_30d = 0
+    last_active = ""
+    active_dates: set[str] = set()
+    per_repo: dict[str, dict] = {}
+    try:
+        now = pd.Timestamp.now(tz="UTC")
+        cut30 = now - pd.Timedelta(days=30)
+        cut180 = now - pd.Timedelta(days=180)
+    except Exception:
+        now = cut30 = cut180 = None
+    for event in events or []:
+        if not isinstance(event, dict):
+            continue
+        full = _team_repo_name(event)
+        if not full or "/" not in full:
+            continue
+        owner = full.split("/", 1)[0].lower()
+        if not owner or owner == lowered:
+            continue  # own repo — already covered by owned-repo metrics
+        created = str(event.get("created_at") or "")
+        total_external += 1
+        if created and created > last_active:
+            last_active = created
+        # Parse date once for 30d windowing + streak dates.
+        created_dt = pd.to_datetime(created, utc=True, errors="coerce")
+        is_recent_30 = bool(
+            created_dt is not None
+            and not pd.isna(created_dt)
+            and cut30 is not None
+            and created_dt >= cut30
+        )
+        if created_dt is not None and not pd.isna(created_dt):
+            try:
+                active_dates.add(created_dt.date().isoformat())
+            except Exception:
+                pass
+        entry = per_repo.setdefault(
+            full, {"commits": 0, "pushes": 0, "prs": 0, "events": 0, "last": ""}
+        )
+        entry["events"] += 1
+        if created and created > entry["last"]:
+            entry["last"] = created
+        event_type = event.get("type") or ""
+        if event_type == "PushEvent":
+            push_events += 1
+            entry["pushes"] += 1
+            try:
+                payload = event.get("payload") or {}
+                size = payload.get("size")
+                n = int(size) if size is not None else len(payload.get("commits") or [])
+            except (TypeError, ValueError):
+                n = 0
+            n = max(int(n or 0), 0)
+            commits += n
+            entry["commits"] += n
+            if is_recent_30:
+                commits_30d += n
+                total_30d += 1
+        elif event_type == "PullRequestEvent":
+            pr_events += 1
+            entry["prs"] += 1
+            if is_recent_30:
+                total_30d += 1
+        else:
+            if is_recent_30:
+                total_30d += 1
+    contributed = sorted(per_repo.keys())
+    # Active contributed repos = last activity within 180 days.
+    active_repos = 0
+    for full in contributed:
+        try:
+            last_dt = pd.to_datetime(per_repo[full]["last"], utc=True, errors="coerce")
+            if last_dt is not None and not pd.isna(last_dt) and cut180 is not None and last_dt >= cut180:
+                active_repos += 1
+        except Exception:
+            continue
+    summary = {
+        "Username": username,
+        "Team_Commits": int(commits),
+        "Team_Push_Events": int(push_events),
+        "Team_PR_Events": int(pr_events),
+        "Team_Total_Events": int(total_external),
+        "Team_Commits_30d": int(commits_30d),
+        "Team_Total_Events_30d": int(total_30d),
+        "Team_Active_Dates": ", ".join(sorted(active_dates)[:90]),
+        "Team_Active_Repos": int(active_repos),
+        "Contributed_Repos_Count": len(contributed),
+        "Contributed_Repos": ", ".join(contributed),
+        "Team_Last_Active_At": last_active,
+    }
+    details = [
+        {
+            "Username": username,
+            "Team_Repo": full,
+            "Team_Repo_URL": _team_repo_url(full),
+            "Commits": int(per_repo[full]["commits"]),
+            "Push_Events": int(per_repo[full]["pushes"]),
+            "PR_Events": int(per_repo[full]["prs"]),
+            "Total_Events": int(per_repo[full]["events"]),
+            "Last_Active_At": per_repo[full]["last"],
+        }
+        for full in contributed
+    ]
+    return summary, details
+
+
+def fetch_team_activity(
+    valid_usernames: Iterable[str],
+    token: str | None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Aggregate team (external-repo) activity per account from public events.
+
+    Returns (per-account summary frame, per-account-per-repo detail frame,
+    accounts whose events fetch failed). Failures mark that account's team
+    data unavailable rather than silently reporting zero activity.
+    """
+    summaries: list[dict] = []
+    details: list[dict] = []
+    unavailable_users: list[str] = []
+    usernames = list(pd.Series(list(valid_usernames)).dropna().unique())
+    total_users = len(usernames)
+    throttled = False
+
+    for index, username in enumerate(usernames, start=1):
+        if throttled:
+            unavailable_users.append(username)
+            if progress_callback:
+                progress_callback(index, total_users, username)
+            continue
+        try:
+            events, ok = get_user_events(username, token)
+            if not ok:
+                unavailable_users.append(username)
+            else:
+                summary, rows = summarize_team_events(username, events)
+                summaries.append(summary)
+                details.extend(rows)
+        except RateLimitError:
+            unavailable_users.append(username)
+            throttled = True  # stop further event calls in this batch if throttled
+        except Exception:
+            unavailable_users.append(username)
+        finally:
+            if progress_callback:
+                progress_callback(index, total_users, username)
+            time.sleep(0.05)
+
+    return (
+        pd.DataFrame(summaries, columns=TEAM_SUMMARY_COLS),
+        pd.DataFrame(details, columns=TEAM_REPOS_COLS),
+        unavailable_users,
+    )
+
 
 def get_search_contributions(username: str, kind: str, token: str | None) -> tuple[list[dict], bool]:
     """Collect a user's pull requests or issues via the GitHub Search API.
@@ -765,6 +1011,66 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+DASHBOARD_TEAM_COLS = [
+    "Team_Commits",
+    "Team_Push_Events",
+    "Team_PR_Events",
+    "Team_Total_Events",
+    "Team_Commits_30d",
+    "Team_Total_Events_30d",
+    "Team_Active_Dates",
+    "Team_Active_Repos",
+    "Contributed_Repos_Count",
+    "Contributed_Repos",
+    "Team_Last_Active_At",
+    "Team_Activity_Fetch_Status",
+]
+
+_EMPTY_DASHBOARD_COLS = [
+    STUDENT_ID_COL,
+    "Student Name",
+    "Division",
+    "Batch",
+    "Academic_Year",
+    "Semester",
+    "GitHub_Username",
+    "Submitted_GitHub_Username",
+    "Public_Repos",
+    "Repository_Count",
+    "Active_Repositories",
+    "Repo_Fetch_Status",
+    "Pull_Requests",
+    "Open_PRs",
+    "Closed_PRs",
+    "Issues_Opened",
+    "Open_Issues",
+    "External_PRs",
+    "Contrib_Fetch_Status",
+    "Team_Commits",
+    "Team_Push_Events",
+    "Team_PR_Events",
+    "Team_Total_Events",
+    "Contributed_Repos_Count",
+    "Contributed_Repos",
+    "Team_Last_Active_At",
+    "Team_Activity_Fetch_Status",
+    "Followers",
+    "Following",
+    "Account_Age_Years",
+    "Repos_Per_Account_Year",
+    "Followers_Per_Account_Year",
+    "Following_Per_Account_Year",
+    "Username_Changed",
+    "Primary_Language",
+    "Avatar_URL",
+    "Profile_URL",
+    "LinkedIn_Username",
+    "LinkedIn_URL",
+    "HackerRank_Username",
+    "HackerRank_URL",
+]
+
+
 def build_dashboard_df(
     df: pd.DataFrame,
     github_stats: pd.DataFrame,
@@ -772,49 +1078,18 @@ def build_dashboard_df(
     unavailable_users: Iterable[str] = (),
     contributions_df: pd.DataFrame | None = None,
     contrib_unavailable_users: Iterable[str] = (),
+    team_summary_df: pd.DataFrame | None = None,
+    team_unavailable_users: Iterable[str] = (),
 ) -> pd.DataFrame:
     unavailable_set = {str(user).strip().lower() for user in unavailable_users}
     contrib_unavailable_set = {str(user).strip().lower() for user in contrib_unavailable_users}
+    team_unavailable_set = {str(user).strip().lower() for user in team_unavailable_users}
     if contributions_df is None or contributions_df.empty:
         contributions_df = pd.DataFrame(columns=["Username"])
+    if team_summary_df is None or team_summary_df.empty:
+        team_summary_df = pd.DataFrame(columns=["Username"])
     if github_stats.empty:
-        return pd.DataFrame(
-            columns=[
-                STUDENT_ID_COL,
-                "Student Name",
-                "Division",
-                "Batch",
-                "Academic_Year",
-                "Semester",
-                "GitHub_Username",
-                "Submitted_GitHub_Username",
-                "Public_Repos",
-                "Repository_Count",
-                "Active_Repositories",
-                "Repo_Fetch_Status",
-                "Pull_Requests",
-                "Open_PRs",
-                "Closed_PRs",
-                "Issues_Opened",
-                "Open_Issues",
-                "External_PRs",
-                "Contrib_Fetch_Status",
-                "Followers",
-                "Following",
-                "Account_Age_Years",
-                "Repos_Per_Account_Year",
-                "Followers_Per_Account_Year",
-                "Following_Per_Account_Year",
-                "Username_Changed",
-                "Primary_Language",
-                "Avatar_URL",
-                "Profile_URL",
-                "LinkedIn_Username",
-                "LinkedIn_URL",
-                "HackerRank_Username",
-                "HackerRank_URL",
-            ]
-        )
+        return pd.DataFrame(columns=list(_EMPTY_DASHBOARD_COLS))
 
     if repo_df.empty:
         repo_count = pd.DataFrame(columns=["Username", "Repository_Count"])
@@ -855,6 +1130,18 @@ def build_dashboard_df(
         how="left",
     )
     dashboard_df = dashboard_df.drop(columns=["_Contrib_User"], errors="ignore")
+
+    # Team activity (group-project fix): merge external-repo event summaries so
+    # members who push daily to a leader-owned repo get credit. Same rename
+    # trick as contributions to avoid the "Username" collision.
+    team_merge = team_summary_df.rename(columns={"Username": "_Team_User"})
+    dashboard_df = dashboard_df.merge(
+        team_merge,
+        left_on="GitHub_Username",
+        right_on="_Team_User",
+        how="left",
+    )
+    dashboard_df = dashboard_df.drop(columns=["_Team_User"], errors="ignore")
 
     _wanted_info = [
         STUDENT_ID_COL,
@@ -904,6 +1191,19 @@ def build_dashboard_df(
         "Unavailable" if str(name).strip().lower() in contrib_unavailable_set else "Loaded"
         for name in dashboard_df["GitHub_Username"]
     ]
+    for column in ("Team_Commits", "Team_Push_Events", "Team_PR_Events", "Team_Total_Events", "Contributed_Repos_Count"):
+        if column not in dashboard_df.columns:
+            dashboard_df[column] = 0
+        dashboard_df[column] = dashboard_df[column].fillna(0).astype(int)
+    for column, default in (("Contributed_Repos", ""), ("Team_Last_Active_At", "")):
+        if column not in dashboard_df.columns:
+            dashboard_df[column] = default
+        else:
+            dashboard_df[column] = dashboard_df[column].fillna(default)
+    dashboard_df["Team_Activity_Fetch_Status"] = [
+        "Unavailable" if str(name).strip().lower() in team_unavailable_set else "Loaded"
+        for name in dashboard_df["GitHub_Username"]
+    ]
 
     for _fill_col, _fill_val in (
         ("LinkedIn_Username", None),
@@ -942,6 +1242,14 @@ def build_dashboard_df(
             "Open_Issues",
             "External_PRs",
             "Contrib_Fetch_Status",
+            "Team_Commits",
+            "Team_Push_Events",
+            "Team_PR_Events",
+            "Team_Total_Events",
+            "Contributed_Repos_Count",
+            "Contributed_Repos",
+            "Team_Last_Active_At",
+            "Team_Activity_Fetch_Status",
             "Followers",
             "Following",
             "Account_Age_Years",

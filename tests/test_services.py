@@ -50,10 +50,11 @@ def roster_rows() -> list[dict]:
 
 
 class FakeGitHub:
-    def __init__(self, users, repos, contributions=None):
+    def __init__(self, users, repos, contributions=None, events=None):
         self.users = users
         self.repos = repos
         self.contributions = contributions or {}
+        self.events = events or {}
         self.calls = []
 
     def __call__(self, url, token, timeout=None):
@@ -63,6 +64,10 @@ class FakeGitHub:
             prs, issues = self.contributions.get(username, ([], []))
             items = prs if "type%3Apr" in url else issues
             return 200, {}, {"items": items}
+        if "/events/public" in url:
+            after_base = url[len(GITHUB_API_BASE):]
+            username = after_base.split("/")[2]
+            return 200, {}, list(self.events.get(username, []))
         after_base = url[len(GITHUB_API_BASE):]
         if after_base.startswith("/users/") and "/repos" not in after_base:
             username = after_base.split("/")[2]
@@ -457,6 +462,14 @@ class TestDashboard:
             "Open_Issues",
             "External_PRs",
             "Contrib_Fetch_Status",
+            "Team_Commits",
+            "Team_Push_Events",
+            "Team_PR_Events",
+            "Team_Total_Events",
+            "Contributed_Repos_Count",
+            "Contributed_Repos",
+            "Team_Last_Active_At",
+            "Team_Activity_Fetch_Status",
             "Followers",
             "Following",
             "Account_Age_Years",

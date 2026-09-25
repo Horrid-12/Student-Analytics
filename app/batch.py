@@ -1,11 +1,12 @@
 """Batched analysis worker (Bridge 3.5).
 
 Runs the shared pipeline stages (services.validate_users → build_github_stats →
-fetch_repository_data → fetch_contribution_data → build_dashboard_df + issue
-builders) over already-prepared roster records (the JSON rows the 3.4 upload
-stored behind a roster_id). No logic is duplicated here — this module composes
-the frozen ``services.*`` functions, and the legacy-mode parity test pins its
-output against the frozen ``run_analysis`` on identical inputs.
+fetch_repository_data → fetch_contribution_data → fetch_team_activity →
+build_dashboard_df + issue builders) over already-prepared roster records (the
+JSON rows the 3.4 upload stored behind a roster_id). No logic is duplicated
+here — this module composes the frozen ``services.*`` functions, and the
+legacy-mode parity test pins its output against the frozen ``run_analysis``
+on identical inputs.
 
 The run outcome is derived from ``views.run_outcome`` — the single status
 source in the port (the legacy ``determine_analysis_status`` helper was removed
@@ -35,12 +36,14 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         return {
             "students": [],
             "repos": [],
+            "team_repos": [],
             "issues": [],
             "valid_users": 0,
             "invalid_users": 0,
             "error_users": 0,
             "repo_unavailable_users": [],
             "contrib_unavailable_users": [],
+            "team_unavailable_users": [],
             "status": "Complete",
             "analyzed": 0,
         }
@@ -59,6 +62,7 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
 
     repo_df, repo_unavailable = services.fetch_repository_data(valid_for_repos, token)
     contributions_df, contrib_unavailable = services.fetch_contribution_data(valid_for_repos, token)
+    team_summary_df, team_repos_df, team_unavailable = services.fetch_team_activity(valid_for_repos, token)
 
     dashboard_df = services.build_dashboard_df(
         df,
@@ -67,6 +71,8 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
         repo_unavailable,
         contributions_df,
         contrib_unavailable,
+        team_summary_df,
+        team_unavailable,
     )
 
     issues = services.build_invalid_issues(df, invalid_users, error_users)
@@ -94,12 +100,14 @@ def analyze_records(records: list[dict], token: str | None = None) -> dict:
     return {
         "students": _json_rows(dashboard_df),
         "repos": _json_rows(repo_df),
+        "team_repos": _json_rows(team_repos_df),
         "issues": _json_rows(issues),
         "valid_users": len(valid_users),
         "invalid_users": len(invalid_users),
         "error_users": len(error_users),
         "repo_unavailable_users": list(repo_unavailable),
         "contrib_unavailable_users": list(contrib_unavailable),
+        "team_unavailable_users": list(team_unavailable),
         "status": views.run_outcome({"valid": len(valid_users), "errors": len(error_users)}),
         "analyzed": len(records),
         "student_outcomes": outcomes,

@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS run_summary (
 
 -- 5. Dashboard results (one row per student per roster).
 --    Stores the full 29-column analysis_results output (+ 4 Sep-2026 profile
---    columns: LinkedIn/HackerRank handles + URLs for the Students tab).
+--    columns: LinkedIn/HackerRank handles + URLs for the Students tab, + 8
+--    team-activity columns for group-project contributions).
 CREATE TABLE IF NOT EXISTS analysis_results (
     id                          SERIAL PRIMARY KEY,
     roster_id                   UUID NOT NULL REFERENCES rosters(id) ON DELETE CASCADE,
@@ -86,6 +87,14 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     open_issues                 INTEGER,
     external_prs                INTEGER,
     contrib_fetch_status        TEXT,
+    team_commits                INTEGER NOT NULL DEFAULT 0,
+    team_push_events            INTEGER NOT NULL DEFAULT 0,
+    team_pr_events              INTEGER NOT NULL DEFAULT 0,
+    team_total_events           INTEGER NOT NULL DEFAULT 0,
+    contributed_repos_count     INTEGER NOT NULL DEFAULT 0,
+    contributed_repos           TEXT NOT NULL DEFAULT '',
+    team_last_active_at         TEXT NOT NULL DEFAULT '',
+    team_activity_fetch_status  TEXT NOT NULL DEFAULT 'Loaded',
     followers                   INTEGER,
     following                   INTEGER,
     account_age_years           REAL,
@@ -108,6 +117,14 @@ ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS linkedin_username TEXT;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS hackerrank_username TEXT;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS hackerrank_url TEXT;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_commits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_push_events INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_pr_events INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_total_events INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos TEXT NOT NULL DEFAULT '';
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_last_active_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_activity_fetch_status TEXT NOT NULL DEFAULT 'Loaded';
 
 -- 6. Repository inventory (per-roster snapshot; pruned by retention helper).
 CREATE TABLE IF NOT EXISTS roster_repositories (
@@ -127,6 +144,22 @@ CREATE TABLE IF NOT EXISTS roster_repositories (
     repository_quality_score    INTEGER,
     quality_band                TEXT,
     UNIQUE (roster_id, username, repository_url)
+);
+
+-- 6b. Team-contributed repos (per-roster snapshot of external-repo activity
+--     derived from the public events API — the group-project fix).
+CREATE TABLE IF NOT EXISTS roster_team_repos (
+    id              SERIAL PRIMARY KEY,
+    roster_id       UUID NOT NULL REFERENCES rosters(id) ON DELETE CASCADE,
+    username        TEXT NOT NULL,
+    team_repo       TEXT NOT NULL,
+    team_repo_url   TEXT NOT NULL DEFAULT '',
+    commits         INTEGER NOT NULL DEFAULT 0,
+    push_events     INTEGER NOT NULL DEFAULT 0,
+    pr_events       INTEGER NOT NULL DEFAULT 0,
+    total_events    INTEGER NOT NULL DEFAULT 0,
+    last_active_at  TEXT NOT NULL DEFAULT '',
+    UNIQUE (roster_id, username, team_repo_url)
 );
 
 -- 7. Issues (per-roster).
@@ -210,6 +243,8 @@ CREATE INDEX IF NOT EXISTS idx_students_roster        ON students (roster_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_roster ON analysis_results (roster_id);
 CREATE INDEX IF NOT EXISTS idx_roster_repos_roster     ON roster_repositories (roster_id);
 CREATE INDEX IF NOT EXISTS idx_roster_repos_user       ON roster_repositories (username);
+CREATE INDEX IF NOT EXISTS idx_team_repos_roster       ON roster_team_repos (roster_id);
+CREATE INDEX IF NOT EXISTS idx_team_repos_user         ON roster_team_repos (username);
 CREATE INDEX IF NOT EXISTS idx_roster_issues_roster    ON roster_issues (roster_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_timestamp ON analysis_runs (run_timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type);

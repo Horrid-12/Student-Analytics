@@ -63,10 +63,11 @@ def roster_rows() -> list[dict]:
 class FakeGitHub:
     """Same contract as the characterization suite's fake (test_services.py)."""
 
-    def __init__(self, users, repos, contributions=None):
+    def __init__(self, users, repos, contributions=None, events=None):
         self.users = users
         self.repos = repos
         self.contributions = contributions or {}
+        self.events = events or {}
 
     def __call__(self, url, token, timeout=None):
         from services import GITHUB_API_BASE
@@ -76,6 +77,10 @@ class FakeGitHub:
             prs, issues = self.contributions.get(username, ([], []))
             items = prs if "type%3Apr" in url else issues
             return 200, {}, {"items": items}
+        if "/events/public" in url:
+            after_base = url[len(GITHUB_API_BASE):]
+            username = after_base.split("/")[2]
+            return 200, {}, list(self.events.get(username, []))
         after_base = url[len(GITHUB_API_BASE):]
         if after_base.startswith("/users/") and "/repos" not in after_base:
             username = after_base.split("/")[2]

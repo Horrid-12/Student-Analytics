@@ -281,12 +281,14 @@ class RosterStore:
         state = {
             "students": [],
             "repos": [],
+            "team_repos": [],
             "issues": [],
             "valid": 0,
             "invalid": 0,
             "errors": 0,
             "repo_unavailable": [],
             "contrib_unavailable": [],
+            "team_unavailable": [],
             "total": record_count,
             "done": 0,
             "status": "running",
@@ -360,6 +362,14 @@ class RosterStore:
                 ),
             )
             append_unique(
+                "team_repos",
+                partial.get("team_repos"),
+                lambda row: (
+                    str(row.get("Username") or "").lower(),
+                    str(row.get("Team_Repo_URL") or row.get("Team_Repo") or ""),
+                ),
+            )
+            append_unique(
                 "issues",
                 partial.get("issues"),
                 lambda row: json.dumps(row, sort_keys=True, default=str),
@@ -402,6 +412,10 @@ class RosterStore:
             for user in partial.get("contrib_unavailable_users") or []:
                 if str(user).lower() not in unavailable_contrib:
                     state.setdefault("contrib_unavailable", []).append(user)
+            unavailable_team = [str(user).lower() for user in state.get("team_unavailable") or []]
+            for user in partial.get("team_unavailable_users") or []:
+                if str(user).lower() not in unavailable_team:
+                    state.setdefault("team_unavailable", []).append(user)
 
             if requested_keys:
                 state.setdefault("processed_keys", []).extend(new_keys)
