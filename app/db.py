@@ -251,14 +251,16 @@ def upsert_batch_results(
                             "public_repos,repository_count,active_repositories,repo_fetch_status,"
                             "pull_requests,open_prs,closed_prs,issues_opened,open_issues,external_prs,"
                             "contrib_fetch_status,team_commits,team_push_events,team_pr_events,"
-                            "team_total_events,contributed_repos_count,contributed_repos,"
+                            "team_total_events,team_commits_30d,team_total_events_30d,"
+                            "team_active_dates,team_active_repos,"
+                            "contributed_repos_count,contributed_repos,"
                             "team_last_active_at,team_activity_fetch_status,"
                             "followers,following,account_age_years,"
                             "repos_per_account_year,followers_per_account_year,following_per_account_year,"
                             "primary_language,avatar_url,profile_url,"
                             "linkedin_username,linkedin_url,hackerrank_username,hackerrank_url,outcome) "
                             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id, sid, s.get("Student Name"), s.get("Division"), s.get("Batch"),
                                 s.get("Academic_Year"), s.get("Semester"), s.get("GitHub_Username"),
@@ -278,6 +280,10 @@ def upsert_batch_results(
                                 int(s.get("Team_Push_Events") or 0),
                                 int(s.get("Team_PR_Events") or 0),
                                 int(s.get("Team_Total_Events") or 0),
+                                int(s.get("Team_Commits_30d") or 0),
+                                int(s.get("Team_Total_Events_30d") or 0),
+                                s.get("Team_Active_Dates") or "",
+                                int(s.get("Team_Active_Repos") or 0),
                                 int(s.get("Contributed_Repos_Count") or 0),
                                 s.get("Contributed_Repos") or "",
                                 s.get("Team_Last_Active_At") or "",
@@ -383,11 +389,20 @@ def upsert_batch_results(
                         pass  # pre-migration DB without the table — repos still saved
                 for r in batch_team_repos:
                     try:
+                        try:
+                            stars = int(r.get("Stars") or 0)
+                        except (TypeError, ValueError):
+                            stars = 0
+                        try:
+                            forks = int(r.get("Forks") or 0)
+                        except (TypeError, ValueError):
+                            forks = 0
                         c.execute(
                             "INSERT INTO roster_team_repos "
                             "(roster_id,username,team_repo,team_repo_url,commits,"
-                            "push_events,pr_events,total_events,last_active_at) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "push_events,pr_events,total_events,last_active_at,"
+                            "language,stars,forks,description) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -398,10 +413,33 @@ def upsert_batch_results(
                                 int(r.get("PR_Events") or 0),
                                 int(r.get("Total_Events") or 0),
                                 r.get("Last_Active_At") or "",
+                                r.get("Language"),
+                                stars,
+                                forks,
+                                r.get("Description"),
                             ),
                         )
                     except Exception:
-                        break  # pre-migration DB — skip remaining team rows
+                        try:
+                            c.execute(
+                                "INSERT INTO roster_team_repos "
+                                "(roster_id,username,team_repo,team_repo_url,commits,"
+                                "push_events,pr_events,total_events,last_active_at) "
+                                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                                (
+                                    roster_id,
+                                    r.get("Username", ""),
+                                    r.get("Team_Repo", ""),
+                                    r.get("Team_Repo_URL") or "",
+                                    int(r.get("Commits") or 0),
+                                    int(r.get("Push_Events") or 0),
+                                    int(r.get("PR_Events") or 0),
+                                    int(r.get("Total_Events") or 0),
+                                    r.get("Last_Active_At") or "",
+                                ),
+                            )
+                        except Exception:
+                            break  # pre-migration DB — skip remaining team rows
 
                 # ── issues: delete for analyzed students, re-insert ──
                 if analyzed_keys:
@@ -518,6 +556,10 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
                     'external_prs AS "External_PRs", contrib_fetch_status AS "Contrib_Fetch_Status", '
                     'team_commits AS "Team_Commits", team_push_events AS "Team_Push_Events", '
                     'team_pr_events AS "Team_PR_Events", team_total_events AS "Team_Total_Events", '
+                    'team_commits_30d AS "Team_Commits_30d", '
+                    'team_total_events_30d AS "Team_Total_Events_30d", '
+                    'team_active_dates AS "Team_Active_Dates", '
+                    'team_active_repos AS "Team_Active_Repos", '
                     'contributed_repos_count AS "Contributed_Repos_Count", '
                     'contributed_repos AS "Contributed_Repos", '
                     'team_last_active_at AS "Team_Last_Active_At", '
@@ -593,14 +635,26 @@ def get_team_repos_data(roster_id: str) -> list[dict]:
         with database.conn() as c:
             if c is None:
                 return []
-            cur = c.execute(
-                'SELECT username AS "Username", team_repo AS "Team_Repo", '
-                'team_repo_url AS "Team_Repo_URL", commits AS "Commits", '
-                'push_events AS "Push_Events", pr_events AS "PR_Events", '
-                'total_events AS "Total_Events", last_active_at AS "Last_Active_At" '
-                "FROM roster_team_repos WHERE roster_id = %s ORDER BY id",
-                (roster_id,),
-            )
+            try:
+                cur = c.execute(
+                    'SELECT username AS "Username", team_repo AS "Team_Repo", '
+                    'team_repo_url AS "Team_Repo_URL", commits AS "Commits", '
+                    'push_events AS "Push_Events", pr_events AS "PR_Events", '
+                    'total_events AS "Total_Events", last_active_at AS "Last_Active_At", '
+                    'language AS "Language", stars AS "Stars", forks AS "Forks", '
+                    'description AS "Description" '
+                    "FROM roster_team_repos WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
+            except Exception:
+                cur = c.execute(
+                    'SELECT username AS "Username", team_repo AS "Team_Repo", '
+                    'team_repo_url AS "Team_Repo_URL", commits AS "Commits", '
+                    'push_events AS "Push_Events", pr_events AS "PR_Events", '
+                    'total_events AS "Total_Events", last_active_at AS "Last_Active_At" '
+                    "FROM roster_team_repos WHERE roster_id = %s ORDER BY id",
+                    (roster_id,),
+                )
             return [dict(r) for r in cur.fetchall()]
     except Exception as exc:
         logger.warning("get_team_repos_data failed: %s", exc)

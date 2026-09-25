@@ -50,11 +50,16 @@ def roster_rows() -> list[dict]:
 
 
 class FakeGitHub:
-    def __init__(self, users, repos, contributions=None, events=None):
+    def __init__(self, users, repos, contributions=None, events=None, repo_commits=None, repo_meta=None):
         self.users = users
         self.repos = repos
         self.contributions = contributions or {}
         self.events = events or {}
+        # (full_name, username.lower()) -> list of commit dicts; absent means
+        # the commits API fails (404) so event-derived counts are preserved.
+        self.repo_commits = repo_commits or {}
+        # full_name -> repo metadata dict; absent means 404 (Unknown/0 fallback).
+        self.repo_meta = repo_meta or {}
         self.calls = []
 
     def __call__(self, url, token, timeout=None):
@@ -68,6 +73,29 @@ class FakeGitHub:
             after_base = url[len(GITHUB_API_BASE):]
             username = after_base.split("/")[2]
             return 200, {}, list(self.events.get(username, []))
+        if "/commits?" in url:
+            # commits API: /repos/{owner}/{repo}/commits?author={u}...
+            try:
+                after = url.split("/repos/")[1]
+                full = after.split("/commits")[0]
+                author = url.split("author=")[1].split("&")[0]
+            except Exception:
+                return 404, {}, None
+            key = (full, author.lower())
+            if key not in self.repo_commits:
+                return 404, {}, None
+            return 200, {}, list(self.repo_commits[key])
+        if "/repos/" in url and "/commits" not in url:
+            # repo metadata: GET /repos/{owner}/{repo}
+            # (owned-repo listings use /users/{u}/repos?... — no "/repos/").
+            try:
+                full = url.split("/repos/")[1].split("?")[0].strip("/")
+                if full and "/" in full:
+                    if full in self.repo_meta:
+                        return 200, {}, dict(self.repo_meta[full])
+                    return 404, {}, None
+            except Exception:
+                pass
         after_base = url[len(GITHUB_API_BASE):]
         if after_base.startswith("/users/") and "/repos" not in after_base:
             username = after_base.split("/")[2]
@@ -357,6 +385,164 @@ class TestSummarizeContributions:
         assert summary["External_PRs"] == 1
 
 
+class TestTeamActivity:
+    def test_star_does_not_create_contributed_repo(self):
+        events = [
+            {"type": "WatchEvent", "repo": {"name": "ojas50/SKILLBRIDGE"}, "created_at": "2026-09-25T02:06:54Z", "payload": {"action": "started"}},
+            {"type": "ForkEvent", "repo": {"name": "someone/else"}, "created_at": "2026-09-25T02:00:00Z", "payload": {}},
+            {"type": "CreateEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+            {"type": "DeleteEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+        ]
+        summary, rows = services.summarize_team_events("member", events)
+        assert summary["Contributed_Repos_Count"] == 0
+        assert summary["Contributed_Repos"] == ""
+        assert rows == []
+        assert summary["Team_Total_Events"] == 0
+
+    def test_push_without_payload_size_counts_push_but_zero_commits(self):
+        # Live Sep-2026 shape: bare push payload, no size/commits.
+        events = [
+            {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T15:51:14Z", "payload": {"push_id": 1}},
+        ]
+        summary, rows = services.summarize_team_events("member", events)
+        assert summary["Contributed_Repos_Count"] == 1
+        assert summary["Contributed_Repos"] == "leader/proj"
+        assert summary["Team_Push_Events"] == 1
+        assert summary["Team_Commits"] == 0  # reconciled later via commits API
+        assert rows[0]["Push_Events"] == 1
+
+    def test_own_repo_events_ignored(self):
+        events = [
+            {"type": "PushEvent", "repo": {"name": "member/own"}, "created_at": "2026-09-24T00:00:00Z", "payload": {"size": 5}},
+        ]
+        summary, rows = services.summarize_team_events("member", events)
+        assert summary["Contributed_Repos_Count"] == 0
+        assert summary["Team_Commits"] == 0
+
+    def test_pr_without_push_does_not_list_repo(self):
+        events = [
+            {"type": "PullRequestEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+            {"type": "IssuesEvent", "repo": {"name": "leader/other"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+            {"type": "IssueCommentEvent", "repo": {"name": "leader/other"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+        ]
+        summary, rows = services.summarize_team_events("member", events)
+        assert summary["Contributed_Repos_Count"] == 0
+        assert summary["Contributed_Repos"] == ""
+        assert rows == []
+        # ... but the PR/issue activity itself is still counted.
+        assert summary["Team_PR_Events"] == 1
+        assert summary["Team_Total_Events"] == 3
+
+    def test_push_plus_pr_lists_repo_once(self):
+        events = [
+            {"type": "PullRequestEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
+            {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T01:00:00Z", "payload": {"size": 2}},
+        ]
+        summary, rows = services.summarize_team_events("member", events)
+        assert summary["Contributed_Repos_Count"] == 1
+        assert summary["Contributed_Repos"] == "leader/proj"
+        assert len(rows) == 1
+        assert rows[0]["Push_Events"] == 1
+        assert rows[0]["PR_Events"] == 1
+
+    def test_reconcile_overwrites_commits_from_api(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+        now = pd.Timestamp.now(tz="UTC")
+        recent = now.isoformat()
+        old = (now - pd.Timedelta(days=60)).isoformat()
+
+        def fake(url, token, timeout=None):
+            if "/events/public" in url:
+                return 200, {}, [
+                    {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": recent, "payload": {}},
+                ]
+            if "/commits?" in url:
+                return 200, {}, [
+                    {"commit": {"author": {"date": recent}}},
+                    {"commit": {"author": {"date": recent}}},
+                    {"commit": {"author": {"date": old}}},
+                ]
+            raise AssertionError(url)
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        summary_df, repos_df, unavailable = services.fetch_team_activity(["member"], "t")
+        assert unavailable == []
+        row = summary_df.iloc[0]
+        assert int(row["Team_Commits"]) == 3
+        assert int(row["Team_Commits_30d"]) == 2
+        assert row["Contributed_Repos"] == "leader/proj"
+        assert int(repos_df.iloc[0]["Commits"]) == 3
+
+    def test_reconcile_keeps_event_counts_when_commits_api_fails(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+
+        def fake(url, token, timeout=None):
+            if "/events/public" in url:
+                return 200, {}, [
+                    {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {"size": 4}},
+                ]
+            if "/commits?" in url:
+                return 404, {}, None
+            if "/repos/" in url and "/commits" not in url:
+                return 404, {}, None
+            raise AssertionError(url)
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        summary_df, _, unavailable = services.fetch_team_activity(["member"], "t")
+        assert unavailable == []
+        assert int(summary_df.iloc[0]["Team_Commits"]) == 4
+
+    def test_metadata_enriches_language_and_stars(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+        now = pd.Timestamp.now(tz="UTC").isoformat()
+
+        def fake(url, token, timeout=None):
+            if "/events/public" in url:
+                return 200, {}, [
+                    {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": now, "payload": {}},
+                ]
+            if "/commits?" in url:
+                return 200, {}, [{"commit": {"author": {"date": now}}}]
+            if "/repos/" in url and "/commits" not in url:
+                return 200, {}, {
+                    "language": "Python",
+                    "stargazers_count": 12,
+                    "forks_count": 3,
+                    "description": "Team project",
+                    "html_url": "https://github.com/leader/proj",
+                }
+            raise AssertionError(url)
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        _, repos_df, _ = services.fetch_team_activity(["member"], "t")
+        row = repos_df.iloc[0]
+        assert row["Language"] == "Python"
+        assert int(row["Stars"]) == 12
+        assert int(row["Forks"]) == 3
+        assert row["Description"] == "Team project"
+
+    def test_metadata_failure_keeps_unknown_fallback(self, monkeypatch):
+        monkeypatch.setattr(services.time, "sleep", lambda _: None)
+        now = pd.Timestamp.now(tz="UTC").isoformat()
+
+        def fake(url, token, timeout=None):
+            if "/events/public" in url:
+                return 200, {}, [
+                    {"type": "PushEvent", "repo": {"name": "leader/proj"}, "created_at": now, "payload": {}},
+                ]
+            if "/commits?" in url:
+                return 404, {}, None
+            if "/repos/" in url and "/commits" not in url:
+                return 404, {}, None
+            raise AssertionError(url)
+
+        monkeypatch.setattr(services, "_cached_get_json", fake)
+        _, repos_df, _ = services.fetch_team_activity(["member"], "t")
+        row = repos_df.iloc[0]
+        assert row["Language"] is None
+        assert int(row["Stars"]) == 0
+
+
 class TestQualityMetrics:
     def test_bands(self):
         repo_df = pd.DataFrame(
@@ -466,6 +652,10 @@ class TestDashboard:
             "Team_Push_Events",
             "Team_PR_Events",
             "Team_Total_Events",
+            "Team_Commits_30d",
+            "Team_Total_Events_30d",
+            "Team_Active_Dates",
+            "Team_Active_Repos",
             "Contributed_Repos_Count",
             "Contributed_Repos",
             "Team_Last_Active_At",

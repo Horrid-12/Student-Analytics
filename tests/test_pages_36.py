@@ -544,7 +544,9 @@ class TestPageRenderingWithData:
     def test_leaderboards_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/leaderboards?roster={roster_id}").text
-        assert "Most Public Repositories" in body
+        assert "Most Repositories (owned + contributed)" in body
+        assert "Most Active Repos (6m, incl. team)" in body
+        assert "Most Team Commits" in body
         assert "Most-Followed GitHub Profiles" in body
         assert "Top Languages by Repositories" in body
         assert "Alice Example" in body

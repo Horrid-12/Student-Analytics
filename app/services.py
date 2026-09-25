@@ -568,6 +568,79 @@ def _team_repo_url(full_name: str) -> str:
     return f"https://github.com/{full_name}"
 
 
+#: Only these public-event types prove someone WORKED on a repo. Stars
+#: (WatchEvent), forks (ForkEvent) and branch create/delete noise must never
+#: create a "Contributed" row — starring ojas50/SKILLBRIDGE is not a
+#: contribution.
+TEAM_CONTRIBUTION_TYPES = {
+    "PushEvent",
+    "PullRequestEvent",
+    "PullRequestReviewEvent",
+    "IssuesEvent",
+    "IssueCommentEvent",
+    "CommitCommentEvent",
+}
+
+COMMITS_PER_PAGE = 100
+COMMITS_MAX_PAGES = 3  # 300-commit cap per repo — plenty for students
+
+
+def get_repo_author_commits(
+    full_name: str, username: str, token: str | None
+) -> tuple[list[dict], bool]:
+    """List commits by ``username`` in ``owner/repo`` (newest first).
+
+    Used to count team commits accurately: PushEvent payloads from the events
+    API often omit ``size``/``commits`` (live data shows bare push_id/head/
+    before), so summing payload sizes yields 0. The commits API is the source
+    of truth and matches the GitHub contribution graph.
+    """
+    commits: list[dict] = []
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            f"{GITHUB_API_BASE}/repos/{full_name}/commits?author={username}&per_page={COMMITS_PER_PAGE}&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, list):
+            return [], False
+        commits.extend(payload)
+        if len(payload) < COMMITS_PER_PAGE:
+            break
+        if page >= COMMITS_MAX_PAGES:
+            break
+        page += 1
+        time.sleep(0.05)
+    return commits, True
+
+
+def _commit_date(commit: dict) -> str:
+    try:
+        return str(((commit.get("commit") or {}).get("author") or {}).get("date") or "")
+    except AttributeError:
+        return ""
+
+
+def get_team_repo_metadata(full_name: str, token: str | None) -> tuple[dict, bool]:
+    """Fetch a team repo's metadata (language/stars/forks/description).
+
+    The events API carries no repo metadata, so contributed rows rendered as
+    Unknown / 0 stars. One cached ``GET /repos/{owner}/{repo}`` per team repo
+    fixes the display and Top Languages.
+    """
+    status_code, response_headers, payload = _cached_get_json(
+        f"{GITHUB_API_BASE}/repos/{full_name}",
+        token,
+        timeout=15,
+    )
+    check_rate_limit_parts(status_code, response_headers)
+    if status_code != 200 or not isinstance(payload, dict):
+        return {}, False
+    return payload, True
+
+
 TEAM_SUMMARY_COLS = [
     "Username",
     "Team_Commits",
@@ -592,6 +665,10 @@ TEAM_REPOS_COLS = [
     "PR_Events",
     "Total_Events",
     "Last_Active_At",
+    "Language",
+    "Stars",
+    "Forks",
+    "Description",
 ]
 
 
@@ -623,6 +700,9 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
     for event in events or []:
         if not isinstance(event, dict):
             continue
+        event_type = event.get("type") or ""
+        if event_type not in TEAM_CONTRIBUTION_TYPES:
+            continue  # star/fork/branch noise is not work — never a contribution
         full = _team_repo_name(event)
         if not full or "/" not in full:
             continue
@@ -676,7 +756,9 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
         else:
             if is_recent_30:
                 total_30d += 1
-    contributed = sorted(per_repo.keys())
+    # A repo counts as contributed ONLY with at least one PushEvent — opening
+    # a PR/issue or commenting alone never lists it. Push proves real code.
+    contributed = sorted(full for full, e in per_repo.items() if e["pushes"] > 0)
     # Active contributed repos = last activity within 180 days.
     active_repos = 0
     for full in contributed:
@@ -710,10 +792,98 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
             "PR_Events": int(per_repo[full]["prs"]),
             "Total_Events": int(per_repo[full]["events"]),
             "Last_Active_At": per_repo[full]["last"],
+            "Language": None,
+            "Stars": 0,
+            "Forks": 0,
+            "Description": None,
         }
         for full in contributed
     ]
     return summary, details
+
+
+def _reconcile_team_commits(
+    username: str, summary: dict, rows: list[dict], token: str | None
+) -> tuple[dict, list[dict]]:
+    """Enrich team rows via the API: accurate commit counts + repo metadata.
+
+    PushEvent payloads regularly lack ``size``/``commits`` (live Sep-2026 data
+    shows bare push_id/head/before), so event-derived commits stay 0 while
+    GitHub shows 19. One commits-API listing per contributed repo fixes the
+    count and the 30-day split; one ``GET /repos/{full}`` fixes the Unknown /
+    0-stars display and Top Languages. API failures propagate RateLimitError
+    but otherwise fall back to event values (caller swallows them).
+    """
+    if not rows:
+        return summary, rows
+    try:
+        now = pd.Timestamp.now(tz="UTC")
+        cut30 = now - pd.Timedelta(days=30)
+    except Exception:
+        cut30 = None
+    total = 0
+    total_30d = 0
+    by_repo: dict[str, tuple[int, int]] = {}
+    meta: dict[str, dict] = {}
+    for row in rows:
+        full = str(row.get("Team_Repo") or "").strip()
+        if not full:
+            continue
+        commits, ok = get_repo_author_commits(full, username, token)
+        if not ok:
+            # Keep event-derived fallback for this repo.
+            n = int(row.get("Commits") or 0)
+            total += n
+        else:
+            n_all = len(commits)
+            n_30 = 0
+            if cut30 is not None:
+                for c in commits:
+                    dt = pd.to_datetime(_commit_date(c), utc=True, errors="coerce")
+                    if dt is not None and not pd.isna(dt) and dt >= cut30:
+                        n_30 += 1
+            else:
+                n_30 = n_all
+            by_repo[full] = (n_all, n_30)
+            total += n_all
+            total_30d += n_30
+        try:
+            payload, meta_ok = get_team_repo_metadata(full, token)
+            if meta_ok:
+                meta[full] = payload
+        except RateLimitError:
+            raise
+        except Exception:
+            pass
+    # Only overwrite counts when the API actually returned data for at least
+    # one repo — all-failed keeps the event fallback instead of zeroing work.
+    if by_repo:
+        summary = dict(summary)
+        summary["Team_Commits"] = int(total)
+        summary["Team_Commits_30d"] = int(total_30d)
+    new_rows = []
+    for row in rows:
+        full = str(row.get("Team_Repo") or "").strip()
+        row = dict(row)
+        if full in by_repo:
+            n_all, _n_30 = by_repo[full]
+            row["Commits"] = int(n_all)
+        if full in meta:
+            payload = meta[full]
+            row["Language"] = payload.get("language")
+            try:
+                row["Stars"] = int(payload.get("stargazers_count") or 0)
+            except (TypeError, ValueError):
+                row["Stars"] = 0
+            try:
+                row["Forks"] = int(payload.get("forks_count") or 0)
+            except (TypeError, ValueError):
+                row["Forks"] = 0
+            row["Description"] = payload.get("description")
+            if payload.get("html_url") and not row.get("Team_Repo_URL"):
+                row["Team_Repo_URL"] = payload.get("html_url")
+        new_rows.append(row)
+    return summary, new_rows
 
 
 def fetch_team_activity(
@@ -746,6 +916,15 @@ def fetch_team_activity(
                 unavailable_users.append(username)
             else:
                 summary, rows = summarize_team_events(username, events)
+                # Reconcile commit counts via the commits API: PushEvent
+                # payloads often omit size/commits, yielding 0. Matches the
+                # GitHub contribution graph.
+                try:
+                    summary, rows = _reconcile_team_commits(username, summary, rows, token)
+                except RateLimitError:
+                    raise
+                except Exception:
+                    pass  # keep event-derived counts on commits-API failure
                 summaries.append(summary)
                 details.extend(rows)
         except RateLimitError:
@@ -1050,6 +1229,10 @@ _EMPTY_DASHBOARD_COLS = [
     "Team_Push_Events",
     "Team_PR_Events",
     "Team_Total_Events",
+    "Team_Commits_30d",
+    "Team_Total_Events_30d",
+    "Team_Active_Dates",
+    "Team_Active_Repos",
     "Contributed_Repos_Count",
     "Contributed_Repos",
     "Team_Last_Active_At",
@@ -1191,11 +1374,24 @@ def build_dashboard_df(
         "Unavailable" if str(name).strip().lower() in contrib_unavailable_set else "Loaded"
         for name in dashboard_df["GitHub_Username"]
     ]
-    for column in ("Team_Commits", "Team_Push_Events", "Team_PR_Events", "Team_Total_Events", "Contributed_Repos_Count"):
+    for column in (
+        "Team_Commits",
+        "Team_Push_Events",
+        "Team_PR_Events",
+        "Team_Total_Events",
+        "Team_Commits_30d",
+        "Team_Total_Events_30d",
+        "Team_Active_Repos",
+        "Contributed_Repos_Count",
+    ):
         if column not in dashboard_df.columns:
             dashboard_df[column] = 0
         dashboard_df[column] = dashboard_df[column].fillna(0).astype(int)
-    for column, default in (("Contributed_Repos", ""), ("Team_Last_Active_At", "")):
+    for column, default in (
+        ("Contributed_Repos", ""),
+        ("Team_Last_Active_At", ""),
+        ("Team_Active_Dates", ""),
+    ):
         if column not in dashboard_df.columns:
             dashboard_df[column] = default
         else:
@@ -1246,6 +1442,10 @@ def build_dashboard_df(
             "Team_Push_Events",
             "Team_PR_Events",
             "Team_Total_Events",
+            "Team_Commits_30d",
+            "Team_Total_Events_30d",
+            "Team_Active_Dates",
+            "Team_Active_Repos",
             "Contributed_Repos_Count",
             "Contributed_Repos",
             "Team_Last_Active_At",

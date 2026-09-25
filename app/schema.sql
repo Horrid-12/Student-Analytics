@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS run_summary (
 
 -- 5. Dashboard results (one row per student per roster).
 --    Stores the full 29-column analysis_results output (+ 4 Sep-2026 profile
---    columns: LinkedIn/HackerRank handles + URLs for the Students tab, + 8
+--    columns: LinkedIn/HackerRank handles + URLs for the Students tab, + 12
 --    team-activity columns for group-project contributions).
 CREATE TABLE IF NOT EXISTS analysis_results (
     id                          SERIAL PRIMARY KEY,
@@ -91,6 +91,10 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     team_push_events            INTEGER NOT NULL DEFAULT 0,
     team_pr_events              INTEGER NOT NULL DEFAULT 0,
     team_total_events           INTEGER NOT NULL DEFAULT 0,
+    team_commits_30d            INTEGER NOT NULL DEFAULT 0,
+    team_total_events_30d       INTEGER NOT NULL DEFAULT 0,
+    team_active_dates           TEXT NOT NULL DEFAULT '',
+    team_active_repos           INTEGER NOT NULL DEFAULT 0,
     contributed_repos_count     INTEGER NOT NULL DEFAULT 0,
     contributed_repos           TEXT NOT NULL DEFAULT '',
     team_last_active_at         TEXT NOT NULL DEFAULT '',
@@ -121,6 +125,10 @@ ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_commits INTEGER NOT N
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_push_events INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_pr_events INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_total_events INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_commits_30d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_total_events_30d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_active_dates TEXT NOT NULL DEFAULT '';
+ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_active_repos INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS contributed_repos TEXT NOT NULL DEFAULT '';
 ALTER TABLE analysis_results ADD COLUMN IF NOT EXISTS team_last_active_at TEXT NOT NULL DEFAULT '';
@@ -159,8 +167,16 @@ CREATE TABLE IF NOT EXISTS roster_team_repos (
     pr_events       INTEGER NOT NULL DEFAULT 0,
     total_events    INTEGER NOT NULL DEFAULT 0,
     last_active_at  TEXT NOT NULL DEFAULT '',
+    language        TEXT,
+    stars           INTEGER NOT NULL DEFAULT 0,
+    forks           INTEGER NOT NULL DEFAULT 0,
+    description     TEXT,
     UNIQUE (roster_id, username, team_repo_url)
 );
+ALTER TABLE roster_team_repos ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE roster_team_repos ADD COLUMN IF NOT EXISTS stars INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_team_repos ADD COLUMN IF NOT EXISTS forks INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_team_repos ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- 7. Issues (per-roster).
 CREATE TABLE IF NOT EXISTS roster_issues (

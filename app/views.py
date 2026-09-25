@@ -49,6 +49,10 @@ DASHBOARD_COLS = [
     "Team_Push_Events",
     "Team_PR_Events",
     "Team_Total_Events",
+    "Team_Commits_30d",
+    "Team_Total_Events_30d",
+    "Team_Active_Dates",
+    "Team_Active_Repos",
     "Contributed_Repos_Count",
     "Contributed_Repos",
     "Team_Last_Active_At",
@@ -76,7 +80,139 @@ TEAM_REPOS_COLS = [
     "PR_Events",
     "Total_Events",
     "Last_Active_At",
+    "Language",
+    "Stars",
+    "Forks",
+    "Description",
 ]
+
+
+def _team_int(row, column: str) -> int:
+    """Safe int from a dashboard row; 0 when missing or team fetch failed."""
+    try:
+        value = row.get(column, 0) if isinstance(row, dict) else row[column]
+    except Exception:
+        return 0
+    try:
+        if pd.isna(value):
+            return 0
+    except Exception:
+        pass
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _combined_repos(row) -> int:
+    """Owned repos + contributed team repos — the everywhere total."""
+    get = (lambda c: _team_int(row, c)) if isinstance(row, dict) else (lambda c: _num(row.get(c, 0)))
+    try:
+        return get("Repository_Count") + get("Contributed_Repos_Count")
+    except Exception:
+        return get("Repository_Count")
+
+
+def _combined_active(row) -> int:
+    """Owned active (180d) + active contributed repos — the everywhere total."""
+    get = (lambda c: _team_int(row, c)) if isinstance(row, dict) else (lambda c: _num(row.get(c, 0)))
+    try:
+        return get("Active_Repositories") + get("Team_Active_Repos")
+    except Exception:
+        return get("Active_Repositories")
+
+
+def _team_active_dates_set(row) -> set:
+    """Parse the comma-separated Team_Active_Dates (YYYY-MM-DD) into dates."""
+    try:
+        raw = row.get("Team_Active_Dates", "") if isinstance(row, dict) else row.get("Team_Active_Dates", "")
+    except Exception:
+        return set()
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return set()
+    dates = set()
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            dates.add(pd.to_datetime(part).date())
+        except Exception:
+            continue
+    return dates
+
+
+def _team_repos_as_owned_rows(team_repos: pd.DataFrame, username: str) -> pd.DataFrame:
+    """Map team-contributed repos to the owned-repo row shape for display.
+
+    Uses the fetched repo metadata (language/stars/forks/description) so team
+    rows render like owned rows and count toward Top Languages. Falls back to
+    Unknown / 0 when metadata is missing (old runs, failed fetch).
+    """
+    if team_repos is None or team_repos.empty or not username:
+        return pd.DataFrame(columns=REPO_COLS)
+    try:
+        mine = team_repos[team_repos["Username"] == username].copy()
+    except Exception:
+        return pd.DataFrame(columns=REPO_COLS)
+    if mine.empty:
+        return pd.DataFrame(columns=REPO_COLS)
+    rows = []
+    for _, r in mine.iterrows():
+        full = str(r.get("Team_Repo") or "").strip()
+        short = full.split("/", 1)[-1] if "/" in full else full
+        last = str(r.get("Last_Active_At") or "")
+        try:
+            last_dt = pd.to_datetime(last, utc=True, errors="coerce")
+            active_180 = bool(
+                last_dt is not None
+                and not pd.isna(last_dt)
+                and last_dt >= pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=180)
+            )
+        except Exception:
+            active_180 = False
+        lang = r.get("Language", None)
+        try:
+            if pd.isna(lang) or not str(lang).strip():
+                lang = "Unknown"
+            else:
+                lang = str(lang).strip()
+        except Exception:
+            lang = "Unknown"
+        try:
+            stars = int(float(r.get("Stars") or 0))
+        except (TypeError, ValueError):
+            stars = 0
+        try:
+            forks = int(float(r.get("Forks") or 0))
+        except (TypeError, ValueError):
+            forks = 0
+        desc = r.get("Description", None)
+        try:
+            if desc is None or (isinstance(desc, float) and pd.isna(desc)) or not str(desc).strip():
+                desc = f"Contributed to {full}" if full else "Contributed team repo"
+            else:
+                desc = str(desc)
+        except Exception:
+            desc = f"Contributed to {full}" if full else "Contributed team repo"
+        rows.append(
+            {
+                "Username": username,
+                "Repository": full or short,
+                "Language": lang,
+                "Stars": stars,
+                "Forks": forks,
+                "Description": desc,
+                "License": None,
+                "Created": last,
+                "Updated": last,
+                "Repository_URL": str(r.get("Team_Repo_URL") or ""),
+                "Maintenance_Status": "Active" if active_180 else "Aging",
+                "Repository_Quality_Score": 0,
+                "Quality_Band": "Contributed",
+            }
+        )
+    return pd.DataFrame(rows, columns=REPO_COLS)
 REPO_COLS = [
     "Username",
     "Repository",
@@ -245,8 +381,9 @@ def run_outcome(state: dict | None) -> str:
 # ---------------------------------------------------------------------------
 
 def overview_payload(view) -> dict:
-    students = view["students"]
+    students = _with_combined_metrics(view["students"]) if view.get("students") is not None else view["students"]
     repos = view["repos"]
+    team_repos = view.get("team_repos")
     records = view["records"]
     state = view["state"] or {}
     total = len(records)
@@ -279,9 +416,13 @@ def overview_payload(view) -> dict:
     repo_distribution, followers_distribution = _distributions(students)
 
     heatmap_rows = (
-        students.groupby(["Division", "Batch"], dropna=False)["Repository_Count"].sum().reset_index()
-        if not students.empty
-        else pd.DataFrame()
+        students.groupby(["Division", "Batch"], dropna=False)["Combined_Repos"].sum().reset_index()
+        if not students.empty and "Combined_Repos" in students.columns
+        else (
+            students.groupby(["Division", "Batch"], dropna=False)["Repository_Count"].sum().reset_index()
+            if not students.empty
+            else pd.DataFrame()
+        )
     )
     if not heatmap_rows.empty:
         heatmap_rows["Batch"] = heatmap_rows["Batch"].fillna("None").astype(str)
@@ -289,6 +430,9 @@ def overview_payload(view) -> dict:
 
     prs = int(students["Pull_Requests"].sum()) if not students.empty else 0
     opened_issues = int(students["Issues_Opened"].sum()) if not students.empty else 0
+    team_commits = int(students["Team_Commits"].sum()) if not students.empty and "Team_Commits" in students.columns else 0
+    team_repos_count = int(students["Contributed_Repos_Count"].sum()) if not students.empty and "Contributed_Repos_Count" in students.columns else 0
+    combined_repos_found = int(len(repos) + (len(team_repos) if team_repos is not None and not team_repos.empty else 0))
 
     # ── Raw data for ECharts advanced charts ────────────────────────────────
     # Treemap: account validation categories
@@ -304,15 +448,17 @@ def overview_payload(view) -> dict:
         for _, row in language_counts.iterrows()
     ] if not language_counts.empty else []
 
-    # Sankey: Division × Batch repo counts (reuse heatmap_rows)
+    # Sankey: Division × Batch repo counts (reuse heatmap_rows, combined)
+    _sankey_col = "Combined_Repos" if not heatmap_rows.empty and "Combined_Repos" in heatmap_rows.columns else "Repository_Count"
     sankey_data = [
         {"division": str(row["Division"]), "batch": str(row["Batch"]),
-         "repo_count": int(row["Repository_Count"])}
+         "repo_count": int(row[_sankey_col])}
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
     # Radar: key class metrics (normalised per-axis for balanced shape)
-    _avg_repos = float(students["Repository_Count"].mean()) if not students.empty else 0.0
+    _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
+    _avg_repos = float(students[_repos_col].mean()) if not students.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
     _sr = float(submission_rate)
@@ -338,8 +484,10 @@ def overview_payload(view) -> dict:
         "invalid": invalid,
         "errors": errors,
         "submission_rate": f"{submission_rate:.1f}",
-        "repos_found": len(repos),
-        "avg_repos": f"{students['Repository_Count'].mean():.1f}" if not students.empty else "0.0",
+        "repos_found": combined_repos_found,
+        "team_commits": team_commits,
+        "team_repos_count": team_repos_count,
+        "avg_repos": f"{students[_repos_col].mean():.1f}" if not students.empty else "0.0",
         "avg_followers": f"{students['Followers'].mean():.1f}" if not students.empty else "0.0",
         "most_used_language": most_used_language,
         "total_stars": int(repos["Stars"].fillna(0).sum()) if not repos.empty else 0,
@@ -364,8 +512,8 @@ def overview_payload(view) -> dict:
             f"Loaded Excel - {total} rows",
             "Extracted usernames",
             f"Validated accounts - {valid} valid, {invalid} invalid, {errors} API errors",
-            f"Fetched repositories - {len(repos)} found",
-            f"Collected contributions - {prs} pull request(s), {opened_issues} issue(s)",
+            f"Fetched repositories - {combined_repos_found} found",
+            f"Collected contributions - {prs} pull request(s), {opened_issues} issue(s), {team_commits} team commit(s)",
             "Building analytics...",
             "Complete",
         ],
@@ -381,7 +529,8 @@ def _distributions(students: pd.DataFrame):
     repo_distribution = pd.DataFrame()
     followers_distribution = pd.DataFrame()
     if not students.empty:
-        repo_counts = students["Repository_Count"].value_counts().sort_index().reset_index()
+        dist_col = "Combined_Repos" if "Combined_Repos" in students.columns else "Repository_Count"
+        repo_counts = students[dist_col].value_counts().sort_index().reset_index()
         repo_counts.columns = ["Repository Count", "Students"]
         follower_counts = students["Followers"].value_counts().sort_index().reset_index()
         follower_counts.columns = ["Followers", "Students"]
@@ -414,8 +563,9 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
         return None
     batches = sorted(heatmap_rows["Batch"].astype(str).unique())
     divisions = sorted(heatmap_rows["Division"].astype(str).unique())
+    value_col = "Combined_Repos" if "Combined_Repos" in heatmap_rows.columns else "Repository_Count"
     pivot = heatmap_rows.pivot_table(
-        index="Division", columns="Batch", values="Repository_Count", aggfunc="sum", fill_value=0
+        index="Division", columns="Batch", values=value_col, aggfunc="sum", fill_value=0
     )
     z = [[int(pivot.loc[div].get(b, 0)) for b in batches] for div in divisions]
     return charts.heatmap(batches, divisions, z)
@@ -579,7 +729,7 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
     if selected_id is not None:
         match = students[students[STUDENT_ID_COL].astype(str) == str(selected_id)]
         if not match.empty:
-            profile = students_payload_profile(match.iloc[0], view["repos"])
+            profile = students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
 
     return {
         "total": total,
@@ -616,28 +766,46 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(pairs)
 
 
-def _recent_activity(student_repos: pd.DataFrame) -> tuple[int, int]:
-    """Derive 30-day activity from repo update timestamps (no extra API calls).
+def _recent_activity(
+    student_repos: pd.DataFrame,
+    team_active_dates: set | None = None,
+    team_commits_30d: int = 0,
+) -> tuple[int, int]:
+    """Derive 30-day activity from owned + team activity (no extra API calls).
 
-    Returns (repos updated in the last 30 days, current streak in consecutive
-    days with at least one repo update). The streak counts back from the most
-    recent update day when it is today or yesterday, else it is 0. Day
-    boundaries follow IST (fixed UTC+5:30 offset — no tz database needed).
+    Owned activity comes from repo update timestamps; team activity comes from
+    the events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
+    pushing daily to a leader-owned repo finally count. Returns (combined
+    contributions in last 30 days, combined streak). Day boundaries follow IST.
     """
-    if student_repos.empty or "Updated" not in student_repos.columns:
-        return 0, 0
-    updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
-    if updated.empty:
-        return 0, 0
     ist_offset = pd.Timedelta(hours=5, minutes=30)
     today = (pd.Timestamp.now(tz="UTC") + ist_offset).normalize()
-    updated_ist = (updated + ist_offset).dt.normalize()
-    days_ago = (today - updated_ist).dt.days
-    contributions = int(((days_ago >= 0) & (days_ago <= 30)).sum())
-    active_days = set(updated_ist[updated_ist <= today].dt.date)
+    owned_contrib = 0
+    active_days: set = set()
+    if student_repos is not None and not student_repos.empty and "Updated" in student_repos.columns:
+        updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
+        if not updated.empty:
+            updated_ist = (updated + ist_offset).dt.normalize()
+            days_ago = (today - updated_ist).dt.days
+            owned_contrib = int(((days_ago >= 0) & (days_ago <= 30)).sum())
+            active_days |= set(updated_ist[updated_ist <= today].dt.date)
+    # Merge team active days (already YYYY-MM-DD dates, treat as IST days).
+    try:
+        team_commits_30d = int(float(team_commits_30d or 0))
+    except (TypeError, ValueError):
+        team_commits_30d = 0
+    if team_active_dates:
+        try:
+            active_days |= set(team_active_dates)
+        except Exception:
+            pass
+    contributions = int(owned_contrib + max(team_commits_30d, 0))
     if not active_days:
         return contributions, 0
-    latest = max(active_days)
+    try:
+        latest = max(active_days)
+    except Exception:
+        return contributions, 0
     if (today.date() - latest).days > 1:
         return contributions, 0
     streak, cursor = 0, latest
@@ -647,9 +815,18 @@ def _recent_activity(student_repos: pd.DataFrame) -> tuple[int, int]:
     return contributions, streak
 
 
-def students_payload_profile(row, repos: pd.DataFrame) -> dict:
+def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame | None = None) -> dict:
     username = row.get("GitHub_Username", "")
-    student_repos = repos[repos["Username"] == username].sort_values("Updated", ascending=False).copy()
+    try:
+        owned = repos[repos["Username"] == username].copy() if repos is not None and not repos.empty else pd.DataFrame()
+    except Exception:
+        owned = pd.DataFrame()
+    # Contributed team repos render inside the same Repositories list.
+    team_rows = _team_repos_as_owned_rows(team_repos, username) if team_repos is not None else pd.DataFrame()
+    if not owned.empty or not team_rows.empty:
+        student_repos = pd.concat([owned, team_rows], ignore_index=True).sort_values("Updated", ascending=False)
+    else:
+        student_repos = owned
     if not student_repos.empty and "Language" in student_repos.columns:
         # Display "Unknown", never "nan", for repos without a detected language.
         student_repos["Language"] = student_repos["Language"].fillna("Unknown")
@@ -677,7 +854,12 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
                     "pct": pct,
                 }
             )
-    contributions_30d, activity_streak = _recent_activity(student_repos)
+    team_dates = _team_active_dates_set(row)
+    team_commits_30d = _team_int(row, "Team_Commits_30d")
+    # Activity counts owned repos only + team commits (team repos already
+    # counted via commits, so pass owned to avoid double-counting team rows
+    # as both a repo-update and commits). Streak still merges team dates.
+    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d)
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
@@ -696,13 +878,15 @@ def students_payload_profile(row, repos: pd.DataFrame) -> dict:
         "hackerrank_url": row.get("HackerRank_URL", "") or hackerrank_profile_url(hackerrank_user),
         "followers": _num(row.get("Followers", 0)),
         "following": _num(row.get("Following", 0)),
-        "repositories": _num(row.get("Repository_Count", 0)),
-        "active_repos": _num(row.get("Active_Repositories", 0)),
+        "repositories": _combined_repos(row),
+        "active_repos": _combined_active(row),
         "primary_language": row.get("Primary_Language", "Unknown"),
         "repos": student_repos,
         "top_languages": top_languages,
         "contributions_30d": contributions_30d,
         "activity_streak": activity_streak,
+        "team_commits": _team_int(row, "Team_Commits"),
+        "contributed_repos": str(row.get("Contributed_Repos") or "") if not (isinstance(row.get("Contributed_Repos"), float) and pd.isna(row.get("Contributed_Repos"))) else "",
     }
 
 
@@ -739,7 +923,55 @@ def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.D
 # ---------------------------------------------------------------------------
 
 def repositories_payload(view, query="", language="All", rows=30) -> dict:
-    repos = view["repos"].copy()
+    repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
+    team_repos = view.get("team_repos")
+    # Merge contributed repos into the same list so team members' work on a
+    # leader-owned repo shows up alongside owned repos.
+    if team_repos is not None and not team_repos.empty:
+        mapped_rows = []
+        for _, r in team_repos.iterrows():
+            full = str(r.get("Team_Repo") or "").strip()
+            if not full:
+                continue
+            last = str(r.get("Last_Active_At") or "")
+            lang = r.get("Language", None)
+            try:
+                lang = "Unknown" if lang is None or (isinstance(lang, float) and pd.isna(lang)) or not str(lang).strip() else str(lang).strip()
+            except Exception:
+                lang = "Unknown"
+            try:
+                stars = int(float(r.get("Stars") or 0))
+            except (TypeError, ValueError):
+                stars = 0
+            try:
+                forks = int(float(r.get("Forks") or 0))
+            except (TypeError, ValueError):
+                forks = 0
+            desc = r.get("Description", None)
+            try:
+                desc = f"Contributed to {full}" if desc is None or (isinstance(desc, float) and pd.isna(desc)) or not str(desc).strip() else str(desc)
+            except Exception:
+                desc = f"Contributed to {full}"
+            mapped_rows.append(
+                {
+                    "Username": str(r.get("Username") or ""),
+                    "Repository": full,
+                    "Language": lang,
+                    "Stars": stars,
+                    "Forks": forks,
+                    "Description": desc,
+                    "License": None,
+                    "Created": last,
+                    "Updated": last,
+                    "Repository_URL": str(r.get("Team_Repo_URL") or ""),
+                    "Maintenance_Status": "Active",
+                    "Repository_Quality_Score": 0,
+                    "Quality_Band": "Contributed",
+                }
+            )
+        if mapped_rows:
+            mapped = pd.DataFrame(mapped_rows)
+            repos = pd.concat([repos, mapped], ignore_index=True) if not repos.empty else mapped
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     filtered = filter_text(repos, query, ["Username", "Repository", "Language"])
@@ -759,8 +991,25 @@ def repositories_payload(view, query="", language="All", rows=30) -> dict:
 # Leaderboards (3.6e)
 # ---------------------------------------------------------------------------
 
+def _with_combined_metrics(students: pd.DataFrame) -> pd.DataFrame:
+    """Add everywhere-totals: owned + team contributions."""
+    if students.empty:
+        return students
+    result = students.copy()
+    for col in ("Repository_Count", "Contributed_Repos_Count", "Active_Repositories", "Team_Active_Repos"):
+        if col not in result.columns:
+            result[col] = 0
+        result[col] = pd.to_numeric(result[col], errors="coerce").fillna(0)
+    result["Combined_Repos"] = (result["Repository_Count"] + result["Contributed_Repos_Count"]).astype(int)
+    result["Combined_Active"] = (result["Active_Repositories"] + result["Team_Active_Repos"]).astype(int)
+    if "Team_Commits" not in result.columns:
+        result["Team_Commits"] = 0
+    result["Team_Commits"] = pd.to_numeric(result["Team_Commits"], errors="coerce").fillna(0).astype(int)
+    return result
+
+
 def leaderboards_payload(view, division="All", batch="All", year="All", semester="All", anonymize=False) -> dict:
-    students = view["students"].copy()
+    students = _with_combined_metrics(view["students"].copy())
     repos = view["repos"].copy()
     for column, value in (("Division", division), ("Batch", batch), ("Academic_Year", year), ("Semester", semester)):
         students = apply_value_filter(students, column, value)
@@ -769,9 +1018,10 @@ def leaderboards_payload(view, division="All", batch="All", year="All", semester
 
     sections = []
     if not students.empty:
-        if "Active_Repositories" in students.columns:
-            sections.append(_section("Most Active Repos (6m)", students, "Active_Repositories"))
-        sections.append(_section("Most Public Repositories", students, "Repository_Count"))
+        sections.append(_section("Most Active Repos (6m, incl. team)", students, "Combined_Active"))
+        sections.append(_section("Most Repositories (owned + contributed)", students, "Combined_Repos"))
+        if "Team_Commits" in students.columns:
+            sections.append(_section("Most Team Commits", students, "Team_Commits"))
         sections.append(_section("Most-Followed GitHub Profiles", students, "Followers"))
         sections.append(_section("Most GitHub-Reported Repos", students, "Public_Repos"))
     languages = (

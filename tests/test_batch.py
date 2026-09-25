@@ -63,11 +63,13 @@ def roster_rows() -> list[dict]:
 class FakeGitHub:
     """Same contract as the characterization suite's fake (test_services.py)."""
 
-    def __init__(self, users, repos, contributions=None, events=None):
+    def __init__(self, users, repos, contributions=None, events=None, repo_commits=None, repo_meta=None):
         self.users = users
         self.repos = repos
         self.contributions = contributions or {}
         self.events = events or {}
+        self.repo_commits = repo_commits or {}
+        self.repo_meta = repo_meta or {}
 
     def __call__(self, url, token, timeout=None):
         from services import GITHUB_API_BASE
@@ -81,6 +83,25 @@ class FakeGitHub:
             after_base = url[len(GITHUB_API_BASE):]
             username = after_base.split("/")[2]
             return 200, {}, list(self.events.get(username, []))
+        if "/commits?" in url:
+            try:
+                full = url.split("/repos/")[1].split("/commits")[0]
+                author = url.split("author=")[1].split("&")[0]
+            except Exception:
+                return 404, {}, None
+            key = (full, author.lower())
+            if key not in self.repo_commits:
+                return 404, {}, None
+            return 200, {}, list(self.repo_commits[key])
+        if "/repos/" in url and "/commits" not in url:
+            try:
+                full = url.split("/repos/")[1].split("?")[0].strip("/")
+                if full and "/" in full:
+                    if full in self.repo_meta:
+                        return 200, {}, dict(self.repo_meta[full])
+                    return 404, {}, None
+            except Exception:
+                pass
         after_base = url[len(GITHUB_API_BASE):]
         if after_base.startswith("/users/") and "/repos" not in after_base:
             username = after_base.split("/")[2]

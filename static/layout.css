@@ -850,6 +850,9 @@ button {
 .stat-number { font-size: 16px; font-weight: 800; color: var(--text); }
 .stat-label { font-size: 11px; color: var(--muted); }
 .profile-repo { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.repo-meta-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.repo-meta-row .repo-meta { margin-top: 4px; min-width: 0; }
+.repo-signal { flex-shrink: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .external-link-button { display: inline-block; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); font-size: 12px; font-weight: 600; text-decoration: none; }
 .repo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .repo-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card-soft); }
