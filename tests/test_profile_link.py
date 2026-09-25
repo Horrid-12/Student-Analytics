@@ -155,6 +155,33 @@ class TestOAuthCallbacksPersist:
         assert resp.headers["location"].startswith("https://github.com/login/oauth/authorize")
         assert client.cookies["gsad_oauth_mode"] == "link"
 
+    def test_github_redirect_base_uses_configured_env(self, client, monkeypatch):
+        seen = []
+        monkeypatch.setenv("OAUTH_REDIRECT_BASE_URL", "https://preview.example/")
+        monkeypatch.setattr(github_oauth, "configured", lambda: True)
+        monkeypatch.setattr(
+            github_oauth,
+            "build_authorization_url",
+            lambda redirect_uri, state: seen.append(("start", redirect_uri))
+            or "https://github.com/login/oauth/authorize",
+        )
+        seed_student(client)
+        response = client.get("/auth/github", follow_redirects=False)
+        assert response.status_code == 302
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+
+        async def fake_exchange(url, state, redirect_uri):
+            seen.append(("callback", redirect_uri))
+            return {"login": "octocat", "avatar_url": "https://example.com/a.png"}
+
+        monkeypatch.setattr(github_oauth, "exchange_code", fake_exchange)
+        response = client.get(f"/auth/github/callback?state={state}&code=fake", follow_redirects=False)
+        assert response.status_code == 302
+        assert seen == [
+            ("start", "https://preview.example/auth/github/callback"),
+            ("callback", "https://preview.example/auth/github/callback"),
+        ]
+
     def test_github_signin_callback_is_rejected(self, client, monkeypatch):
         exchange_called = False
 

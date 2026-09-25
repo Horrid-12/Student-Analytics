@@ -236,10 +236,12 @@ This app runs free on [Vercel](https://vercel.com) using the Python native ASGI 
 
 1. Push to the `main` branch — a linked Vercel project auto-deploys on every push
 2. In the project's **Environment Variables**, add `GITHUB_TOKEN = "..."` (same format as above)
-3. Optional — add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for cross-instance caching/persistence
-4. Optional — add `DATABASE_URL` (Neon Postgres connection string) for Postgres-backed storage; run `python -m app.init_db` once after first deploy to create tables
+3. Set `OAUTH_REDIRECT_BASE_URL` to the canonical deployment origin, without a trailing path (for example, `https://student-analytics-git-backend-horrid-12s-projects.vercel.app`)
+4. Register the origin from step 3 with these provider callbacks: `.../auth/google/callback` and `.../auth/github/callback`
+5. Optional — add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for cross-instance caching/persistence
+6. Optional — add `DATABASE_URL` (Neon Postgres connection string) for Postgres-backed storage; run `python -m app.init_db` once after first deploy to create tables
 
-`vercel.json` is minimal — Vercel's Python runtime serves `app/main.py` directly as an ASGI app (no rewrites or Mangum needed). The `api/index.py` Mangum wrapper is kept in-repo only for local/test parity and is inert on Vercel.
+OAuth client secrets can be read from the gitignored `.streamlit/secrets.toml` during local development, but Vercel must receive client IDs and secrets as project environment variables. `vercel.json` is minimal — Vercel's Python runtime serves `app/main.py` directly as an ASGI app (no rewrites or Mangum needed). The `api/index.py` Mangum wrapper is kept in-repo only for local/test parity and is inert on Vercel.
 
 ---
 

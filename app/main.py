@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import mimetypes
+import os
 import threading
 import time
 import uuid
@@ -845,6 +846,11 @@ async def signup_submit(
     return RedirectResponse("/login?registered=1", status_code=302)
 
 
+def _oauth_base_url(request: Request) -> str:
+    configured = os.environ.get("OAUTH_REDIRECT_BASE_URL", "").strip().rstrip("/")
+    return configured or str(request.base_url).rstrip("/")
+
+
 @app.get("/auth/google")
 def auth_google(request: Request):
     """Start Google sign-in: consent URL + opaque state nonce in a short-lived,
@@ -853,7 +859,7 @@ def auth_google(request: Request):
         return RedirectResponse("/login?oauth=unconfigured", status_code=302)
     if request.state.user:
         return RedirectResponse("/", status_code=302)
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     domains = auth.allowed_domains()
     state = auth.new_oauth_state()
     url = google_oauth.build_authorization_url(redirect_uri, state, allowed_domain=domains[0] if domains else None)
@@ -886,7 +892,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         logger.warning("Google OAuth state mismatch (or expired nonce)")
         return reject("error")
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     try:
         claims = await google_oauth.exchange_code(str(request.url), state, redirect_uri)
     except Exception:
@@ -925,7 +931,7 @@ def auth_github(request: Request):
         return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not github_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/github/callback"
     state = auth.new_oauth_state()
     url = github_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
@@ -959,7 +965,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         response.delete_cookie("gsad_oauth_mode")
         return response
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/github/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/github/callback"
     try:
         claims = await github_oauth.exchange_code(str(request.url), state, redirect_uri)
     except Exception:
@@ -987,7 +993,7 @@ def auth_linkedin(request: Request):
         return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not linkedin_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/linkedin/callback"
     state = auth.new_oauth_state()
     url = linkedin_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
@@ -1021,7 +1027,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         response.delete_cookie("gsad_oauth_mode")
         return response
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/linkedin/callback"
+    redirect_uri = _oauth_base_url(request) + "/auth/linkedin/callback"
     try:
         claims = await linkedin_oauth.exchange_code(str(request.url), state, redirect_uri)
     except Exception:

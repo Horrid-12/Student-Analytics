@@ -156,6 +156,52 @@ class TestOAuthCallback:
         r = client.get("/auth/google", follow_redirects=False)
         assert "oauth=unconfigured" in r.headers["location"]
 
+    def test_redirect_base_uses_configured_env(self, client, monkeypatch):
+        seen = []
+        monkeypatch.setenv("OAUTH_REDIRECT_BASE_URL", "https://preview.example/")
+        monkeypatch.setattr(google_oauth, "configured", lambda: True)
+        monkeypatch.setattr(
+            google_oauth,
+            "build_authorization_url",
+            lambda redirect_uri, state, allowed_domain=None: seen.append(("start", redirect_uri))
+            or "https://accounts.google.com/o/oauth2/v2/auth",
+        )
+        response = client.get("/auth/google", follow_redirects=False)
+        assert response.status_code == 302
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+
+        async def fake_exchange(authorization_response, state, redirect_uri):
+            seen.append(("callback", redirect_uri))
+            return {
+                "sub": "sub-1",
+                "email": "stu1@mitwpu.edu.in",
+                "email_verified": True,
+                "name": "Student One",
+                "hd": DOMAIN,
+            }
+
+        monkeypatch.setattr(google_oauth, "exchange_code", fake_exchange)
+        response = client.get(f"/auth/google/callback?state={state}&code=fake", follow_redirects=False)
+        assert response.status_code == 302
+        assert seen == [
+            ("start", "https://preview.example/auth/google/callback"),
+            ("callback", "https://preview.example/auth/google/callback"),
+        ]
+
+    def test_redirect_base_falls_back_to_request_host(self, client, monkeypatch):
+        seen = []
+        monkeypatch.delenv("OAUTH_REDIRECT_BASE_URL", raising=False)
+        monkeypatch.setattr(google_oauth, "configured", lambda: True)
+        monkeypatch.setattr(
+            google_oauth,
+            "build_authorization_url",
+            lambda redirect_uri, state, allowed_domain=None: seen.append(redirect_uri)
+            or "https://accounts.google.com/o/oauth2/v2/auth",
+        )
+        response = client.get("/auth/google", follow_redirects=False)
+        assert response.status_code == 302
+        assert seen == ["http://testserver/auth/google/callback"]
+
 
 class TestPasswordDomainGate:
     def test_login_rejects_non_college_email(self, client):
