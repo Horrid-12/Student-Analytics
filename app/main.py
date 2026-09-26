@@ -1211,14 +1211,14 @@ def overview(request: Request, roster: str = ""):
     ctx["past_runs"] = _run_history_rows()
     ctx["notifications"], ctx["notif_count"] = [], 0
     account_mode = not roster
-    view = _analysis_view(roster) if roster else (_account_view(request) or _fleet_view(request))
+    view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
             ctx["payload"] = views.overview_payload(view)
             ctx["notifications"], ctx["notif_count"] = _own_notifications(request, view, roster)
             if account_mode:
-                stamp = _account_sync_stamp(request) or _fleet_sync_stamp()
+                stamp = _fleet_sync_stamp() or _account_sync_stamp(request)
                 if stamp:
                     ctx["payload"]["last_analysis"] = stamp
         except Exception:
@@ -1391,7 +1391,7 @@ def my_profile_page(request: Request, roster: str = ""):
     (RBAC "My Profile"); non-roster users get a friendly empty state."""
     ctx = _base_context(request, "My Profile", roster)
     profile = None
-    view = _analysis_view(roster) if roster else _account_view(request)
+    view = _analysis_view(roster) if roster else (_account_view(request) or _fleet_view(request))
     if view is not None and _is_complete(view):
         user = getattr(request.state, "user", None) or {}
         profile = views.own_profile_payload(view, user.get("email", ""))
