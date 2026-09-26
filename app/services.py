@@ -762,13 +762,18 @@ def get_repo_topics(full_name: str, token: str | None) -> tuple[list[str], bool]
     return [str(name).strip() for name in names if str(name).strip()], True
 
 
-def get_repo_total_commits(full_name: str, token: str | None) -> tuple[int, bool]:
-    """Count commits on a repo's default branch (any author).
+def get_repo_commit_stats(
+    full_name: str, token: str | None, fork_created_at: str | None = None
+) -> tuple[int, int, int, bool]:
+    """(commit count, distinct commit-author days, post-fork commits, ok).
 
-    ``get_repo_author_commits`` counts only the owner's commits for the
-    contribution graph; repo quality needs total volume. Same newest-first
-    pagination capped at 1000 — a cap only ever under-reports, which cannot
-    cross the 0/1/10/50 quality tier boundaries.
+    Walks the repo's default-branch commits (any author) — the same endpoint
+    the count-only helper used — but keeps each commit's ``author.date`` so the
+    anti-commit-dump spread rule and the fork-guard custom-work rule can be
+    computed deterministically from real timestamps. ``fork_created_at`` is the
+    repo's own ``created_at``; for a fork this is the fork time, so commits
+    dated at/after it count as post-fork custom work (merged upstream history
+    predates it). Commits without a usable date still count toward volume.
     """
     commits = []
     page = 1
@@ -780,7 +785,7 @@ def get_repo_total_commits(full_name: str, token: str | None) -> tuple[int, bool
         )
         check_rate_limit_parts(status_code, response_headers)
         if status_code != 200 or not isinstance(payload, list):
-            return 0, False
+            return 0, 0, 0, False
         commits.extend(payload)
         if len(payload) < COMMITS_PER_PAGE:
             break
@@ -788,7 +793,101 @@ def get_repo_total_commits(full_name: str, token: str | None) -> tuple[int, bool
             break
         page += 1
         time.sleep(0.05)
-    return len(commits), True
+
+    distinct_days: set = set()
+    post_fork = 0
+    fork_ts = (
+        pd.to_datetime(fork_created_at, utc=True, errors="coerce")
+        if fork_created_at
+        else pd.NaT
+    )
+    for commit in commits:
+        date_text = _commit_date(commit)
+        commit_ts = pd.to_datetime(date_text, utc=True, errors="coerce") if date_text else pd.NaT
+        if pd.isna(commit_ts):
+            continue
+        distinct_days.add(commit_ts.date())
+        if not pd.isna(fork_ts) and commit_ts >= fork_ts:
+            post_fork += 1
+    return len(commits), len(distinct_days), post_fork, True
+
+
+SOURCE_CODE_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+    ".java",
+    ".go",
+    ".rs",
+    ".php",
+    ".rb",
+    ".kt",
+    ".swift",
+}
+
+GENERATED_DIR_SEGMENTS = {
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".cache",
+    "vendor",
+    "__pycache__",
+    ".venv",
+    ".git",
+}
+
+
+def _is_excluded_path(path: str) -> bool:
+    parts = [part for part in str(path).replace("\\", "/").split("/") if part]
+    return any(part in GENERATED_DIR_SEGMENTS for part in parts[:-1])
+
+
+def get_repo_source_stats(
+    full_name: str, default_branch: str | None, token: str | None
+) -> tuple[int, int, bool]:
+    """(source-file count, relevant-file count, ok) from one recursive tree.
+
+    ``GET /repos/{full}/git/trees/{branch}?recursive=1`` returns every tracked
+    path up to GitHub's tree cap in a single response — no clone, no download
+    of file contents, one cached request per repo. ``total_count`` counts blob
+    (file) entries outside generated/dependency directories; ``source_count``
+    is the subset with a source-code extension.
+    """
+    if not full_name or not default_branch:
+        return 0, 0, False
+    status_code, response_headers, payload = _cached_get_json(
+        f"{GITHUB_API_BASE}/repos/{full_name}/git/trees/{default_branch}?recursive=1",
+        token,
+        timeout=20,
+    )
+    check_rate_limit_parts(status_code, response_headers)
+    if status_code != 200 or not isinstance(payload, dict):
+        return 0, 0, False
+    tree = payload.get("tree") or []
+    if not isinstance(tree, list):
+        return 0, 0, False
+    source_count = 0
+    total_count = 0
+    for entry in tree:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") != "blob":
+            continue
+        path = str(entry.get("path") or "")
+        if _is_excluded_path(path):
+            continue
+        lower = path.lower()
+        total_count += 1
+        if any(lower.endswith(ext) for ext in SOURCE_CODE_EXTENSIONS):
+            source_count += 1
+    return source_count, total_count, True
 
 
 TEAM_SUMMARY_COLS = [
@@ -1318,6 +1417,8 @@ def fetch_repository_data(
                         "Created": repo.get("created_at"),
                         "Updated": repo.get("updated_at"),
                         "Repository_URL": repo.get("html_url"),
+                        "Is_Fork": 1 if bool(repo.get("fork")) else 0,
+                        "Default_Branch": repo.get("default_branch") or "main",
                     }
                 )
         except RateLimitError:
@@ -1458,6 +1559,14 @@ REPO_QUALITY_COLS = [
     "Total_Commits",
 ]
 
+QUALITY_SCORE_ONLY_COLS = [
+    "Human_Contributors",
+    "Commit_Distinct_Days",
+    "Post_Fork_Commits",
+    "Source_Code_Count",
+    "Total_File_Count",
+]
+
 
 def fetch_repository_quality_data(
     repo_df: pd.DataFrame,
@@ -1466,14 +1575,14 @@ def fetch_repository_quality_data(
 ) -> tuple[pd.DataFrame, list[str]]:
     """Fill the per-repo collaboration/hygiene metrics the repo listing lacks.
 
-    The quality score today can only see description/language/license and the
-    updated timestamp. One or two cached calls per repo add exact PR, issue,
-    contributor, README, topic and total-commit numbers so scoring can measure
-    collaboration and maintenance instead of metadata alone. A repo whose data
-    cannot be fetched keeps default zeros and its owner is reported unavailable
-    (mirrors ``fetch_owned_commit_data``) — nothing is invented from partial
-    data. The score itself is recomputed later (Phase 3); this step only moves
-    the numbers into the repo frame.
+    One or two cached calls per repo add exact PR, issue, contributor, README,
+    topic, total-commit, commit-spread, post-fork and code-density numbers so
+    scoring can measure collaboration, consistency, originality and file
+    quality instead of metadata alone. A repo whose data cannot be fetched
+    keeps default zeros and its owner is reported unavailable (mirrors
+    ``fetch_owned_commit_data``) — nothing is invented from partial data. The
+    recursive-tree density call is an explicitly authorized soft metric: a tree
+    failure leaves density at zero but does not mark the owner unavailable.
     """
     if (
         repo_df is None
@@ -1484,7 +1593,7 @@ def fetch_repository_quality_data(
         return repo_df, []
     owners = list(pd.Series(repo_df["Username"].dropna().unique()).astype(str))
     total_owners = len(owners)
-    per_repo: dict[tuple[str, str], tuple[int, int, int, int, int, int]] = {}
+    per_repo: dict[tuple[str, str], tuple[int, ...]] = {}
     unavailable_users: list[str] = []
     throttled = False
 
@@ -1510,7 +1619,17 @@ def fetch_repository_quality_data(
                 contributors, contributors_ok = get_repo_contributors(full_name, token)
                 readme_present, readme_definitive = has_repo_readme(full_name, token)
                 topics, topics_ok = get_repo_topics(full_name, token)
-                total_commits, commits_ok = get_repo_total_commits(full_name, token)
+                human_contributors = sum(
+                    1
+                    for c in (contributors or [])
+                    if str((c or {}).get("type") or "").strip().lower() == "user"
+                )
+                commit_count, distinct_days, post_fork, commits_ok = get_repo_commit_stats(
+                    full_name, token, str(repo.get("Created") or "") or None
+                )
+                source_count, total_files, _ = get_repo_source_stats(
+                    full_name, str(repo.get("Default_Branch") or "") or None, token
+                )
                 if not (
                     prs_ok and issues_ok and contributors_ok and readme_definitive and topics_ok and commits_ok
                 ):
@@ -1521,7 +1640,12 @@ def fetch_repository_quality_data(
                     len(contributors or []),
                     1 if readme_present else 0,
                     len(topics or []),
-                    int(total_commits or 0),
+                    int(commit_count or 0),
+                    int(human_contributors or 0),
+                    int(distinct_days or 0),
+                    int(post_fork or 0),
+                    int(source_count or 0),
+                    int(total_files or 0),
                 )
             if failed and username not in unavailable_users:
                 unavailable_users.append(username)
@@ -1540,13 +1664,14 @@ def fetch_repository_quality_data(
         keys = list(
             zip(enriched["Username"].astype(str), enriched["Repository"].astype(str))
         )
-        for position, column in enumerate(REPO_QUALITY_COLS):
+        all_cols = REPO_QUALITY_COLS + QUALITY_SCORE_ONLY_COLS
+        for position, column in enumerate(all_cols):
             enriched[column] = [
-                int(per_repo.get(key, (0,) * len(REPO_QUALITY_COLS))[position])
+                int(per_repo.get(key, (0,) * len(all_cols))[position])
                 for key in keys
             ]
     except Exception:
-        for column in REPO_QUALITY_COLS:
+        for column in REPO_QUALITY_COLS + QUALITY_SCORE_ONLY_COLS:
             if column not in enriched.columns:
                 enriched[column] = 0
     return enriched, unavailable_users
@@ -1565,14 +1690,18 @@ def _quality_number(result: pd.DataFrame, column: str) -> pd.Series:
 
 
 def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
-    """Impact & volume-heavy 100-point score for a repository.
+    """Anti-gaming 100-point score for a repository.
 
-    Five fixed categories — Code Volume & Commit Depth (35), Active
-    Collaboration & Workflow (25), Community & Validation (20), Recent
-    Maintenance (10) and Basic Setup & Hygiene (10) — use hard, mutually
-    exclusive tiers and are structurally capped so the best repo scores
-    exactly 100 and the worst 0. Missing columns (old runs, team rows)
-    read as 0. The score is recomputed from zero on every call.
+    Six fixed categories — Commit Volume & Consistency (25), Direct Team
+    Collaboration (20), Originality & Fork Guard (15), Code Density & File
+    Quality (15), Community & Popularity (15) and Recent Maintenance (10) —
+    use hard, mutually exclusive tiers and are structurally capped so the best
+    repo scores exactly 100 and the worst 0. Volume+consistency split means a
+    single-day commit dump earns no consistency points; the fork guard never
+    rewards an unedited fork (custom work = commits dated at/after the fork's
+    ``created_at``); a repo with unknown fork status is never assumed original.
+    Missing columns (old runs, team rows) read as 0. The score is recomputed
+    from zero on every call.
     """
     result = repo_df.copy()
     if result.empty:
@@ -1581,31 +1710,49 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
     updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
     age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
 
-    # Code Volume & Commit Depth (max 35): mutually-exclusive commit tiers
+    # Commit Volume & Consistency (max 25): volume (15) + spread (10)
     total_commits = _quality_number(result, "Total_Commits")
     commits_score = pd.Series(0, index=result.index, dtype=int)
-    commits_score[total_commits >= 150] = 35
-    commits_score[(total_commits >= 50) & (total_commits < 150)] = 25
-    commits_score[(total_commits >= 10) & (total_commits < 50)] = 15
+    commits_score[total_commits >= 50] = 15
+    commits_score[(total_commits >= 10) & (total_commits < 50)] = 10
     commits_score[(total_commits >= 1) & (total_commits < 10)] = 5
-    volume = commits_score
+    distinct_days = _quality_number(result, "Commit_Distinct_Days")
+    spread_score = pd.Series(0, index=result.index, dtype=int)
+    spread_score[distinct_days >= 3] = 10
+    spread_score[(distinct_days >= 2) & (distinct_days < 3)] = 5
+    volume = commits_score + spread_score
 
-    # Active Collaboration & Workflow (max 25): PRs (15) + issues (10)
-    prs = _quality_number(result, "Pull_Requests")
-    issues = _quality_number(result, "Issues")
-    prs_score = pd.Series(0, index=result.index, dtype=int)
-    prs_score[prs >= 3] = 15
-    prs_score[(prs >= 1) & (prs < 3)] = 8
-    issues_score = pd.Series(0, index=result.index, dtype=int)
-    issues_score[issues >= 3] = 10
-    issues_score[(issues >= 1) & (issues < 3)] = 5
-    collaboration = prs_score + issues_score
+    # Direct Team Collaboration (max 20): unique human contributors
+    humans = _quality_number(result, "Human_Contributors")
+    collaboration = pd.Series(0, index=result.index, dtype=int)
+    collaboration[humans >= 3] = 20
+    collaboration[(humans >= 2) & (humans < 3)] = 10
 
-    # Community & Validation (max 20): stars tiers + forks
+    # Originality & Fork Guard (max 15): forks need post-fork custom work
+    post_fork = _quality_number(result, "Post_Fork_Commits")
+    originality = pd.Series(0, index=result.index, dtype=int)
+    if "Is_Fork" in result.columns:
+        is_fork = _quality_number(result, "Is_Fork")
+        originality[is_fork == 0] = 15
+        fork_mask = is_fork > 0
+        originality[fork_mask & (post_fork >= 20)] = 10
+        originality[fork_mask & (post_fork >= 1) & (post_fork < 20)] = 5
+
+    # Code Density & File Quality (max 15): source concentration
+    source = _quality_number(result, "Source_Code_Count")
+    total_files = _quality_number(result, "Total_File_Count")
+    density = pd.Series(0.0, index=result.index, dtype=float)
+    file_mask = total_files > 0
+    density[file_mask] = pd.to_numeric(source[file_mask]) / total_files[file_mask]
+    density_score = pd.Series(0, index=result.index, dtype=int)
+    density_score[density >= 0.5] = 15
+    density_score[(density >= 0.2) & (density < 0.5)] = 10
+    density_score[(density > 0) & (density < 0.2)] = 5
+
+    # Community & Popularity (max 15): stars tiers + external forks
     stars = _quality_number(result, "Stars")
     stars_score = pd.Series(0, index=result.index, dtype=int)
-    stars_score[stars >= 20] = 15
-    stars_score[(stars >= 5) & (stars < 20)] = 10
+    stars_score[stars >= 5] = 10
     stars_score[(stars >= 1) & (stars < 5)] = 5
     forks = _quality_number(result, "Forks")
     community = stars_score + (forks > 0).astype(int) * 5
@@ -1620,21 +1767,11 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
     ).fillna(0).astype(int)
     maintenance = recency_score
 
-    # Basic Setup & Hygiene (max 10): README / description-or-topics
-    if "Description" in result.columns:
-        description_present = result["Description"].fillna("").astype(str).str.strip().ne("")
-    else:
-        description_present = pd.Series(False, index=result.index)
-    has_readme = _quality_number(result, "Has_README") > 0
-    has_topics = _quality_number(result, "Topics_Count") > 0
-    present = has_readme.astype(int) + (description_present | has_topics).astype(int)
-    hygiene = present * 5  # both → 10, one → 5, neither → 0
-
     result["Maintenance_Status"] = age_days.map(
         lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
     ).fillna("Unknown")
     result["Repository_Quality_Score"] = (
-        volume + collaboration + community + maintenance + hygiene
+        volume + collaboration + originality + density_score + community + maintenance
     ).astype(int)
     result["Quality_Band"] = result["Repository_Quality_Score"].map(
         lambda score: (
