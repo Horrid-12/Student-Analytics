@@ -1189,6 +1189,23 @@ def _self_sync_on_login(user: dict | None) -> None:
         logger.exception("Self-sync on login failed for %s", email)
 
 
+@app.get("/debug/force_sync_all")
+async def force_sync_all_users(request: Request):
+    if getattr(request.state, "user", {}).get("role") != "admin":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    token = github_client.load_token()
+    results = {}
+    for u in auth.get_approved_accounts():
+        email = u["email"]
+        full_user = auth.get_user(email) or u
+        try:
+            ok, code, _ = await asyncio.to_thread(sync.sync_one, full_user, token, True)
+            results[email] = f"ok={ok}, code={code}"
+        except Exception as e:
+            results[email] = f"error={e}"
+    return JSONResponse(content={"status": "done", "results": results})
+
+
 def _own_notifications(request: Request, view, roster: str) -> tuple[list, int]:
     """4.11 (restored WIP): issue alerts for the signed-in student's
     notification bell. Only computed for student logins on a completed run /
