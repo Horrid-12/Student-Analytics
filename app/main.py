@@ -47,6 +47,12 @@ async def startup_init():
     if database.db_configured():
         db.init_schema()
 
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Cleanly close database pools on application shutdown."""
+    database.reset_pool()
+
 # /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
 # anonymous browsers can reach the consent redirect and callback.
 _PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico", "/privacy")
@@ -1250,6 +1256,9 @@ async def onboarding_submit(
     prn: str = Form(""),
     degree_branch: str = Form(""),
     division: str = Form(""),
+    main_batch: str = Form(""),
+    practical_batch: str = Form(""),
+    semester: str = Form(""),
 ):
     """Student submission endpoint (Phase 4.12). Validates the form server-side,
     persists the academic identity, and moves the account to ``pending``."""
@@ -1258,7 +1267,10 @@ async def onboarding_submit(
         return RedirectResponse("/login", status_code=302)
     if user.get("role") not in ("student",):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-    ok, err = auth.submit_onboarding(user["email"], prn, degree_branch, division)
+    ok, err = auth.submit_onboarding(
+        user["email"], prn, degree_branch, division,
+        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
+    )
     if ok:
         _db_log_event("onboarding_submit", user["email"])
         return RedirectResponse("/onboarding?saved=1", status_code=303)

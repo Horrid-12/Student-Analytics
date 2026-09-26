@@ -64,7 +64,10 @@ def seeded_account() -> dict:
     """Walk a student through the real onboarding flow into the approved fleet."""
     auth.create_user("alice@college.edu", "secret123", "student", "Alice Example")
     auth.save_linked_profile("alice@college.edu", "github", "alice-dev", "https://avatars.example/alice.png")
-    auth.submit_onboarding("alice@college.edu", "1011121314", "AI/DS", "Division 1")
+    auth.submit_onboarding(
+        "alice@college.edu", "1011121314", "AI/DS", "Division 1",
+        main_batch="Batch 2022", practical_batch="P1", semester="Semester 3",
+    )
     auth.set_onboarding_status("alice@college.edu", "approved", promote_github=True)
     return auth.get_approved_accounts()[0]
 

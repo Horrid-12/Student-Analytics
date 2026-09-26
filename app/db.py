@@ -17,8 +17,28 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import pandas as pd
-import psycopg.errors
-from psycopg.types.json import Jsonb
+
+try:
+    import psycopg
+    import psycopg.errors
+    from psycopg.types.json import Jsonb
+    HAS_PSYCOPG = True
+except ImportError:
+    HAS_PSYCOPG = False
+
+    def Jsonb(x: Any) -> Any:  # type: ignore
+        return x
+
+    class _DatabaseError(Exception):
+        pass
+
+    class _PsycopgErrorsShim:
+        DatabaseError = _DatabaseError
+
+    class _PsycopgShim:
+        errors = _PsycopgErrorsShim()
+
+    psycopg = _PsycopgShim()  # type: ignore
 
 from app import database, support
 
@@ -1300,7 +1320,8 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "linked_github_username, linked_github_avatar, linked_linkedin_name, "
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
-                "onboarding_submitted_at, github_verified_at "
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1436,7 +1457,8 @@ def upsert_user(
 
 _ONBOARDING_COLUMNS = (
     "prn, degree_branch, division, onboarding_status, "
-    "onboarding_submitted_at, github_verified_at"
+    "onboarding_submitted_at, github_verified_at, "
+    "main_batch, practical_batch, semester"
 )
 
 
@@ -1466,6 +1488,9 @@ def set_onboarding(
     prn: str = "",
     degree_branch: str = "",
     division: str = "",
+    main_batch: str = "",
+    practical_batch: str = "",
+    semester: str = "",
     status: str = "none",
     submitted_at: str = "",
     github_verified_at: str = "",
@@ -1480,9 +1505,11 @@ def set_onboarding(
                 return False
             cur = c.execute(
                 "UPDATE users SET prn = %s, degree_branch = %s, division = %s, "
+                "main_batch = %s, practical_batch = %s, semester = %s, "
                 "onboarding_status = %s, onboarding_submitted_at = %s, "
                 "github_verified_at = %s WHERE email = %s",
-                (prn, degree_branch, division, status, submitted_at, github_verified_at, email),
+                (prn, degree_branch, division, main_batch, practical_batch, semester,
+                 status, submitted_at, github_verified_at, email),
             )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
@@ -1518,7 +1545,8 @@ def get_onboarding_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, linked_github_username, "
                 "prn, degree_branch, division, onboarding_status, "
-                "onboarding_submitted_at, github_verified_at FROM users "
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester FROM users "
                 "WHERE onboarding_status != 'none' "
                 "ORDER BY onboarding_submitted_at DESC, email ASC"
             )
@@ -1538,7 +1566,8 @@ def get_approved_users() -> list[dict]:
                 return []
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
-                "onboarding_status, onboarding_submitted_at, github_verified_at "
+                "onboarding_status, onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
             return [dict(row) for row in cur.fetchall()]

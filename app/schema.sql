@@ -323,6 +323,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_status TEXT NOT NULL DEFAU
 ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_submitted_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_verified_at TEXT NOT NULL DEFAULT '';
 
+-- Backfill batch/semester split (Phase 5.6). main_batch = admission cohort
+-- (stored, not shown); practical_batch fills the dashboard "Batch" column.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS main_batch TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS practical_batch TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
+
 -- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
 --     One row per synced account: JSONB holds the dashboard-shaped student
 --     record + the REPO_COLS repository list, so student pages rebuild the

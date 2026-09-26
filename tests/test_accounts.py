@@ -79,7 +79,10 @@ def seeded_account() -> dict:
     the handle into ``github_username``."""
     auth.create_user("alice@college.edu", "secret123", "student", "Alice Example")
     auth.save_linked_profile("alice@college.edu", "github", "alice-dev", "https://avatars.example/alice.png")
-    auth.submit_onboarding("alice@college.edu", "1011121314", "AI/DS", "Division 1")
+    auth.submit_onboarding(
+        "alice@college.edu", "1011121314", "AI/DS", "Division 1",
+        main_batch="Batch 2022", practical_batch="P1", semester="Semester 3",
+    )
     auth.set_onboarding_status("alice@college.edu", "approved", promote_github=True)
     return auth.get_approved_accounts()[0]
 
@@ -152,10 +155,23 @@ class TestStoreSQLite:
 
 class TestCompute:
     def test_compute_snapshot_shape(self):
-        student, repos, err = sync.compute_account_snapshot("alice-dev", None, {"email": "alice@college.edu"})
+        user_row = {
+            "email": "alice@college.edu",
+            "prn": "1011121314",
+            "name": "Alice",
+            "division": "Division 1",
+            "practical_batch": "P1",
+            "semester": "Semester 3",
+        }
+        student, repos, err = sync.compute_account_snapshot("alice-dev", None, user_row)
         assert err == ""
         assert student is not None
         assert repos
+        assert student["Student_ID"] == "1011121314"
+        assert student["Student Name"] == "Alice"
+        assert student["Division"] == "Division 1"
+        assert student["Batch"] == "P1"
+        assert student["Semester"] == "Semester 3"
         assert student["GitHub_Username"] == "alice-dev"
         assert student["Repository_Count"] == 2
         assert student["Primary_Language"] == "Python"
@@ -258,7 +274,10 @@ class TestSyncAll:
         seeded_account()
         auth.create_user("bob@college.edu", "secret123", "student", "Bob")
         auth.save_linked_profile("bob@college.edu", "github", "ghost-user", "")
-        auth.submit_onboarding("bob@college.edu", "2021222324", "AI/DS", "Division 1")
+        auth.submit_onboarding(
+            "bob@college.edu", "2021222324", "AI/DS", "Division 1",
+            main_batch="Batch 2022", practical_batch="P2", semester="Semester 3",
+        )
         auth.set_onboarding_status("bob@college.edu", "approved", promote_github=True)
         # bob's promoted handle resolves nowhere → not_found persisted, but
         # alice still syncs (one broken account never aborts the sweep).

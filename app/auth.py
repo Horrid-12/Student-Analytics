@@ -63,6 +63,12 @@ _EXTRA_COLUMNS = (
     ("onboarding_status", "TEXT NOT NULL DEFAULT 'none'"),
     ("onboarding_submitted_at", "TEXT NOT NULL DEFAULT ''"),
     ("github_verified_at", "TEXT NOT NULL DEFAULT ''"),
+    # Phase 5.6: batch/semester split. main_batch = admission cohort (stored,
+    # not shown on the dashboard); practical_batch = the lab-section batch that
+    # fills the dashboard "Batch" column; semester = current term.
+    ("main_batch", "TEXT NOT NULL DEFAULT ''"),
+    ("practical_batch", "TEXT NOT NULL DEFAULT ''"),
+    ("semester", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # OAuth providers a student can fetch their picture + username from (4.11 e).
@@ -74,6 +80,15 @@ DEGREE_BRANCHES = ("Core", "AI/DS", "Cloud Computing", "Cyber Security and Foren
 
 #: Allowed division labels (1-14), matching the onboarding <select> options.
 DIVISIONS = tuple(f"Division {n}" for n in range(1, 15))
+
+#: Main batch = admission cohort (stored, never shown on the dashboard).
+MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
+
+#: Practical batch = the lab-section batch that fills the dashboard "Batch".
+PRACTICAL_BATCHES = ("1", "2", "3") + tuple(f"P{n}" for n in range(1, 9))
+
+#: Current term options (1-8), matching the legacy "Semester N" labels.
+SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
 
 ONBOARDING_STATUSES = ("none", "pending", "approved", "rejected")
 
@@ -129,16 +144,22 @@ CREATE TABLE IF NOT EXISTS users (
 """
 
 
+_WARNED_AUTH_SECRET = False
+
+
 def _secret() -> str:
     """HMAC key for session cookies. Use AUTH_SECRET in production; the dev
     fallback keeps TestClient sessions working without env setup but warrants a
     warning."""
+    global _WARNED_AUTH_SECRET
     value = os.environ.get("AUTH_SECRET")
     if value:
         return value
-    logger.warning(
-        "AUTH_SECRET is not set — using the insecure dev secret; sessions invalidate if it ever changes."
-    )
+    if not _WARNED_AUTH_SECRET:
+        logger.warning(
+            "AUTH_SECRET is not set — using the insecure dev secret; sessions invalidate if it ever changes."
+        )
+        _WARNED_AUTH_SECRET = True
     return "gsad-dev-secret-change-me"
 
 
@@ -534,7 +555,8 @@ def get_user(email: str) -> dict | None:
                 "linked_github_username, linked_github_avatar, linked_linkedin_name, "
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
-                "onboarding_submitted_at, github_verified_at FROM users WHERE email = ?",
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -662,6 +684,18 @@ def valid_division(value: str) -> bool:
     return (value or "").strip() in DIVISIONS
 
 
+def valid_main_batch(value: str) -> bool:
+    return (value or "").strip() in MAIN_BATCHES
+
+
+def valid_practical_batch(value: str) -> bool:
+    return (value or "").strip() in PRACTICAL_BATCHES
+
+
+def valid_semester(value: str) -> bool:
+    return (value or "").strip() in SEMESTERS
+
+
 def valid_prn(value: str) -> bool:
     """10-digit standard roll identifier as printed on the admission ledger."""
     value = (value or "").strip()
@@ -693,22 +727,40 @@ def prn_taken(prn: str, exclude_email: str = "") -> bool:
         return False
 
 
-def submit_onboarding(email: str, prn: str, degree_branch: str, division: str) -> tuple[bool, str]:
+def submit_onboarding(
+    email: str,
+    prn: str,
+    degree_branch: str,
+    division: str,
+    main_batch: str = "",
+    practical_batch: str = "",
+    semester: str = "",
+) -> tuple[bool, str]:
     """Record a student's academic onboarding submission and move the account
     to ``pending`` for registrar review. Returns ``(ok, error_code)`` where
     ``error_code`` is "" on success and one of ``prn_format``, ``invalid_degree``,
-    ``invalid_division``, ``prn_taken``, ``storage_unavailable`` otherwise.
+    ``invalid_division``, ``invalid_main_batch``, ``invalid_practical_batch``,
+    ``invalid_semester``, ``prn_taken``, ``storage_unavailable`` otherwise.
     Never raises."""
     email = (email or "").strip().lower()
     prn = (prn or "").strip()
     degree_branch = (degree_branch or "").strip()
     division = (division or "").strip()
+    main_batch = (main_batch or "").strip()
+    practical_batch = (practical_batch or "").strip()
+    semester = (semester or "").strip()
     if not valid_prn(prn):
         return False, "prn_format"
     if not valid_degree_branch(degree_branch):
         return False, "invalid_degree"
     if not valid_division(division):
         return False, "invalid_division"
+    if main_batch and not valid_main_batch(main_batch):
+        return False, "invalid_main_batch"
+    if not valid_practical_batch(practical_batch):
+        return False, "invalid_practical_batch"
+    if not valid_semester(semester):
+        return False, "invalid_semester"
     if prn_taken(prn, exclude_email=email):
         return False, "prn_taken"
     if not email:
@@ -716,6 +768,7 @@ def submit_onboarding(email: str, prn: str, degree_branch: str, division: str) -
     now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
     stored = db_set_onboarding(
         email, prn=prn, degree_branch=degree_branch, division=division,
+        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
         status="pending", submitted_at=now,
     )
     if not stored:
@@ -728,6 +781,9 @@ def db_set_onboarding(
     prn: str = "",
     degree_branch: str = "",
     division: str = "",
+    main_batch: str = "",
+    practical_batch: str = "",
+    semester: str = "",
     status: str = "none",
     submitted_at: str = "",
     github_verified_at: str = "",
@@ -742,6 +798,7 @@ def db_set_onboarding(
     if database.db_configured():
         return db.set_onboarding(
             email, prn=prn, degree_branch=degree_branch, division=division,
+            main_batch=main_batch, practical_batch=practical_batch, semester=semester,
             status=status, submitted_at=submitted_at,
             github_verified_at=github_verified_at,
         )
@@ -751,9 +808,11 @@ def db_set_onboarding(
                 _ensure_schema(conn)
                 cur = conn.execute(
                     "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
+                    "main_batch = ?, practical_batch = ?, semester = ?, "
                     "onboarding_status = ?, onboarding_submitted_at = ?, "
                     "github_verified_at = ? WHERE email = ?",
-                    (prn, degree_branch, division, status, submitted_at, github_verified_at, email),
+                    (prn, degree_branch, division, main_batch, practical_batch, semester,
+                     status, submitted_at, github_verified_at, email),
                 )
                 return (cur.rowcount or 0) > 0
     except (sqlite3.Error, OSError):
@@ -772,7 +831,8 @@ def get_onboarding_users() -> list[dict]:
             rows = conn.execute(
                 "SELECT email, role, name, github_username, linked_github_username, "
                 "prn, degree_branch, division, onboarding_status, "
-                "onboarding_submitted_at, github_verified_at FROM users "
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester FROM users "
                 "WHERE onboarding_status != 'none' "
                 "ORDER BY onboarding_submitted_at DESC, email ASC"
             ).fetchall()
@@ -794,7 +854,8 @@ def get_approved_accounts() -> list[dict]:
             _ensure_schema(conn)
             rows = conn.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
-                "onboarding_status, onboarding_submitted_at, github_verified_at FROM users "
+                "onboarding_status, onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester FROM users "
                 "WHERE onboarding_status = 'approved' ORDER BY email ASC"
             ).fetchall()
         return [dict(row) for row in rows]
@@ -829,6 +890,9 @@ def set_onboarding_status(email: str, status: str, promote_github: bool = False)
         prn=user.get("prn", ""),
         degree_branch=user.get("degree_branch", ""),
         division=user.get("division", ""),
+        main_batch=user.get("main_batch", ""),
+        practical_batch=user.get("practical_batch", ""),
+        semester=user.get("semester", ""),
         status=status,
         submitted_at=user.get("onboarding_submitted_at", ""),
         github_verified_at=github_verified_at,

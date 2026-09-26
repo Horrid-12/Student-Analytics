@@ -31,10 +31,12 @@ def login(client, email="stu1@college.edu", password="secret123"):
     return client.post("/login", data={"email": email, "password": password})
 
 
-def submit(client, prn="1234567890", degree="Core", division="Division 1"):
+def submit(client, prn="1234567890", degree="Core", division="Division 1",
+           main_batch="Batch 2022", practical_batch="P1", semester="Semester 3"):
     return client.post(
         "/onboarding",
-        data={"prn": prn, "degree_branch": degree, "division": division},
+        data={"prn": prn, "degree_branch": degree, "division": division,
+              "main_batch": main_batch, "practical_batch": practical_batch, "semester": semester},
     )
 
 
@@ -56,8 +58,22 @@ class TestSubmitOnboarding:
         assert user["prn"] == "1234567890"
         assert user["degree_branch"] == "Core"
         assert user["division"] == "Division 1"
+        assert user["main_batch"] == "Batch 2022"
+        assert user["practical_batch"] == "P1"
+        assert user["semester"] == "Semester 3"
         assert user["onboarding_status"] == "pending"
         assert user["onboarding_submitted_at"]
+
+    def test_student_submission_without_main_batch_succeeds(self, client):
+        signup(client, "stu2@college.edu", "secret123")
+        login(client, "stu2@college.edu", "secret123")
+        r = submit(client, prn="1234567891", main_batch="")
+        assert "saved=1" in str(r.url)
+        user = auth.get_user("stu2@college.edu")
+        assert user["prn"] == "1234567891"
+        assert user["practical_batch"] == "P1"
+        assert user["semester"] == "Semester 3"
+        assert user["onboarding_status"] == "pending"
 
     def test_submit_requires_login(self, client):
         r = submit(client)
@@ -90,6 +106,27 @@ class TestSubmitOnboarding:
         login(client)
         r = submit(client, division="Division 99")
         assert "error=invalid_division" in str(r.url)
+        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
+
+    def test_invalid_main_batch_rejected(self, client):
+        signup(client)
+        login(client)
+        r = submit(client, main_batch="Batch 2099")
+        assert "error=invalid_main_batch" in str(r.url)
+        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
+
+    def test_invalid_practical_batch_rejected(self, client):
+        signup(client)
+        login(client)
+        r = submit(client, practical_batch="P99")
+        assert "error=invalid_practical_batch" in str(r.url)
+        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
+
+    def test_invalid_semester_rejected(self, client):
+        signup(client)
+        login(client)
+        r = submit(client, semester="Semester 12")
+        assert "error=invalid_semester" in str(r.url)
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_duplicate_prn_blocked_across_accounts(self, client):
@@ -137,6 +174,8 @@ class TestSubmitOnboarding:
         assert 'value="1234567890"' in body
         assert '<option value="Core" selected>' in body
         assert '<option value="Division 1" selected>' in body
+        assert '<option value="P1" selected>' in body
+        assert '<option value="Semester 3" selected>' in body
         assert "Resubmit for Verification" in body
 
 
@@ -157,6 +196,9 @@ class TestApprovalFlow:
         assert user["onboarding_status"] == "approved"
         assert user["github_username"] == "octocat"
         assert user["github_verified_at"]
+        assert user["main_batch"] == "Batch 2022"
+        assert user["practical_batch"] == "P1"
+        assert user["semester"] == "Semester 3"
 
     def test_reject_does_not_promote_handle(self, client):
         self._submit_and_link(client)
@@ -227,8 +269,26 @@ class TestOnboardingAuthHelpers:
         assert auth.valid_division("Division 14")
         assert not auth.valid_division("Division 15")
 
+    def test_batch_and_semester_validation(self):
+        assert auth.valid_main_batch("Batch 2022")
+        assert not auth.valid_main_batch("")
+        assert not auth.valid_main_batch("2022")
+        assert auth.valid_practical_batch("P1")
+        assert auth.valid_practical_batch("P8")
+        assert not auth.valid_practical_batch("P9")
+        assert auth.valid_semester("Semester 1")
+        assert auth.valid_semester("Semester 8")
+        assert not auth.valid_semester("Semester 9")
+
     def test_submit_and_status_flip(self, client):
         _session(client, "student")
-        ok, err = auth.submit_onboarding("student@college.edu", "1234567890", "Core", "Division 1")
+        ok, err = auth.submit_onboarding(
+            "student@college.edu", "1234567890", "Core", "Division 1",
+            main_batch="Batch 2022", practical_batch="P1", semester="Semester 3",
+        )
         assert ok and err == ""
-        assert auth.get_user("student@college.edu")["onboarding_status"] == "pending"
+        user = auth.get_user("student@college.edu")
+        assert user["onboarding_status"] == "pending"
+        assert user["main_batch"] == "Batch 2022"
+        assert user["practical_batch"] == "P1"
+        assert user["semester"] == "Semester 3"

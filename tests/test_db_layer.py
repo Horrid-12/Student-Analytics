@@ -323,6 +323,32 @@ class TestUsers:
         # Confirm without a candidate is refused.
         assert db.confirm_profile_source("db-test-nocand@test.local", "github") is False
 
+    def test_onboarding_batch_and_semester_round_trip(self):
+        """Phase 5.6: main_batch, practical_batch, semester on Postgres."""
+        email = "db-test-onboarding@test.local"
+        assert db.upsert_user(email, role="student", name="Batch User") is not None
+        assert db.set_onboarding(
+            email, prn="9876543210", degree_branch="Core", division="Division 2",
+            main_batch="Batch 2023", practical_batch="P3", semester="Semester 4",
+            status="approved", submitted_at="2026-09-26 10:00:00 UTC",
+            github_verified_at="2026-09-26 11:00:00 UTC",
+        ) is True
+        row = db.get_user_by_email(email)
+        assert row is not None
+        assert row["prn"] == "9876543210"
+        assert row["degree_branch"] == "Core"
+        assert row["division"] == "Division 2"
+        assert row["main_batch"] == "Batch 2023"
+        assert row["practical_batch"] == "P3"
+        assert row["semester"] == "Semester 4"
+        assert row["onboarding_status"] == "approved"
+        # Check get_approved_users includes the new columns
+        approved = [u for u in db.get_approved_users() if u["email"] == email]
+        assert len(approved) == 1
+        assert approved[0]["practical_batch"] == "P3"
+        assert approved[0]["semester"] == "Semester 4"
+        assert approved[0]["main_batch"] == "Batch 2023"
+
 
 class TestRecordCompletion:
     def test_records_once(self):
