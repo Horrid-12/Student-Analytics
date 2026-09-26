@@ -11,7 +11,7 @@
     'invalid_degree': 'Please pick a degree program/branch from the list.',
     'invalid_division': 'Please pick a valid cohort division.',
     'invalid_main_batch': 'Please pick a valid main batch (admission cohort).',
-    'invalid_practical_batch': 'Please pick a valid practical batch.',
+    'invalid_practical_batch': 'Please pick a valid Python Practical batch.',
     'invalid_semester': 'Please pick a valid semester.',
     'prn_taken': 'This Roll Number is already registered to another account.',
     'storage_unavailable': 'Your submission could not be saved right now. Please try again shortly.',
@@ -59,7 +59,7 @@
                 <th style="padding: 10px 12px; font-weight: 600;">PRN</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Degree / Branch</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Division</th>
-                <th style="padding: 10px 12px; font-weight: 600;">Practical · Sem</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Python Batch · Sem</th>
                 <th style="padding: 10px 12px; font-weight: 600;">GitHub</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Status</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Submitted</th>
@@ -184,7 +184,7 @@
                 </div>
 
                 <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Practical Batch (Lab Section) *</label>
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Python Practical batch *</label>
                     <select name="practical_batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
                         <option value="" disabled {% if not submission.practical_batch %}selected{% endif %} hidden>(Select your Batch)</option>
                         {% for n in ['1', '2', '3'] %}
