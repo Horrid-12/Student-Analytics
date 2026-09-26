@@ -3,8 +3,9 @@ import time
 from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
+import httpx
 import pandas as pd
-import requests
+
 
 from app import github_client
 
@@ -470,9 +471,9 @@ def check_rate_limit_parts(status_code: int, headers: dict) -> None:
 
 def classify_api_error(exc: Exception = None, status_code: int = 0) -> str:
     """Return a short error-kind tag for logging and reporting."""
-    if isinstance(exc, requests.exceptions.Timeout):
+    if isinstance(exc, httpx.TimeoutException):
         return "timeout"
-    if isinstance(exc, (requests.exceptions.ConnectionError, OSError)):
+    if isinstance(exc, (httpx.RequestError, OSError)):
         return "network"
     if status_code == 401:
         return "auth"
