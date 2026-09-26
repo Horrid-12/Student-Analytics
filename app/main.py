@@ -1183,7 +1183,8 @@ def _self_sync_on_login(user: dict | None) -> None:
     if not email or not github:
         return
     try:
-        sync.sync_one(user, github_client.load_token())
+        full_user = auth.get_user(user.get("email", "")) or user
+        sync.sync_one(full_user, github_client.load_token())
     except Exception:
         logger.exception("Self-sync on login failed for %s", email)
 

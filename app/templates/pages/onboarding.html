@@ -164,7 +164,8 @@
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Allocated Degree Program & Branch *</label>
-                    <select name="degree_branch" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                    <select name="degree_branch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.degree_branch %}selected{% endif %} hidden>(Select your Branch)</option>
                         {% for option in ['Core', 'AI/DS', 'Cloud Computing', 'Cyber Security and Forensics'] %}
                         <option value="{{ option }}" {% if option == submission.degree_branch %}selected{% endif %}>{{ option }}</option>
                         {% endfor %}
@@ -173,7 +174,8 @@
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Cohort Division / Section Assignment *</label>
-                    <select name="division" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                    <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.division %}selected{% endif %} hidden>(Select your Division)</option>
                         {% for n in range(1, 15) %}
                         {% set option = 'Division ' ~ n %}
                         <option value="{{ option }}" {% if option == submission.division %}selected{% endif %}>{{ option }}</option>
@@ -183,7 +185,8 @@
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Practical Batch (Lab Section) *</label>
-                    <select name="practical_batch" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                    <select name="practical_batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.practical_batch %}selected{% endif %} hidden>(Select your Batch)</option>
                         {% for n in ['1', '2', '3'] %}
                         <option value="{{ n }}" {% if n == submission.practical_batch %}selected{% endif %}>{{ n }}</option>
                         {% endfor %}
@@ -193,7 +196,8 @@
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Current Semester *</label>
-                    <select name="semester" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                    <select name="semester" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.semester %}selected{% endif %} hidden>(Select your Semester)</option>
                         {% for n in range(1, 9) %}
                         {% set option = 'Semester ' ~ n %}
                         <option value="{{ option }}" {% if option == submission.semester %}selected{% endif %}>{{ option }}</option>
