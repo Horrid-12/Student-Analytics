@@ -12,6 +12,7 @@ import time
 import pytest
 
 from app import accounts, auth, sync
+from app import db as app_db
 import app.services as psvc
 
 
@@ -94,7 +95,7 @@ class TestStoreSQLite:
                                       status="ok", student=student, repos=repos,
                                       synced_at="2026-09-26 10:00:00 UTC")
         snap = accounts.get_snapshot("alice@college.edu")
-        assert snap is not None
+        assert snap is not None 
         assert snap["username"] == "alice-dev"
         assert snap["status"] == "ok"
         assert snap["student"]["Student ID"] == "101"
@@ -123,6 +124,27 @@ class TestStoreSQLite:
         assert not accounts.save_snapshot("   ")
         assert accounts.get_snapshot("") is None
         assert not accounts.clear_snapshot("")
+
+    def test_json_safe_cleans_nan_for_postgres(self):
+        # BUG-117: pandas NaN from repo fetches must become None before Jsonb,
+        # otherwise Postgres rejects the snapshot write and the fleet row is
+        # silently dropped. This exercises the sanitizer independent of DB.
+        import pandas as pd
+
+        cleaned = app_db._json_safe(
+            {
+                "Student Name": "Alice",
+                "License": float("nan"),
+                "nested": {"Description": getattr(pd, "NA", None), "ok": "x"},
+                "tags": ["a", pd.NA],
+            }
+        )
+        assert cleaned["License"] is None
+        assert cleaned["nested"]["Description"] is None
+        assert cleaned["nested"]["ok"] == "x"
+        assert cleaned["tags"][1] is None
+        assert cleaned["tags"][0] == "a"
+        assert cleaned["Student Name"] == "Alice"
 
 
 # ── sync engine ────────────────────────────────────────────────────────────────

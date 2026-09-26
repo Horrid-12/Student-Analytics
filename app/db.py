@@ -1547,6 +1547,27 @@ def get_approved_users() -> list[dict]:
         return []
 
 
+def _json_safe(value: Any) -> Any:
+    """Recursively replace pandas NaN/NaT/NA with None so the value survives
+    psycopg3's ``Jsonb`` round-trip (Postgres rejects bare NaN/Infinity
+    JSON tokens). Mirrors the per-row ``pd.isna`` sanitization done when
+    stashing roster records (BUG-117: account snapshots with GitHub fields
+    whose values are NaN failed to save → status stayed "error" → fleet
+    pages stayed blank even for approved, synced accounts)."""
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def save_account_snapshot(
     email: str,
     username: str = "",
@@ -1576,8 +1597,8 @@ def save_account_snapshot(
                     email,
                     (username or "").strip(),
                     (status or "").strip(),
-                    Jsonb(student or {}),
-                    Jsonb(repos or []),
+                    Jsonb(_json_safe(student or {})),
+                    Jsonb(_json_safe(repos or [])),
                     synced_at or "",
                     (error or "").strip(),
                 ),

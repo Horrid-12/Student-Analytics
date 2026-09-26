@@ -348,6 +348,29 @@ class TestPruning:
         assert db.roster_exists(rid) is True  # not pruned (very recent)
 
 
+class TestAccountSnapshots:
+    def test_roundtrip_sanitizes_nan(self):
+        # BUG-117: real snapshots carry pandas NaN in optional GitHub fields
+        # (License/Description...). Postgres JSONB rejects bare `NaN` tokens, so
+        # the save failed and the approved account's fleet row stayed blank.
+        email = "nan@college.edu"
+        student = {"Student Name": "NaN", "GitHub_Username": "alice-dev"}
+        repos = [
+            {"Username": "alice-dev", "Repository": "notes",
+             "License": float("nan"), "Description": None},
+            {"Username": "alice-dev", "Repository": "app", "License": "MIT"},
+        ]
+        assert db.save_account_snapshot(
+            email, username="alice-dev", status="ok", student=student,
+            repos=repos, synced_at="2026-09-26 10:00:00 UTC",
+        )
+        snap = db.get_account_snapshot(email)
+        assert snap is not None
+        assert snap["status"] == "ok"
+        assert snap["repos"][0]["License"] is None
+        assert snap["repos"][1]["License"] == "MIT"
+
+
 class TestReferenceSheet:
     def test_roundtrip_and_clear(self):
         rows = [
