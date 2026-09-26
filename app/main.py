@@ -556,15 +556,22 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     footer = f"{role.title()} \u2022 {display}" if user else "Open Access"
     # 4.11: unboxed sidebar identity — plain avatar linking to the signed-in
     # user's own profile page (/me); roster stamped server-side like nav hrefs.
-    # 4.11 (e): a confirmed GitHub/LinkedIn fetch replaces the initial pill
-    # with the photo and shows the handle. One get_user lookup per page
-    # render; fail-safe to the pill so auth never breaks rendering.
+    # Student accounts auto-resolve the navbar photo + username from GitHub
+    # (no Settings confirm step); other roles keep the confirmed
+    # GitHub/LinkedIn fetch. One get_user lookup per page render; fail-safe
+    # to the pill so auth never breaks rendering.
     sidebar_avatar_url, sidebar_handle = "", ""
     if user:
         try:
-            identity = auth.linked_identity(auth.get_user(user.get("email", "")))
-            sidebar_avatar_url = identity.get("avatar", "")
-            sidebar_handle = identity.get("handle", "")
+            row = auth.get_user(user.get("email", ""))
+            if (role or "") == "student":
+                identity = auth.github_sidebar_identity(row)
+                sidebar_avatar_url = identity.get("avatar", "")
+                sidebar_handle = identity.get("handle", "")
+            else:
+                identity = auth.linked_identity(row)
+                sidebar_avatar_url = identity.get("avatar", "")
+                sidebar_handle = identity.get("handle", "")
         except Exception:
             sidebar_avatar_url, sidebar_handle = "", ""
     return {
