@@ -274,24 +274,44 @@
   var total = {{ payload.total }};
   var shownEl = document.getElementById('shown-count');
   var shown = {{ payload.showing }};
-  var hidden = Array.prototype.slice.call(
-    document.querySelectorAll('#repo-grid-view .repo-card-v2[hidden], #repo-table-view tbody tr[hidden]')
-  );
   var sentinel = document.getElementById('scroll-sentinel');
 
-  if (!sentinel || hidden.length === 0) {
+  function currentView() {
+    var v = document.querySelector('input[name="view"]');
+    return v && v.value === 'table' ? 'table' : 'grid';
+  }
+
+  function viewHidden() {
+    var primarySel = currentView() === 'table'
+      ? '#repo-table-view tbody tr[hidden]'
+      : '#repo-grid-view .repo-card-v2[hidden]';
+    var secondarySel = currentView() === 'table'
+      ? '#repo-grid-view .repo-card-v2[hidden]'
+      : '#repo-table-view tbody tr[hidden]';
+    return {
+      primary: Array.prototype.slice.call(document.querySelectorAll(primarySel)),
+      secondary: Array.prototype.slice.call(document.querySelectorAll(secondarySel))
+    };
+  }
+
+  var initial = viewHidden().primary;
+  if (!sentinel || initial.length === 0) {
     if (sentinel) sentinel.hidden = true;
     return;
   }
   var observer = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (!entry.isIntersecting) return;
-      for (var i = 0; i < batchSize && hidden.length; i++) {
-        hidden.shift().hidden = false;
+      var lists = viewHidden();
+      var primary = lists.primary;
+      var secondary = lists.secondary;
+      for (var i = 0; i < batchSize && primary.length; i++) {
+        primary.shift().hidden = false;
+        if (secondary.length) secondary.shift().hidden = false;
       }
-      shown = total - hidden.length;
+      shown = total - primary.length;
       if (shownEl) shownEl.textContent = String(shown);
-      if (hidden.length === 0) {
+      if (primary.length === 0) {
         observer.disconnect();
         sentinel.hidden = true;
       }
