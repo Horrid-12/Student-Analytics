@@ -1293,7 +1293,6 @@ def leaderboards_page(
         "pages/leaderboards.html",
         {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
-    )
 
 
 @app.post("/leaderboards/blacklist")
