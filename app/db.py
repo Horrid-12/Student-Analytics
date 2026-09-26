@@ -1298,7 +1298,9 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, "
                 "github_username, linkedin_sub, "
                 "linked_github_username, linked_github_avatar, linked_linkedin_name, "
-                "linked_linkedin_avatar, profile_source "
+                "linked_linkedin_avatar, profile_source, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1428,6 +1430,289 @@ def upsert_user(
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("upsert_user failed: %s", exc)
         return None
+
+
+# ── Phase 4.12 onboarding (mirrors auth.py signatures) ────────────────────────
+
+_ONBOARDING_COLUMNS = (
+    "prn, degree_branch, division, onboarding_status, "
+    "onboarding_submitted_at, github_verified_at"
+)
+
+
+def get_prn_owner(prn: str, statuses=("pending", "approved"), exclude_email: str = "") -> Optional[str]:
+    """Email of the account holding ``prn`` with one of ``statuses`` (or None)."""
+    prn = (prn or "").strip()
+    if not prn:
+        return None
+    exclude_email = (exclude_email or "").strip().lower()
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT email FROM users WHERE prn = %s AND onboarding_status = ANY(%s) AND email != %s",
+                (prn, list(statuses), exclude_email),
+            )
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_prn_owner failed: %s", exc)
+        return None
+
+
+def set_onboarding(
+    email: str,
+    prn: str = "",
+    degree_branch: str = "",
+    division: str = "",
+    status: str = "none",
+    submitted_at: str = "",
+    github_verified_at: str = "",
+) -> bool:
+    """Write onboarding fields for one account (Postgres leg)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET prn = %s, degree_branch = %s, division = %s, "
+                "onboarding_status = %s, onboarding_submitted_at = %s, "
+                "github_verified_at = %s WHERE email = %s",
+                (prn, degree_branch, division, status, submitted_at, github_verified_at, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_onboarding failed: %s", exc)
+        return False
+
+
+def set_github_username(email: str, github_username: str) -> bool:
+    """Promote an OAuth-linked handle to the verified github_username."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET github_username = %s WHERE email = %s",
+                (github_username, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_github_username failed: %s", exc)
+        return False
+
+
+def get_onboarding_users() -> list[dict]:
+    """All accounts that ever submitted onboarding, newest-first (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email, role, name, github_username, linked_github_username, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at FROM users "
+                "WHERE onboarding_status != 'none' "
+                "ORDER BY onboarding_submitted_at DESC, email ASC"
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_onboarding_users failed: %s", exc)
+        return []
+
+
+# ── account snapshots (Phase 5.1 account-driven redesign) ─────────────────────
+
+def get_approved_users() -> list[dict]:
+    """Accounts with an approved onboarding submission — the sync fleet."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email, role, name, github_username, prn, degree_branch, division, "
+                "onboarding_status, onboarding_submitted_at, github_verified_at "
+                "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_approved_users failed: %s", exc)
+        return []
+
+
+def save_account_snapshot(
+    email: str,
+    username: str = "",
+    status: str = "ok",
+    student: Optional[dict] = None,
+    repos: Optional[list] = None,
+    synced_at: str = "",
+    error: str = "",
+) -> bool:
+    """Upsert one account's dashboard-shaped analytics snapshot (Postgres leg)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "INSERT INTO account_snapshots "
+                "(email, username, status, student_json, repos_json, synced_at, error) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (email) DO UPDATE SET "
+                "username = EXCLUDED.username, status = EXCLUDED.status, "
+                "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
+                "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
+                (
+                    email,
+                    (username or "").strip(),
+                    (status or "").strip(),
+                    Jsonb(student or {}),
+                    Jsonb(repos or []),
+                    synced_at or "",
+                    (error or "").strip(),
+                ),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_account_snapshot failed: %s", exc)
+        return False
+
+
+def _snapshot_row(row: dict) -> dict:
+    """Normalize one account_snapshots row into the public dict shape."""
+    return {
+        "email": row.get("email", ""),
+        "username": row.get("username", ""),
+        "status": row.get("status", ""),
+        "student": row.get("student_json") if isinstance(row.get("student_json"), (dict, list)) else {},
+        "repos": row.get("repos_json") if isinstance(row.get("repos_json"), list) else [],
+        "synced_at": row.get("synced_at", ""),
+        "error": row.get("error", ""),
+    }
+
+
+def get_account_snapshot(email: str) -> Optional[dict]:
+    """One account's snapshot dict (student/repos parsed), or None."""
+    email = (email or "").strip().lower()
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                "FROM account_snapshots WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            return _snapshot_row(dict(row)) if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_account_snapshot failed: %s", exc)
+        return None
+
+
+def list_account_snapshots() -> list[dict]:
+    """Every account snapshot, newest-first (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+            )
+            return [_snapshot_row(dict(row)) for row in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("list_account_snapshots failed: %s", exc)
+        return []
+
+
+def clear_account_snapshot(email: str) -> bool:
+    """Drop one account's snapshot (Postgres leg)."""
+    email = (email or "").strip().lower()
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "DELETE FROM account_snapshots WHERE email = %s", (email,)
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("clear_account_snapshot failed: %s", exc)
+        return False
+
+
+# ── Verification reference sheet ─────────────────────────────────────────────
+
+def save_reference_sheet(filename: str, rows: list, uploaded_at: str = "") -> bool:
+    """Upsert the single active Verification reference sheet (id = 1). Rows is
+    the parsed list of normalized reference records (no workbook bytes)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "INSERT INTO reference_sheets (id, filename, uploaded_at, rows_json) "
+                "VALUES (1, %s, %s, %s) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "filename = EXCLUDED.filename, uploaded_at = EXCLUDED.uploaded_at, "
+                "rows_json = EXCLUDED.rows_json",
+                (
+                    (filename or "").strip(),
+                    uploaded_at or "",
+                    Jsonb(rows or []),
+                ),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_reference_sheet failed: %s", exc)
+        return False
+
+
+def get_reference_sheet() -> Optional[dict]:
+    """The active reference sheet dict ``{filename, uploaded_at, rows}``, or
+    None when none has been uploaded yet (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT filename, uploaded_at, rows_json FROM reference_sheets WHERE id = 1"
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                "filename": row["filename"],
+                "uploaded_at": row["uploaded_at"],
+                "rows": row["rows_json"] if isinstance(row["rows_json"], list) else [],
+            }
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_reference_sheet failed: %s", exc)
+        return None
+
+
+def clear_reference_sheet() -> bool:
+    """Drop the active reference sheet (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute("DELETE FROM reference_sheets WHERE id = 1")
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("clear_reference_sheet failed: %s", exc)
+        return False
 
 
 # ── retention ──────────────────────────────────────────────────────────────────

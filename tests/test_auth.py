@@ -133,11 +133,13 @@ class TestRBACGating:
         assert client.get("/").status_code == 200
         assert client.get("/leaderboards").status_code in (200, 404)  # roster not loaded -> placeholder/404
 
-    def test_student_can_open_settings_but_not_students_history(self, client):
+    def test_student_can_open_analytics_pages_and_self_scoped_issues_but_not_verification(self, client):
         self._session(client, "student")
-        assert client.get("/students").status_code == 403
-        assert client.get("/history").status_code == 403
+        assert client.get("/students").status_code == 200  # empty account fleet -> placeholder, not 403
+        assert client.get("/history").status_code == 200
         assert client.get("/settings").status_code == 200
+        assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 200  # 4.11 WIP bell restore: self-scoped Issues re-opened
+        assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303  # Verification stays faculty/admin-only
 
     def test_faculty_and_admin_open_all_pages(self, client):
         for role in ("faculty", "admin"):

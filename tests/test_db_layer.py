@@ -346,3 +346,25 @@ class TestPruning:
         )
         assert db.prune_old_results(keep_n=10) >= 0
         assert db.roster_exists(rid) is True  # not pruned (very recent)
+
+
+class TestReferenceSheet:
+    def test_roundtrip_and_clear(self):
+        rows = [
+            {"email": "a@college.edu", "prn": "101", "student_name": "Alice",
+             "division": "A", "batch": "2026", "github_username": "alice-dev",
+             "github_link": "https://github.com/alice-dev"}
+        ]
+        assert db.clear_reference_sheet() in (False, True)  # idempotent start
+        assert db.save_reference_sheet("ref.xlsx", rows, uploaded_at="2026-01-01") is True
+        ref = db.get_reference_sheet()
+        assert ref is not None
+        assert ref["filename"] == "ref.xlsx"
+        assert ref["uploaded_at"] == "2026-01-01"
+        assert ref["rows"] == rows
+        # Upsert replaces, never duplicates.
+        assert db.save_reference_sheet("new.xlsx", [], uploaded_at="2026-02-01") is True
+        assert db.get_reference_sheet()["filename"] == "new.xlsx"
+        assert db.get_reference_sheet()["rows"] == []
+        assert db.clear_reference_sheet() is True
+        assert db.get_reference_sheet() is None

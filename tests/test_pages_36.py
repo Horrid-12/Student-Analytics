@@ -70,6 +70,20 @@ def roster_rows() -> list[dict]:
     ]
 
 
+def make_reference_xlsx(rows=None) -> io.BytesIO:
+    """Build a "Student Details" reference workbook in the cross-check schema."""
+    from app.crosscheck import REF_HEADERS
+
+    columns = [k for k in REF_HEADERS if k in (rows[0] if rows else {})] or REF_HEADERS
+    df = pd.DataFrame(rows or [], columns=columns)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Form responses 1")
+    buf.name = "reference.xlsx"
+    buf.seek(0)
+    return buf
+
+
 class FakeGitHub:
     """Mirror of tests/test_batch.py::FakeGitHub."""
 
@@ -776,10 +790,50 @@ class TestPageRenderingWithData:
             f"/leaderboards?roster={roster_id}&select=999"
         ).text
 
-    def test_verification_routes_removed(self, tmp_path):
+    def test_verification_page_cross_check(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        assert self.client.get(f"/verification?roster={roster_id}").status_code == 404
-        assert self.client.get(f"/verification/export?roster={roster_id}").status_code == 404
+        # Reference sheet uses the Student Details schema: PRN 101 -> alice-dev
+        # (Verified), PRN 202 -> a different handle (Mismatch), PRN 999 absent
+        # from the roster. 202's real analyzed handle is bob-cat.
+        ref = make_reference_xlsx(
+            [
+                {"Email address": "alice@college.edu", "Student Name": "Alice Example", "PRN No": "101", "Division": "A", "Batch ": "2026", "Actual Github Account Link": "https://github.com/alice-dev"},
+                {"Email address": "bob@college.edu", "Student Name": "Bob Example", "PRN No": "202", "Division": "B", "Batch ": "2026", "Actual Github Account Link": "https://github.com/bob-other"},
+                {"Email address": "carol@college.edu", "Student Name": "Carol Example", "PRN No": "999", "Division": "C", "Batch ": "2026", "Actual Github Account Link": "https://github.com/carol-x"},
+            ]
+        )
+        upload = self.client.post(
+            f"/verification/reference?roster={roster_id}",
+            files={"file": ("reference.xlsx", ref.getvalue(), XLSX_MIME)},
+        )
+        assert upload.status_code in (200, 303)
+        body = self.client.get(f"/verification?roster={roster_id}").text
+        assert "Account Verification Audit" in body
+        assert "Reference Sheet" in body
+        assert "Alice Example" in body and "Bob Example" in body
+        assert "alice-dev" in body
+        assert "Verified" in body       # 101 matches reference alice-dev
+        assert "Mismatch" in body       # 202 analyzed bob-cat vs ref bob-other
+        assert "Upload reference" in body
+
+    def test_verification_page_unreferenced_and_role_gate(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        # No reference uploaded yet: every analyzed handle is Unreferenced.
+        body = self.client.get(f"/verification?roster={roster_id}").text
+        assert "No reference sheet uploaded yet" in body
+        assert "Unreferenced" in body
+        assert "alice-dev" in body
+        # Students cannot reach the verification page at all.
+        student_client = TestClient(app)
+        make_user(student_client, "student")
+        for path in (f"/verification?roster={roster_id}", "/verification", "/verification/export"):
+            res = student_client.get(path)
+            assert res.status_code in (302, 303, 403)
+        # Export works for faculty with a completed roster analysis.
+        csv = self.client.get(f"/verification/export?roster={roster_id}&format=csv")
+        assert csv.status_code == 200
+        assert "Validation Status" in csv.text
+        assert "alice-dev" in csv.text and "Unreferenced" in csv.text
 
     def test_issues_page_and_workflow_save(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -850,9 +904,9 @@ class TestPageRenderingWithData:
         roster_id = data["roster_id"]
         for path in ("students", "repositories", "leaderboards", "issues"):
             body = self.client.get(f"/{path}?roster={roster_id}").text
-            assert "populates after you upload a roster" in body
+            assert "synced student accounts" in body
         body = self.client.get("/students").text
-        assert "populates after you upload a roster" in body
+        assert "synced student accounts" in body
 
     def test_export_without_analysis_404(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")

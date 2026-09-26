@@ -354,6 +354,112 @@ def analysis_view(roster_store, roster_id: str):
     }
 
 
+def account_view(email: str):
+    """Rebuild the ``analysis_view`` shape from a student's stored account
+    snapshot (Phase 5.1 account-driven redesign).
+
+    Returns None when the account has no stored snapshot yet; otherwise the
+    same ``{records, state, students, repos, team_repos, issues}`` contract
+    ``analysis_view`` produces, sized to the single student — so the existing
+    page builders (overview / students / repositories / own_profile) run
+    unchanged against account-driven pages.
+    """
+    from app import accounts
+
+    snapshot = accounts.get_snapshot(email)
+    if snapshot is None or snapshot.get("status") != "ok":
+        return None
+    student = snapshot.get("student") or {}
+    if not student:
+        return None
+    records = [student]
+    columns = DASHBOARD_COLS + [ROSTER_EMAIL_COL]
+    students = pd.DataFrame(records)
+    for column in columns:
+        if column not in students.columns:
+            students[column] = None
+    students = students[columns]
+    repos = pd.DataFrame(snapshot.get("repos") or [])
+    for column in REPO_COLS:
+        if column not in repos.columns:
+            repos[column] = None
+    repos = repos[REPO_COLS]
+    return {
+        "roster_id": "",
+        "records": records,
+        "state": {"status": "complete", "valid": 1, "invalid": 0, "errors": 0, "elapsed": 0},
+        "students": students,
+        "repos": repos,
+        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "issues": _frame({}, "issues", ISSUE_COLS),
+    }
+
+
+def fleet_view():
+    """College-wide view built from every approved account's synced snapshot
+    (Phase 5.2 — roster-less pages). Same ``analysis_view`` contract, sized to
+    the whole fleet, so the shared page builders render without any uploaded
+    roster or Excel file. Returns None when no synced accounts exist yet.
+    """
+    from app import accounts, auth
+
+    all_rows: list[dict] = []
+    repo_rows: list[dict] = []
+    try:
+        approved = auth.get_approved_accounts()
+    except Exception:
+        return None
+    for user_row in approved:
+        try:
+            snapshot = accounts.get_snapshot((user_row or {}).get("email", ""))
+        except Exception:
+            snapshot = None
+        if snapshot is None or snapshot.get("status") != "ok":
+            continue
+        student = snapshot.get("student") or {}
+        if not student:
+            continue
+        all_rows.append(student)
+        repo_rows.extend(snapshot.get("repos") or [])
+
+    if not all_rows:
+        return None
+
+    # Aggregation semantics: drop duplicate usernames after merging students
+    # (first approved account wins) — same rule the roster analysis enforces.
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for student in all_rows:
+        username = str(student.get("GitHub_Username") or "").strip().lower()
+        if not username or username not in seen:
+            seen.add(username)
+            unique.append(student)
+    all_rows = unique
+
+    columns = DASHBOARD_COLS + [ROSTER_EMAIL_COL]
+    students = pd.DataFrame(all_rows)
+    for column in columns:
+        if column not in students.columns:
+            students[column] = None
+    students = students[columns]
+
+    repos = pd.DataFrame(repo_rows)
+    for column in REPO_COLS:
+        if column not in repos.columns:
+            repos[column] = None
+    repos = repos[REPO_COLS]
+
+    return {
+        "roster_id": "",
+        "records": all_rows,
+        "state": {"status": "complete", "valid": len(all_rows), "invalid": 0, "errors": 0, "elapsed": 0},
+        "students": students,
+        "repos": repos,
+        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "issues": _frame({}, "issues", ISSUE_COLS),
+    }
+
+
 def friendly_timestamp(value) -> str:
     if not value or value == "Never":
         return "No completed analysis yet"
@@ -781,6 +887,63 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(pairs)
 
 
+AUDIT_COLS = [
+    STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
+    "Reference_Username", "Validation Status", "Repositories Found",
+    "Followers", "Following", "Last Updated",
+]
+
+
+def verification_payload(view: dict, references: list[dict], query: str = "", status: str = "All", rows: int = 50) -> dict:
+    """Cross-check audit table for the Verification page.
+
+    Each analyzed student is matched to the uploaded "Student Details"
+    reference (email-first, PRN-fallback via ``crosscheck.cross_check_status``)
+    and tagged Verified / Mismatch / Missing / Unreferenced. Returns the same
+    ``{total, showing, display, filtered, statuses}`` contract every page
+    payload uses so the template/filter/export helpers work unchanged.
+    """
+    from app import crosscheck
+
+    students = view["students"]
+    records = view["records"]
+    stats = {
+        str(row.get(STUDENT_ID_COL, "")): row for row in students.to_dict("records")
+    }
+    audit_rows = []
+    for record in records:
+        sid = str(record.get(STUDENT_ID_COL, "") or "")
+        username = str(record.get("GitHub_Username") or "").strip()
+        status_label, ref_username = crosscheck.cross_check_status(record, references or [])
+        stat = stats.get(sid, {})
+        audit_rows.append({
+            STUDENT_ID_COL: sid,
+            "Student Name": record.get("Student Name", ""),
+            "Division": record.get("Division", ""),
+            "GitHub_Username": username,
+            "GitHub Profile": github_profile_url(username),
+            "Reference_Username": ref_username,
+            "Validation Status": status_label,
+            "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
+            "Followers": int(stat.get("Followers", 0) or 0),
+            "Following": int(stat.get("Following", 0) or 0),
+            "Last Updated": friendly_timestamp(last_analysis_time()),
+        })
+
+    audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
+    filtered = filter_text(
+        audit, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Reference_Username", "Division"]
+    )
+    filtered = apply_value_filter(filtered, "Validation Status", status)
+    return {
+        "total": len(filtered),
+        "showing": min(int(rows), len(filtered)) if not filtered.empty else 0,
+        "display": filtered.head(int(rows)),
+        "filtered": filtered,
+        "statuses": ["All"] + sorted(str(value) for value in audit["Validation Status"].dropna().unique().tolist()),
+    }
+
+
 def _recent_activity(
     student_repos: pd.DataFrame,
     team_active_dates: set | None = None,
@@ -994,7 +1157,7 @@ def normalize_email(value) -> str:
 def find_own_student_row(students: pd.DataFrame, email: str):
     """Return the roster row (as a dict) whose Email address matches the
     signed-in user, or None when there is no roster, no email column, or no
-    match. Powers the sidebar avatar link (/me) and issue notifications."""
+    match. Powers the sidebar avatar link (/me) and own-profile popup."""
     if students is None or email is None:
         return None
     needle = normalize_email(email)

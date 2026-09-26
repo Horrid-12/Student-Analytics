@@ -27,6 +27,13 @@ from typing import Iterator, Optional
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from app.env import load_dotenv_local
+
+# Phase 5.3: make the `vercel env pull` file (.env.local) feed DATABASE_URL too,
+# so every entry point (web, init_db, seed_users, sync cron) needs no manual
+# shell exports. Shell env still wins; idempotent with the main.py load.
+load_dotenv_local()
+
 logger = logging.getLogger(__name__)
 
 _default = object()

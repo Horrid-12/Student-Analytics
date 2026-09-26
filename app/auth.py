@@ -56,10 +56,31 @@ _EXTRA_COLUMNS = (
     ("linked_linkedin_name", "TEXT NOT NULL DEFAULT ''"),
     ("linked_linkedin_avatar", "TEXT NOT NULL DEFAULT ''"),
     ("profile_source", "TEXT NOT NULL DEFAULT ''"),
+    # Phase 4.12 onboarding: academic identity captured on /onboarding.
+    ("prn", "TEXT NOT NULL DEFAULT ''"),
+    ("degree_branch", "TEXT NOT NULL DEFAULT ''"),
+    ("division", "TEXT NOT NULL DEFAULT ''"),
+    ("onboarding_status", "TEXT NOT NULL DEFAULT 'none'"),
+    ("onboarding_submitted_at", "TEXT NOT NULL DEFAULT ''"),
+    ("github_verified_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # OAuth providers a student can fetch their picture + username from (4.11 e).
 LINK_SOURCES = ("github", "linkedin")
+
+#: Allowed degree/branch choices on /onboarding (kept server-side so the HTML
+#: <select> can never smuggle an unlisted value into the ledger).
+DEGREE_BRANCHES = ("Core", "AI/DS", "Cloud Computing", "Cyber Security and Forensics")
+
+#: Allowed division labels (1-14), matching the onboarding <select> options.
+DIVISIONS = tuple(f"Division {n}" for n in range(1, 15))
+
+ONBOARDING_STATUSES = ("none", "pending", "approved", "rejected")
+
+#: Lifecycle states that reserve a PRN for its current owner. A rejected/none
+#: submission is considered abandoned so another account (the real student)
+#: can take the PRN over on a fresh submission.
+_PRONS_TAKEN_STATUSES = ("pending", "approved")
 
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
@@ -72,19 +93,20 @@ _PAGE_BY_PREFIX = (
     ("/students", "Students"),
     ("/onboarding", "Onboarding"),
     ("/overview", "Overview"),
+    ("/verification", "Verification"),
     ("/me", "My Profile"),
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Support", "Settings", "My Profile")
 
-# BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
-# Leaderboards + Settings + Support, plus My Profile and self-scoped Issues
-# (4.11: the notification bell's Fix links land there; the handler filters
-# rows to the signed-in student and blocks workflow edits).
+# BUG-044/046 RBAC: faculty and admin see everything. Students get the full
+# analytics stack (Phase 5.2 — every page populates from the synced account
+# fleet, no roster needed) plus Settings/Support/My Profile; Issues and
+# Verification are faculty/admin management pages only.
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Leaderboards", "Settings", "Support", "My Profile", "Issues"),
+    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
@@ -508,8 +530,11 @@ def get_user(email: str) -> dict | None:
             _ensure_schema(conn)
             row = conn.execute(
                 "SELECT id, email, password_hash, role, name, auth_source, google_sub, "
+                "github_username, linkedin_sub, "
                 "linked_github_username, linked_github_avatar, linked_linkedin_name, "
-                "linked_linkedin_avatar, profile_source FROM users WHERE email = ?",
+                "linked_linkedin_avatar, profile_source, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -623,6 +648,209 @@ def confirm_profile_source(email: str, source: str) -> bool:
                 _ensure_schema(conn)
                 cur = conn.execute(
                     "UPDATE users SET profile_source = ? WHERE email = ?", (source, email)
+                )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def valid_degree_branch(value: str) -> bool:
+    return (value or "").strip() in DEGREE_BRANCHES
+
+
+def valid_division(value: str) -> bool:
+    return (value or "").strip() in DIVISIONS
+
+
+def valid_prn(value: str) -> bool:
+    """10-digit standard roll identifier as printed on the admission ledger."""
+    value = (value or "").strip()
+    return len(value) == 10 and value.isdigit()
+
+
+def prn_taken(prn: str, exclude_email: str = "") -> bool:
+    """True when another account already holds ``prn`` behind an active
+    (pending/approved) submission. Rejected/none holders don't block a
+    fresh submission from the real student."""
+    prn = (prn or "").strip()
+    if not prn:
+        return False
+    exclude_email = (exclude_email or "").strip().lower()
+    if database.db_configured():
+        owner = db.get_prn_owner(
+            prn, statuses=_PRONS_TAKEN_STATUSES, exclude_email=exclude_email
+        )
+        return owner is not None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            row = conn.execute(
+                "SELECT email FROM users WHERE prn = ? AND onboarding_status IN (?, ?) AND email != ?",
+                (prn, *sorted(_PRONS_TAKEN_STATUSES), exclude_email),
+            ).fetchone()
+        return row is not None
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def submit_onboarding(email: str, prn: str, degree_branch: str, division: str) -> tuple[bool, str]:
+    """Record a student's academic onboarding submission and move the account
+    to ``pending`` for registrar review. Returns ``(ok, error_code)`` where
+    ``error_code`` is "" on success and one of ``prn_format``, ``invalid_degree``,
+    ``invalid_division``, ``prn_taken``, ``storage_unavailable`` otherwise.
+    Never raises."""
+    email = (email or "").strip().lower()
+    prn = (prn or "").strip()
+    degree_branch = (degree_branch or "").strip()
+    division = (division or "").strip()
+    if not valid_prn(prn):
+        return False, "prn_format"
+    if not valid_degree_branch(degree_branch):
+        return False, "invalid_degree"
+    if not valid_division(division):
+        return False, "invalid_division"
+    if prn_taken(prn, exclude_email=email):
+        return False, "prn_taken"
+    if not email:
+        return False, "storage_unavailable"
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    stored = db_set_onboarding(
+        email, prn=prn, degree_branch=degree_branch, division=division,
+        status="pending", submitted_at=now,
+    )
+    if not stored:
+        return False, "storage_unavailable"
+    return True, ""
+
+
+def db_set_onboarding(
+    email: str,
+    prn: str = "",
+    degree_branch: str = "",
+    division: str = "",
+    status: str = "none",
+    submitted_at: str = "",
+    github_verified_at: str = "",
+) -> bool:
+    """Write onboarding fields for one account. Postgres-first, SQLite fallback.
+    Returns True when the row updated."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    if status not in ONBOARDING_STATUSES:
+        status = "none"
+    if database.db_configured():
+        return db.set_onboarding(
+            email, prn=prn, degree_branch=degree_branch, division=division,
+            status=status, submitted_at=submitted_at,
+            github_verified_at=github_verified_at,
+        )
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute(
+                    "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
+                    "onboarding_status = ?, onboarding_submitted_at = ?, "
+                    "github_verified_at = ? WHERE email = ?",
+                    (prn, degree_branch, division, status, submitted_at, github_verified_at, email),
+                )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def get_onboarding_users() -> list[dict]:
+    """All accounts that ever submitted onboarding, newest-first. Returns user
+    rows (dicts) with the onboarding fields populated; [] on storage failure."""
+    if database.db_configured():
+        return db.get_onboarding_users()
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            rows = conn.execute(
+                "SELECT email, role, name, github_username, linked_github_username, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at FROM users "
+                "WHERE onboarding_status != 'none' "
+                "ORDER BY onboarding_submitted_at DESC, email ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("onboarding ledger lookup failed: %s", exc)
+        return []
+
+
+def get_approved_accounts() -> list[dict]:
+    """Accounts with an approved onboarding submission — the sync fleet.
+    Returns user rows (email/role/name/github_username/prn/degree_branch/
+    division/onboarding fields); [] on storage failure."""
+    if database.db_configured():
+        return db.get_approved_users()
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            rows = conn.execute(
+                "SELECT email, role, name, github_username, prn, degree_branch, division, "
+                "onboarding_status, onboarding_submitted_at, github_verified_at FROM users "
+                "WHERE onboarding_status = 'approved' ORDER BY email ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("approved-account lookup failed: %s", exc)
+        return []
+
+
+def set_onboarding_status(email: str, status: str, promote_github: bool = False) -> tuple[bool, str]:
+    """Approve/reject a submission. ``promote_github`` (approval) also promotes
+    the OAuth-linked GitHub handle into the verified ``github_username`` and
+    stamps ``github_verified_at``. Returns ``(ok, reason)``."""
+    email = (email or "").strip().lower()
+    if status not in ("approved", "rejected"):
+        return False, "bad_status"
+    user = get_user(email)
+    if user is None:
+        return False, "no_user"
+    if user.get("onboarding_status", "none") == "none" or not (user.get("prn") or "").strip():
+        return False, "no_submission"
+    github_verified_at = ""
+    if status == "approved":
+        if promote_github:
+            handle = (user.get("linked_github_username") or "").strip()
+            if handle:
+                stored_handle = db_set_github_handle(email, handle)
+                if not stored_handle:
+                    return False, "storage_unavailable"
+            github_verified_at = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    ok = db_set_onboarding(
+        email,
+        prn=user.get("prn", ""),
+        degree_branch=user.get("degree_branch", ""),
+        division=user.get("division", ""),
+        status=status,
+        submitted_at=user.get("onboarding_submitted_at", ""),
+        github_verified_at=github_verified_at,
+    )
+    return (True, "") if ok else (False, "storage_unavailable")
+
+
+def db_set_github_handle(email: str, github_username: str) -> bool:
+    """Promote an OAuth-linked handle to the verified ``github_username``."""
+    email = (email or "").strip().lower()
+    github_username = (github_username or "").strip()
+    if not email or not github_username:
+        return False
+    if database.db_configured():
+        return db.set_github_username(email, github_username)
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute(
+                    "UPDATE users SET github_username = ? WHERE email = ?",
+                    (github_username, email),
                 )
                 return (cur.rowcount or 0) > 0
     except (sqlite3.Error, OSError):

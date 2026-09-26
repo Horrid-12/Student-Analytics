@@ -20,7 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import auth, batch, charts, database, db, github_client, google_oauth, services, storage, support, views
+from app import accounts, auth, batch, charts, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views
+from app.env import load_dotenv_local
+
+# Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
+# OAuth + GitHub token + DATABASE_URL share ONE gitignored secrets source;
+# shell env always wins. Must run before any credential is read.
+load_dotenv_local()
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +120,49 @@ def _analysis_view(roster_id: str):
     return views.analysis_view(roster_store, roster_id)
 
 
+def _account_view(request: Request, roster: str = ""):
+    """Account-driven fallback view (Phase 5.1): with no roster attached, a
+    student's stored analytics snapshot rebuilds the analysis_view shape so
+    the shared page builders render per-account data without an upload. Returns
+    None for faculty/admins and for students with no snapshot yet."""
+    if roster:
+        return None
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "student":
+        return None
+    try:
+        return views.account_view(user.get("email", ""))
+    except Exception:
+        logger.exception("Unable to load account view for %s", (user or {}).get("email"))
+        return None
+
+
+def _fleet_view(request: Request, roster: str = ""):
+    """Roster-less college-wide fallback (Phase 5.2): no roster attached, build
+    the view from every approved account's synced snapshot so students AND
+    faculty/admin see live data without uploading a workbook. Returns None when
+    the fleet has no synced accounts yet."""
+    if roster:
+        return None
+    try:
+        return views.fleet_view()
+    except Exception:
+        logger.exception("Unable to load the account-fleet view")
+        return None
+
+
+def _account_sync_stamp(request: Request, roster: str = "") -> str:
+    """Last-sync label for the Overview in account mode (the shared pipeline
+    timestamp has no meaning there)."""
+    if roster:
+        return ""
+    user = getattr(request.state, "user", None)
+    snapshot = accounts.get_snapshot((user or {}).get("email", ""))
+    if snapshot and snapshot.get("synced_at"):
+        return views.friendly_timestamp(str(snapshot["synced_at"]).replace(" UTC", "+00:00"))
+    return ""
+
+
 def _workflow_state(roster_id: str) -> dict:
     """Workflow state: prefer Postgres; fall back to RosterStore cache."""
     if database.db_configured():
@@ -150,7 +199,7 @@ def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
     return True
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -161,6 +210,7 @@ NAV_SVG = {
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
     "History": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+    "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 }
@@ -176,6 +226,7 @@ def slug_for(page: str) -> str:
         "Leaderboards": "leaderboards",
         "History": "history",
         "Issues": "issues",
+        "Verification": "verification",
         "Support": "support",
         "Settings": "settings",
     }
@@ -201,13 +252,16 @@ def nav(active: str, role: str | None = None, roster_id: str = "") -> list[dict]
 
 # Legacy PAGE_PLACEHOLDERS (app.py 332-338): icon, title, message. `needs_run`
 # False pages (History) don't show the "populates after an analysis" footnote.
+# Phase 5.2: message copy is account-driven — pages populate from the synced
+# account fleet (or a completed roster analysis), not from an upload alone.
 PAGE_PLACEHOLDERS = {
     "Students": ("students", "Student Explorer", "Search, filter, and inspect validated GitHub student profiles.", True),
-    "Repositories": ("repositories", "Repositories", "Browse every public repository in the roster with language and activity details.", True),
+    "Repositories": ("repositories", "Repositories", "Browse every public repository in the fleet with language and activity details.", True),
     "Leaderboards": ("leaderboards", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students.", True),
     "Issues": ("issues", "Open Issues", "Review open issues and technical debt across student repositories.", True),
     "History": ("history", "Run History", "Past analysis runs, timings, and outcomes appear here.", False),
     "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
+    "Verification": ("verification", "Verification", "Confirm each GitHub account against the uploaded reference sheet, review validation results, and export per-student status.", True),
 }
 
 
@@ -618,9 +672,12 @@ def _not_found_response(request: Request, ctx: dict | None = None) -> HTMLRespon
 
 
 def _guard_page(request: Request, ctx: dict, page_name: str, roster: str):
-    """Page guard â€” data pages need a roster with a completed analysis, else the
-    legacy placeholder page is served."""
+    """Page guard — data pages need data: a roster with a completed analysis, or
+    (Phase 5.2) the synced account fleet. When neither exists the legacy
+    placeholder page is served."""
     view = _analysis_view(roster) if roster else None
+    if view is None or not _is_complete(view):
+        view = _fleet_view(request, roster)
     if view is None or not _is_complete(view):
         return None, _placeholder_response(request, ctx, page_name)
     return view, None
@@ -1058,9 +1115,24 @@ def logout(request: Request):
     return response
 
 
+def _fleet_sync_stamp() -> str:
+    """Newest synced_at across the approved fleet (Overview "last sync" label
+    in fleet mode, since the shared pipeline timestamp means nothing there)."""
+    try:
+        latest = ""
+        for row in auth.get_approved_accounts():
+            snapshot = accounts.get_snapshot((row or {}).get("email", ""))
+            if snapshot and snapshot.get("synced_at") and str(snapshot["synced_at"]) > latest:
+                latest = str(snapshot["synced_at"])
+        return views.friendly_timestamp(latest.replace(" UTC", "+00:00")) if latest else ""
+    except Exception:
+        return ""
+
+
 def _own_notifications(request: Request, view, roster: str) -> tuple[list, int]:
-    """4.11: issue alerts for the student notification bell. Only computed for
-    student logins on a completed run; everyone else gets ([], 0)."""
+    """4.11 (restored WIP): issue alerts for the signed-in student's
+    notification bell. Only computed for student logins on a completed run /
+    synced fleet view; everyone else gets ([], 0)."""
     user = getattr(request.state, "user", None) or {}
     if user.get("role") != "student" or view is None or not _is_complete(view):
         return [], 0
@@ -1079,23 +1151,122 @@ def overview(request: Request, roster: str = ""):
     ctx["payload"] = None
     ctx["past_runs"] = _run_history_rows()
     ctx["notifications"], ctx["notif_count"] = [], 0
-    if roster:
-        view = _analysis_view(roster)
-        if view is not None and _is_complete(view):
-            try:
-                ctx["view"] = view
-                ctx["payload"] = views.overview_payload(view)
-                ctx["last_analysis"] = views.friendly_timestamp(views.last_analysis_time())
-                ctx["notifications"], ctx["notif_count"] = _own_notifications(request, view, roster)
-            except Exception:
-                ctx["view"] = None
+    account_mode = not roster
+    view = _analysis_view(roster) if roster else (_account_view(request) or _fleet_view(request))
+    if view is not None and _is_complete(view):
+        try:
+            ctx["view"] = view
+            ctx["payload"] = views.overview_payload(view)
+            ctx["notifications"], ctx["notif_count"] = _own_notifications(request, view, roster)
+            if account_mode:
+                stamp = _account_sync_stamp(request) or _fleet_sync_stamp()
+                if stamp:
+                    ctx["payload"]["last_analysis"] = stamp
+        except Exception:
+            ctx["view"] = None
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
 
 
 @app.get("/onboarding", response_class=HTMLResponse)
-def onboarding(request: Request):
+def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = ""):
+    """Onboarding page. Students see their own submission form + status;
+    faculty/admin see the registrar ledger with approve/reject actions."""
     ctx = _base_context(request, "Onboarding")
+    user = getattr(request.state, "user", None)
+    role = (user or {}).get("role")
+    ctx["manager"] = role in ("admin", "faculty")
+    ctx["auth_email"] = (user or {}).get("email", "")
+    ctx["submission"] = {}
+    if ctx["manager"]:
+        ctx["onboarding_users"] = auth.get_onboarding_users()
+    elif user:
+        try:
+            ctx["submission"] = auth.get_user(user.get("email", "")) or {}
+        except Exception:
+            ctx["submission"] = {}
+    ctx["saved"] = saved
+    ctx["error"] = error
+    ctx["action"] = action
+    ctx["action_email"] = email
+    ctx["oauth"] = oauth
     return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
+
+
+@app.post("/onboarding", response_class=HTMLResponse)
+async def onboarding_submit(
+    request: Request,
+    prn: str = Form(""),
+    degree_branch: str = Form(""),
+    division: str = Form(""),
+):
+    """Student submission endpoint (Phase 4.12). Validates the form server-side,
+    persists the academic identity, and moves the account to ``pending``."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") not in ("student",):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    ok, err = auth.submit_onboarding(user["email"], prn, degree_branch, division)
+    if ok:
+        _db_log_event("onboarding_submit", user["email"])
+        return RedirectResponse("/onboarding?saved=1", status_code=303)
+    _db_log_event("onboarding_rejected_input", f"{user['email']}; {err}")
+    return RedirectResponse(f"/onboarding?error={err}", status_code=303)
+
+
+@app.post("/onboarding/approve", response_class=HTMLResponse)
+async def onboarding_approve(request: Request, email: str = Form("")):
+    """Registrar approves a pending submission: promotes the OAuth-linked
+    GitHub handle into the verified username and stamps the approval time."""
+    return _onboarding_review(request, email, "approved", promote_github=True)
+
+
+@app.post("/onboarding/reject", response_class=HTMLResponse)
+async def onboarding_reject(request: Request, email: str = Form("")):
+    return _onboarding_review(request, email, "rejected", promote_github=False)
+
+
+def _onboarding_review(request: Request, email: str, status: str, promote_github: bool):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") not in ("admin", "faculty"):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    email = (email or "").strip().lower()
+    ok, reason = auth.set_onboarding_status(email, status, promote_github=promote_github)
+    _db_log_event(
+        f"onboarding_{status}" if ok else "onboarding_action_failed",
+        f"{email}; {reason}",
+    )
+    if ok:
+        return RedirectResponse(f"/onboarding?action={status}&email={email}", status_code=303)
+    return RedirectResponse(f"/onboarding?action=error&email={email}", status_code=303)
+
+
+@app.post("/sync/accounts")
+async def sync_accounts(request: Request, force: bool = False):
+    """Phase 5.1: refresh every approved account's analytics snapshot.
+
+    Faculty/admins may trigger it from the UI; any client that presents the
+    matching X-Cron-Secret header (``CRON_SECRET`` env) can POST for the
+    scheduled refresh. Always returns the JSON summary, never a traceback."""
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        configured_secret = os.environ.get("CRON_SECRET") or ""
+        if configured_secret:
+            supplied = request.headers.get("x-cron-secret") or ""
+            authorized = hmac.compare_digest(supplied, configured_secret)
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    token = github_client.load_token()
+    summary = await asyncio.to_thread(sync.sync_all, token, force=force)
+    _db_log_event(
+        "accounts_sync",
+        f"attempted={summary.get('attempted')}; synced={summary.get('synced')}; "
+        f"skipped_fresh={summary.get('skipped_fresh')}; failed={summary.get('failed')}",
+    )
+    return JSONResponse(content=summary)
 
 
 @app.get("/students", response_class=HTMLResponse)
@@ -1141,11 +1312,10 @@ def my_profile_page(request: Request, roster: str = ""):
     (RBAC "My Profile"); non-roster users get a friendly empty state."""
     ctx = _base_context(request, "My Profile", roster)
     profile = None
-    if roster:
-        view = _analysis_view(roster)
-        if view is not None and _is_complete(view):
-            user = getattr(request.state, "user", None) or {}
-            profile = views.own_profile_payload(view, user.get("email", ""))
+    view = _analysis_view(roster) if roster else _account_view(request)
+    if view is not None and _is_complete(view):
+        user = getattr(request.state, "user", None) or {}
+        profile = views.own_profile_payload(view, user.get("email", ""))
     return templates.TemplateResponse(
         request,
         "pages/me.html",
@@ -1186,7 +1356,17 @@ def repositories_page(
     sort: str = "top",
 ):
     ctx = _base_context(request, "Repositories", roster)
-    data, response = _guard_page(request, ctx, "Repositories", roster)
+    if roster:
+        data, response = _guard_page(request, ctx, "Repositories", roster)
+    else:
+        # Phase 5.2: no roster → the synced account fleet populates the browser
+        # for students AND faculty/admins; placeholder only when nothing synced.
+        data = _fleet_view(request, roster)
+        response = (
+            None
+            if data is not None and _is_complete(data)
+            else _placeholder_response(request, ctx, "Repositories")
+        )
     if response is not None:
         return response
     if view not in ("grid", "table"):
@@ -1221,7 +1401,6 @@ def leaderboards_page(
         blacklist=_blacklist_state(roster),
         hidden_repos=_hidden_repos_state(roster),
     )
-    notifications, notif_count = _own_notifications(request, view, roster)
     # Same profile popup as the Students tab: opened from a leaderboard name,
     # closed back to this exact leaderboard view.
     profile = None
@@ -1233,6 +1412,7 @@ def leaderboards_page(
                 profile = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
         except Exception:
             profile = None
+    notifications, notif_count = _own_notifications(request, view, roster)
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
@@ -1379,6 +1559,10 @@ def history_page(request: Request):
 
 @app.get("/issues", response_class=HTMLResponse)
 def issues_page(request: Request, roster: str = "", issue: str = "All"):
+    """Issues is a faculty/admin management page (Verification stays
+    faculty/admin-only). Students (restored 4.11 WIP bell) see only their own
+    issue rows read-only; the account fleet carries no validation issues, so
+    the page shows the empty state until a roster analysis contributes rows."""
     ctx = _base_context(request, "Issues", roster)
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
@@ -1425,6 +1609,97 @@ async def issues_workflow_save(request: Request, roster: str = ""):
     if database.db_configured():
         db.put_workflow(roster, body)
     return {"status": "ok", "saved": len(body)}
+
+
+# ── Account verification (cross-check against uploaded reference sheet) ─────
+
+@app.get("/verification", response_class=HTMLResponse)
+def verification_page(
+    request: Request, roster: str = "", q: str = "", status: str = "All", rows: int = 50
+):
+    """Faculty/admin cross-check of analyzed students vs. an uploaded
+    "Student Details" reference workbook. The reference card always renders;
+    the audit table appears once a completed roster analysis is attached."""
+    ctx = _base_context(request, "Verification", roster)
+    reference = crosscheck.get_reference()
+    ref_rows = (reference or {}).get("rows") or []
+    view = _analysis_view(roster) if roster else _fleet_view(request, roster)
+    complete = view is not None and _is_complete(view)
+    payload = views.verification_payload(view, ref_rows, q, status, rows) if complete else None
+    export_query = views.export_query_str(
+        roster_id=roster, q=q, division="All", batch="All", year="All", semester="All", status=status
+    )
+    return templates.TemplateResponse(
+        request,
+        "pages/verification.html",
+        {
+            **ctx,
+            "view": view,
+            "payload": payload,
+            "reference": reference,
+            "reference_count": len(ref_rows) if ref_rows else 0,
+            "complete": complete,
+            "roster_id": roster,
+            "q": q,
+            "status": status,
+            "rows": rows,
+            "export_query": export_query,
+            "error": request.query_params.get("error", ""),
+        },
+    )
+
+
+@app.post("/verification/reference")
+async def verification_reference_upload(request: Request, roster: str = "", file: UploadFile = File(...)):
+    """Faculty/admin upload of a "Student Details" reference workbook. Parses
+    and normalizes it, then stores it as the single active reference sheet."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") not in ("admin", "faculty"):
+        raise HTTPException(status_code=403, detail="Faculty or admin required")
+    data = await file.read()
+    records, warnings = crosscheck.parse_reference_workbook(data, file.filename or "reference.xlsx")
+    if not records:
+        detail = "; ".join(warnings) if warnings else "No valid rows found"
+        raise HTTPException(status_code=400, detail=detail)
+    crosscheck.init_db()
+    from datetime import datetime, timezone
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    saved = crosscheck.save_reference(records, filename=file.filename or "", uploaded_at=uploaded_at)
+    if not saved:
+        raise HTTPException(status_code=500, detail="Could not store the reference sheet")
+    crosscheck.REFERENCES = records
+    if database.db_configured():
+        _db_log_event("reference_uploaded", f"filename={file.filename}, rows={len(records)}")
+    else:
+        storage.log_event("reference_uploaded", f"filename={file.filename}, rows={len(records)}")
+    return RedirectResponse(f"/verification?roster={roster}", status_code=303)
+
+
+@app.post("/verification/reference/clear")
+async def verification_reference_clear(request: Request, roster: str = ""):
+    """Drop the active reference sheet."""
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") not in ("admin", "faculty"):
+        raise HTTPException(status_code=403, detail="Faculty or admin required")
+    crosscheck.init_db()
+    crosscheck.clear_reference()
+    crosscheck.REFERENCES = []
+    return RedirectResponse(f"/verification?roster={roster}", status_code=303)
+
+
+@app.get("/verification/export")
+def verification_export(
+    request: Request, roster: str = "", format: str = "csv", q: str = "", status: str = "All", rows: int = 50
+):
+    """CSV/XLSX export of the cross-check audit (filters applied)."""
+    reference = crosscheck.get_reference()
+    ref_rows = (reference or {}).get("rows") or []
+    view, response = _guard_page(request, {}, "Verification", roster)
+    if response is not None:
+        raise HTTPException(status_code=404, detail="No completed analysis to export")
+    payload = views.verification_payload(view, ref_rows, q, status, rows)
+    df = payload["filtered"].copy()
+    return _export_response(df, format, "verification")
 
 
 # ── Support tickets ──────────────────────────────────────────────────────────

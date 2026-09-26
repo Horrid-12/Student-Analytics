@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Verification — GitHub Student Analytics Platform{% endblock %}
+{% block content %}
+
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <div class="topbar-title">Verification</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>{{ topbar_date }}</span><span>&bull;</span>
+        <span>{% if payload %}{{ payload.total }} students{% else %}No analysis loaded{% endif %}</span>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+<span class="badge-purple">Faculty</span>
+</div>
+  </div>
+</div>
+
+{% if error %}
+<p class="banner-error" style="background: rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.25); border-radius:8px; padding:10px 14px; margin-bottom:14px; color:var(--badge-red-color);">{{ error }}</p>
+{% endif %}
+
+<section class="panel" style="margin-bottom:16px;">
+  <div class="panel-title">Reference Sheet</div>
+  <p style="font-size:13px; margin:0 0 10px; line-height:1.5;">Upload the current <strong>Student Details</strong> export (Email / PRN / Division / Actual GitHub Account Link). Each analyzed student is cross-checked against it&mdash;matched by email first, then PRN.</p>
+  {% if reference %}
+  <div style="font-size:13px; margin-bottom:10px;">
+    <span class="badge-green">Loaded</span>
+    <strong>{{ reference.filename or "reference workbook" }}</strong>
+    &mdash; {{ reference_count }} rows
+    {% if reference.uploaded_at %}<span class="repo-meta" style="margin-left:6px;">uploaded {{ reference.uploaded_at }}</span>{% endif %}
+  </div>
+  <form method="post" action="/verification/reference/clear" style="display:inline;">
+    <input type="hidden" name="roster" value="{{ roster_id }}">
+    <button class="btn" type="submit" style="margin-right:8px;">Clear reference</button>
+  </form>
+  {% else %}
+  <p class="badge-amber" style="display:inline-block;">No reference sheet uploaded yet &mdash; every student shows as Unreferenced.</p>
+  {% endif %}
+  <form method="post" action="/verification/reference" enctype="multipart/form-data" style="display:inline; margin-left:6px;">
+    <input type="hidden" name="roster" value="{{ roster_id }}">
+    <input type="file" name="file" accept=".xlsx,.xls,.csv" required style="max-width:320px;">
+    <button class="btn" type="submit">Upload reference</button>
+  </form>
+</section>
+
+{% if complete %}
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <div class="search-box-row">
+    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search student ID, name, username, reference or division&hellip;">
+  </div>
+  <select class="filter-select" name="status" title="Validation Status">
+    {% for value in payload.statuses %}
+    <option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select" name="rows" title="Rows" onchange="this.form.submit()">
+    <option value="50" {% if rows == 50 %}selected{% endif %}>50</option>
+    <option value="100" {% if rows == 100 %}selected{% endif %}>100</option>
+    <option value="500" {% if rows == 500 %}selected{% endif %}>500</option>
+    <option value="2000" {% if rows == 2000 %}selected{% endif %}>All</option>
+  </select>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/verification?roster={{ roster_id }}">Clear</a>
+  <span class="filter-count">{{ payload.showing }} of {{ payload.total }} shown</span>
+</form>
+
+<section class="panel">
+  <div class="panel-title">Account Verification Audit</div>
+  {% if not payload.filtered.empty %}
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Student</th><th>Division</th><th>GitHub Username</th><th>Reference Username</th><th>Validation Status</th><th>Repos Found</th><th>Followers</th><th>Following</th><th>Last Updated</th></tr>
+      </thead>
+      <tbody>
+        {% for row in payload.display.to_dict('records') %}
+        <tr>
+          <td>{{ row['Student Name'] }}<div class="repo-meta">{{ row['Student_ID'] }}</div></td>
+          <td>{{ row.Division }}</td>
+          <td>
+            {% if row['GitHub_Username'] %}
+            <a href="{{ row['GitHub Profile'] }}" target="_blank" rel="noopener">{{ row['GitHub_Username'] }}</a>
+            {% else %}<span class="badge-amber">none</span>{% endif %}
+          </td>
+          <td>
+            {% if row['Reference_Username'] %}{{ row['Reference_Username'] }}{% else %}<span class="badge-blue">none</span>{% endif %}
+          </td>
+          <td>
+            {% if row['Validation Status'] == 'Verified' %}<span class="badge-green">Verified</span>
+            {% elif row['Validation Status'] == 'Mismatch' %}<span class="badge-red">Mismatch</span>
+            {% elif row['Validation Status'] == 'Missing' %}<span class="badge-amber">Missing</span>
+            {% else %}<span class="badge-blue">Unreferenced</span>{% endif %}
+          </td>
+          <td>{{ row['Repositories Found'] }}</td>
+          <td>{{ row.Followers }}</td>
+          <td>{{ row.Following }}</td>
+          <td>{{ row['Last Updated'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="export-row">
+    <a class="btn" href="/verification/export?{{ export_query }}">Export CSV</a>
+    <a class="btn" href="/verification/export?{{ export_query.replace('format=csv', 'format=xlsx') }}">Export Excel</a>
+  </div>
+  {% else %}
+  <p class="table-empty">No students match the current filters.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="panel">
+  <div class="panel-title">Account Verification Audit</div>
+  <p class="table-empty">No completed analysis to cross-check yet. Run an analysis on a roster to see per-student verification status against the reference sheet.</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -179,7 +179,7 @@ class TestSelfScopedIssuesPage:
         assert "Invalid format" in body
         assert '<select class="filter-select issue-status"' not in body
         assert 'id="save-workflow"' not in body
-        assert "/students?roster=" not in body  # no dead links into a gated page
+        assert "/students?roster=" in body  # own-row student link is navigable (students hold Students access since 5.2)
 
     def test_student_without_roster_match_sees_nothing(self, client):
         self._login(client, "student", "ghost@college.edu")
