@@ -84,7 +84,7 @@
 | 63 | ⚠️ Report Download | PDF/printable student report | P2 — Medium | Useful for records — CSV/Excel exports for Students + Verification (`main.py:834-850,983-992`); no PDF/printable report |
 | 64 | ⚠️ Faculty Feedback | Faculty comments visible to students | P2 — Medium | Creates feedback loop — editable per-roster issue workflow (Status/Owner/Notes), not a general feedback system (`main.py:949-961`) |
 | 65 | Notifications | Sync, achievements and feedback alerts | P2 — Medium | Engagement — not implemented |
-| 66 | Automatic Scheduled Sync | Periodic GitHub synchronization | P2 — Medium | Needed as scale grows — sync sweep engine supports it (`POST /sync/accounts` + `X-Cron-Secret` gate, `app/sync.py`); Vercel cron job not yet configured |
+| 66 | Automatic Scheduled Sync | Periodic GitHub synchronization | P2 — Medium | Needed as scale grows — sync sweep engine supports it (`POST /sync/accounts` + `X-Cron-Secret` gate, `app/sync.py`); Vercel Hobby cron configured daily (`0 0 * * *` - Hobby free plan caps crons to once/day; hourly `0 * * * *` is Pro-only) |
 | 67 | Settings — Profile | Edit allowed profile fields | P2 — Medium | Account management — not implemented (Settings is read-only account card) |
 | 68 | ⚠️ Settings — GitHub Account | View/reconnect verified GitHub account | P2 — Medium | Account management — account linking lives on `/onboarding` ("Link GitHub Profile"); the linked handle is promoted to the verified `github_username` on registrar approval (Phase 4.12); Settings still only shows a token presence badge (`settings.html:84-89`) |
 | 69 | Settings — Privacy | Optional visibility controls | P2 — Medium | Better privacy — not implemented |
