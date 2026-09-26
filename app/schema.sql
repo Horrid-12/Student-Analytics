@@ -326,3 +326,44 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type
 -- Backfill columns for GitHub/LinkedIn OAuth (Phase 4.7 extension).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_sub TEXT NOT NULL DEFAULT '';
+
+-- Backfill columns for academic onboarding (Phase 4.12 / account-driven follow-up).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS prn TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS degree_branch TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS division TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_submitted_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_verified_at TEXT NOT NULL DEFAULT '';
+
+-- Backfill batch/semester split (Phase 5.6). main_batch = admission cohort
+-- (stored, not shown); practical_batch fills the dashboard "Batch" column.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS main_batch TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS practical_batch TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
+
+-- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
+--     One row per synced account: JSONB holds the dashboard-shaped student
+--     record + the REPO_COLS repository list, so student pages rebuild the
+--     analysis_view shape without re-fetching GitHub on every request.
+CREATE TABLE IF NOT EXISTS account_snapshots (
+    email        TEXT PRIMARY KEY,
+    username     TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT '',
+    student_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    repos_json   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    synced_at    TEXT NOT NULL DEFAULT '',
+    error        TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
+
+-- 13. Reference sheet for the Verification cross-check (Phase 4.12).
+--     A single active "Student Details"-schema workbook uploaded by faculty:
+--     JSONB holds the normalized reference rows (email, PRN, name, division,
+--     extracted GitHub username), so /verification can cross-check the active
+--     analysis without re-parsing the workbook on every request.
+CREATE TABLE IF NOT EXISTS reference_sheets (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    filename    TEXT NOT NULL DEFAULT '',
+    uploaded_at TEXT NOT NULL DEFAULT '',
+    rows_json   JSONB NOT NULL DEFAULT '[]'::jsonb
+);

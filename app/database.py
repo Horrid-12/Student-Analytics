@@ -18,14 +18,28 @@ Design rules (mirror the legacy fail-safe SQLite contract, BUG-020/021/022):
   PgBouncer's transaction pooling.
 """
 
+import atexit
 import logging
 import os
 import threading
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+try:
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+    HAS_PSYCOPG = True
+except ImportError:
+    dict_row = None
+    ConnectionPool = None
+    HAS_PSYCOPG = False
+
+from app.env import load_dotenv_local
+
+# Phase 5.3: make the `vercel env pull` file (.env.local) feed DATABASE_URL too,
+# so every entry point (web, init_db, seed_users, sync cron) needs no manual
+# shell exports. Shell env still wins; idempotent with the main.py load.
+load_dotenv_local()
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +77,7 @@ _build_lock = threading.Lock()
 
 
 def db_configured() -> bool:
-    return pool_url() is not None
+    return HAS_PSYCOPG and (pool_url() is not None)
 
 
 def _safe_host(url: str) -> str:
@@ -76,7 +90,7 @@ def _safe_host(url: str) -> str:
 def _pool_or_none() -> Optional[ConnectionPool]:
     """Lazily build the pool once. Returns None when Postgres is unavailable."""
     global _pool, _pool_state
-    if _pool_state == "down":
+    if not HAS_PSYCOPG or _pool_state == "down":
         return None
     if isinstance(_pool, ConnectionPool):
         return _pool
@@ -109,15 +123,26 @@ def _pool_or_none() -> Optional[ConnectionPool]:
 
 def reset_pool() -> None:
     """Close any open pool and forget its state (test/teardown helper)."""
-    global _pool, _pool_state
+    global _pool, _pool_state, _admin_pool, _admin_pool_state
     with _build_lock:
-        if isinstance(_pool, ConnectionPool):
-            try:
-                _pool.close()
-            except Exception:
-                pass
+        if ConnectionPool is not None:
+            if isinstance(_pool, ConnectionPool):
+                try:
+                    _pool.close()
+                except Exception:
+                    pass
+            if isinstance(_admin_pool, ConnectionPool):
+                try:
+                    _admin_pool.close()
+                except Exception:
+                    pass
     _pool = None
     _pool_state = "uninit"
+    _admin_pool = None
+    _admin_pool_state = "uninit"
+
+
+atexit.register(reset_pool)
 
 
 # ── admin pool (direct / unpooled connection for DDL) ──────────────────────────
@@ -128,7 +153,7 @@ _admin_pool_state = "uninit"
 def _admin_pool_or_none() -> Optional[ConnectionPool]:
     """Lazily build a separate pool on the direct (non-PgBouncer) URL."""
     global _admin_pool, _admin_pool_state
-    if _admin_pool_state == "down":
+    if not HAS_PSYCOPG or _admin_pool_state == "down":
         return None
     if isinstance(_admin_pool, ConnectionPool):
         return _admin_pool

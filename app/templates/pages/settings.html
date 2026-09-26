@@ -89,6 +89,7 @@
     <div style="margin-top:12px;">
       <a class="btn" href="{{ auth_logout }}">Sign out</a>
     </div>
+
     <div class="auth-notice" style="margin-top:12px;">
       {% if storage_ok %}Accounts are stored in a local SQLite users database. On serverless hosts
       (Vercel) the write is read-only, so signups only persist on hosts with a writable filesystem —

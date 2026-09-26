@@ -1,8 +1,11 @@
 # Website Dashboard — Complete Feature & Priority List
 
-> Status last audited: 2026-09-16 against the live FastAPI stack (Phase 3–4.7.2 + onboarding).
+> Status last audited: 2026-09-26 against the live FastAPI stack (Phase 3–4.12 + account redesign Phases 5.1–5.2 + Verification cross-check).
 > ✅ = implemented · ⚠️ = partial (pieces missing, noted in "Why it matters") · (blank) = not implemented yet.
 > Second pass 2026-09-16: onboarding page (`/onboarding`) + GitHub/LinkedIn OAuth linking marked up on rows 3, 17, 23, 44, 45, 68, 75.
+> Third pass 2026-09-26 (Phase 4.12): onboarding backend landed — rows 3, 4, 44, 45, 68 updated: PRN/degree/division submit endpoint + pending→approve/reject registrar workflow + ledger; duplicate-PRN prevention during onboarding; approval promotes the linked GitHub handle.
+> Fourth pass 2026-09-26 (Phase 5.1): account-driven redesign Phases 2+3 landed — rows 19, 44, 66 updated: per-account snapshot store (`account_snapshots`) + periodic sync engine sweep the approved fleet via `POST /sync/accounts` (admin/faculty or `X-Cron-Secret`); Overview/My Profile fall back to the student's own snapshot when no roster; students stay RBAC-gated off `/repositories` (repo browser deferred).
+> Fifth pass 2026-09-26 (Phase 5.2 — Excel removal + fleet pages): rows 5, 11, 12, 13, 22, 23, 52 updated — every analytics page now populates for ALL roles from the synced account fleet (`views.fleet_view`, no roster/Excel needed): students gained Students/Repositories/Leaderboards/History; Issues + Verification are faculty/admin-only (student issue-bell removed with the student Issues scope); placeholder copy is account-driven; localhost run-history flood cleared via `python -m app.clear_local_data`. **Revised same-day (5.2r, 4.11 WIP reopen): the student issue-bell + self-scoped readonly Issues page + Issues nav tab are restored (feature still WIP); Verification alone stays faculty/admin-only.**
 
 ## Priority Legend
 | Priority | Meaning |
@@ -18,27 +21,27 @@
 |---:|---|---|---|---|
 | 1 | ✅ Authentication & Access Control | Secure login, sessions, authorization, logout | P0 — Critical | Foundation of the system |
 | 2 | ⚠️ Student Login Portal | PRN + password login | P0 — Critical | Required for personal access — login is college email + password today, not PRN (`app/auth.py`, `login.html:41-51`) |
-| 3 | ⚠️ Student Registration / Sign Up | New student registration with PRN verification | P0 — Critical | Supports missed registrations — signup `/signup` (email/name) plus an `/onboarding` page collecting PRN, degree program, and division for manual registrar verification; PRN form is still UI-only (no submit endpoint yet) |
-| 4 | ⚠️ Duplicate Student Prevention | Prevent an existing PRN/student from creating another account | P0 — Critical | Prevents misuse — `UNIQUE` on users.email prevents duplicate accounts (`auth.py:81`); duplicate PRNs in a roster get "Duplicate student" issues (`services.py:718-729`), but no "already registered" UX |
-| 5 | Student Authorization / Privacy | Students can access only their own private analytics | P0 — Critical | Mandatory privacy control — students only get college-wide Overview + Leaderboards + Settings (`auth.py:66-70`); no per-student data isolation |
+| 3 | ⚠️ Student Registration / Sign Up | New student registration with PRN verification | P0 — Critical | Supports missed registrations — signup `/signup` (email/name) plus an `/onboarding` page collecting PRN, degree program, and division; **student-only `POST /onboarding` submit endpoint (Phase 4.12) persists pending records with server-side validation, and admin/faculty approve or reject from a registrar ledger on the page** |
+| 4 | ⚠️ Duplicate Student Prevention | Prevent an existing PRN/student from creating another account | P0 — Critical | Prevents misuse — `UNIQUE` on users.email prevents duplicate accounts (`auth.py:81`); onboarding now de-dups on PRN via `prn_taken` (blocks a PRN already held by another pending/approved account; owner may re-submit; rejected PRNs are reclaimable); duplicate PRNs in a roster still get "Duplicate student" issues (`services.py:718-729`) |
+| 5 | Student Authorization / Privacy | Students can access only their own private analytics | P0 — Critical | Mandatory privacy control — students get the full analytics stack (Overview, Students, Repositories, Leaderboards, History) + Settings/Support/My Profile; the same account fleet feeds every page for every role (`auth.py:ROLE_PAGES`), Issues + Verification are faculty/admin-only; anonymized leaderboards render name-free "Student #ID" rows |
 | 6 | ⚠️ Password Security | Hashing, validation, password change/reset | P0 — Critical | Required for real deployment — PBKDF2-SHA256 hashing + validation (`auth.py:247-270`); no change/reset route or UI |
 | 7 | ✅ Logout / Session Management | Secure logout and session expiration | P0 — Critical | Protects accounts — HMAC-signed httponly cookie, 7-day TTL, `GET /logout` (`main.py:659-665,774-779`) |
 | 8 | ✅ Role-Based Access Control | Student / Faculty / Admin permissions | P0 — Critical | Separates sensitive functions — `ROLE_PAGES` + `can_access` gate every page (`auth.py:66-70,448-449`; `main.py:63-66`) |
 | 9 | ✅ Main Navigation | Working navigation to all major sections | P0 — Critical | Core usability — role-filtered sidebar nav (`base.html:39-50`; `main.py:102-115`) |
 | 10 | ✅ Overview Page | College-wide summary and important metrics | P0 — Critical | Main landing page — `/` + `/overview` (`main.py:782-797`) |
-| 11 | ✅ Students Page | Student records, search and filters | P0 — Critical | Core college analytics — `/students` (`main.py:800-831`), search + division/batch/year/semester filters (`views.py:342-392`) |
-| 12 | ✅ Repositories Page | Repository list, statistics and activity | P0 — Critical | Core GitHub analytics — `/repositories` (`main.py:853-866`) |
-| 13 | ✅ Leaderboard Page | Rankings with filters | P0 — Critical | Major student feature — `/leaderboards` (`main.py:869-888`) |
+| 11 | ✅ Students Page | Student records, search and filters | P0 — Critical | Core college analytics — `/students` (`main.py:800-831`), search + division/batch/year/semester filters (`views.py:342-392`); Phase 5.2 serves the whole approved account fleet to every role (`views.fleet_view`), no roster/Excel needed |
+| 12 | ✅ Repositories Page | Repository list, statistics and activity | P0 — Critical | Core GitHub analytics — `/repositories` (`main.py:853-866`); Phase 5.2 opens it to students and feeds every role the approved fleet's repositories (`views.fleet_view`) |
+| 13 | ✅ Leaderboard Page | Rankings with filters | P0 — Critical | Major student feature — `/leaderboards` (`main.py:869-888`); Phase 5.2 feeds rankings from the approved account fleet for every role — no roster needed |
 | 14 | ✅ Issues Page | GitHub issues opened, closed and active | P0 — Critical | Important GitHub metric — `/issues` + editable workflow (`main.py:935-961`) |
-| 15 | ✅ Verifications Page | PRN ↔ GitHub account verification | P0 — Critical | Prevents incorrect mappings — Verified/Missing/Invalid audit + status filter (`views.py:604-609`) |
+| 15 | ✅ Verifications Page | PRN ↔ GitHub account verification | P0 — Critical | Prevents incorrect mappings — automated Excel cross-check: faculty/admin upload a "Student Details" reference workbook (email/PRN/GitHub account), students tagged **Verified / Mismatch / Missing / Unreferenced** (email-primary, PRN-fallback match, `app/crosscheck.py`) + status filter + `/verification/export` |
 | 16 | ✅ Settings Page | Account, profile, password and preferences | P0 — Critical | Account management — theme/storage-health/account card (`/settings`, `settings.html`); profile/password editing not yet included |
-| 17 | ✅ GitHub Account Linking | Connect verified student GitHub account | P0 — Critical | Required for analytics — student-initiated GitHub OAuth flow on `/onboarding` ("Link GitHub Profile" → `/auth/github` → callback logs `github_linked`); linked login not yet persisted to the users DB (TODO in `main.py:803`) |
+| 17 | ✅ GitHub Account Linking | Connect verified student GitHub account | P0 — Critical | Required for analytics — student-initiated GitHub OAuth flow on `/onboarding` ("Link GitHub Profile" → `/auth/github` → callback logs `github_linked`); GitHub OAuth is link-only after sign-in and cannot create a session. |
 | 18 | ✅ GitHub Data Fetching | Repos, commits, PRs, issues, contributions etc. | P0 — Critical | Backend data foundation — users/repos/PRs/issues/followers/stars (`services.py:241-493`); commits deliberately not fetched (activity model, `services.py:586`) |
-| 19 | ⚠️ Data Synchronization | Update GitHub data automatically/manually | P0 — Critical | Keeps analytics current — manual "Run Analysis" only (`overview.html:19-22`); no scheduler/auto-sync |
+| 19 | ✅ Data Synchronization | Update GitHub data automatically/manually | P0 — Critical | Keeps analytics current — approved students auto-sync to per-account snapshots (`app/sync.py` sweep via `POST /sync/accounts`, admin/faculty or `X-Cron-Secret`); roster "Run Analysis" path retained |
 | 20 | ⚠️ Data Validation & Integrity | Validate API/database data and relationships | P0 — Critical | Prevents incorrect analytics — `prepare_students`/`normalize_student_id`/dedup + invalid/duplicate issues (`services.py:113-187,626-762`); no per-repo issue validation |
 | 21 | ✅ Error Handling | API failures, missing accounts and invalid data | P0 — Critical | Prevents crashes — `RateLimitError`, `classify_api_error`, retry/backoff, friendly failures (`services.py:48-51,226-238`; `github_client.py:227-279`; `main.py:607-614`) |
-| 22 | Student Dashboard / Overview | Personal summary after login | P1 — High | Main student experience — students land on the college-wide `/`, no personal dashboard route |
-| 23 | ⚠️ Student Profile Card | Name, department, division, year, GitHub username | P1 — High | Student identity — onboarding now captures PRN, degree program/branch, and division (`onboarding.html:27-60`); profile display on `/students?select=` is faculty/admin only (`views.py:408-433`) |
+| 22 | ⚠️ Student Dashboard / Overview | Personal summary after login | P1 — High | Main student experience — students render their OWN snapshot on Overview/My Profile (`main.py` `_account_view`; `views.py:357` `account_view`), or the whole approved fleet when their account isn't synced yet (Phase 5.2 `views.fleet_view`); no blank "upload a roster" state remains, but there is still no standalone personal route or per-student rank card |
+| 23 | ⚠️ Student Profile Card | Name, department, division, year, GitHub username | P1 — High | Student identity — onboarding now captures PRN, degree program/branch, and division (`onboarding.html:27-60`); profile panel on `/students?select=` + `/me`, open to every logged-in role (Phase 5.2) |
 | 24 | ⚠️ Personal Statistics | Repos, commits, contributions, PRs, issues, stars | P1 — High | Basic analytics — columns exist (repos/PRs/issues/followers/stars) in the Students table; no commits, no student-facing page |
 | 25 | My Rank Card | College rank, percentile and rank movement | P1 — High | Immediately useful — not implemented |
 | 26 | Activity Score | Transparent score using multiple metrics | P1 — High | Fairer than commit-only ranking — not implemented (leaderboards sort raw columns) |
@@ -59,15 +62,15 @@
 | 41 | ✅ Faculty Authentication | Separate faculty login/access | P1 — High | Protects faculty data — seed CLI + `FACULTY_EMAILS` allowlist + role resolution (`seed_users.py`; `auth.py:123-124,204-218`) |
 | 42 | ✅ Student Detail View | Authorized faculty view of student analytics | P1 — High | Useful for mentoring — `/students?select=` profile panel (faculty/admin only) |
 | 43 | ⚠️ Admin Controls | Manage students, accounts and verifications | P1 — High | Administrative requirement — RBAC gating + seed CLI; no in-app management UI |
-| 44 | ⚠️ Verification Management | Pending, verified and rejected accounts | P1 — High | Account integrity — status filter + CSV/Excel export; onboarding adds a "submitted → Registrar review → approval unlocks portal" flow, but statuses are auto-computed with no admin approve/reject UI (`views.py:604-609`) |
-| 45 | ⚠️ GitHub Ownership Verification | Confirm student controls linked GitHub account | P1 — High | Prevents impersonation — the onboarding GitHub OAuth grant is a real ownership signal; the legacy roster path still only checks `GET /users/{username}` existence (`services.py:241-251`), and neither result feeds the Verification page yet |
+| 44 | ✅ Verification Management | Pending, verified and rejected accounts | P1 — High | Account integrity — onboarding has a real registrar workflow: submissions land `pending`, admin/faculty Approve/Reject from a ledger on `/onboarding` (Phase 4.12), approval flips to `approved` and promotes the linked GitHub handle; the Verification page now cross-checks the roster audit against an uploaded reference sheet (Verified/Mismatch/Missing/Unreferenced) |
+| 45 | ✅ GitHub Ownership Verification | Confirm student controls linked GitHub account | P1 — High | Prevents impersonation — the onboarding GitHub OAuth grant is a real ownership signal and is now persisted: on registrar approval `linked_github_username` → `github_username` + `github_verified_at` (Phase 4.12). The roster path also cross-checks `GET /users/{username}` existence (`services.py:241-251`) against the uploaded reference sheet and flags handle **Mismatch** when the two disagree |
 | 46 | ⚠️ Data Refresh Button | Manual GitHub data refresh | P1 — High | Useful to users — "Run Analysis" re-run + Reset (`overview.html:19-22`; `main.py:1097-1102`); no dedicated refresh on data pages |
 | 47 | ✅ Last Synced Indicator | Show timestamp of latest sync | P1 — High | Shows data freshness — "Last completed analysis" (`base.html`; `views.last_analysis_time`) |
 | 48 | ✅ API Rate Limit Handling | Gracefully handle GitHub limits | P1 — High | Important at scale — `RateLimitError` + X-RateLimit headers + 429 JSON response (`services.py:48-51,210-223`; `main.py:1170-1179`) |
 | 49 | ✅ Caching | Avoid unnecessary repeated GitHub requests | P1 — High | Improves performance — TTL 3600, Memory/Upstash cache keyed URL+token (`github_client.py:30,47-156`) |
 | 50 | ✅ Responsive Design | Desktop, tablet and mobile support | P1 — High | Student accessibility — `@media` rules in `static/layout.css` + `static/style.css` |
 | 51 | ✅ Loading States | Skeletons/spinners while data loads | P1 — High | Better UX — pipeline step states + live run log (`overview.html:42-51,204-230`) |
-| 52 | ✅ Empty States | Clear messages when no data exists | P1 — High | Avoids confusing blank screens — placeholder pages pre-analysis + per-page empty-state blocks |
+| 52 | ✅ Empty States | Clear messages when no data exists | P1 — High | Avoids confusing blank screens — Phase 5.2 placeholder copy is account-driven ("populates from the synced student accounts or a completed analysis run"); pages render data for every role once the fleet has any synced account |
 | 53 | ✅ Chart/Data Accuracy | Ensure graphs match backend values | P0 — Critical | Trust in analytics — charts built from the same view payloads (`views.py:166-203` → `charts.py`) |
 | 54 | Peer Comparison | Student vs department average | P2 — Medium | Educational context — not implemented (college-wide averages only) |
 | 55 | GitHub Profile Health | Bio, picture, portfolio, activity checks | P2 — Medium | Actionable profile improvement — not implemented |
@@ -81,9 +84,9 @@
 | 63 | ⚠️ Report Download | PDF/printable student report | P2 — Medium | Useful for records — CSV/Excel exports for Students + Verification (`main.py:834-850,983-992`); no PDF/printable report |
 | 64 | ⚠️ Faculty Feedback | Faculty comments visible to students | P2 — Medium | Creates feedback loop — editable per-roster issue workflow (Status/Owner/Notes), not a general feedback system (`main.py:949-961`) |
 | 65 | Notifications | Sync, achievements and feedback alerts | P2 — Medium | Engagement — not implemented |
-| 66 | Automatic Scheduled Sync | Periodic GitHub synchronization | P2 — Medium | Needed as scale grows — not implemented |
+| 66 | Automatic Scheduled Sync | Periodic GitHub synchronization | P2 — Medium | Needed as scale grows — sync sweep engine supports it (`POST /sync/accounts` + `X-Cron-Secret` gate, `app/sync.py`); Vercel Hobby cron configured daily (`0 0 * * *` - Hobby free plan caps crons to once/day; hourly `0 * * * *` is Pro-only) |
 | 67 | Settings — Profile | Edit allowed profile fields | P2 — Medium | Account management — not implemented (Settings is read-only account card) |
-| 68 | ⚠️ Settings — GitHub Account | View/reconnect verified GitHub account | P2 — Medium | Account management — account linking now lives on `/onboarding` ("Link GitHub Profile"); Settings still only shows a token presence badge (`settings.html:84-89`) |
+| 68 | ⚠️ Settings — GitHub Account | View/reconnect verified GitHub account | P2 — Medium | Account management — account linking lives on `/onboarding` ("Link GitHub Profile"); the linked handle is promoted to the verified `github_username` on registrar approval (Phase 4.12); Settings still only shows a token presence badge (`settings.html:84-89`) |
 | 69 | Settings — Privacy | Optional visibility controls | P2 — Medium | Better privacy — not implemented |
 | 70 | ✅ Audit Logs | Record important admin/account actions | P2 — Medium | Useful for official deployment — `log_event` + `audit_log` table wired to login/signup/logout/OAuth/analysis (`storage.py:161-174`; `main.py:542,647-761`) |
 | 71 | ⚠️ Security Monitoring | Suspicious login/registration detection | P2 — Medium | Improves security — failed-login/OAuth-deny events logged; no lockout, IP tracking, or anomaly detection |
@@ -102,7 +105,7 @@
 |---|---|---|---|
 | 1 | 🔴 P0 | ✅ Navigation + separate pages | Every major page opens and works |
 | 2 | 🔴 P0 | ✅ Student authentication | Login/signup/logout works |
-| 3 | 🔴 P0 | ⚠️ PRN + GitHub verification | Prevent duplicate/fake accounts — GitHub username validation done; no PRN login or ownership proof |
+| 3 | 🔴 P0 | ⚠️ PRN + GitHub verification | Prevent duplicate/fake accounts — onboarding collects PRN (pending→approve/reject registrar workflow with PRN de-dup, Phase 4.12), approval promotes the OAuth-linked GitHub handle, and the Verification page cross-checks every analyzed student against the uploaded reference sheet (Verified/Mismatch/Missing/Unreferenced) |
 | 4 | 🔴 P0 | Student data isolation | Student A cannot access Student B private data — not implemented |
 | 5 | 🔴 P0 | ✅ GitHub API/data pipeline | Correct data reaches dashboard |
 | 6 | 🔴 P0 | ✅ Database + validation | Correct student/GitHub/analytics relationships |
@@ -149,7 +152,7 @@ FACULTY / ADMIN
 
 ## Non-Negotiable Core Features
 1. ✅ Secure Student Login & Registration
-2. ⚠️ PRN + GitHub Account Verification — GitHub username validation done + student GitHub OAuth link on onboarding; PRN collected for manual registrar verification; ownership result not yet surfaced on Verification
+2. ✅ PRN + GitHub Account Verification — onboarding PRN collection + registrar approve/reject ledger (Phase 4.12) + student GitHub OAuth link; Verification page cross-checks analyzed students against an uploaded reference sheet (Verified/Mismatch/Missing/Unreferenced, email-primary / PRN-fallback)
 3. Personal Student Dashboard — not implemented
 4. ✅ GitHub Analytics
 5. ⚠️ Repository & Project Analysis — rich repo columns + quality score; no per-repo commits/PRs or project view

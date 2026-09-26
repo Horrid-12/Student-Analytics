@@ -6,60 +6,207 @@
     <div class="topbar-subtitle">Complete your cohort credentials and verify your student identity to finalize enrollment.</div>
 </div>
 
+{% set error_text = {
+    'prn_format': 'PRN must be a 10-digit Roll Number as printed on your admission ledger.',
+    'invalid_degree': 'Please pick a degree program/branch from the list.',
+    'invalid_division': 'Please pick a valid cohort division.',
+    'invalid_main_batch': 'Please pick a valid main batch (admission cohort).',
+    'invalid_practical_batch': 'Please pick a valid Python Practical batch.',
+    'invalid_semester': 'Please pick a valid semester.',
+    'prn_taken': 'This Roll Number is already registered to another account.',
+    'storage_unavailable': 'Your submission could not be saved right now. Please try again shortly.',
+    'bad_status': 'That action is not allowed.',
+    'no_user': 'No account matches that submission.',
+    'no_submission': 'That account has not submitted onboarding yet.',
+} %}
+
+{% if saved %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.35); padding: 16px; border-radius: 8px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <div>
+        <div style="font-weight: 700; color: var(--text);">Record Submitted</div>
+        <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Your academic details are now under review by the Registrar's Department. Core portal access unlocks once approved.</div>
+    </div>
+</div>
+{% endif %}
+
+{% if error and error in error_text %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.35); padding: 16px; border-radius: 8px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+    <div style="font-size: 13px; color: var(--text);">{{ error_text[error] }}</div>
+</div>
+{% endif %}
+
+{% if action in ('approved', 'rejected') %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); padding: 16px; border-radius: 8px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    <div style="font-size: 13px; color: var(--text);">Submission for <strong>{{ action_email }}</strong> was {{ 'approved' if action == 'approved' else 'rejected' }}.</div>
+</div>
+{% endif %}
+
+{% if manager %}
+<div class="topbar-card" style="margin-bottom: 20px;">
+    <div class="topbar-title">Registrar Onboarding Ledger</div>
+    <div class="topbar-subtitle">Review pending academic submissions, promote verified GitHub identities, or reject with feedback.</div>
+</div>
+
+<div class="panel" style="padding: 24px; overflow-x: auto;">
+    {% if onboarding_users %}
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 880px;">
+        <thead>
+            <tr style="text-align: left; color: var(--muted); border-bottom: 1px solid var(--border);">
+                <th style="padding: 10px 12px; font-weight: 600;">Student</th>
+                <th style="padding: 10px 12px; font-weight: 600;">PRN</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Degree / Branch</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Division</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Python Batch · Sem</th>
+                <th style="padding: 10px 12px; font-weight: 600;">GitHub</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Status</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Submitted</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in onboarding_users %}
+            <tr style="border-bottom: 1px solid var(--border); color: var(--text);">
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 600;">{{ row.name or row.email }}</div>
+                    <div style="font-size: 12px; color: var(--muted);">{{ row.email }}</div>
+                </td>
+                <td style="padding: 10px 12px;">{{ row.prn or '-' }}</td>
+                <td style="padding: 10px 12px;">{{ row.degree_branch or '-' }}</td>
+                <td style="padding: 10px 12px;">{{ row.division or '-' }}</td>
+                <td style="padding: 10px 12px;">{{ row.practical_batch or '-' }}{% if row.semester %} &middot; {{ row.semester }}{% endif %}</td>
+                <td style="padding: 10px 12px;">
+                    {% if row.github_username %}
+                    <a href="https://github.com/{{ row.github_username }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">@{{ row.github_username }}</a>
+                    {% elif row.linked_github_username %}
+                    <span style="color: var(--muted);" title="Linked but not yet verified">@{{ row.linked_github_username }}</span>
+                    {% else %}
+                    <span style="color: var(--muted);">Not linked</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px 12px;">
+                    {% if row.onboarding_status == 'approved' %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.25);">Approved</span>
+                    {% elif row.onboarding_status == 'rejected' %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">Rejected</span>
+                    {% else %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25);">Pending</span>
+                    {% endif %}
+                    {% if row.github_verified_at %}
+                    <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">{{ row.github_verified_at[:10] }}</div>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px 12px; color: var(--muted);">{{ row.onboarding_submitted_at[:16] }}</td>
+                <td style="padding: 10px 12px;">
+                    {% if row.onboarding_status == 'pending' %}
+                    <div style="display: flex; gap: 8px;">
+                        <form method="post" action="/onboarding/approve" style="display: inline;">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
+                        </form>
+                        <form method="post" action="/onboarding/reject" style="display: inline;">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--muted);">Reject</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <span style="color: var(--muted); font-size: 12px;">Resolved</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 32px; text-align: center; color: var(--muted);">
+        <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">No submissions yet</div>
+        <div style="font-size: 13px;">Student onboarding records will appear here as soon as they're submitted.</div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
 <div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: var(--card); border: 1px solid var(--border); padding: 16px; border-radius: 8px;">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
     <div>
         <div style="font-weight: 700; color: var(--text);">Official Notice: Your Academic Information is being verified.</div>
-        <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Submitted academic details are currently under cross-examination by the Registrar's Academic Department. Core portal access will unlock upon verification approval.</div>
+        <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">
+            {% if submission.onboarding_status == 'approved' %}
+            Your record has been approved and your GitHub identity is verified for repository audit logs and campus placement reviews.
+            {% else %}
+            Submitted academic details are under cross-examination by the Registrar's Academic Department. Core portal access unlocks upon verification approval.
+            {% endif %}
+        </div>
     </div>
 </div>
 
 <div style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px;">
     <div style="display: flex; flex-direction: column; gap: 24px;">
+        <form method="post" action="/onboarding" id="onboarding-form">
         <!-- Academic Info -->
         <div class="panel" style="padding: 24px;">
             <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                 <h2 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--text);">Academic Information</h2>
+                {% if submission.onboarding_status == 'approved' %}
+                <span style="margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2);">Approved</span>
+                {% endif %}
             </div>
             <div style="display: flex; flex-direction: column; gap: 20px;">
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Roll Number (PRN) *</label>
-                    <input type="text" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" placeholder="e.g. 1272261921" pattern="\d{10}" title="10-digit Roll Number" required />
+                    <input type="text" name="prn" value="{{ submission.prn or '' }}" maxlength="10" pattern="\d{10}" inputmode="numeric"
+                           style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);"
+                           placeholder="e.g. 1272261921" title="10-digit Roll Number" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} required />
                     <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">10-digit Standard Roll Identifier as printed on your preliminary provisional admission ledger.</div>
                 </div>
-                
+
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Allocated Degree Program & Branch *</label>
-                    <select style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
-                        <option>Core</option>
-                        <option>AI/DS</option>
-                        <option>Cloud Computing</option>
-                        <option>Cyber Security and Forensics</option>
+                    <select name="degree_branch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.degree_branch %}selected{% endif %} hidden>(Select your Branch)</option>
+                        {% for option in ['Core', 'AI/DS', 'Cloud Computing', 'Cyber Security and Forensics'] %}
+                        <option value="{{ option }}" {% if option == submission.degree_branch %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
                     </select>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Cohort Division / Section Assignment *</label>
-                    <select style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
-                        <option>Division 1</option>
-                        <option>Division 2</option>
-                        <option>Division 3</option>
-                        <option>Division 4</option>
-                        <option>Division 5</option>
-                        <option>Division 6</option>
-                        <option>Division 7</option>
-                        <option>Division 8</option> 
-                        <option>Division 9</option>
-                        <option>Division 10</option>
-                        <option>Division 11</option>
-                        <option>Division 12</option>
-                        <option>Division 13</option>
-                        <option>Division 14</option>
+                    <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.division %}selected{% endif %} hidden>(Select your Division)</option>
+                        {% for n in range(1, 15) %}
+                        {% set option = 'Division ' ~ n %}
+                        <option value="{{ option }}" {% if option == submission.division %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Python Practical batch *</label>
+                    <select name="practical_batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.practical_batch %}selected{% endif %} hidden>(Select your Batch)</option>
+                        {% for n in ['1', '2', '3'] %}
+                        <option value="{{ n }}" {% if n == submission.practical_batch %}selected{% endif %}>{{ n }}</option>
+                        {% endfor %}
+                    </select>
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">The lab-section grouping (1, 2, or 3) displayed as your Batch on the dashboard.</div>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Current Semester *</label>
+                    <select name="semester" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
+                        <option value="" disabled {% if not submission.semester %}selected{% endif %} hidden>(Select your Semester)</option>
+                        {% for n in range(1, 9) %}
+                        {% set option = 'Semester ' ~ n %}
+                        <option value="{{ option }}" {% if option == submission.semester %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
         </div>
+        </form>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 24px;">
@@ -75,7 +222,7 @@
             <div style="display: flex; flex-direction: column; gap: 20px;">
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">University Email</label>
-                    <input type="email" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--card-soft); color: var(--text); opacity: 0.7; cursor: not-allowed;" placeholder="student@mitwpu.edu.in" disabled />
+                    <input type="email" value="{{ auth_email }}" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--card-soft); color: var(--text); opacity: 0.7; cursor: not-allowed;" disabled />
                     <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your university email has been verified via SSO. PRN will be manually verified by administrators.</div>
                 </div>
             </div>
@@ -89,11 +236,20 @@
             </div>
             <div style="display: flex; flex-direction: column; gap: 16px;">
                 <p style="font-size: 13px; color: var(--muted); margin: 0 0 8px 0;">Linking your profiles allows verification for campus placements and repository audit logs.</p>
-                
+
+                {% if submission.linked_github_username %}
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
+                    <span style="color: var(--text); font-size: 13px; font-weight: 500;">GitHub · <span style="color: var(--blue);">@{{ submission.linked_github_username }}</span></span>
+                    {% if submission.onboarding_status == 'approved' %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #22c55e;">Verified</span>
+                    {% endif %}
+                </div>
+                {% else %}
                 <a href="/auth/github" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
                     Link GitHub Profile
                 </a>
+                {% endif %}
 
                 <a href="/auth/linkedin" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.25c-.96 0-1.74.77-1.74 1.73a1.74 1.74 0 0 0 1.74 1.74c.96 0 1.73-.78 1.73-1.74 0-.96-.77-1.73-1.73-1.73Z"/></svg>
@@ -103,8 +259,20 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-            <button class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Save & Submit for Verification</button>
+            {% if submission.onboarding_status == 'pending' %}
+            <button type="submit" form="onboarding-form" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Resubmit for Verification</button>
+            <div style="text-align: center; font-size: 12px; color: var(--muted);">Submitted {{ submission.onboarding_submitted_at[:16] }} · pending review</div>
+            {% elif submission.onboarding_status == 'rejected' %}
+            <button type="submit" form="onboarding-form" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Save &amp; Submit for Verification</button>
+            <div style="text-align: center; font-size: 12px; color: #ef4444;">Your previous record was rejected — please correct the details above.</div>
+            {% elif submission.onboarding_status == 'approved' %}
+            <button type="button" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: not-allowed; border-radius: 4px; opacity: 0.6;" disabled>Record Approved</button>
+            <div style="text-align: center; font-size: 12px; color: var(--muted);">Verified {{ submission.github_verified_at[:16] }} — your record is final.</div>
+            {% else %}
+            <button type="submit" form="onboarding-form" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Save &amp; Submit for Verification</button>
+            {% endif %}
+        </div>
         </div>
     </div>
-</div>
+{% endif %}
 {% endblock %}

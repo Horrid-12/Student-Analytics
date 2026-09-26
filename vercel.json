@@ -4,5 +4,11 @@
     "app/main.py": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/sync/accounts",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }
