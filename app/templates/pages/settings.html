@@ -89,57 +89,6 @@
     <div style="margin-top:12px;">
       <a class="btn" href="{{ auth_logout }}">Sign out</a>
     </div>
-    {% if auth_role == 'Student' %}
-    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-      <div class="panel-minor-title">Profile picture &amp; username</div>
-      <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">Fetch your photo and username from GitHub or LinkedIn, confirm it, and it appears in the sidebar where your profile lives.</div>
-      {% if linked_flag in ('github', 'linkedin') and link_profile[linked_flag].handle and link_profile.source != linked_flag %}
-      <div class="auth-notice" style="margin-bottom:10px;">Preview fetched — confirm below to show it in the sidebar.</div>
-      {% endif %}
-      <div style="display:flex; gap:12px; flex-wrap:wrap;">
-        <div style="flex:1 1 220px; border:1px solid var(--border); border-radius:12px; padding:12px;">
-          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">GitHub</div>
-          {% if link_profile.github.handle %}
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            {% if link_profile.github.avatar %}<img src="{{ link_profile.github.avatar }}" alt="" style="width:36px; height:36px; border-radius:9px; object-fit:cover;">{% endif %}
-            <div style="font-size:14px; font-weight:600;">{{ link_profile.github.handle }}</div>
-            {% if link_profile.source == 'github' %}<span class="badge-green">Active</span>{% endif %}
-          </div>
-          {% if link_profile.source != 'github' %}
-          <form method="post" action="/profile/confirm">
-            <input type="hidden" name="source" value="github">
-            <button class="btn btn-primary" type="submit" style="min-height:34px; font-size:13px;">Use this</button>
-          </form>
-          {% endif %}
-          {% elif github_configured %}
-          <a class="btn" href="/auth/github" style="min-height:34px; font-size:13px;">Fetch from GitHub</a>
-          {% else %}
-          <span style="font-size:13px; color:var(--muted);">GitHub login isn't configured by the administrator.</span>
-          {% endif %}
-        </div>
-        <div style="flex:1 1 220px; border:1px solid var(--border); border-radius:12px; padding:12px;">
-          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">LinkedIn</div>
-          {% if link_profile.linkedin.handle %}
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            {% if link_profile.linkedin.avatar %}<img src="{{ link_profile.linkedin.avatar }}" alt="" style="width:36px; height:36px; border-radius:9px; object-fit:cover;">{% endif %}
-            <div style="font-size:14px; font-weight:600;">{{ link_profile.linkedin.handle }}</div>
-            {% if link_profile.source == 'linkedin' %}<span class="badge-green">Active</span>{% endif %}
-          </div>
-          {% if link_profile.source != 'linkedin' %}
-          <form method="post" action="/profile/confirm">
-            <input type="hidden" name="source" value="linkedin">
-            <button class="btn btn-primary" type="submit" style="min-height:34px; font-size:13px;">Use this</button>
-          </form>
-          {% endif %}
-          {% elif linkedin_configured %}
-          <a class="btn" href="/auth/linkedin" style="min-height:34px; font-size:13px;">Fetch from LinkedIn</a>
-          {% else %}
-          <span style="font-size:13px; color:var(--muted);">LinkedIn login isn't configured by the administrator.</span>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
     <div class="auth-notice" style="margin-top:12px;">
       {% if storage_ok %}Accounts are stored in a local SQLite users database. On serverless hosts
       (Vercel) the write is read-only, so signups only persist on hosts with a writable filesystem —

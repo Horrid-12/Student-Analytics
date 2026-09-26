@@ -79,12 +79,11 @@ _PAGE_BY_PREFIX = (
 ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Support", "Settings", "My Profile")
 
 # BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
-# Leaderboards + Settings + Support, plus My Profile and self-scoped Issues
-# (4.11: the notification bell's Fix links land there; the handler filters
-# rows to the signed-in student and blocks workflow edits).
+# Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
+# (Student Issues page hidden — students use Repositories instead.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Leaderboards", "Settings", "Support", "My Profile", "Issues"),
+    "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
@@ -508,6 +507,7 @@ def get_user(email: str) -> dict | None:
             _ensure_schema(conn)
             row = conn.execute(
                 "SELECT id, email, password_hash, role, name, auth_source, google_sub, "
+                "github_username, linkedin_sub, "
                 "linked_github_username, linked_github_avatar, linked_linkedin_name, "
                 "linked_linkedin_avatar, profile_source FROM users WHERE email = ?",
                 (email,),
@@ -646,6 +646,40 @@ def linked_identity(user: dict | None) -> dict:
     if not handle:
         return {"source": "", "handle": "", "avatar": ""}
     return {"source": source, "handle": handle, "avatar": avatar}
+
+
+def github_sidebar_identity(user_row: dict | None) -> dict:
+    """Student navbar identity, auto-resolved from GitHub (no confirm step).
+
+    Prefers the stored linked avatar, falling back to the public
+    ``https://github.com/<username>.png`` avatar URL so the sidebar shows a
+    photo even when only the username was persisted (e.g. ``github_username``
+    from onboarding link or GitHub sign-in). Never raises; returns
+    ``{"handle", "avatar"}`` with empty strings when no GitHub username is
+    known. Pure function of the row — no I/O, so page renders never block on
+    the GitHub API.
+    """
+    row = user_row or {}
+    handle = (
+        (row.get("github_username") or "").strip()
+        or (row.get("linked_github_username") or "").strip()
+    )
+    # A confirmed GitHub identity also counts (covers rows where only the
+    # linked candidate was ever saved).
+    if not handle:
+        try:
+            confirmed = linked_identity(row)
+        except Exception:
+            confirmed = {"source": "", "handle": "", "avatar": ""}
+        if confirmed.get("source") == "github":
+            return {"handle": confirmed.get("handle", ""), "avatar": confirmed.get("avatar", "")}
+        return {"handle": "", "avatar": ""}
+    avatar = _clean_avatar(row.get("linked_github_avatar") or "")
+    if not avatar:
+        # Public avatar redirect — no API call, no token, no rate limit.
+        # GitHub serves https://github.com/<user>.png as the profile photo.
+        avatar = f"https://github.com/{handle}.png"
+    return {"handle": handle, "avatar": avatar}
 
 
 def create_session_token(user: dict) -> str:
