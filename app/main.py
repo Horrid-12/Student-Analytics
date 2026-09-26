@@ -859,7 +859,10 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
             _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
     _db_log_event("login", email)
-    response = RedirectResponse(next if next != "/" else "/onboarding", status_code=302)
+    # Phase 5.4: refresh the student's own fleet snapshot and skip the
+    # onboarding landing once they are approved — the Overview is the home.
+    await asyncio.to_thread(_self_sync_on_login, user)
+    response = RedirectResponse(_post_login_destination(user, next), status_code=302)
     response.set_cookie(
         auth._COOKIE_NAME,
         auth.create_session_token(user),
@@ -968,7 +971,14 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         # env-allowlist role; nothing durable to persist yet.
         user = {"email": email, "role": role, "name": claims.get("name", "")}
     _db_log_event("oauth_login", email)
-    response = RedirectResponse("/onboarding", status_code=302)
+    # Phase 5.4: full user row (onboarding status + verified GitHub handle);
+    # the OAuth upsert returns a slim dict, so re-fetch for sync + landing.
+    try:
+        full_user = auth.get_user(email) or user
+    except Exception:
+        full_user = user
+    await asyncio.to_thread(_self_sync_on_login, full_user)
+    response = RedirectResponse(_post_login_destination(full_user, "/onboarding"), status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -1129,6 +1139,39 @@ def _fleet_sync_stamp() -> str:
         return ""
 
 
+def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
+    """Where to land after a successful login (Phase 5.4).
+
+    Honors an explicit ``next`` target from the login form; otherwise approved
+    students and faculty/admins go to the Overview (the synced account fleet
+    now supplies the data — Excel is going away), while first-time and pending
+    students continue into the onboarding flow."""
+    if next_dest and next_dest not in ("", "/", "/onboarding"):
+        return next_dest
+    user = user or {}
+    if user.get("role") != "student" or str(user.get("onboarding_status") or "") == "approved":
+        return "/"
+    return "/onboarding"
+
+
+def _self_sync_on_login(user: dict | None) -> None:
+    """Refresh the signed-in student's own account snapshot right after login
+    (Phase 5.4). Two GitHub calls when the snapshot is stale; the 3600s sync
+    TTL skips it when still fresh. Never raises — a sync hiccup must not lock
+    anyone out of their dashboard."""
+    user = user or {}
+    if user.get("role") != "student":
+        return
+    email = str(user.get("email") or "").strip().lower()
+    github = str(user.get("github_username") or "").strip()
+    if not email or not github:
+        return
+    try:
+        sync.sync_one(user, github_client.load_token())
+    except Exception:
+        logger.exception("Self-sync on login failed for %s", email)
+
+
 def _own_notifications(request: Request, view, roster: str) -> tuple[list, int]:
     """4.11 (restored WIP): issue alerts for the signed-in student's
     notification bell. Only computed for student logins on a completed run /
@@ -1248,14 +1291,19 @@ async def sync_accounts(request: Request, force: bool = False):
     """Phase 5.1: refresh every approved account's analytics snapshot.
 
     Faculty/admins may trigger it from the UI; any client that presents the
-    matching X-Cron-Secret header (``CRON_SECRET`` env) can POST for the
-    scheduled refresh. Always returns the JSON summary, never a traceback."""
+    matching secret can POST for the scheduled refresh. The secret is accepted
+    as ``X-Cron-Secret`` or ``Authorization: Bearer`` (the latter is what
+    Vercel Cron sends automatically when the project has a ``CRON_SECRET``)."""
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
         configured_secret = os.environ.get("CRON_SECRET") or ""
         if configured_secret:
             supplied = request.headers.get("x-cron-secret") or ""
+            if not hmac.compare_digest(supplied, configured_secret):
+                bearer = request.headers.get("authorization") or ""
+                if bearer.lower().startswith("bearer "):
+                    supplied = bearer[7:]
             authorized = hmac.compare_digest(supplied, configured_secret)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})

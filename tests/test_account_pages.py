@@ -134,10 +134,17 @@ class TestStudentPages:
         assert r.status_code == 200
         assert "alice-dev" in r.text
 
-    def test_unsynced_student_gets_placeholder(self):
-        # Approved but never synced → no snapshot, so the page shows the legacy
-        # placeholder instead of erroring.
+    def test_unsynced_student_gets_placeholder(self, monkeypatch):
+        # Phase 5.4: an approved student now self-syncs on login, so "no data"
+        # only remains possible when the GitHub fetch itself fails. A failed
+        # fetch stores an error-status snapshot → still the placeholder, never
+        # an error page.
         seeded_account()
+
+        def failing_fetch(url, token, timeout=None):
+            return 503, {}, None
+
+        monkeypatch.setattr(psvc, "_cached_get_json", failing_fetch)
         client, _ = make_client("student", email="alice@college.edu")
         r = client.get("/overview")
         assert r.status_code == 200
@@ -180,9 +187,21 @@ class TestSyncEndpoint:
             "/sync/accounts", headers={"X-Cron-Secret": "wrong"}
         )
         assert bad.status_code == 403
-        good = client.post(
-            "/sync/accounts", headers={"X-Cron-Secret": "hunter2"}
+        good = client.post("/sync/accounts?force=true", headers={"X-Cron-Secret": "hunter2"})
+        assert good.status_code == 200
+        assert good.json()["synced"] == 1
+
+    def test_cron_bearer_authorization_authorizes(self, monkeypatch):
+        # Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`; the endpoint
+        # treats it as equivalent to X-Cron-Secret.
+        seeded_account()
+        monkeypatch.setenv("CRON_SECRET", "hunter2")
+        client, _ = make_client("student", email="alice@college.edu")
+        bad = client.post(
+            "/sync/accounts", headers={"Authorization": "Bearer wrong"}
         )
+        assert bad.status_code == 403
+        good = client.post("/sync/accounts?force=true", headers={"Authorization": "Bearer hunter2"})
         assert good.status_code == 200
         assert good.json()["synced"] == 1
 
@@ -195,6 +214,49 @@ class TestSyncEndpoint:
         assert second["skipped_fresh"] == 1
         third = client.post("/sync/accounts?force=true").json()
         assert third["synced"] == 1
+
+
+class TestLoginSelfSync:
+    """Phase 5.4 — logging in refreshes the student's own fleet snapshot and
+    approved accounts land on the Overview (Excel is going away)."""
+
+    def test_approved_student_syncs_and_lands_on_overview(self):
+        seeded_account()
+        client = TestClient(app)
+        r = client.post(
+            "/login",
+            data={"email": "alice@college.edu", "password": "secret123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"].rstrip("/") in ("/", "")
+        snap = accounts.get_snapshot("alice@college.edu")
+        assert snap is not None and snap.get("status") == "ok"
+        assert len(snap.get("repos") or []) == 2
+
+    def test_pending_student_lands_on_onboarding_without_sync(self):
+        auth.create_user("bob@college.edu", "secret123", "student", "Bob B")
+        client = TestClient(app)
+        r = client.post(
+            "/login",
+            data={"email": "bob@college.edu", "password": "secret123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"].endswith("/onboarding")
+        assert accounts.get_snapshot("bob@college.edu") is None
+
+    def test_admin_lands_on_overview_without_self_sync(self):
+        auth.create_user("cap@college.edu", "secret123", "admin", "Captain")
+        client = TestClient(app)
+        r = client.post(
+            "/login",
+            data={"email": "cap@college.edu", "password": "secret123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"].rstrip("/") in ("/", "")
+        assert accounts.get_snapshot("cap@college.edu") is None
 
 
 class TestFleetPages:
