@@ -106,7 +106,7 @@ ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards
 # Verification are faculty/admin management pages only.
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Settings", "Support", "My Profile"),
+    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }

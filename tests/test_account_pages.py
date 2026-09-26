@@ -299,7 +299,7 @@ class TestFleetPages:
             assert r.status_code == 200, path
             assert self.PLACEHOLDER_FRAGMENT in r.text, path
 
-    def test_student_can_open_self_scoped_issues_but_not_verification(self):
+    def test_student_redirected_from_issues_and_verification(self):
         client, _ = self._fleet()
-        assert self._get(client, "/issues").status_code == 200  # 4.11 WIP bell restore: self-scoped Issues re-opened
+        assert self._get(client, "/issues").status_code == 303  # 5.5: Issues is faculty/admin-only again
         assert self._get(client, "/verification").status_code == 303  # Verification stays faculty/admin-only

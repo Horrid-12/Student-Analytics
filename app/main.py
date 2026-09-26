@@ -1048,6 +1048,15 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
             user["email"], "github", claims.get("login"), claims.get("avatar_url")
         )
         _db_log_event("github_linked", user["email"])
+        # Phase 5.5: build the account snapshot immediately so the student's
+        # own pages populate right after linking (the session cookie carries no
+        # github_username, so mid-session pages can't self-sync on their own).
+        try:
+            linked = auth.get_user(user["email"]) or user
+            if str(linked.get("github_username") or "").strip():
+                await asyncio.to_thread(_self_sync_on_login, linked)
+        except Exception:
+            logger.exception("Post-link sync failed for %s", user["email"])
         response = RedirectResponse("/settings?linked=github", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
@@ -1261,15 +1270,15 @@ async def onboarding_submit(
 async def onboarding_approve(request: Request, email: str = Form("")):
     """Registrar approves a pending submission: promotes the OAuth-linked
     GitHub handle into the verified username and stamps the approval time."""
-    return _onboarding_review(request, email, "approved", promote_github=True)
+    return await _onboarding_review(request, email, "approved", promote_github=True)
 
 
 @app.post("/onboarding/reject", response_class=HTMLResponse)
 async def onboarding_reject(request: Request, email: str = Form("")):
-    return _onboarding_review(request, email, "rejected", promote_github=False)
+    return await _onboarding_review(request, email, "rejected", promote_github=False)
 
 
-def _onboarding_review(request: Request, email: str, status: str, promote_github: bool):
+async def _onboarding_review(request: Request, email: str, status: str, promote_github: bool):
     user = getattr(request.state, "user", None)
     if not user:
         return RedirectResponse("/login", status_code=302)
@@ -1281,6 +1290,15 @@ def _onboarding_review(request: Request, email: str, status: str, promote_github
         f"onboarding_{status}" if ok else "onboarding_action_failed",
         f"{email}; {reason}",
     )
+    if ok and status == "approved":
+        # Phase 5.5: approval promotes the linked GitHub handle; build the
+        # snapshot now so the fleet + the student's pages populate immediately.
+        try:
+            approved_user = auth.get_user(email)
+            if str((approved_user or {}).get("github_username") or "").strip():
+                await asyncio.to_thread(_self_sync_on_login, approved_user)
+        except Exception:
+            logger.exception("Post-approval sync failed for %s", email)
     if ok:
         return RedirectResponse(f"/onboarding?action={status}&email={email}", status_code=303)
     return RedirectResponse(f"/onboarding?action=error&email={email}", status_code=303)
@@ -1607,30 +1625,13 @@ def history_page(request: Request):
 
 @app.get("/issues", response_class=HTMLResponse)
 def issues_page(request: Request, roster: str = "", issue: str = "All"):
-    """Issues is a faculty/admin management page (Verification stays
-    faculty/admin-only). Students (restored 4.11 WIP bell) see only their own
-    issue rows read-only; the account fleet carries no validation issues, so
-    the page shows the empty state until a roster analysis contributes rows."""
+    """Issues is a faculty/admin management page (students are RBAC-gated off
+    it; the account fleet carries no validation issues, so the page shows the
+    empty state until a roster analysis contributes rows)."""
     ctx = _base_context(request, "Issues", roster)
     view, response = _guard_page(request, ctx, "Issues", roster)
     if response is not None:
         return response
-    user = getattr(request.state, "user", None) or {}
-    if user.get("role") == "student":
-        # 4.11: students see only their own issue rows (read-only). No roster
-        # match means an empty list — never the full roster.
-        own = views.find_own_student_row(view.get("students"), user.get("email", ""))
-        scoped = view.get("issues")
-        if scoped is not None:
-            if own is None or getattr(scoped, "empty", True):
-                scoped = scoped.iloc[0:0]
-            else:
-                own_id = str(own.get(views.STUDENT_ID_COL, ""))
-                try:
-                    scoped = scoped[scoped[views.STUDENT_ID_COL].astype(str) == own_id]
-                except (KeyError, TypeError, ValueError):
-                    scoped = scoped.iloc[0:0]
-            view = {**view, "issues": scoped}
     payload = views.issues_payload(view, issue, _workflow_state(roster))
     return templates.TemplateResponse(
         request,
