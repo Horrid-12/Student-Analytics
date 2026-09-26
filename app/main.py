@@ -1060,7 +1060,8 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         try:
             linked = auth.get_user(user["email"]) or user
             if str(linked.get("github_username") or "").strip():
-                await asyncio.to_thread(_self_sync_on_login, linked)
+                oauth_tok = claims.get("access_token") or github_client.load_token()
+                await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
         except Exception:
             logger.exception("Post-link sync failed for %s", user["email"])
         response = RedirectResponse("/settings?linked=github", status_code=302)

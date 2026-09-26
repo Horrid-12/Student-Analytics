@@ -78,6 +78,7 @@ async def exchange_code(url: str, state: str, redirect_uri: str) -> dict:
         "email": email,
         "email_verified": email_verified,
         "verified_emails": verified_emails,
-        "avatar_url": user_info.get("avatar_url")
+        "avatar_url": user_info.get("avatar_url"),
+        "access_token": token.get("access_token"),
     }
 
