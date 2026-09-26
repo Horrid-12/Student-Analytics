@@ -31,7 +31,7 @@ Planned items are roadmap work rather than regressions. They should not be repor
 | ✅ BUG-018 | Fixed | GitHub API | No pull-request analytics | Paginated Search API collection with per-account PR counts |
 | ✅ BUG-019 | Fixed | GitHub API | No Issues analytics | Paginated Search API collection with per-account issue counts |
 | ✅ BUG-043 | Fixed | Security | No faculty authentication | SHA-256 password gate from secrets; open-with-warning when unconfigured |
-| ✅ BUG-044 | Fixed | Security | No role-based access control | Admin/Faculty/Student roles from [AUTH] secrets; students see anonymized views only |
+| ✅ BUG-044 | Fixed | Security | No role-based access control | Admin/Faculty/Student roles from [AUTH] secret; students see anonymized views only |
 | ✅ BUG-045 | Fixed | Security | No institutional data access control | Role-filtered navigation, name-free leaderboards, admin-only audit trail |
 | ✅ BUG-046 | Fixed | Security | No audit trail | SQLite `audit_log` records logins and analysis runs; viewable on History page |
 
