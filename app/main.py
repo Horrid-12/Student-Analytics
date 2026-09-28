@@ -1190,6 +1190,62 @@ async def sync_accounts(request: Request, force: bool = False):
     return JSONResponse(content=summary)
 
 
+@app.post("/api/sync/student/{email}")
+async def sync_single_student(email: str, request: Request):
+    """Client-orchestrated heavy sync for a single student.
+    Accepts admin/faculty session OR CRON_SECRET (for GitHub Actions)."""
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        configured_secret = os.environ.get("CRON_SECRET") or ""
+        if configured_secret:
+            supplied = request.headers.get("x-cron-secret") or ""
+            if not hmac.compare_digest(supplied, configured_secret):
+                bearer = request.headers.get("authorization") or ""
+                if bearer.lower().startswith("bearer "):
+                    supplied = bearer[7:]
+            authorized = hmac.compare_digest(supplied, configured_secret)
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    
+    target_user = auth.get_user(email)
+    if not target_user or target_user.get("onboarding_status") != "approved":
+        return JSONResponse(status_code=404, content={"detail": "Approved user not found"})
+
+    token = github_client.load_token()
+    ok, code, detail = await asyncio.to_thread(sync.sync_heavy_one, target_user, token)
+    
+    if ok:
+        return JSONResponse(content={"status": "ok", "detail": detail})
+    else:
+        return JSONResponse(status_code=400, content={"status": "error", "code": code, "detail": detail})
+
+
+@app.get("/api/users/approved")
+async def get_approved_users_list(request: Request):
+    """Return a list of approved students for client-side orchestrated sync.
+    Accepts admin/faculty session OR CRON_SECRET (for GitHub Actions)."""
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        configured_secret = os.environ.get("CRON_SECRET") or ""
+        if configured_secret:
+            supplied = request.headers.get("x-cron-secret") or ""
+            if not hmac.compare_digest(supplied, configured_secret):
+                bearer = request.headers.get("authorization") or ""
+                if bearer.lower().startswith("bearer "):
+                    supplied = bearer[7:]
+            authorized = hmac.compare_digest(supplied, configured_secret)
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    
+    approved = auth.get_approved_accounts()
+    return JSONResponse(content=[
+        {"email": u.get("email"), "name": u.get("name"), "prn": u.get("prn")}
+        for u in approved
+    ])
+
+
 @app.get("/students", response_class=HTMLResponse)
 def students_page(
     request: Request,
