@@ -237,7 +237,12 @@ def compute_account_snapshot(
         is_valid, payload, is_error, _ = services.get_user(username, token)
     except services.RateLimitError:
         return None, [], [], "rate_limited"
-    except Exception:
+    except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"get_user Exception: {e}")
+        logger.error(traceback.format_exc())
         return None, [], [], "api_error"
     if not is_valid or not payload:
         return None, [], [], ("not_found" if not is_error else "api_error")
