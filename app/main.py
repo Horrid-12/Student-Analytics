@@ -996,7 +996,7 @@ def _bell_context(request: Request, view=None, roster: str = "") -> dict:
         support_notifs = _list_notifications(email) if email else []
         unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
         if not support_notifs:
-            return {"notifications": [], "notif_count": 0, "notif_empty": None}
+            return {"notifications": [], "notif_count": 0, "notif_empty": "No notifications - all clear."}
         notifications = [
             {
                 "id": n.get("id"),
