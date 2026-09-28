@@ -16,7 +16,7 @@ def main(argv=None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if len(argv) < 3:
         print("usage: python -m app.seed_users EMAIL PASSWORD ROLE [NAME]")
-        print("       ROLE ∈ student | faculty | admin")
+        print("       ROLE in {student, faculty, admin}")
         return 2
     email, password, role, name = argv[0], argv[1], argv[2].strip().lower(), (argv[3] if len(argv) > 3 else "")
 
