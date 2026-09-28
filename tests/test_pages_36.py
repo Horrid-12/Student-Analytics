@@ -286,7 +286,12 @@ class TestPageRenderingWithData:
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
-        assert "Key Metrics" in body
+        assert "Class Metrics Radar" in body
+        assert "Key Metrics" not in body
+        assert "API Status" not in body
+        assert "Analysis Status" not in body
+        assert "Average Followers" not in body
+        assert "Signed in as" not in body
         assert "Account Validation Status" not in body
         assert "Analysis Pipeline" not in body
         assert "Run Log" not in body

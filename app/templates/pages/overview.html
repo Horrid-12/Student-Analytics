@@ -17,49 +17,8 @@
     </div>
   </div>
 </div>
-<div class="auth-notice">
-  <svg class="auth-notice-icon" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-4.5-1.2L3 20l1.5-4.2A8.7 8.7 0 0 1 3 11.5a9 9 0 1 1 18 0Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-  <span>Signed in as <b>{{ auth_user }}</b> ({{ auth_role }}). Public sign-up creates student accounts; admin and faculty accounts are provisioned by the administrator.</span>
-</div>
-
 {% if complete %}
 <div id="previous-results">
-<section class="panel">
-  <div class="panel-title">Key Metrics</div>
-  <div class="metric-grid">
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-blue">Total</span></div>
-      <div class="metric-value">{{ payload.total }}</div>
-      <div class="metric-label">Students</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-green">Connected</span></div>
-      <div class="metric-value">{{ payload.valid }}</div>
-      <div class="metric-label">Valid Accounts</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-red">Invalid</span></div>
-      <div class="metric-value">{{ payload.invalid }}</div>
-      <div class="metric-label">Invalid Accounts</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-amber">Repos</span></div>
-      <div class="metric-value">{{ payload.repos_found }}</div>
-      <div class="metric-label">Repositories Found</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-purple">Active</span></div>
-      <div class="metric-value">{{ payload.submission_rate }}%</div>
-      <div class="metric-label">Submission Rate</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-green">Stars</span></div>
-      <div class="metric-value">{{ payload.total_stars }}</div>
-      <div class="metric-label">Total Stars / Forks</div>
-    </div>
-  </div>
-</section>
-
 <section class="panel">
   <div class="panel-title">Class Metrics Radar</div>
   <div class="radar-grid">
@@ -68,24 +27,12 @@
     </div>
     <div class="system-grid">
       <div class="system-item">
-        <div class="system-label">API Status</div>
-        <div class="system-value">{{ payload.api_status }}</div>
-      </div>
-      <div class="system-item">
-        <div class="system-label">Analysis Status</div>
-        <div class="system-value">{{ payload.status }}</div>
-      </div>
-      <div class="system-item">
         <div class="system-label">Language Distribution</div>
         <div class="system-value">{{ payload.most_used_language }}</div>
       </div>
       <div class="system-item">
         <div class="system-label">Average Repositories</div>
         <div class="system-value">{{ payload.avg_repos }}</div>
-      </div>
-      <div class="system-item">
-        <div class="system-label">Average Followers</div>
-        <div class="system-value">{{ payload.avg_followers }}</div>
       </div>
       <div class="system-item">
         <div class="system-label">Average Quality Score</div>
