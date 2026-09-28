@@ -4,7 +4,7 @@ Every analytics page renders for students AND faculty/admins straight from the
 synced account fleet (approved accounts' snapshots) — no roster upload needed.
 A student who walked the onboarding → approval flow sees their own snapshot on
 Overview / My Profile plus the whole fleet on Students / Repositories /
-Leaderboards / History; Issues and Verification stay faculty/admin-only.
+Leaderboards; Issues and Verification stay faculty/admin-only.
 The ``POST /sync/accounts`` endpoint enforces its RBAC + cron-secret gate and
 runs the sweep. The sync engine itself is covered in tests/test_accounts.py.
 """
@@ -307,10 +307,11 @@ class TestFleetPages:
     def test_student_redirected_from_students_and_history(self):
         # 4be7609 "Changed which tabs student account can see" narrows the
         # student stack back to Overview/Onboarding/Repositories/Leaderboards/
-        # Settings/Support/My Profile, so the fleet-backed Students + History
-        # pages stay faculty/admin-only even though the fleet populates them.
+        # Settings/Support/My Profile, so the fleet-backed Students page stays
+        # faculty/admin-only even though the fleet populates it. The /history
+        # page itself was removed — unknown path falls through to 404.
         client, _ = self._fleet()
-        for path in ("/students", "/history"):
-            r = self._get(client, path)
-            assert r.status_code == 303, path
-            assert r.headers.get("location", "").rstrip("/") in ("", "/", "/overview"), path
+        r = self._get(client, "/students")
+        assert r.status_code == 303, "/students"
+        assert r.headers.get("location", "").rstrip("/") in ("", "/", "/overview"), "/students"
+        assert self._get(client, "/history").status_code == 404

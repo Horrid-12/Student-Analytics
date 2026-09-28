@@ -920,10 +920,10 @@ class TestPageRenderingWithData:
         assert "Alice Example" in raw.content.decode("utf-8-sig")
 
     def test_history_records_completed_run(self, tmp_path):
+        # /history page removed; the run still records into shared history
+        # (surfaced on Overview "Recent Analysis Runs").
         roster_id = self._setup(tmp_path)
-        body = self.client.get("/history").text
-        assert "Analysis Runs" in body
-        assert "Complete" in body
+        assert self.client.get("/history").status_code == 404
         runs = storage.load_run_history()
         assert len(runs) == 1
         assert int(runs.iloc[0]["valid_accounts"]) == 2
@@ -985,14 +985,14 @@ class TestVercelEntrypoint:
         from api.index import wrapped
 
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/api/index/history").status_code == 200
+        assert client.get("/api/index/history").status_code == 404
         assert client.get("/api/index/students").status_code == 200
 
     def test_real_paths_unaffected(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/history").status_code == 200
+        assert client.get("/history").status_code == 404
 
     def test_no_prefix_stripped_from_deep_static(self, tmp_path, monkeypatch):
         from api.index import wrapped
@@ -1006,8 +1006,8 @@ class TestVercelEntrypoint:
 
         client = self._client(tmp_path, monkeypatch)
         assert client.get("/api/index.py").status_code == 200
-        assert client.get("/api/index.py/history").status_code == 200
-        assert client.get("/api/history").status_code == 200
+        assert client.get("/api/index.py/history").status_code == 404
+        assert client.get("/api/history").status_code == 404
 
 
 class TestSettingsPage:

@@ -102,7 +102,6 @@ _PAGE_BY_PREFIX = (
     ("/settings", "Settings"),
     ("/support", "Support"),
     ("/issues", "Issues"),
-    ("/history", "History"),
     ("/leaderboards", "Leaderboards"),
     ("/repositories", "Repositories"),
     ("/students", "Students"),
@@ -113,12 +112,12 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Issues", "Verification", "Support", "Settings", "My Profile")
 
 # BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
 # Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
 # (Student Issues page hidden — students use Repositories instead.)
-# (Students + History + Verification stay faculty/admin pages: 5.2 widened the
+# (Students + Verification stay faculty/admin pages: 5.2 widened the
 # student stack to the full fleet-backed analytics set, but the later 4be7609
 # "Changed which tabs student account can see" narrowed it back to this list,
 # which is the current product decision.)

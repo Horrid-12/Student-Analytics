@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, batch, charts, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views
+from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views
 from app.env import load_dotenv_local
 
 # Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
@@ -190,7 +190,7 @@ def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
     return True
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Issues", "Verification", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -199,7 +199,6 @@ NAV_SVG = {
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
-    "History": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
@@ -215,7 +214,6 @@ def slug_for(page: str) -> str:
         "Students": "students",
         "Repositories": "repositories",
         "Leaderboards": "leaderboards",
-        "History": "history",
         "Issues": "issues",
         "Verification": "verification",
         "Support": "support",
@@ -242,7 +240,6 @@ def nav(active: str, role: str | None = None, roster_id: str = "") -> list[dict]
 
 
 # Legacy PAGE_PLACEHOLDERS (app.py 332-338): icon, title, message. `needs_run`
-# False pages (History) don't show the "populates after an analysis" footnote.
 # Phase 5.2: message copy is account-driven — pages populate from the synced
 # account fleet (or a completed roster analysis), not from an upload alone.
 PAGE_PLACEHOLDERS = {
@@ -250,7 +247,6 @@ PAGE_PLACEHOLDERS = {
     "Repositories": ("repositories", "Repositories", "Browse every public repository in the fleet with language and activity details.", True),
     "Leaderboards": ("leaderboards", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students.", True),
     "Issues": ("issues", "Open Issues", "Review open issues and technical debt across student repositories.", True),
-    "History": ("history", "Run History", "Past analysis runs, timings, and outcomes appear here.", False),
     "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
     "Verification": ("verification", "Verification", "Confirm each GitHub account against the uploaded reference sheet, review validation results, and export per-student status.", True),
 }
@@ -1571,40 +1567,10 @@ def _run_history_rows(list_all=True) -> list:
                 "elapsed_seconds": float(row.get("elapsed_seconds") or 0.0),
             }
         )
-    # Newest run first — both the Overview "Recent Analysis Runs" list and the
-    # History page render `_run_history_rows` output. The underlying loader
-    # stays oldest-first so the History trends chart keeps chronological order.
+    # Newest run first — the Overview "Recent Analysis Runs" list renders
+    # `_run_history_rows` output. The underlying loader stays oldest-first.
     rows.reverse()
     return rows
-
-
-@app.get("/history", response_class=HTMLResponse)
-def history_page(request: Request):
-    ctx = _base_context(request, "History")
-    df = db.load_run_history() if database.db_configured() else storage.load_run_history()
-    storage_ok = db.schema_healthy() if database.db_configured() else storage.storage_healthy()
-    runs = _run_history_rows()
-    trends_fig = None
-    if len(df) > 1:
-        try:
-            timestamps = [str(v) for v in df["run_timestamp"].tolist()]
-            trends_fig = charts.line(
-                timestamps,
-                [
-                    ("Valid Accounts", [int(v or 0) for v in df["valid_accounts"].tolist()]),
-                    ("Active Repos", [int(v or 0) for v in df["active_repos"].tolist()]),
-                ],
-            )
-        except Exception:
-            trends_fig = None
-    payload = {
-        "has_runs": bool(runs),
-        "runs": runs,
-        "count": len(runs),
-        "trends_fig": trends_fig,
-        "storage_ok": storage_ok,
-    }
-    return templates.TemplateResponse(request, "pages/history.html", {**ctx, "payload": payload})
 
 
 @app.get("/issues", response_class=HTMLResponse)

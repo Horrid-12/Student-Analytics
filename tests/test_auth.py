@@ -141,7 +141,8 @@ class TestRBACGating:
         # Students + History tabs 5.2 had opened up (fleet-backed, but
         # faculty/admin-only pages in the current product decision).
         assert client.get("/students", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
-        assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
+        # /history page removed — unknown path falls through to 404, not a redirect.
+        assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
         # 5.5: Issues + Verification are faculty/admin-only (student bell + self-scoped Issues removed)
         assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
         assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
@@ -150,8 +151,10 @@ class TestRBACGating:
         for role in ("faculty", "admin"):
             c = TestClient(app)
             self._session(c, role)
-            for path in ("/students", "/settings", "/history", "/repositories", "/issues"):
+            for path in ("/students", "/settings", "/repositories", "/issues"):
                 assert c.get(path).status_code in (200, 404), f"{role} blocked on {path}"
+            # /history page removed.
+            assert c.get("/history").status_code == 404
 
     def test_api_endpoints_require_a_session(self, client):
         # POST /analysis/batch was removed with the Excel-upload feature:
