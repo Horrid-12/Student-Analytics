@@ -219,64 +219,42 @@ def _academic_year_for(value) -> str:
 def compute_account_snapshot(
     username: str, token: str | None, user: dict | None = None
 ) -> tuple[dict | None, list[dict], list[dict], str]:
-    """Fetch one account's GitHub data through the shared roster pipeline.
+    """Fetch one account's GitHub data through a fast lightweight fetch.
 
     Returns ``(student, repos, team_repos, error)`` where ``error`` is "" on
     success and one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
     ``rate_limited`` otherwise. ``student`` is None on failure. Never raises.
 
-    ``repos`` are owned REPO_COLS rows, ``team_repos`` are TEAM_REPOS_COLS
-    contributed rows — the same two frames ``batch.analyze_records`` produces
-    for an uploaded roster, so leaderboards / profiles / repositories render
-    identical stats for both sources.
+    To avoid Vercel 10s timeouts during login, this avoids the heavy batch
+    GraphQL pipelines. Commits/PRs and team_repos will be zero/empty until
+    the global Excel upload runs.
     """
     username = (username or "").strip()
     if not username:
         return None, [], [], "not_found"
     user = user or {}
-    # Run the same validation, repository, contribution, team-activity, and
-    # owned-commit stages as an uploaded roster. The previous account-only
-    # implementation fetched just the profile and repositories, which left
-    # PR, issue, and commit metrics at zero and caused dashboard totals to
-    # disagree for the same GitHub account.
-    from app import batch
-
-    record = {
-        STUDENT_ID_COL: _clean_text(user.get("prn")) or _clean_text(user.get("email")),
-        "Student Name": _clean_text(user.get("name")),
-        "Division": _clean_text(user.get("division")),
-        "Batch": _clean_text(user.get("practical_batch")),
-        "Semester": _clean_text(user.get("semester")),
-        ROSTER_EMAIL_COL: _clean_text(user.get("email")),
-        services.GITHUB_COL: f"https://github.com/{username}",
-        "GitHub_Username": username,
-        "Submitted_GitHub_Username": username,
-        "Academic_Year": _academic_year_for(user.get("onboarding_submitted_at")),
-        "LinkedIn_Username": "",
-        "LinkedIn_URL": "",
-        "HackerRank_Username": "",
-        "HackerRank_URL": "",
-    }
     try:
-        result = batch.analyze_records([record], token)
+        is_valid, payload, is_error, _ = services.get_user(username, token)
     except services.RateLimitError:
         return None, [], [], "rate_limited"
     except Exception:
-        logger.exception("Account analysis failed for %s", username)
         return None, [], [], "api_error"
-
-    if not result.get("students"):
-        if result.get("error_users"):
-            return None, [], [], "api_error"
-        return None, [], [], "not_found"
-    student = result["students"][0]
-    repos = result.get("repos") or []
-    team_repos = result.get("team_repos") or []
-    if username.strip().lower() in {
-        str(value).strip().lower() for value in result.get("repo_unavailable_users", [])
-    }:
+    if not is_valid or not payload:
+        return None, [], [], ("not_found" if not is_error else "api_error")
+    try:
+        raw_repos, fetched_ok = services.get_repos(username, token)
+    except services.RateLimitError:
+        return None, [], [], "rate_limited"
+    except Exception:
+        raw_repos, fetched_ok = [], False
+    if not fetched_ok:
         return None, [], [], "repo_fetch_failed"
-    return student, repos, team_repos, ""
+    repos = _repos_frame(raw_repos, username).to_dict(orient="records")
+    student = _student_row(user, username, payload, repos)
+    
+    # Return empty team_repos so it aligns with Animesh's new schema
+    # without crashing the serverless function.
+    return student, repos, [], ""
 
 
 def _parse_synced(synced_at: str):
