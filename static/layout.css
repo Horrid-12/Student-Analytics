@@ -317,115 +317,6 @@ button {
     color: var(--text);
 }
 
-/* Uploader bar — BUG-087: uses theme tokens so the control adapts to both
-   dark and light themes instead of hardcoding white. */
-.upload-bar {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    background-color: rgba(249, 247, 241, 0.60);
-    background-image: linear-gradient(rgba(249, 247, 241, 0.34), rgba(249, 247, 241, 0.34)), url('/static/paper-fiber-texture.png');
-    background-position: center;
-    background-size: cover;
-    background-attachment: fixed;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px 26px 20px;
-    min-height: 176px;
-    box-sizing: border-box;
-}
-
-.upload-browse {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    background: transparent;
-    border: 1px dashed rgba(27, 38, 51, 0.46);
-    border-radius: 8px;
-    min-height: 112px;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 16px 18px;
-    color: var(--text);
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    transition: background 150ms ease, border-color 150ms ease;
-}
-
-.upload-browse::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 130px;
-    height: 74px;
-    background-image: radial-gradient(rgba(27, 38, 51, 0.24) 0.7px, transparent 0.8px);
-    background-size: 5px 5px;
-    -webkit-mask-image: linear-gradient(135deg, transparent 30%, black 85%);
-    mask-image: linear-gradient(135deg, transparent 30%, black 85%);
-    opacity: 0.18;
-    pointer-events: none;
-}
-
-.upload-browse:hover {
-    background: var(--hover-bg);
-    border-color: var(--blue-hover-border);
-}
-
-.upload-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(86, 98, 113, 0.40);
-}
-
-.upload-title {
-    font-family: var(--font-display);
-    font-size: 24px;
-    font-weight: 800;
-}
-
-.upload-copy {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    position: relative;
-    z-index: 1;
-}
-
-.upload-copy strong {
-    font-size: 17px;
-}
-
-.upload-copy small {
-    color: rgba(20, 34, 53, 0.82);
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.upload-bar.is-dragging {
-    border-color: var(--red);
-    background: rgba(190, 52, 43, 0.06);
-}
-
-.upload-bar.is-dragging .upload-browse {
-    border-color: var(--red);
-    color: var(--red);
-}
-
-.upload-hint {
-    font-size: 14px;
-    color: var(--muted);
-}
-
 /* Buttons — replicates Streamlit button styling (style.css 1043-1089). */
 .btn {
     display: inline-flex;
@@ -567,15 +458,6 @@ button {
 
     .topbar > div:first-child {
         flex: 1 1 100%;
-    }
-
-    .pipeline {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        row-gap: 18px;
-    }
-
-    .pipeline::before {
-        display: none;
     }
 }
 
@@ -741,20 +623,6 @@ button {
 .panel { background-color: rgba(249, 247, 241, 0.56); background-image: linear-gradient(rgba(249, 247, 241, 0.36), rgba(249, 247, 241, 0.36)), url('/static/paper-fiber-texture.png'); background-position: center; background-size: cover; background-attachment: fixed; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04); padding: 24px; margin-bottom: 20px; }
 .panel-title { font-size: 24px; font-weight: 800; color: var(--text); margin-bottom: 18px; }
 .panel-minor-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 14px 0 8px; }
-.pipeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; position: relative; }
-.pipeline::before { content: ""; position: absolute; top: 15px; left: 8%; right: 8%; height: 1px; background: rgba(86, 98, 113, 0.45); z-index: 0; }
-.pipeline-step { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; text-align: center; position: relative; z-index: 1; }
-.pipeline-step.is-done { color: var(--text); background: transparent; border: 0; }
-.pipeline-step.is-running .pipeline-index { background: var(--blue); box-shadow: 0 0 0 2px var(--blue-glow); animation: pulse-ring 1.5s infinite; }
-.pipeline-step.is-error .pipeline-index { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
-.pipeline-index { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; background: var(--blue); color: #f5f1e9; font-size: 13px; font-weight: 800; line-height: 1; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--blue); }
-
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 var(--blue-glow), 0 0 6px 2px var(--blue-glow); }
-  50% { box-shadow: 0 0 0 7px var(--blue-glow), 0 0 10px 3px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent, 0 0 6px 2px var(--blue-glow); }
-}
-.pipeline-rule { height: 1px; background: rgba(86, 98, 113, 0.45); margin: 22px 0 16px; }
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
 @media (max-width: 1400px) { .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -765,73 +633,6 @@ button {
 .donut-chart { min-height: 200px; }
 .echart-box { width: 100%; min-height: 260px; }
 .full-width .echart-box { min-height: 300px; }
-
-/* ── Segmented Capsule / Stacked Micro-Bar ──────────────────────────── */
-.capsule-wrap { padding: 4px 0; }
-.capsule-stats {
-  display: flex; gap: 18px; flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.capsule-stat {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-family: var(--font-sans); color: var(--muted);
-}
-.capsule-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.capsule-dot--connected { background: var(--capsule-connected); }
-.capsule-dot--invalid   { background: var(--capsule-invalid); }
-.capsule-dot--missing   { background: var(--capsule-missing); }
-.capsule-stat strong { font-weight: 700; color: var(--text); margin-right: 2px; }
-.capsule-stat .capsule-pct {
-  font-size: 11.5px; color: var(--muted); opacity: 0.7;
-  font-variant-numeric: tabular-nums;
-}
-
-.capsule-track {
-  width: 100%; height: 10px; border-radius: 999px;
-  background: var(--capsule-track);
-  display: flex; overflow: hidden;
-  position: relative;
-}
-.capsule-seg {
-  height: 100%; transition: transform 0.18s ease, filter 0.18s ease, height 0.18s ease;
-  position: relative; cursor: default;
-  min-width: 3px;        /* keeps tiny segments visible */
-}
-.capsule-seg:first-child { border-radius: 999px 0 0 999px; }
-.capsule-seg:last-child  { border-radius: 0 999px 999px 0; }
-.capsule-seg:only-child  { border-radius: 999px; }
-.capsule-seg--connected { background: var(--capsule-connected); }
-.capsule-seg--invalid   { background: var(--capsule-invalid); }
-.capsule-seg--missing   { background: var(--capsule-missing); }
-
-.capsule-seg:hover {
-  height: 14px; margin-top: -2px;
-  filter: brightness(1.15);
-  z-index: 2;
-}
-
-/* Tooltip */
-.capsule-tip {
-  position: absolute; bottom: calc(100% + 10px); left: 50%;
-  transform: translateX(-50%); pointer-events: none;
-  background: var(--card); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 6px 11px; font-size: 12px; line-height: 1.5;
-  font-family: var(--font-sans); white-space: nowrap;
-  box-shadow: 0 4px 14px var(--shadow);
-  opacity: 0; transition: opacity 0.15s ease;
-  z-index: 10;
-}
-.capsule-tip::after {
-  content: ''; position: absolute; top: 100%; left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent; border-top-color: var(--border);
-}
-.capsule-seg:hover .capsule-tip { opacity: 1; }
-.capsule-tip b { font-weight: 700; }
-.capsule-tip span { color: var(--muted); }
 
 /* ── Deterministic Packed Bubble Chart ──────────────────────────────── */
 .bubble-chart-wrap { position: relative; overflow: hidden; }
@@ -1128,7 +929,6 @@ button {
 [data-theme="dark"] .app-sidebar,
 [data-theme="dark"] .topbar-card,
 [data-theme="dark"] .auth-notice,
-[data-theme="dark"] .upload-bar,
 [data-theme="dark"] .panel {
     background-color: var(--card);
     background-image: linear-gradient(rgba(58, 58, 62, 0.5), rgba(58, 58, 62, 0.5)), url('/static/paper-fiber-texture-dark.png');

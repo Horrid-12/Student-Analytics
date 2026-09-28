@@ -10,16 +10,9 @@
   <div class="topbar">
     <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
       <div class="topbar-title">Overview</div>
-      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
-        <span>Last completed analysis: {% if complete %}{{ last_analysis }}{% else %}No completed analysis yet{% endif %}</span>
-      </div>
     </div>
 
     <div class="topbar-actions">
-      <button class="btn btn-primary" type="button" id="run-analysis">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 3 14 9-14 9V3Z"/></svg>
-        Run Analysis
-      </button>
       {% include "partials/bell.html" %}
     </div>
   </div>
@@ -28,35 +21,6 @@
   <svg class="auth-notice-icon" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-4.5-1.2L3 20l1.5-4.2A8.7 8.7 0 0 1 3 11.5a9 9 0 1 1 18 0Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
   <span>Signed in as <b>{{ auth_user }}</b> ({{ auth_role }}). Public sign-up creates student accounts; admin and faculty accounts are provisioned by the administrator.</span>
 </div>
-
-{% include "partials/upload_bar.html" %}
-<div id="upload-result"></div>
-
-<section class="panel">
-  <div class="panel-title">Analysis Pipeline</div>
-  <div class="pipeline" id="analysis-pipeline">
-    <div class="pipeline-step" data-step="1"><span class="pipeline-index">1</span>Excel Upload</div>
-    <div class="pipeline-step" data-step="2"><span class="pipeline-index">2</span>Username Extraction</div>
-    <div class="pipeline-step" data-step="3"><span class="pipeline-index">3</span>Account Validation</div>
-    <div class="pipeline-step" data-step="4"><span class="pipeline-index">4</span>Repository Fetch</div>
-    <div class="pipeline-step" data-step="5"><span class="pipeline-index">5</span>Contribution Trends</div>
-    <div class="pipeline-step" data-step="6"><span class="pipeline-index">6</span>Analytics Build</div>
-  </div>
-  <div class="pipeline-rule"></div>
-  <div class="pipeline-meta" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-    <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
-      {% if complete %}
-      <span class="badge-green" id="pipeline-status-badge">{{ payload.status }}</span>
-      <span id="pipeline-status-text">Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
-      {% else %}
-      <span class="badge-muted" id="pipeline-status-badge">Idle</span>
-      <span id="pipeline-status-text">Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
-      {% endif %}
-    </div>
-    {% if complete %}<span id="pipeline-completed-at" style="font-size:12px; color:var(--muted);">Completed {{ payload.last_analysis }}</span>{% endif %}
-  </div>
-  <div id="analysis-log" class="run-log-scroll run-log-live" hidden></div>
-</section>
 
 {% if complete %}
 <div id="previous-results">
@@ -132,42 +96,6 @@
 </section>
 
 <section class="panel">
-  <div class="panel-title">Account Validation Status</div>
-  {% set status = payload.account_status %}
-  {% set total  = payload.total %}
-  <div class="capsule-wrap">
-    {# ── Stat labels ── #}
-    <div class="capsule-stats">
-      {% for item in status %}
-      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
-      <div class="capsule-stat">
-        <span class="capsule-dot capsule-dot--{{ item.Status | lower }}"></span>
-        <strong>{{ item.Count }}</strong> {{ item.Status }}
-        <span class="capsule-pct">({{ pct }}%)</span>
-      </div>
-      {% endfor %}
-    </div>
-    {# ── Capsule bar ── #}
-    <div class="capsule-track">
-      {% for item in status %}
-      {% if item.Count > 0 %}
-      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
-      <div class="capsule-seg capsule-seg--{{ item.Status | lower }}"
-           style="width:{{ pct }}%"
-           aria-label="{{ item.Status }}: {{ item.Count }}">
-        <div class="capsule-tip">
-          <b>{{ item.Status }}</b><br>
-          {{ item.Count }} student{{ 's' if item.Count != 1 else '' }}<br>
-          <span>{{ pct }}%</span>
-        </div>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-<section class="panel">
   <div class="panel-title">Analysis Results</div>
   <div class="two-col-grid">
     <div>
@@ -189,300 +117,17 @@
   </div>
 </section>
 
-<section class="panel">
-  <div class="panel-title">Run Log</div>
-  <div class="run-log-scroll run-log-snapshot">
-    {% for line in payload.log %}<div class="batch-log-item">{{ line }}</div>{% endfor %}
-  </div>
-</section>
 </div>
 
 {% else %}
-{% if past_runs %}
-<section class="panel">
-  <div class="panel-title">Recent Analysis Runs</div>
-  <div class="data-table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr><th>Run</th><th>Status</th><th>Students</th><th>Valid</th><th>Invalid</th><th>Errors</th><th>Repos Found</th><th>Active Repos</th><th>Avg Quality</th></tr>
-      </thead>
-      <tbody>
-        {% for run in past_runs %}
-        <tr>
-          <td>
-            {% if run.roster_id %}
-            <a href="/overview?roster={{ run.roster_id }}" class="history-link">{{ run.friendly }}</a>
-            {% else %}
-            {{ run.friendly }}
-            {% endif %}
-          </td>
-          <td>
-            {% if run.status == 'Complete' %}<span class="badge-green">{{ run.status }}</span>
-            {% elif run.status == 'Partial' %}<span class="badge-amber">{{ run.status }}</span>
-            {% else %}<span class="badge-red">{{ run.status }}</span>{% endif %}
-          </td>
-          <td>{{ run.total_students }}</td>
-          <td>{{ run.valid_accounts }}</td>
-          <td>{{ run.invalid_accounts }}</td>
-          <td>{{ run.error_accounts }}</td>
-          <td>{{ run.repos_found }}</td>
-          <td>{{ run.active_repos }}</td>
-          <td>{% if run.avg_quality_score is not none %}{{ run.avg_quality_score | round(1) }}{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-{% endif %}
 <div class="empty-state">
   <div>
     <div class="empty-illustration">
       <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
     </div>
     <h2>Student Analytics Workspace</h2>
-    <p>No student data loaded yet. Upload a roster above and click <strong>Run Analysis</strong> to populate this overview, or reopen a past run from the list above.</p>
+    <p>No student data loaded yet. Data appears here once students complete onboarding and sync their GitHub accounts.</p>
   </div>
 </div>
 {% endif %}
-
-<script>
-(function () {
-  'use strict';
-  var STORE_KEY = 'gsad_roster_v1';
-  var BATCH_SIZE = 15;
-  var running = false;
-  var current = readLocal();
-
-  function readLocal() {
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) { return null; }
-  }
-
-  var logEl = document.getElementById('analysis-log');
-  var pipelineEl = document.getElementById('analysis-pipeline');
-  var statusBadge = document.getElementById('pipeline-status-badge');
-  var statusText = document.getElementById('pipeline-status-text');
-  var prevResults = document.getElementById('previous-results');
-  var completedAt = document.getElementById('pipeline-completed-at');
-
-  window.__gsadOnRoster = function (data) { current = data || null; };
-
-  function logLine(text, cls) {
-    if (!logEl) return;
-    if (logEl.hidden) logEl.hidden = false;
-    var line = document.createElement('div');
-    line.className = 'batch-log-item' + (cls ? ' ' + cls : '');
-    line.textContent = text;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
-  function updatePipelineStep(step, state) {
-    if (!pipelineEl) return;
-    var stepEl = pipelineEl.querySelector('[data-step="' + step + '"]');
-    if (!stepEl) return;
-    stepEl.classList.remove('is-running', 'is-done', 'is-error');
-    if (state === 'running') stepEl.classList.add('is-running');
-    else if (state === 'done') stepEl.classList.add('is-done');
-    else if (state === 'error') stepEl.classList.add('is-error');
-  }
-
-  function updatePipelineStatus(text, isComplete, isError) {
-    if (statusBadge) {
-      statusBadge.className = 'badge-' + (isError ? 'red' : isComplete ? 'green' : 'muted');
-      statusBadge.textContent = isComplete ? 'Complete' : isError ? 'Error' : 'Running';
-    }
-    if (statusText) statusText.textContent = text;
-  }
-
-  function restorePreviousResults() {
-    if (prevResults) prevResults.hidden = false;
-    if (completedAt) completedAt.hidden = false;
-  }
-
-  function chunk(list, size) {
-    var out = [];
-    for (var i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
-    return out;
-  }
-
-  var runBtn = document.getElementById('run-analysis');
-  var resetBtn = document.getElementById('reset-analysis');
-  if (runBtn) runBtn.addEventListener('click', runAll);
-  if (resetBtn) resetBtn.addEventListener('click', resetAll);
-
-  document.addEventListener('click', function (e) {
-    if (e.target.closest && e.target.closest('#upload-result .roster-clear')) {
-      resetAll();
-    }
-  });
-
-  function resetAll() {
-    if (!current) { window.location.reload(); return; }
-    fetch('/upload/reset?roster_id=' + encodeURIComponent(current.roster_id), { method: 'POST' })
-      .catch(function () {});
-    try { localStorage.removeItem(STORE_KEY); } catch (_) {}
-    current = null;
-    window.location.reload();
-  }
-
-  function getBatchSize(total) {
-    if (total <= 10) return 1;
-    if (total <= 30) return 2;
-    if (total <= 100) return 5;
-    return 10;
-  }
-
-  function runAll() {
-    if (running) return;
-    logEl.innerHTML = '';
-    logEl.scrollTop = 0;
-    if (!current || !Array.isArray(current.ids) || !current.ids.length) {
-      logLine('Upload a roster first, then run analysis.', 'error');
-      return;
-    }
-    running = true;
-    if (runBtn) runBtn.disabled = true;
-    if (prevResults) prevResults.hidden = true;
-    if (completedAt) completedAt.hidden = true;
-
-    // Reset pipeline to initial state (step 1 done = upload)
-    if (pipelineEl) {
-      pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
-        el.classList.remove('is-running', 'is-done', 'is-error');
-      });
-      updatePipelineStep(1, 'done');
-    }
-    updatePipelineStatus('Starting analysis...', false, false);
-    logLine('Starting analysis for ' + current.ids.length + ' student(s)...');
-
-    var rosterId = current.roster_id;
-    var ids = current.ids;
-    var total = ids.length;
-    var batchSize = getBatchSize(total);
-
-    batchedFetch(rosterId, chunk(ids, batchSize), total)
-      .then(function (summary) {
-        logLine(summary.text, summary.ok ? '' : 'error');
-        if (summary.ok) {
-          // Mark all steps as done
-          if (pipelineEl) {
-            pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
-              el.classList.remove('is-running');
-              el.classList.add('is-done');
-            });
-          }
-          updatePipelineStatus('Analyzed ' + total + ' student(s) in ' + (summary.elapsed || 0) + 's — ' + summary.valid + ' connected, ' + summary.invalid + ' invalid, ' + summary.repos_found + ' repositories found.', true, false);
-          logLine('Analysis complete! Loading dashboard...', '');
-          setTimeout(function () {
-            window.location.href = '/?roster=' + encodeURIComponent(rosterId);
-          }, 300);
-        } else {
-          restorePreviousResults();
-          updatePipelineStatus('Analysis stopped: ' + summary.text, false, true);
-        }
-      })
-      .catch(function (err) {
-        restorePreviousResults();
-        logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
-        updatePipelineStatus('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), false, true);
-      })
-      .finally(function () {
-        running = false;
-        if (runBtn) runBtn.disabled = false;
-      });
-  }
-
-  function batchedFetch(rosterId, batches, total) {
-    var done = 0;
-    var totalBatches = batches.length;
-    var batchNum = 0;
-    var pipelineStages = [
-      { step: 2, name: 'Username Extraction', threshold: 0 },
-      { step: 3, name: 'Account Validation', threshold: 0.15 },
-      { step: 4, name: 'Repository Fetch', threshold: 0.45 },
-      { step: 5, name: 'Contribution Trends', threshold: 0.7 },
-      { step: 6, name: 'Analytics Build', threshold: 0.9 }
-    ];
-    var currentStage = 0;
-
-    var reduce = function () {
-      if (!batches.length) {
-        return Promise.resolve({ ok: true, done: done, valid: 0, invalid: 0, repos_found: 0, elapsed: 0, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
-      }
-      var chunkIds = batches.shift();
-      batchNum++;
-      var statusLabel = totalBatches > 1 ? 'running (batch ' + batchNum + '/' + totalBatches + ')' : 'running';
-      updatePipelineStatus('Batch ' + batchNum + '/' + totalBatches + ' — analyzing ' + done + ' of ' + total + ' student(s)...', false, false);
-      
-      // Update pipeline stage based on progress
-      var progress = total > 0 ? done / total : 0;
-      while (currentStage < pipelineStages.length && progress >= pipelineStages[currentStage].threshold) {
-        updatePipelineStep(pipelineStages[currentStage].step, 'done');
-        currentStage++;
-      }
-      if (currentStage < pipelineStages.length) {
-        updatePipelineStep(pipelineStages[currentStage].step, 'running');
-      }
-
-      return fetch('/analysis/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roster_id: rosterId, student_ids: chunkIds })
-      }).then(function (resp) {
-        if (resp.status === 429) {
-          return resp.json().then(function (body) {
-            throw new Error('GitHub rate limit reached' + (body.reset_epoch ? ' (resets at ' + body.reset_epoch + ')' : '') + ' — wait, then run again.');
-          });
-        }
-        if (!resp.ok) {
-          return resp.json().then(function (body) {
-            throw new Error((body && body.detail) || ('Request failed (' + resp.status + ')'));
-          });
-        }
-        return resp.json().then(function (data) {
-          done += chunkIds.length;
-          var r = data.result || {};
-          if (r.students && r.students.length) {
-            r.students.forEach(function (s) {
-              var name = s['Student Name'] || s['GitHub_Username'] || 'Student';
-              var u = s['GitHub_Username'] ? '@' + s['GitHub_Username'] : 'invalid';
-              var repos = s['Repository_Count'] !== undefined ? s['Repository_Count'] + ' repos' : '';
-              logLine('✓ ' + name + ' (' + u + ')' + (repos ? ' — ' + repos : ''));
-            });
-          } else {
-            logLine('Batch ' + batchNum + ' done (' + chunkIds.length + ' student(s)) — ' + r.valid_users + ' valid, ' + r.invalid_users + ' invalid.');
-          }
-          return reduce();
-        });
-      });
-    };
-    return reduce();
-  }
-
-  if (current && current.roster_id) {
-    fetch('/roster/' + encodeURIComponent(current.roster_id))
-      .then(function (resp) {
-        if (resp.status === 404) throw new Error('gone');
-        return resp.json();
-      })
-      .then(function (info) {
-        current = { roster_id: info.roster_id, ids: info.student_ids };
-        if (info.analysis && info.analysis.status === 'complete' && window.location.search.indexOf('roster=') === -1) {
-          window.location.replace('/?roster=' + encodeURIComponent(info.roster_id));
-        }
-      })
-      .catch(function () {
-        try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-        current = null;
-        var r = document.getElementById('upload-result');
-        if (r) r.innerHTML = '';
-      });
-  }
-})();
-</script>
 {% endblock %}

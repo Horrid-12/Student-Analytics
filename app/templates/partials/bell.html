@@ -1,8 +1,7 @@
-{# Shared notification bell (top-right of the topbar). Students get own issue
-   alerts, staff get support-ticket alerts — both arrive as `notifications`
-   (issue/time/fix_url dicts, optional sub line) with `notif_count`.
-   Handlers set `notif_empty` (None renders no bell); the dropdown shows at
-   most 5 at once and scrolls (CSS). #}
+{# Shared notification bell (top-right of the topbar). Staff get support-ticket
+   alerts as `notifications` (issue/sub/time/fix_url dicts) with
+   `notif_count`. Handlers set `notif_empty` (None renders no bell); the
+   dropdown shows at most 5 at once and scrolls (CSS). #}
 {% if notif_empty %}
 <details class="notif-bell">
   <summary class="notif-bell-btn" aria-label="Notifications{% if notif_count %}, {{ notif_count }} open{% endif %}">
@@ -17,7 +16,7 @@
       <div class="notif-item">
         <div class="notif-text">{{ n.issue }}</div>
         {% if n.sub %}<div class="notif-sub">{{ n.sub }}</div>{% endif %}
-        <div class="notif-meta"><span class="notif-time">{{ n.time }}</span><a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
+        <div class="notif-meta">{% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}<a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
       </div>
       {% endfor %}
     </div>

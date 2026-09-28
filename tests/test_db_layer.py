@@ -263,32 +263,7 @@ class TestIdempotentBatch:
         assert len(db.get_repositories_data(rid)) == 3
 
 
-class TestWorkflow:
-    def test_roundtrip(self):
-        rid = db.register_roster(
-            _roster_records(), filename="roster.xlsx", file_hash="abc123",
-            student_count=2, invalid_count=0,
-        )
-        state = {"0": {"Status": "Open", "Owner": "faculty", "Notes": "checking"}}
-        db.put_workflow(rid, state)
-        assert db.get_workflow(rid) == state
-        db.put_workflow(rid, {})
-        assert db.get_workflow(rid) == {}
-
-
 class TestHistoryAndAudit:
-    def test_run_history_roundtrip(self):
-        assert db.record_analysis_run(
-            status="Complete", total_students=2, valid_accounts=2,
-            invalid_accounts=0, error_accounts=0, repos_found=2,
-            active_repos=1, avg_quality_score=60.0, elapsed_seconds=12.5,
-            source_file_hash="abc123",
-        ) is True
-        df = db.load_run_history()
-        assert not df.empty
-        last = db.last_recorded_run()
-        assert last is not None and last["status"] == "Complete"
-
     def test_audit_roundtrip(self):
         assert db.log_event("analysis_run", "test") is True
         df = db.load_audit_events(limit=10)
@@ -348,20 +323,6 @@ class TestUsers:
         assert approved[0]["practical_batch"] == "P3"
         assert approved[0]["semester"] == "Semester 4"
         assert approved[0]["main_batch"] == "Batch 2023"
-
-
-class TestRecordCompletion:
-    def test_records_once(self):
-        rid = db.register_roster(
-            _roster_records(), filename="roster.xlsx", file_hash="abc123",
-            student_count=2, invalid_count=0,
-        )
-        db.ensure_run_summary(rid, 2, file_hash="abc123")
-        db.upsert_batch_results(rid, _batch_partial(), ["101", "202"])
-        before = len(db.load_run_history())
-        assert db.record_analysis_run_if_unrecorded(rid) is True
-        assert db.record_analysis_run_if_unrecorded(rid) is False  # idempotent
-        assert len(db.load_run_history()) == before + 1
 
 
 class TestPruning:

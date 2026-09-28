@@ -104,7 +104,6 @@ class AnalysisResult:
     repo_unavailable_users: list[str]
     contributions_df: pd.DataFrame
     contrib_unavailable_users: list[str]
-    log: list[str]
     # Keep the analysis outcome as data on every result.  The UI receives this
     # object, so an explicit field is safer than asking the UI to calculate it.
     status: str
@@ -1879,14 +1878,11 @@ def run_analysis(
     sample_size: int | None = None,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> AnalysisResult:
-    log: list[str] = []
     df = load_excel(uploaded_file)
     if sample_size:
         df = df.head(sample_size).copy()
-    log.append(f"Loaded Excel - {len(df)} rows")
 
     df, _ = prepare_students(df)
-    log.append("Extracted usernames")
 
     usernames = df["GitHub_Username"].tolist()
 
@@ -1899,12 +1895,7 @@ def run_analysis(
         token,
         validation_progress,
     )
-    log.append(
-        f"Validated accounts - {len(valid_users)} valid, {len(invalid_users)} invalid, {len(error_users)} API errors"
-    )
-
     github_stats = build_github_stats(valid_users, user_payloads)
-    log.append("Fetched user stats")
 
     def repo_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1915,9 +1906,6 @@ def run_analysis(
         token,
         repo_progress,
     )
-    if repo_unavailable_users:
-        log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
-    log.append(f"Fetched repositories - {len(repo_df)} found")
 
     def contrib_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1928,14 +1916,6 @@ def run_analysis(
         token,
         contrib_progress,
     )
-    if contrib_unavailable_users:
-        log.append(
-            f"PR/issue data unavailable for {len(contrib_unavailable_users)} account(s) — the GitHub Search API "
-            "has a strict per-minute limit; add a GITHUB_TOKEN to improve reliability"
-        )
-    total_prs = int(contributions_df["Pull_Requests"].sum()) if not contributions_df.empty else 0
-    total_issues = int(contributions_df["Issues_Opened"].sum()) if not contributions_df.empty else 0
-    log.append(f"Collected contributions - {total_prs} pull request(s), {total_issues} issue(s)")
 
     def team_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1946,11 +1926,6 @@ def run_analysis(
         token,
         team_progress,
     )
-    if team_unavailable_users:
-        log.append(f"Team activity unavailable for {len(team_unavailable_users)} account(s)")
-    total_team_commits = int(team_summary_df["Team_Commits"].sum()) if not team_summary_df.empty else 0
-    total_team_repos = int(team_summary_df["Contributed_Repos_Count"].sum()) if not team_summary_df.empty else 0
-    log.append(f"Collected team activity - {total_team_commits} commit(s) across {total_team_repos} contributed repo link(s)")
 
     def commit_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1961,10 +1936,6 @@ def run_analysis(
         token,
         commit_progress,
     )
-    if commit_unavailable_users:
-        log.append(f"Owned commit history unavailable for {len(commit_unavailable_users)} account(s)")
-    total_owned_commits = int(commit_summary_df["Owned_Commits"].sum()) if not commit_summary_df.empty else 0
-    log.append(f"Collected owned commits - {total_owned_commits} commit(s)")
 
     dashboard_df = build_dashboard_df(
         df,
@@ -1981,24 +1952,14 @@ def run_analysis(
     invalid_issues_df = build_invalid_issues(df, invalid_users, error_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
-        log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_issues_df], ignore_index=True).drop_duplicates()
         )
     duplicate_student_issues_df = build_duplicate_student_issues(df)
     if not duplicate_student_issues_df.empty:
-        log.append(f"Detected {len(duplicate_student_issues_df)} duplicate student submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_student_issues_df], ignore_index=True).drop_duplicates()
         )
-    count_mismatches = find_repo_count_mismatches(dashboard_df)
-    if count_mismatches:
-        log.append(
-            f"{len(count_mismatches)} student record(s) show a different fetched repository count than their "
-            "profile reports (profiles also count hidden/private repos that public listings cannot see)"
-        )
-    log.append("Building analytics...")
-    log.append("Complete")
 
     return AnalysisResult(
         source_df=df,
@@ -2012,7 +1973,6 @@ def run_analysis(
         repo_unavailable_users=repo_unavailable_users,
         contributions_df=contributions_df,
         contrib_unavailable_users=contrib_unavailable_users,
-        log=log,
         status=determine_analysis_status(valid_users, error_users),
         team_summary_df=team_summary_df,
         team_repos_df=team_repos_df,

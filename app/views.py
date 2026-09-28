@@ -7,7 +7,6 @@ columns, ordering, labels and formatting. No Streamlit, no network.
 
 import re
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
 
 import pandas as pd
 
@@ -499,19 +498,6 @@ def friendly_timestamp(value) -> str:
         return str(value)
 
 
-def last_analysis_time() -> str:
-    from app import database
-
-    run = None
-    if database.db_configured():
-        from app import db
-
-        run = db.last_recorded_run()
-    if run is None:
-        run = storage.last_recorded_run()
-    return run.get("run_timestamp", "Never") if run else "Never"
-
-
 def run_outcome(state: dict | None) -> str:
     if not state:
         return "Complete"
@@ -654,17 +640,6 @@ def overview_payload(view) -> dict:
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
-        "elapsed": float(state.get("elapsed") or 0.0),
-        "last_analysis": friendly_timestamp(last_analysis_time()),
-        "log": [
-            f"Loaded Excel - {total} rows",
-            "Extracted usernames",
-            f"Validated accounts - {valid} valid, {invalid} invalid, {errors} API errors",
-            f"Fetched repositories - {combined_repos_found} found",
-            f"Collected contributions - {prs} pull request(s), {opened_issues} issue(s), {team_commits} team commit(s)",
-            "Building analytics...",
-            "Complete",
-        ],
         "valid_users": valid,
     }
 
@@ -917,7 +892,7 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
 AUDIT_COLS = [
     STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
     "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following", "Last Updated",
+    "Followers", "Following",
 ]
 
 
@@ -954,7 +929,6 @@ def verification_payload(view: dict, references: list[dict], query: str = "", st
             "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
             "Followers": int(stat.get("Followers", 0) or 0),
             "Following": int(stat.get("Following", 0) or 0),
-            "Last Updated": friendly_timestamp(last_analysis_time()),
         })
 
     audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
@@ -1216,47 +1190,6 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
         return students_payload_profile(row, repos, team_repos)
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
-
-
-def own_issue_notifications(view: dict, email: str, run_time: str = "", roster_id: str = "", workflow=None) -> list:
-    """Issue alerts for the signed-in student's notification bell: their own
-    non-resolved issues, each with the analysis run time and a Fix link into
-    the (self-scoped) Issues page pre-filtered to that issue type."""
-    if not view or not email:
-        return []
-    own = find_own_student_row(view.get("students"), email)
-    if own is None:
-        return []
-    own_id = str(own.get(STUDENT_ID_COL, ""))
-    issues = view.get("issues")
-    if issues is None or getattr(issues, "empty", True):
-        return []
-    workflow = workflow or {}
-    notifications = []
-    try:
-        rows = issues[issues[STUDENT_ID_COL].astype(str) == own_id]
-    except (KeyError, TypeError, ValueError):
-        return []
-    for _, record in rows.iterrows():
-        issue = str(record.get("Issue", "") or "").strip()
-        if not issue:
-            continue
-        key = "|".join(
-            str(record.get(c, "") or "") for c in (STUDENT_ID_COL, "Issue", "GitHub_Username")
-        )
-        status = workflow.get(key, {}).get("Status", "Open")
-        if status == "Resolved":
-            continue
-        notifications.append(
-            {
-                "issue": issue,
-                "status": status,
-                "time": run_time,
-                "fix_url": f"/issues?roster={roster_id}&issue={quote(issue)}",
-                "key": key,
-            }
-        )
-    return notifications
 
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:
@@ -1904,44 +1837,3 @@ def leaderboard_language_rows(languages) -> list[dict]:
         {"rank": rank, "name": row["Language"], "score": int(row["Repositories"])}
         for rank, (_, row) in enumerate(languages.iterrows(), start=1)
     ]
-
-
-# ---------------------------------------------------------------------------
-# Issues (3.6g)
-# ---------------------------------------------------------------------------
-
-WORKFLOW_COLS = [STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "Issue", "Status", "Owner", "Notes"]
-
-
-def issues_payload(view, issue_type="All", workflow=None) -> dict:
-    issues = view["issues"].copy()
-    filtered = apply_value_filter(issues, "Issue", issue_type)
-    types = ["All"] + sorted(issues["Issue"].dropna().astype(str).unique().tolist()) if not issues.empty else ["All"]
-    if filtered.empty:
-        rows = []
-    else:
-        workflow = workflow or {}
-        result = filtered.copy()
-
-        def _key(row):
-            return "|".join(str(row.get(c, "") or "") for c in (STUDENT_ID_COL, "Issue", "GitHub_Username"))
-
-        keys = result.apply(_key, axis=1)
-        result["Status"] = [workflow.get(k, {}).get("Status", "Open") for k in keys]
-        result["Owner"] = [workflow.get(k, {}).get("Owner", "") for k in keys]
-        result["Notes"] = [workflow.get(k, {}).get("Notes", "") for k in keys]
-        rows = [
-            {
-                "student_id": str(r.get(STUDENT_ID_COL, "")),
-                "name": r.get("Student Name", ""),
-                "division": r.get("Division", ""),
-                "username": r.get("GitHub_Username", ""),
-                "issue": r.get("Issue", ""),
-                "status": r.get("Status", "Open"),
-                "owner": r.get("Owner", ""),
-                "notes": r.get("Notes", ""),
-                "key": _key(r),
-            }
-            for _, r in result.iterrows()
-        ]
-    return {"total": len(filtered), "rows": rows, "types": types}

@@ -557,24 +557,6 @@ def upsert_batch_results(
         return None
 
 
-def mark_run_recorded(roster_id: str) -> bool:
-    """Mark the run_summary as recorded (one-shot idempotency for the history
-    write). Returns True if this call was the one that flipped the flag."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "UPDATE run_summary SET recorded = TRUE, recorded_at = NOW() "
-                "WHERE roster_id = %s AND recorded = FALSE",
-                (roster_id,),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("mark_run_recorded failed: %s", exc)
-        return False
-
-
 def mark_run_rate_limited(roster_id: str) -> None:
     try:
         with database.conn() as c:
@@ -774,37 +756,6 @@ def get_issues_data(roster_id: str) -> list[dict]:
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_issues_data failed: %s", exc)
         return []
-
-
-# ── workflow ───────────────────────────────────────────────────────────────────
-
-def get_workflow(roster_id: str) -> dict:
-    """Return the workflow state dict (issue index → {status, owner, notes})."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return {}
-            cur = c.execute(
-                "SELECT state FROM workflow_state WHERE roster_id = %s",
-                (roster_id,),
-            )
-            row = cur.fetchone()
-            return row["state"] if row else {}
-    except (psycopg.errors.DatabaseError, OSError):
-        return {}
-
-
-def put_workflow(roster_id: str, state: dict) -> None:
-    try:
-        with database.conn() as c:
-            if c is not None:
-                c.execute(
-                    "INSERT INTO workflow_state (roster_id, state) VALUES (%s, %s) "
-                    "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
-                    (roster_id, Jsonb(state)),
-                )
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("put_workflow failed: %s", exc)
 
 
 def get_blacklist(roster_id: str) -> dict:
@@ -1204,87 +1155,7 @@ def clear_support_attachment(ticket_id, slot: str = "admin") -> bool:
         return False
 
 
-# ── run history + audit log (mirrors storage.py signatures) ────────────────────
-
-def record_analysis_run(
-    status: str,
-    total_students: int,
-    valid_accounts: int,
-    invalid_accounts: int,
-    error_accounts: int,
-    repos_found: int,
-    active_repos: int = 0,
-    avg_quality_score: Optional[float] = None,
-    elapsed_seconds: float = 0.0,
-    source_file_hash: Optional[str] = None,
-    roster_id: Optional[str] = None,
-) -> bool:
-    """Insert a completed analysis run (mirrors ``storage.record_analysis_run``)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            c.execute(
-                "INSERT INTO analysis_runs "
-                "(roster_id, status, total_students, valid_accounts, invalid_accounts, "
-                "error_accounts, repos_found, active_repos, avg_quality_score, "
-                "elapsed_seconds, source_file_hash) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    roster_id,
-                    status,
-                    total_students,
-                    valid_accounts,
-                    invalid_accounts,
-                    error_accounts,
-                    repos_found,
-                    active_repos,
-                    avg_quality_score,
-                    elapsed_seconds,
-                    source_file_hash,
-                ),
-            )
-        return True
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("record_analysis_run (postgres) failed: %s", exc)
-        return False
-
-
-def load_run_history() -> pd.DataFrame:
-    try:
-        with database.conn() as c:
-            if c is None:
-                return pd.DataFrame()
-            cur = c.execute(
-                "SELECT id, roster_id, run_timestamp, status, total_students, valid_accounts, "
-                "invalid_accounts, error_accounts, repos_found, active_repos, "
-                "avg_quality_score, elapsed_seconds, source_file_hash "
-                "FROM analysis_runs ORDER BY id"
-            )
-            rows = cur.fetchall()
-            if not rows:
-                return pd.DataFrame()
-            return pd.DataFrame([dict(r) for r in rows])
-    except (psycopg.errors.DatabaseError, OSError):
-        return pd.DataFrame()
-
-
-def last_recorded_run() -> Optional[dict]:
-    try:
-        with database.conn() as c:
-            if c is None:
-                return None
-            cur = c.execute(
-                "SELECT id, run_timestamp, status, total_students, valid_accounts, "
-                "invalid_accounts, error_accounts, repos_found, active_repos, "
-                "avg_quality_score, elapsed_seconds, source_file_hash "
-                "FROM analysis_runs ORDER BY id DESC LIMIT 1"
-            )
-            row = cur.fetchone()
-            return dict(row) if row else None
-    except (psycopg.errors.DatabaseError, OSError):
-        return None
-
+# ── audit log (mirrors storage.py signatures) ────────────────────────────────────
 
 def log_event(event_type: str, detail: str = "") -> bool:
     try:
@@ -1859,7 +1730,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     ``{roster_id, records, state, students, repos, team_repos, issues}`` where
     students, repos, team_repos and issues are DataFrames with the canonical
     column ordering. Reconstructs the state dict from run_summary + result
-    tables so callers (and ``run_metrics``) need no changes."""
+    tables so callers need no changes."""
     from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS, TEAM_REPOS_COLS
 
     try:
@@ -1894,50 +1765,6 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
         logger.warning("get_analysis_view_data failed: %s", exc)
         return None
 
-
-def record_analysis_run_if_unrecorded(roster_id: str) -> bool:
-    """Read run_summary, compute metrics, insert into analysis_runs if not
-    yet recorded. Mirrors ``record_analysis_run_if_fresh`` behaviour."""
-    if not mark_run_recorded(roster_id):
-        return False
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            # Compute metrics from the result tables
-            cur = c.execute(
-                "SELECT "
-                "  s.status, s.total, s.valid, s.invalid, s.errors, s.file_hash, "
-                "  (SELECT COUNT(*) FROM roster_repositories r WHERE r.roster_id = s.roster_id) AS repos_found, "
-                "  (SELECT COUNT(*) FROM roster_repositories r "
-                "     WHERE r.roster_id = s.roster_id AND LOWER(r.maintenance_status) = 'active') AS active_repos, "
-                "  (SELECT AVG(repository_quality_score) FROM roster_repositories r "
-                "     WHERE r.roster_id = s.roster_id AND repository_quality_score > 0) AS avg_quality_score, "
-                "  EXTRACT(EPOCH FROM (NOW() - s.started_at)) AS elapsed_seconds "
-                "FROM run_summary s WHERE s.roster_id = %s",
-                (roster_id,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                return False
-            record_analysis_run(
-                status=row["status"],
-                total_students=row["total"],
-                valid_accounts=row["valid"],
-                invalid_accounts=row["invalid"],
-                error_accounts=row["errors"],
-                repos_found=row["repos_found"],
-                active_repos=row["active_repos"],
-                avg_quality_score=row["avg_quality_score"],
-                elapsed_seconds=row["elapsed_seconds"] or 0.0,
-                source_file_hash=row["file_hash"],
-                roster_id=roster_id,
-            )
-            log_event("analysis_run", f"roster={roster_id}; status={row['status']}")
-        return True
-    except Exception as exc:
-        logger.warning("record_analysis_run_if_unrecorded failed: %s", exc)
-        return False
 
 def link_github_username(email: str, github_username: str) -> bool:
     """Set the github_username column for an existing user."""
