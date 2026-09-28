@@ -514,17 +514,65 @@ def run_outcome(state: dict | None) -> str:
 # Overview (3.6b)
 # ---------------------------------------------------------------------------
 
-def overview_payload(view) -> dict:
-    students = _with_combined_metrics(view["students"]) if view.get("students") is not None else view["students"]
+def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
+    _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
+    students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
+    # Same filters as the Students page: text search + Division/Batch/Semester.
+    try:
+        students = filter_text(
+            students,
+            query or "",
+            [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+        )
+    except Exception:
+        pass
+    for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
+        try:
+            students = apply_value_filter(students, _col, _val or "All")
+        except Exception:
+            pass
+    # Restrict repos/team to the filtered cohort so every headline number and
+    # chart below respects the same filters.
+    try:
+        _cohort = set(students["GitHub_Username"].dropna().astype(str)) if students is not None and not students.empty and "GitHub_Username" in students.columns else set()
+    except Exception:
+        _cohort = set()
     repos = view["repos"]
     team_repos = view.get("team_repos")
+    try:
+        if repos is not None and not repos.empty and "Username" in repos.columns and _cohort:
+            repos = repos[repos["Username"].astype(str).isin(_cohort)].copy()
+        elif repos is not None and students is not None and students.empty:
+            repos = repos.iloc[0:0].copy()
+    except Exception:
+        pass
+    try:
+        if team_repos is not None and not team_repos.empty and "Username" in team_repos.columns and _cohort:
+            team_repos = team_repos[team_repos["Username"].astype(str).isin(_cohort)].copy()
+        elif team_repos is not None and students is not None and students.empty:
+            team_repos = team_repos.iloc[0:0].copy()
+    except Exception:
+        pass
+    try:
+        _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
+    except Exception:
+        _div_opts = ["All"]
+    try:
+        _batch_opts = dist_options(_orig_students["Batch"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Batch" in _orig_students.columns else ["All"]
+    except Exception:
+        _batch_opts = ["All"]
+    try:
+        _sem_opts = dist_options(_orig_students["Semester"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Semester" in _orig_students.columns else ["All"]
+    except Exception:
+        _sem_opts = ["All"]
     records = view["records"]
     state = view["state"] or {}
-    total = len(records)
+    total = len(students) if students is not None else 0
     valid = int(state.get("valid", 0))
     invalid = int(state.get("invalid", 0))
     errors = int(state.get("errors", 0))
-    submission_rate = (valid / total * 100) if total else 0
+    _total_all = len(records) if records is not None else 0
+    submission_rate = (valid / _total_all * 100) if _total_all else 0
 
     missing = sum(
         1
@@ -648,6 +696,10 @@ def overview_payload(view) -> dict:
 
     return {
         "total": total,
+        "filtered": total,
+        "divisions": _div_opts,
+        "batches": _batch_opts,
+        "semesters": _sem_opts,
         "valid": valid,
         "invalid": invalid,
         "errors": errors,

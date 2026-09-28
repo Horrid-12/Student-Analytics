@@ -294,6 +294,13 @@ class TestPageRenderingWithData:
         assert "Total Forks" in body
         assert "data-active-number" in body
         assert "data-active-value" in body
+        # Same filters as the Students page.
+        assert 'name="q"' in body
+        assert 'name="division"' in body
+        assert 'name="batch"' in body
+        assert 'name="semester"' in body
+        assert 'id="division-filter"' in body
+        assert "2 students" in body
         assert "Key Metrics" not in body
         assert "API Status" not in body
         assert "Analysis Status" not in body
@@ -303,6 +310,14 @@ class TestPageRenderingWithData:
         assert "Analysis Pipeline" not in body
         assert "Run Log" not in body
         assert "plotly" in body or "Plotly.react" in body
+
+    def test_overview_filters_match_students_page(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        assert "2 students" in self.client.get(f"/?roster={roster_id}").text
+        assert "1 students" in self.client.get(f"/?roster={roster_id}&division=A").text
+        assert "0 students" in self.client.get(f"/?roster={roster_id}&division=Z").text
+        assert "1 students" in self.client.get(f"/?roster={roster_id}&q=alice").text
+        assert "0 students" in self.client.get(f"/?roster={roster_id}&q=nosuchstudent").text
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
         """BUG-107 regression (updated for upload removal): a complete Overview

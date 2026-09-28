@@ -1031,15 +1031,26 @@ def _bell_context(request: Request, view=None, roster: str = "") -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/overview", response_class=HTMLResponse)
-def overview(request: Request, roster: str = ""):
+def overview(
+    request: Request,
+    roster: str = "",
+    q: str = "",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
     ctx["payload"] = None
+    ctx["q"] = q or ""
+    ctx["division"] = division or "All"
+    ctx["batch"] = batch or "All"
+    ctx["semester"] = semester or "All"
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
-            ctx["payload"] = views.overview_payload(view)
+            ctx["payload"] = views.overview_payload(view, query=q or "", division=division or "All", batch=batch or "All", semester=semester or "All")
         except Exception:
             ctx["view"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))

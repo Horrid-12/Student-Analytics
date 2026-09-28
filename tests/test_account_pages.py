@@ -115,6 +115,21 @@ class TestStudentPages:
         assert "Total Forks" in html
         assert "data-active-number" in html
         assert "data-active-value" in html
+        # Same filters as the Students page.
+        assert 'name="q"' in html
+        assert 'name="division"' in html
+        assert 'name="batch"' in html
+        assert 'name="semester"' in html
+        assert 'id="division-filter"' in html
+
+    def test_overview_filters_narrow_cohort(self):
+        seeded_account()
+        sync.sync_all(force=True)
+        client, _ = make_client("student", email="alice@college.edu")
+        assert "1 students" in client.get("/overview").text
+        assert "0 students" in client.get("/overview?division=Division+2").text
+        assert "1 students" in client.get("/overview?division=Division+1").text
+        assert "0 students" in client.get("/overview?q=nosuchstudent").text
 
     def test_overview_shows_primary_language(self):
         seeded_account()
