@@ -37,10 +37,10 @@
 </div>
 {% endif %}
 
-{% if action in ('approved', 'rejected') %}
+{% if action in ('approved', 'rejected', 'pending') %}
 <div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); padding: 16px; border-radius: 8px;">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-    <div style="font-size: 13px; color: var(--text);">Submission for <strong>{{ action_email }}</strong> was {{ 'approved' if action == 'approved' else 'rejected' }}.</div>
+    <div style="font-size: 13px; color: var(--text);">Submission for <strong>{{ action_email }}</strong> was {{ 'approved' if action == 'approved' else ('disapproved' if action == 'pending' else 'rejected') }}.</div>
 </div>
 {% endif %}
 
@@ -57,7 +57,7 @@
             <tr style="text-align: left; color: var(--muted); border-bottom: 1px solid var(--border);">
                 <th style="padding: 10px 12px; font-weight: 600;">Student</th>
                 <th style="padding: 10px 12px; font-weight: 600;">PRN</th>
-                <th style="padding: 10px 12px; font-weight: 600;">Degree / Branch</th>
+                <th style="padding: 10px 12px; font-weight: 600;">Specialization</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Division</th>
                 <th style="padding: 10px 12px; font-weight: 600;">Python Batch · Sem</th>
                 <th style="padding: 10px 12px; font-weight: 600;">GitHub</th>
@@ -111,8 +111,18 @@
                             <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--muted);">Reject</button>
                         </form>
                     </div>
-                    {% else %}
-                    <span style="color: var(--muted); font-size: 12px;">Resolved</span>
+                    {% elif row.onboarding_status == 'approved' %}
+                    <form method="post" action="/onboarding/disapprove" style="display: inline;">
+                        <input type="hidden" name="email" value="{{ row.email }}">
+                        <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Disapprove</button>
+                    </form>
+                    {% elif row.onboarding_status == 'rejected' %}
+                    <div style="display: flex; gap: 8px;">
+                        <form method="post" action="/onboarding/approve" style="display: inline;">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
+                        </form>
+                    </div>
                     {% endif %}
                 </td>
             </tr>
@@ -163,7 +173,7 @@
                 </div>
 
                 <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Allocated Degree Program & Branch *</label>
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Specialization *</label>
                     <select name="degree_branch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
                         <option value="" disabled {% if not submission.degree_branch %}selected{% endif %} hidden>(Select your Branch)</option>
                         {% for option in ['Core', 'AI/DS', 'Cloud Computing', 'Cyber Security and Forensics'] %}
@@ -173,7 +183,7 @@
                 </div>
 
                 <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Cohort Division / Section Assignment *</label>
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division *</label>
                     <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
                         <option value="" disabled {% if not submission.division %}selected{% endif %} hidden>(Select your Division)</option>
                         {% for n in range(1, 15) %}
@@ -245,10 +255,21 @@
                     {% endif %}
                 </div>
                 {% else %}
-                <a href="/auth/github" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
+                <a href="/auth/github" id="github-link-btn" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
                     Link GitHub Profile
                 </a>
+                <script>
+                document.getElementById('github-link-btn').addEventListener('click', function(e) {
+                    var form = document.getElementById('onboarding-form');
+                    if (!form) return;
+                    e.preventDefault();
+                    var data = new FormData(form);
+                    fetch('/onboarding', { method: 'POST', body: data }).finally(function() {
+                        window.location.href = '/auth/github';
+                    });
+                });
+                </script>
                 {% endif %}
 
                 <a href="/auth/linkedin" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
