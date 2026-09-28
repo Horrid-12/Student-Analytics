@@ -499,19 +499,6 @@ def friendly_timestamp(value) -> str:
         return str(value)
 
 
-def last_analysis_time() -> str:
-    from app import database
-
-    run = None
-    if database.db_configured():
-        from app import db
-
-        run = db.last_recorded_run()
-    if run is None:
-        run = storage.last_recorded_run()
-    return run.get("run_timestamp", "Never") if run else "Never"
-
-
 def run_outcome(state: dict | None) -> str:
     if not state:
         return "Complete"
@@ -906,7 +893,7 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
 AUDIT_COLS = [
     STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
     "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following", "Last Updated",
+    "Followers", "Following",
 ]
 
 
@@ -943,7 +930,6 @@ def verification_payload(view: dict, references: list[dict], query: str = "", st
             "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
             "Followers": int(stat.get("Followers", 0) or 0),
             "Following": int(stat.get("Following", 0) or 0),
-            "Last Updated": friendly_timestamp(last_analysis_time()),
         })
 
     audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
@@ -1207,10 +1193,10 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
         return None
 
 
-def own_issue_notifications(view: dict, email: str, run_time: str = "", roster_id: str = "", workflow=None) -> list:
+def own_issue_notifications(view: dict, email: str, roster_id: str = "", workflow=None) -> list:
     """Issue alerts for the signed-in student's notification bell: their own
-    non-resolved issues, each with the analysis run time and a Fix link into
-    the (self-scoped) Issues page pre-filtered to that issue type."""
+    non-resolved issues, each with a Fix link into the (self-scoped) Issues
+    page pre-filtered to that issue type."""
     if not view or not email:
         return []
     own = find_own_student_row(view.get("students"), email)
@@ -1240,7 +1226,6 @@ def own_issue_notifications(view: dict, email: str, run_time: str = "", roster_i
             {
                 "issue": issue,
                 "status": status,
-                "time": run_time,
                 "fix_url": f"/issues?roster={roster_id}&issue={quote(issue)}",
                 "key": key,
             }

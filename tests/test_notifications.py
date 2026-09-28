@@ -141,28 +141,28 @@ def client(tmp_path, monkeypatch):
 
 class TestOwnIssueNotifications:
     def test_only_own_issues_listed(self):
-        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "T", "r1", workflow_all_open())
+        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "r1", workflow_all_open())
         assert {n["issue"] for n in notifs} == {"Invalid format", "No repositories"}
-        assert all(n["time"] == "T" for n in notifs)
+        assert all("time" not in n for n in notifs)
         assert all(n["fix_url"].startswith("/issues?roster=r1&issue=") for n in notifs)
 
     def test_resolved_issues_skipped(self):
-        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "T", "r1", workflow_one_resolved())
+        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "r1", workflow_one_resolved())
         assert [n["issue"] for n in notifs] == ["Invalid format"]
 
     def test_fix_url_encodes_issue_type(self):
-        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "T", "r1", workflow_all_open())
+        notifs = views.own_issue_notifications(make_view(), OWN_EMAIL, "r1", workflow_all_open())
         assert "/issues?roster=r1&issue=No%20repositories" in {n["fix_url"] for n in notifs}
 
     def test_unknown_email_gets_nothing(self):
-        assert views.own_issue_notifications(make_view(), "ghost@college.edu", "T", "r1") == []
+        assert views.own_issue_notifications(make_view(), "ghost@college.edu", "r1") == []
 
     def test_empty_inputs_get_nothing(self):
-        assert views.own_issue_notifications(make_view(), "", "T", "r1") == []
-        assert views.own_issue_notifications({}, OWN_EMAIL, "T", "r1") == []
+        assert views.own_issue_notifications(make_view(), "", "r1") == []
+        assert views.own_issue_notifications({}, OWN_EMAIL, "r1") == []
         view = make_view()
         view["issues"] = pd.DataFrame()
-        assert views.own_issue_notifications(view, OWN_EMAIL, "T", "r1") == []
+        assert views.own_issue_notifications(view, OWN_EMAIL, "r1") == []
 
 
 class TestStudentIssuesBlocked:

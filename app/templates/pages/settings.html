@@ -27,42 +27,19 @@
 </section>
 
 <section class="panel">
-  <div class="panel-title">Run History Storage</div>
+  <div class="panel-title">Storage</div>
   {% if storage_ok %}
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
       <span class="badge-green">Writable</span>
-      <span style="font-size:13px; color:var(--muted, #94a3b8);">Local SQLite — history and audit events record here.</span>
+      <span style="font-size:13px; color:var(--muted, #94a3b8);">Local SQLite — accounts and audit events record here.</span>
     </div>
-    {% if last_run %}
-    <div class="data-table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Last recorded run</th><th>Status</th><th>Students</th><th>Valid</th><th>Errors</th><th>Repos Found</th></tr></thead>
-        <tbody>
-          <tr>
-            <td>{{ last_run.friendly }}</td>
-            <td>
-              {% if last_run.status == 'Complete' %}<span class="badge-green">Complete</span>
-              {% elif last_run.status == 'Partial' %}<span class="badge-amber">Partial</span>
-              {% else %}<span class="badge-red">{{ last_run.status }}</span>{% endif %}
-            </td>
-            <td>{{ last_run.total_students }}</td>
-            <td>{{ last_run.valid_accounts }}</td>
-            <td>{{ last_run.error_accounts }}</td>
-            <td>{{ last_run.repos_found }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div style="font-size:13px; color:var(--muted, #94a3b8);">No recorded runs yet — complete an analysis on the Overview page.</div>
-    {% endif %}
   {% else %}
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
       <span class="badge-red">Unavailable</span>
-      <span style="font-size:13px; color:var(--muted, #94a3b8);">Run-history persistence is not recording on this host.</span>
+      <span style="font-size:13px; color:var(--muted, #94a3b8);">Persistence is not recording on this host.</span>
     </div>
     <div class="auth-notice">
-      The serverless filesystem is read-only, so the local SQLite history and audit log cannot be written here.
+      The serverless filesystem is read-only, so the local SQLite database cannot be written here.
       Analysis itself is unaffected. Storage is durable locally (uvicorn); persistent server-side storage is on the
       Phase 4 roadmap (Postgres).
     </div>

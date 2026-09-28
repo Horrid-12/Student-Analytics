@@ -182,14 +182,6 @@ def _db_log_event(event_type: str, detail: str = "") -> bool:
     return storage.log_event(event_type, detail)
 
 
-def _db_record_run_if_unrecorded(roster_id: str, state: dict) -> bool:
-    """Record a completed run: prefer Postgres; fall back to legacy SQLite path."""
-    if database.db_configured():
-        return db.record_analysis_run_if_unrecorded(roster_id)
-    record_analysis_run_if_fresh(roster_id, state)
-    return True
-
-
 PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Issues", "Verification", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
@@ -516,22 +508,6 @@ class RosterStore:
             )
             return state
 
-    def record_if_unrecorded(self, roster_id: str, recorder) -> bool:
-        """Run a durable-history write once, marking the state only on success."""
-        with self._locked(roster_id):
-            state = self.get_analysis(roster_id)
-            if state is None or state.get("recorded"):
-                return False
-            try:
-                if not recorder(state):
-                    return False
-            except Exception:
-                logger.exception("Unable to record analysis history for roster %s", roster_id)
-                return False
-            state["recorded"] = True
-            self._cache.set(f"analysis:{roster_id}", json.dumps(state, default=str), self._ttl)
-            return True
-
 
 roster_store = RosterStore()
 
@@ -650,73 +626,6 @@ def _export_response(df, format: str, name: str):
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{name}.csv"'},
     )
-
-
-def record_analysis_run_if_fresh(roster_id: str, state: dict) -> None:
-    """Record a completed run exactly once per roster in the shared history DB
-    (legacy storage.py schema) plus an audit event. Never raises."""
-    def persist(state_to_record: dict) -> bool:
-        try:
-            metrics = run_metrics(state_to_record)
-        except Exception:
-            metrics = {}
-            logger.exception("Unable to calculate metrics for roster %s", roster_id)
-
-        if not storage.init_db():
-            logger.warning("Analysis history storage is unavailable for roster %s", roster_id)
-            return False
-        saved = storage.record_analysis_run(
-            status=metrics.get("status", "Complete"),
-            total_students=metrics.get("total_students", 0),
-            valid_accounts=metrics.get("valid_accounts", 0),
-            invalid_accounts=metrics.get("invalid_accounts", 0),
-            error_accounts=metrics.get("error_accounts", 0),
-            repos_found=metrics.get("repos_found", 0),
-            active_repos=metrics.get("active_repos", 0),
-            avg_quality_score=metrics.get("avg_quality_score"),
-            elapsed_seconds=metrics.get("elapsed_seconds", 0.0),
-            source_file_hash=state_to_record.get("file_hash"),
-        )
-        if not saved:
-            logger.warning("Analysis history write failed for roster %s", roster_id)
-            return False
-        if not _db_log_event(
-            "analysis_run",
-            f"roster={roster_id}; status={metrics.get('status', 'Complete')}",
-        ):
-            logger.warning("Audit log write failed for roster %s", roster_id)
-        return True
-
-    roster_store.record_if_unrecorded(roster_id, persist)
-
-
-def run_metrics(state: dict) -> dict:
-    repos = state.get("repos") or []
-    errors = int(state.get("errors", 0))
-    valid = int(state.get("valid", 0))
-    invalid = int(state.get("invalid", 0))
-    status = views.run_outcome(state)
-    quality = [
-        float(repo.get("Repository_Quality_Score"))
-        for repo in repos
-        if repo.get("Repository_Quality_Score") is not None
-    ]
-    active_repos = sum(
-        1
-        for repo in repos
-        if str(repo.get("Maintenance_Status") or "").strip().lower() == "active"
-    )
-    return {
-        "status": status,
-        "total_students": int(state.get("total", 0)),
-        "valid_accounts": valid,
-        "invalid_accounts": invalid,
-        "error_accounts": errors,
-        "repos_found": len(repos),
-        "active_repos": active_repos,
-        "avg_quality_score": round(sum(quality) / len(quality), 2) if quality else None,
-        "elapsed_seconds": float(state.get("elapsed") or 0.0),
-    }
 
 
 def topbar_date() -> str:
@@ -1108,9 +1017,8 @@ def _bell_context(request: Request, view=None, roster: str = "") -> dict:
     if role == "student":
         if view is None or not _is_complete(view):
             return {"notifications": [], "notif_count": 0, "notif_empty": None}
-        run_time = views.friendly_timestamp(views.last_analysis_time())
         notifications = views.own_issue_notifications(
-            view, user.get("email", ""), run_time, roster, _workflow_state(roster)
+            view, user.get("email", ""), roster, _workflow_state(roster)
         )
         return {
             "notifications": notifications,
@@ -1145,7 +1053,6 @@ def overview(request: Request, roster: str = ""):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
     ctx["payload"] = None
-    ctx["past_runs"] = _run_history_rows()
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     if view is not None and _is_complete(view):
         try:
@@ -1542,35 +1449,6 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
     if database.db_configured():
         db.put_hidden_repos(roster, state)
     return {"status": "ok", "hidden": hidden}
-
-
-def _run_history_rows(list_all=True) -> list:
-    df = db.load_run_history() if database.db_configured() else storage.load_run_history()
-    if df.empty:
-        return []
-    if not list_all:
-        df = df.tail(1)
-    rows = []
-    for _, row in df.iterrows():
-        rows.append(
-            {
-                "roster_id": row.get("roster_id") or "",
-                "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
-                "status": row.get("status") or "Complete",
-                "total_students": int(row.get("total_students") or 0),
-                "valid_accounts": int(row.get("valid_accounts") or 0),
-                "invalid_accounts": int(row.get("invalid_accounts") or 0),
-                "error_accounts": int(row.get("error_accounts") or 0),
-                "repos_found": int(row.get("repos_found") or 0),
-                "active_repos": int(row.get("active_repos") or 0),
-                "avg_quality_score": row.get("avg_quality_score"),
-                "elapsed_seconds": float(row.get("elapsed_seconds") or 0.0),
-            }
-        )
-    # Newest run first — the Overview "Recent Analysis Runs" list renders
-    # `_run_history_rows` output. The underlying loader stays oldest-first.
-    rows.reverse()
-    return rows
 
 
 @app.get("/issues", response_class=HTMLResponse)
@@ -2070,23 +1948,12 @@ def settings_page(request: Request, linked: str = ""):
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
     ctx = _base_context(request, "Settings")
-    storage_ok, last_run = False, None
+    storage_ok = False
     try:
         if database.db_configured():
             storage_ok = db.schema_healthy()
-            row = db.last_recorded_run()
         else:
             storage_ok = storage.storage_healthy()
-            row = storage.last_recorded_run() if storage_ok else None
-        if storage_ok and row:
-            last_run = {
-                "friendly": views.friendly_timestamp(row.get("run_timestamp") or "Never"),
-                "status": row.get("status") or "Complete",
-                "total_students": int(row.get("total_students") or 0),
-                "valid_accounts": int(row.get("valid_accounts") or 0),
-                "error_accounts": int(row.get("error_accounts") or 0),
-                "repos_found": int(row.get("repos_found") or 0),
-            }
     except Exception:
         storage_ok = False
     user = getattr(request.state, "user", None) or {}
@@ -2112,7 +1979,6 @@ def settings_page(request: Request, linked: str = ""):
             **ctx,
             "storage_ok": storage_ok,
             "db_path": str(storage.DB_PATH) if not database.db_configured() else "Neon Postgres",
-            "last_run": last_run,
             "token_present": bool(github_client.load_token()),
             "linked_flag": (linked or "").strip(),
             "github_configured": github_oauth.configured(),

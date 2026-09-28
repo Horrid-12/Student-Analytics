@@ -17,7 +17,7 @@
       <div class="notif-item">
         <div class="notif-text">{{ n.issue }}</div>
         {% if n.sub %}<div class="notif-sub">{{ n.sub }}</div>{% endif %}
-        <div class="notif-meta"><span class="notif-time">{{ n.time }}</span><a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
+        <div class="notif-meta">{% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}<a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
       </div>
       {% endfor %}
     </div>

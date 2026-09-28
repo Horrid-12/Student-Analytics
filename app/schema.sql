@@ -60,8 +60,7 @@ CREATE TABLE IF NOT EXISTS students (
 );
 
 -- 4. Live analysis progress (replaces the in-cache analysis: state dict).
---    One row per roster, updated per batch; contains the live counters and the
---    `recorded` flag so record_analysis_run_if_fresh remains idempotent.
+--    One row per roster, updated per batch; contains the live counters.
 CREATE TABLE IF NOT EXISTS run_summary (
     roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
     file_hash   TEXT,

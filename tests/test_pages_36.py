@@ -244,12 +244,11 @@ def run_all_batches(_client, data):
     """Run every student's batch through the worker directly.
 
     POST /analysis/batch was removed with the Excel-upload feature; this
-    mirrors the route's accumulate-then-record flow via RosterStore.
+    accumulates batch results into the RosterStore the same way the route did.
     """
     import services as legacy_services
 
     from app import batch as batch_worker
-    from app.main import _db_record_run_if_unrecorded
 
     roster_id = data["roster_id"]
     records = roster_store.get(roster_id)
@@ -262,9 +261,6 @@ def run_all_batches(_client, data):
         result = dict(batch_worker.analyze_records([dict(row, _analysis_key=sid)], token=None))
         result["analyzed_keys"] = [sid]
         roster_store.append_analysis(roster_id, result)
-    state = roster_store.get_analysis(roster_id)
-    if state and state.get("status") == "complete":
-        _db_record_run_if_unrecorded(roster_id, state)
     return roster_id
 
 
@@ -919,24 +915,13 @@ class TestPageRenderingWithData:
         assert raw.content.startswith(b"\xef\xbb\xbf")
         assert "Alice Example" in raw.content.decode("utf-8-sig")
 
-    def test_history_records_completed_run(self, tmp_path):
-        # /history page removed; the run still records into shared history
-        # (surfaced on Overview "Recent Analysis Runs").
-        roster_id = self._setup(tmp_path)
+    def test_history_page_is_gone(self, tmp_path):
+        # /history removed with the run-history feature; unknown path → 404.
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        self.client = TestClient(app)
+        make_user(self.client, "admin")
         assert self.client.get("/history").status_code == 404
-        runs = storage.load_run_history()
-        assert len(runs) == 1
-        assert int(runs.iloc[0]["valid_accounts"]) == 2
-        assert int(runs.iloc[0]["repos_found"]) == 3
-        assert int(runs.iloc[0]["active_repos"]) > 0
-        assert runs.iloc[0]["source_file_hash"] is not None
-
-    def test_run_recorded_only_once(self, tmp_path):
-        roster_id = self._setup(tmp_path)
-        ids = roster_store.get(roster_id)
-        first_ids = [str(row["Student_ID"]) for row in ids[:1]]
-        run_all_batches(self.client, {"roster_id": roster_id, "students": [{"student_id": sid} for sid in first_ids]})
-        assert len(storage.load_run_history()) == 1
 
     def test_pages_without_analysis_show_placeholder(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
@@ -1026,7 +1011,8 @@ class TestSettingsPage:
         client = self._client(tmp_path, monkeypatch)
         r = client.get("/settings")
         assert r.status_code == 200
-        assert "Run History Storage" in r.text
+        assert "Run History Storage" not in r.text
+        assert "Last recorded run" not in r.text
         assert "gsad_theme_v1" in r.text
         assert "data-theme-btn" in r.text
 
