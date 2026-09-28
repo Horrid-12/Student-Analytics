@@ -182,38 +182,101 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
     }
 
 
+def _academic_year_for(value) -> str:
+    """July-June academic-year label from an onboarding timestamp.
+
+    Mirrors ``services.add_academic_periods`` so account snapshots carry the
+    same ``Academic_Year`` semantics as uploaded rosters (which derive it from
+    the form Timestamp). Falls back to "" when the timestamp is missing.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return ""
+    try:
+        text = str(value).strip()
+        # Same split as services._parse_roster_timestamps: slash-led
+        # DD/MM/YYYY parses dayfirst, everything else uses the default so ISO
+        # "2025-08-01" is not misread as 8 Jan.
+        import re as _re
+
+        dayfirst = bool(_re.match(r"^\s*\d{1,2}/\d{1,2}/\d{2,4}", text))
+        ts = pd.to_datetime(text, errors="coerce", dayfirst=dayfirst)
+    except Exception:
+        return ""
+    try:
+        if pd.isna(ts):
+            return ""
+    except Exception:
+        pass
+    try:
+        year = int(ts.year)
+        month = int(ts.month)
+    except Exception:
+        return ""
+    start = year if month >= 7 else year - 1
+    return f"{start}-{str(start + 1)[-2:]}"
+
+
 def compute_account_snapshot(
     username: str, token: str | None, user: dict | None = None
-) -> tuple[dict | None, list[dict], str]:
-    """Fetch one account's GitHub data and reduce it to the dashboard shape.
+) -> tuple[dict | None, list[dict], list[dict], str]:
+    """Fetch one account's GitHub data through the shared roster pipeline.
 
-    Returns ``(student, repos, error)`` where ``error`` is "" on success and
-    one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
+    Returns ``(student, repos, team_repos, error)`` where ``error`` is "" on
+    success and one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
     ``rate_limited`` otherwise. ``student`` is None on failure. Never raises.
+
+    ``repos`` are owned REPO_COLS rows, ``team_repos`` are TEAM_REPOS_COLS
+    contributed rows — the same two frames ``batch.analyze_records`` produces
+    for an uploaded roster, so leaderboards / profiles / repositories render
+    identical stats for both sources.
     """
     username = (username or "").strip()
     if not username:
-        return None, [], "not_found"
+        return None, [], [], "not_found"
     user = user or {}
+    # Run the same validation, repository, contribution, team-activity, and
+    # owned-commit stages as an uploaded roster. The previous account-only
+    # implementation fetched just the profile and repositories, which left
+    # PR, issue, and commit metrics at zero and caused dashboard totals to
+    # disagree for the same GitHub account.
+    from app import batch
+
+    record = {
+        STUDENT_ID_COL: _clean_text(user.get("prn")) or _clean_text(user.get("email")),
+        "Student Name": _clean_text(user.get("name")),
+        "Division": _clean_text(user.get("division")),
+        "Batch": _clean_text(user.get("practical_batch")),
+        "Semester": _clean_text(user.get("semester")),
+        ROSTER_EMAIL_COL: _clean_text(user.get("email")),
+        services.GITHUB_COL: f"https://github.com/{username}",
+        "GitHub_Username": username,
+        "Submitted_GitHub_Username": username,
+        "Academic_Year": _academic_year_for(user.get("onboarding_submitted_at")),
+        "LinkedIn_Username": "",
+        "LinkedIn_URL": "",
+        "HackerRank_Username": "",
+        "HackerRank_URL": "",
+    }
     try:
-        is_valid, payload, is_error, _ = services.get_user(username, token)
+        result = batch.analyze_records([record], token)
     except services.RateLimitError:
-        return None, [], "rate_limited"
+        return None, [], [], "rate_limited"
     except Exception:
-        return None, [], "api_error"
-    if not is_valid or not payload:
-        return None, [], ("not_found" if not is_error else "api_error")
-    try:
-        raw_repos, fetched_ok = services.get_repos(username, token)
-    except services.RateLimitError:
-        return None, [], "rate_limited"
-    except Exception:
-        raw_repos, fetched_ok = [], False
-    if not fetched_ok:
-        return None, [], "repo_fetch_failed"
-    repos = _repos_frame(raw_repos, username).to_dict(orient="records")
-    student = _student_row(user, username, payload, repos)
-    return student, repos, ""
+        logger.exception("Account analysis failed for %s", username)
+        return None, [], [], "api_error"
+
+    if not result.get("students"):
+        if result.get("error_users"):
+            return None, [], [], "api_error"
+        return None, [], [], "not_found"
+    student = result["students"][0]
+    repos = result.get("repos") or []
+    team_repos = result.get("team_repos") or []
+    if username.strip().lower() in {
+        str(value).strip().lower() for value in result.get("repo_unavailable_users", [])
+    }:
+        return None, [], [], "repo_fetch_failed"
+    return student, repos, team_repos, ""
 
 
 def _parse_synced(synced_at: str):
@@ -251,19 +314,25 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
         return False, "no_handle", "account has no verified GitHub username"
     if not force and _is_fresh(email):
         return True, "", "fresh"
-    student, repos, err = compute_account_snapshot(username, token, user_row)
+    unpacked = compute_account_snapshot(username, token, user_row)
+    # Backward-compatible unpack: older callers/tests expect 3-tuple.
+    if len(unpacked) == 4:
+        student, repos, team_repos, err = unpacked
+    else:  # pragma: no cover - legacy 3-tuple
+        student, repos, err = unpacked
+        team_repos = []
     now = time.strftime(_SYNC_TIME_FORMAT)
     if err:
         accounts.init_db()
         accounts.save_snapshot(
             email, username=username, status="error", student={}, repos=[],
-            synced_at=now, error=err,
+            synced_at=now, error=err, team_repos=[],
         )
         return False, err, err
     accounts.init_db()
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
-        repos=repos, synced_at=now, error="",
+        repos=repos, team_repos=team_repos, synced_at=now, error="",
     )
     if not ok:
         return False, "storage", "snapshot storage unavailable"

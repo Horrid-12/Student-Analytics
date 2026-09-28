@@ -924,6 +924,36 @@ def db_set_github_handle(email: str, github_username: str) -> bool:
         return False
 
 
+def delete_user(email: str) -> tuple[bool, str]:
+    """Delete one account by email (students only). Returns ``(ok, reason)``.
+
+    Removes the ``users`` row; callers also clear the account snapshot so the
+    fleet/leaderboards drop the student. Refuses protected roles and unknown
+    addresses instead of failing silently.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "no_user"
+    user = get_user(email)
+    if user is None:
+        return False, "no_user"
+    if (user.get("role") or "student") != "student":
+        return False, "protected_role"
+    if database.db_configured():
+        ok = db.delete_user_by_email(email)
+        return (True, "") if ok else (False, "storage_unavailable")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute("DELETE FROM users WHERE email = ?", (email,))
+                ok = (cur.rowcount or 0) > 0
+        return (True, "") if ok else (False, "storage_unavailable")
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("delete_user failed for %s: %s", email, exc)
+        return False, "storage_unavailable"
+
+
 def linked_identity(user: dict | None) -> dict:
     """4.11 (e): resolve the confirmed sidebar identity from a user row.
     Returns a dict with source/handle/avatar keys (empty strings when the

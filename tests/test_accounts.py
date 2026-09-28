@@ -163,7 +163,7 @@ class TestCompute:
             "practical_batch": "P1",
             "semester": "Semester 3",
         }
-        student, repos, err = sync.compute_account_snapshot("alice-dev", None, user_row)
+        student, repos, team_repos, err = sync.compute_account_snapshot("alice-dev", None, user_row)
         assert err == ""
         assert student is not None
         assert repos
@@ -174,19 +174,23 @@ class TestCompute:
         assert student["Semester"] == "Semester 3"
         assert student["GitHub_Username"] == "alice-dev"
         assert student["Repository_Count"] == 2
-        assert student["Primary_Language"] == "Python"
+        # Match the roster pipeline's mode tie-break (alphabetical): Markdown
+        # and Python each appear once, so the shared pipeline selects Markdown.
+        assert student["Primary_Language"] == "Markdown"
         assert repos[0]["Repository"] == "stud-dashboard"
         # Stars/quality columns flow onto the REPO_COLS rows.
         assert {"Stars", "Repository_Quality_Score"} <= set(repos[0].keys())
         assert student["Avatar_URL"].startswith("https://")
+        # Team frame uses the same TEAM_REPOS_COLS shape as the upload pipeline.
+        assert isinstance(team_repos, list)
 
     def test_unknown_user(self):
-        student, repos, err = sync.compute_account_snapshot("ghost", None)
+        student, repos, team_repos, err = sync.compute_account_snapshot("ghost", None)
         assert student is None
         assert err == "not_found"
 
     def test_no_handle(self):
-        student, repos, err = sync.compute_account_snapshot("  ", None)
+        student, repos, team_repos, err = sync.compute_account_snapshot("  ", None)
         assert student is None
         assert err == "not_found"
 
@@ -205,7 +209,7 @@ class TestCompute:
             return 200, {}, user_payload
 
         monkeypatch.setattr(psvc, "_cached_get_json", fake)
-        student, repos, err = sync.compute_account_snapshot("alice-dev", None)
+        student, repos, team_repos, err = sync.compute_account_snapshot("alice-dev", None)
         assert student is None
         assert err == "repo_fetch_failed"
 

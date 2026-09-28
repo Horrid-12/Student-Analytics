@@ -1286,6 +1286,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
     ctx["manager"] = role in ("admin", "faculty")
+    ctx["is_admin"] = role == "admin"
     ctx["auth_email"] = (user or {}).get("email", "")
     ctx["submission"] = {}
     if ctx["manager"]:
@@ -1347,6 +1348,37 @@ async def onboarding_reject(request: Request, email: str = Form("")):
 async def onboarding_disapprove(request: Request, email: str = Form("")):
     """Admin revokes approval — moves the account back to pending."""
     return await _onboarding_review(request, email, "pending", promote_github=False)
+
+
+@app.post("/onboarding/remove", response_class=HTMLResponse)
+async def onboarding_remove(request: Request, email: str = Form("")):
+    """Admin-only: permanently remove a student's onboarding record.
+
+    Deletes the ``users`` row and clears the account snapshot so the ledger
+    and the fleet (leaderboards/profile/repositories) drop the student.
+    Students-only; admins/faculty and self-deletion are refused.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"detail": "Only admins can remove onboarding records"})
+    email = (email or "").strip().lower()
+    if not email:
+        return RedirectResponse("/onboarding?action=error&email=", status_code=303)
+    if email == (user.get("email") or "").strip().lower():
+        _db_log_event("onboarding_remove_denied", f"{email}; self_delete")
+        return RedirectResponse(f"/onboarding?action=error&email={email}", status_code=303)
+    ok, reason = auth.delete_user(email)
+    if ok:
+        try:
+            accounts.clear_snapshot(email)
+        except Exception:
+            logger.exception("Snapshot clear failed for removed account %s", email)
+        _db_log_event("onboarding_removed", email)
+        return RedirectResponse(f"/onboarding?action=removed&email={email}", status_code=303)
+    _db_log_event("onboarding_action_failed", f"{email}; remove:{reason}")
+    return RedirectResponse(f"/onboarding?action=error&email={email}", status_code=303)
 
 async def _onboarding_review(request: Request, email: str, status: str, promote_github: bool):
     user = getattr(request.state, "user", None)

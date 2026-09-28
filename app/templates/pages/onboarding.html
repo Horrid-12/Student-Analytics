@@ -37,10 +37,10 @@
 </div>
 {% endif %}
 
-{% if action in ('approved', 'rejected', 'pending') %}
+{% if action in ('approved', 'rejected', 'pending', 'removed', 'error') %}
 <div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); padding: 16px; border-radius: 8px;">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-    <div style="font-size: 13px; color: var(--text);">Submission for <strong>{{ action_email }}</strong> was {{ 'approved' if action == 'approved' else ('disapproved' if action == 'pending' else 'rejected') }}.</div>
+    <div style="font-size: 13px; color: var(--text);">Submission for <strong>{{ action_email }}</strong> was {{ 'approved' if action == 'approved' else ('disapproved' if action == 'pending' else ('removed' if action == 'removed' else ('rejected' if action == 'rejected' else 'not updated — not allowed or already gone'))) }}.</div>
 </div>
 {% endif %}
 
@@ -101,7 +101,7 @@
                 <td style="padding: 10px 12px; color: var(--muted);">{{ row.onboarding_submitted_at[:16] }}</td>
                 <td style="padding: 10px 12px;">
                     {% if row.onboarding_status == 'pending' %}
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <form method="post" action="/onboarding/approve" style="display: inline;">
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
@@ -110,18 +110,38 @@
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--muted);">Reject</button>
                         </form>
+                        {% if is_admin %}
+                        <form method="post" action="/onboarding/remove" style="display: inline;" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+                        </form>
+                        {% endif %}
                     </div>
                     {% elif row.onboarding_status == 'approved' %}
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <form method="post" action="/onboarding/disapprove" style="display: inline;">
                         <input type="hidden" name="email" value="{{ row.email }}">
                         <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Disapprove</button>
                     </form>
+                        {% if is_admin %}
+                        <form method="post" action="/onboarding/remove" style="display: inline;" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+                        </form>
+                        {% endif %}
+                    </div>
                     {% elif row.onboarding_status == 'rejected' %}
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <form method="post" action="/onboarding/approve" style="display: inline;">
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
                         </form>
+                        {% if is_admin %}
+                        <form method="post" action="/onboarding/remove" style="display: inline;" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+                            <input type="hidden" name="email" value="{{ row.email }}">
+                            <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+                        </form>
+                        {% endif %}
                     </div>
                     {% endif %}
                 </td>

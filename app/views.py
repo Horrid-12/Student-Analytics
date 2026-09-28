@@ -367,8 +367,10 @@ def account_view(email: str):
     Returns None when the account has no stored snapshot yet; otherwise the
     same ``{records, state, students, repos, team_repos, issues}`` contract
     ``analysis_view`` produces, sized to the single student — so the existing
-    page builders (overview / students / repositories / own_profile) run
-    unchanged against account-driven pages.
+    page builders (overview / students / repositories / own_profile /
+    leaderboards) run unchanged against account-driven pages. Owned repos and
+    team-contributed repos both come from the snapshot, matching the file
+    upload pipeline's two frames.
     """
     from app import accounts
 
@@ -389,14 +391,19 @@ def account_view(email: str):
     for column in REPO_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS]
+    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    team_repos = pd.DataFrame(snapshot.get("team_repos") or [])
+    for column in TEAM_REPOS_COLS:
+        if column not in team_repos.columns:
+            team_repos[column] = None
+    team_repos = team_repos[TEAM_REPOS_COLS] if not team_repos.empty else pd.DataFrame(columns=TEAM_REPOS_COLS)
     return {
         "roster_id": "",
         "records": records,
         "state": {"status": "complete", "valid": 1, "invalid": 0, "errors": 0, "elapsed": 0},
         "students": students,
         "repos": repos,
-        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "team_repos": team_repos,
         "issues": _frame({}, "issues", ISSUE_COLS),
     }
 
@@ -406,11 +413,17 @@ def fleet_view():
     (Phase 5.2 — roster-less pages). Same ``analysis_view`` contract, sized to
     the whole fleet, so the shared page builders render without any uploaded
     roster or Excel file. Returns None when no synced accounts exist yet.
+
+    Owned repos and team-contributed repos are both aggregated from the
+    snapshots — the same two frames the upload pipeline produces — so
+    leaderboards, profiles, repositories and overview totals match the file
+    upload system for the same GitHub accounts.
     """
     from app import accounts, auth
 
     all_rows: list[dict] = []
     repo_rows: list[dict] = []
+    team_rows: list[dict] = []
     try:
         approved = auth.get_approved_accounts()
     except Exception:
@@ -427,6 +440,8 @@ def fleet_view():
             continue
         all_rows.append(student)
         repo_rows.extend(snapshot.get("repos") or [])
+        # Old snapshots (pre-team persistence) lack the key: default to [].
+        team_rows.extend(snapshot.get("team_repos") or [])
 
     if not all_rows:
         return None
@@ -453,7 +468,13 @@ def fleet_view():
     for column in REPO_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS]
+    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+
+    team_repos = pd.DataFrame(team_rows)
+    for column in TEAM_REPOS_COLS:
+        if column not in team_repos.columns:
+            team_repos[column] = None
+    team_repos = team_repos[TEAM_REPOS_COLS] if not team_repos.empty else pd.DataFrame(columns=TEAM_REPOS_COLS)
 
     return {
         "roster_id": "",
@@ -461,7 +482,7 @@ def fleet_view():
         "state": {"status": "complete", "valid": len(all_rows), "invalid": 0, "errors": 0, "elapsed": 0},
         "students": students,
         "repos": repos,
-        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "team_repos": team_repos,
         "issues": _frame({}, "issues", ISSUE_COLS),
     }
 
@@ -1190,8 +1211,9 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
     repos = view.get("repos")
     if repos is None:
         repos = pd.DataFrame(columns=["Username", "Language", "Updated"])
+    team_repos = view.get("team_repos")
     try:
-        return students_payload_profile(row, repos)
+        return students_payload_profile(row, repos, team_repos)
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
 

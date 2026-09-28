@@ -1,8 +1,9 @@
 """Per-account analytics snapshot store (Phase 5.1 — account-driven redesign).
 
 One row per synced academic account: the dashboard-shaped student record +
-the REPO_COLS repository list, JSON-serialized, so student pages rebuild the
-``views.analysis_view`` shape without re-fetching GitHub on every request.
+the REPO_COLS repository list + the TEAM_REPOS_COLS contributed-repo list,
+JSON-serialized, so student pages rebuild the ``views.analysis_view`` shape
+without re-fetching GitHub on every request.
 
 Postgres-first (via ``app/db.py``) with a SQLite fallback file (``accounts.db``),
 mirroring the ``app/auth.py`` (SQLite leg) + ``app/db.py`` (Postgres leg) split.
@@ -29,10 +30,26 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
     status       TEXT NOT NULL DEFAULT '',
     student_json TEXT NOT NULL DEFAULT '{}',
     repos_json   TEXT NOT NULL DEFAULT '[]',
+    team_repos_json TEXT NOT NULL DEFAULT '[]',
     synced_at    TEXT NOT NULL DEFAULT '',
     error        TEXT NOT NULL DEFAULT ''
 )
 """
+
+_MIGRATE_TEAM_REPOS = "ALTER TABLE account_snapshots ADD COLUMN team_repos_json TEXT NOT NULL DEFAULT '[]'"
+
+
+def _ensure_team_column(conn) -> None:
+    """Add team_repos_json to pre-existing SQLite files (no Alembic)."""
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(account_snapshots)").fetchall()}
+    except Exception:
+        return
+    if "team_repos_json" not in cols:
+        try:
+            conn.execute(_MIGRATE_TEAM_REPOS)
+        except Exception:
+            pass
 
 
 def _connect() -> sqlite3.Connection:
@@ -48,6 +65,7 @@ def init_db() -> bool:
         with closing(_connect()) as conn:
             with conn:
                 conn.execute(_SCHEMA)
+                _ensure_team_column(conn)
         return True
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Unable to initialize account-snapshot storage: %s", exc)
@@ -77,6 +95,7 @@ def save_snapshot(
     repos: list | None = None,
     synced_at: str = "",
     error: str = "",
+    team_repos: list | None = None,
 ) -> bool:
     """Upsert one account's snapshot. Returns True when the row stored."""
     email = (email or "").strip().lower()
@@ -86,25 +105,47 @@ def save_snapshot(
         return db.save_account_snapshot(
             email, username=username, status=status, student=student,
             repos=repos, synced_at=synced_at, error=error,
+            team_repos=team_repos,
         )
     try:
         with closing(_connect()) as conn:
             with conn:
                 conn.execute(_SCHEMA)
-                cur = conn.execute(
-                    "INSERT OR REPLACE INTO account_snapshots "
-                    "(email, username, status, student_json, repos_json, synced_at, error) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        email,
-                        (username or "").strip(),
-                        (status or "").strip(),
-                        _dumps(student or {}),
-                        _dumps(repos or []),
-                        synced_at or "",
-                        (error or "").strip(),
-                    ),
-                )
+                _ensure_team_column(conn)
+                # INSERT OR REPLACE must list the new column explicitly so old
+                # rows keep their team data instead of resetting to '[]'.
+                try:
+                    cur = conn.execute(
+                        "INSERT OR REPLACE INTO account_snapshots "
+                        "(email, username, status, student_json, repos_json, team_repos_json, synced_at, error) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            email,
+                            (username or "").strip(),
+                            (status or "").strip(),
+                            _dumps(student or {}),
+                            _dumps(repos or []),
+                            _dumps(team_repos or []),
+                            synced_at or "",
+                            (error or "").strip(),
+                        ),
+                    )
+                except sqlite3.OperationalError:
+                    # Extremely old file where the ALTER failed: legacy shape.
+                    cur = conn.execute(
+                        "INSERT OR REPLACE INTO account_snapshots "
+                        "(email, username, status, student_json, repos_json, synced_at, error) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            email,
+                            (username or "").strip(),
+                            (status or "").strip(),
+                            _dumps(student or {}),
+                            _dumps(repos or []),
+                            synced_at or "",
+                            (error or "").strip(),
+                        ),
+                    )
                 return (cur.rowcount or 0) > 0
     except (sqlite3.Error, OSError) as exc:
         logger.warning("save_snapshot failed for %s: %s", email, exc)
@@ -112,7 +153,7 @@ def save_snapshot(
 
 
 def get_snapshot(email: str) -> dict | None:
-    """One account's snapshot dict or None. ``student``/``repos`` are parsed."""
+    """One account's snapshot dict or None. ``student``/``repos``/``team_repos`` are parsed."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -122,19 +163,44 @@ def get_snapshot(email: str) -> dict | None:
         with closing(_connect()) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute(_SCHEMA)
-            row = conn.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots WHERE email = ?",
-                (email,),
-            ).fetchone()
+            _ensure_team_column(conn)
+            try:
+                row = conn.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = ?",
+                    (email,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = conn.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = ?",
+                    (email,),
+                ).fetchone()
+                if row is None:
+                    return None
+                return {
+                    "email": row["email"],
+                    "username": row["username"],
+                    "status": row["status"],
+                    "student": _loads(row["student_json"], {}),
+                    "repos": _loads(row["repos_json"], []),
+                    "team_repos": [],
+                    "synced_at": row["synced_at"],
+                    "error": row["error"],
+                }
         if row is None:
             return None
+        try:
+            team_raw = row["team_repos_json"]
+        except (IndexError, KeyError):
+            team_raw = "[]"
         return {
             "email": row["email"],
             "username": row["username"],
             "status": row["status"],
             "student": _loads(row["student_json"], {}),
             "repos": _loads(row["repos_json"], []),
+            "team_repos": _loads(team_raw, []),
             "synced_at": row["synced_at"],
             "error": row["error"],
         }
@@ -151,22 +217,38 @@ def list_snapshots() -> list[dict]:
         with closing(_connect()) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute(_SCHEMA)
-            rows = conn.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
-            ).fetchall()
-        return [
-            {
-                "email": row["email"],
-                "username": row["username"],
-                "status": row["status"],
-                "student": _loads(row["student_json"], {}),
-                "repos": _loads(row["repos_json"], []),
-                "synced_at": row["synced_at"],
-                "error": row["error"],
-            }
-            for row in rows
-        ]
+            _ensure_team_column(conn)
+            try:
+                rows = conn.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                ).fetchall()
+                has_team = True
+            except sqlite3.OperationalError:
+                rows = conn.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                ).fetchall()
+                has_team = False
+        result = []
+        for row in rows:
+            try:
+                team_raw = row["team_repos_json"] if has_team else "[]"
+            except (IndexError, KeyError):
+                team_raw = "[]"
+            result.append(
+                {
+                    "email": row["email"],
+                    "username": row["username"],
+                    "status": row["status"],
+                    "student": _loads(row["student_json"], {}),
+                    "repos": _loads(row["repos_json"], []),
+                    "team_repos": _loads(team_raw, []),
+                    "synced_at": row["synced_at"],
+                    "error": row["error"],
+                }
+            )
+        return result
     except (sqlite3.Error, OSError) as exc:
         logger.warning("list_snapshots failed: %s", exc)
         return []
