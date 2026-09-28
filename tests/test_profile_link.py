@@ -248,30 +248,42 @@ class TestConfirmFlow:
 
 
 class TestSettingsFetchUI:
-    def test_student_sees_fetch_buttons_when_configured(self, client, monkeypatch):
+    """4be7609 replaced the manual Settings link UI with auto-resolution.
+
+    Students no longer fetch/confirm a picture + username by hand: the sidebar
+    identity resolves straight from the stored ``github_username`` (populated by
+    onboarding approval or GitHub sign-in) via ``auth.github_sidebar_identity``.
+    The /profile/confirm route and the OAuth callbacks stay, so the tests below
+    guard the *absence* of the old card plus the replacement behaviour.
+    """
+
+    def test_student_settings_has_no_manual_fetch_ui(self, client, monkeypatch):
         monkeypatch.setattr(github_oauth, "configured", lambda: True)
         monkeypatch.setattr(linkedin_oauth, "configured", lambda: True)
         seed_student(client)
         body = client.get("/settings", headers={"Accept": "text/html"}).text
-        assert "Fetch from GitHub" in body
-        assert "Fetch from LinkedIn" in body
-
-    def test_student_sees_unconfigured_note(self, client, monkeypatch):
-        monkeypatch.setattr(github_oauth, "configured", lambda: False)
-        monkeypatch.setattr(linkedin_oauth, "configured", lambda: False)
-        seed_student(client)
-        body = client.get("/settings", headers={"Accept": "text/html"}).text
-        assert "isn't configured" in body
         assert "Fetch from GitHub" not in body
+        assert "Fetch from LinkedIn" not in body
+        assert "Profile picture" not in body
 
-    def test_candidate_preview_with_confirm_button(self, client, monkeypatch):
+    def test_student_settings_has_no_candidate_preview(self, client, monkeypatch):
         monkeypatch.setattr(github_oauth, "configured", lambda: True)
         monkeypatch.setattr(linkedin_oauth, "configured", lambda: False)
         email = seed_student(client)
         auth.save_linked_profile(email, "github", "octocat", "https://example.com/a.png")
         body = client.get("/settings?linked=github", headers={"Accept": "text/html"}).text
-        assert "Preview fetched" in body
-        assert "Use this" in body
+        assert "Preview fetched" not in body
+        assert "Use this" not in body
+
+    def test_student_sidebar_identity_resolves_from_github_username(self, client):
+        email = seed_student(client)
+        auth.link_github_username(email, "octocat")
+        identity = auth.github_sidebar_identity(auth.get_user(email))
+        assert identity["handle"] == "octocat"
+        # Public avatar redirect — no API call, no token, no rate limit.
+        assert identity["avatar"] == "https://github.com/octocat.png"
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "octocat" in body
 
     def test_admin_has_no_fetch_ui(self, client, monkeypatch):
         monkeypatch.setattr(github_oauth, "configured", lambda: True)

@@ -1,10 +1,11 @@
 """Tests for the 3.6 page ports.
 
-End-to-end over TestClient with a fake GitHub backend: upload the synthetic
-roster, run both batches (state accumulates & completes, the run is recorded
-into a temp history DB), then assert every ported page renders with data,
-filters/export/workflow behave, and pages without an analysis show the legacy
-placeholder. No network, no Streamlit.
+End-to-end over TestClient with a fake GitHub backend: seed the synthetic
+roster directly into the roster store, run both batches (state accumulates &
+completes, the run is recorded into a temp history DB), then assert every
+ported page renders with data,
+filters/export behave, and pages
+without an analysis show the legacy placeholder. No network, no Streamlit.
 """
 
 import io
@@ -95,7 +96,7 @@ class FakeGitHub:
         self.repo_commits = repo_commits or {}
         self.repo_meta = repo_meta or {}
 
-    def __call__(self, url, token, timeout=None):
+    def __call__(self, url, token, timeout=None, accept=None):
         from services import GITHUB_API_BASE
 
         if "/search/issues" in url:
@@ -208,22 +209,59 @@ def client(tmp_path, monkeypatch):
     yield test_client
 
 
-def upload_roster(client):
+def upload_roster(_client=None):
+    """Seed the roster store directly from the synthetic workbook.
+
+    POST /upload was removed with the Excel-upload feature; page tests now
+    seed the same prepared records the route used to store.
+    """
+    import services as legacy_services
+
     buf = make_roster_xlsx()
-    response = client.post("/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)})
-    assert response.status_code == 200
-    return response.json()
+    df = legacy_services.load_excel(buf)
+    prepared, _invalid_format = legacy_services.prepare_students(df)
+    records = json.loads(prepared.to_json(orient="records"))
+    roster_id = uuid.uuid4().hex
+    roster_store.put(roster_id, records)
+    roster_store.put_meta(
+        roster_id,
+        {
+            "filename": "roster.xlsx",
+            "file_hash": "test-file-hash",
+            "uploaded_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    student_ids = [str(row.get(legacy_services.STUDENT_ID_COL) or "") for row in records]
+    return {
+        "status": "ok",
+        "roster_id": roster_id,
+        "student_count": len(prepared),
+        "student_ids": student_ids,
+        "students": [{"student_id": sid} for sid in student_ids],
+    }
 
 
-def run_all_batches(client, data):
+def run_all_batches(_client, data):
+    """Run every student's batch through the worker directly.
+
+    POST /analysis/batch was removed with the Excel-upload feature; this
+    accumulates batch results into the RosterStore the same way the route did.
+    """
+    import services as legacy_services
+
+    from app import batch as batch_worker
+
     roster_id = data["roster_id"]
-    ids = [s["student_id"] for s in data["students"]]
-    for sid in ids:
-        response = client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": [sid]},
-        )
-        assert response.status_code == 200
+    records = roster_store.get(roster_id)
+    wanted = {str(s["student_id"]).strip() for s in data["students"]}
+    roster_store.ensure_analysis(roster_id, len(records), file_hash="test-file-hash")
+    for row in records:
+        sid = str(row.get(legacy_services.STUDENT_ID_COL) or "").strip()
+        if sid not in wanted:
+            continue
+        result = dict(batch_worker.analyze_records([dict(row, _analysis_key=sid)], token=None))
+        result["analyzed_keys"] = [sid]
+        roster_store.append_analysis(roster_id, result)
     return roster_id
 
 
@@ -249,23 +287,25 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
         assert "Key Metrics" in body
-        assert "Account Validation Status" in body
-        assert "Analysis Pipeline" in body
-        assert "Run Log" in body
+        assert "Account Validation Status" not in body
+        assert "Analysis Pipeline" not in body
+        assert "Run Log" not in body
         assert "plotly" in body or "Plotly.react" in body
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
-        """BUG-107 regression: a complete Overview must still carry the live
-        pipeline-status ids (so updatePipelineStatus works during a re-run) and
-        the previous-results wrapper the run script hides while a new run starts."""
+        """BUG-107 regression (updated for upload removal): a complete Overview
+        carries no run-trigger UI — no Run Analysis button, no upload bar, no
+        run script — while the previous-results wrapper still groups results."""
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/?roster={roster_id}").text
-        assert 'id="pipeline-status-badge"' in body
-        assert 'id="pipeline-status-text"' in body
-        assert 'id="pipeline-completed-at"' in body
+        assert 'id="pipeline-status-badge"' not in body
+        assert 'id="pipeline-status-text"' not in body
+        assert 'id="pipeline-completed-at"' not in body
+        assert 'id="run-analysis"' not in body
+        assert 'id="roster-form"' not in body
+        assert 'id="upload-result"' not in body
+        assert "runAll" not in body
         assert 'id="previous-results"' in body
-        assert "prevResults.hidden = true" in body
-        assert "restorePreviousResults" in body
 
     def test_overview_without_roster_shows_empty_state(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
@@ -275,6 +315,9 @@ class TestPageRenderingWithData:
         body = self.client.get("/").text
         assert "Student Analytics Workspace" in body
         assert "No student data loaded yet" in body
+        assert "complete onboarding" in body
+        assert "Upload a roster" not in body
+        assert "Run Analysis" not in body
 
     def test_students_page_renders_rows_and_profile(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -835,18 +878,10 @@ class TestPageRenderingWithData:
         assert "Validation Status" in csv.text
         assert "alice-dev" in csv.text and "Unreferenced" in csv.text
 
-    def test_issues_page_and_workflow_save(self, tmp_path):
+    def test_issues_page_and_workflow_are_gone(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        body = self.client.get(f"/issues?roster={roster_id}").text
-        assert "Issues" in body and "Student" in body
-
-        response = self.client.post(
-            "/issues/workflow?roster=" + roster_id,
-            json={"101|test|alice-dev": {"Status": "Resolved", "Owner": "faculty", "Notes": "fixed"}},
-        )
-        assert response.status_code == 200
-        workflow = roster_store.get_workflow(roster_id)
-        assert workflow["101|test|alice-dev"]["Status"] == "Resolved"
+        assert self.client.get(f"/issues?roster={roster_id}").status_code == 404
+        assert self.client.post("/issues/workflow?roster=" + roster_id, json={}).status_code == 404
 
     def test_students_export_csv_and_xlsx(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -873,27 +908,13 @@ class TestPageRenderingWithData:
         assert raw.content.startswith(b"\xef\xbb\xbf")
         assert "Alice Example" in raw.content.decode("utf-8-sig")
 
-    def test_history_records_completed_run(self, tmp_path):
-        roster_id = self._setup(tmp_path)
-        body = self.client.get("/history").text
-        assert "Analysis Runs" in body
-        assert "Complete" in body
-        runs = storage.load_run_history()
-        assert len(runs) == 1
-        assert int(runs.iloc[0]["valid_accounts"]) == 2
-        assert int(runs.iloc[0]["repos_found"]) == 3
-        assert int(runs.iloc[0]["active_repos"]) > 0
-        assert runs.iloc[0]["source_file_hash"] is not None
-
-    def test_run_recorded_only_once(self, tmp_path):
-        roster_id = self._setup(tmp_path)
-        ids = roster_store.get(roster_id)
-        first_ids = [str(row["Student_ID"]) for row in ids[:1]]
-        self.client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": first_ids},
-        )
-        assert len(storage.load_run_history()) == 1
+    def test_history_page_is_gone(self, tmp_path):
+        # /history removed with the run-history feature; unknown path → 404.
+        self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
+        self.monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        self.client = TestClient(app)
+        make_user(self.client, "admin")
+        assert self.client.get("/history").status_code == 404
 
     def test_pages_without_analysis_show_placeholder(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
@@ -902,9 +923,10 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         data = upload_roster(self.client)
         roster_id = data["roster_id"]
-        for path in ("students", "repositories", "leaderboards", "issues"):
+        for path in ("students", "repositories", "leaderboards"):
             body = self.client.get(f"/{path}?roster={roster_id}").text
             assert "synced student accounts" in body
+        assert self.client.get(f"/issues?roster={roster_id}").status_code == 404
         body = self.client.get("/students").text
         assert "synced student accounts" in body
 
@@ -942,14 +964,14 @@ class TestVercelEntrypoint:
         from api.index import wrapped
 
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/api/index/history").status_code == 200
+        assert client.get("/api/index/history").status_code == 404
         assert client.get("/api/index/students").status_code == 200
 
     def test_real_paths_unaffected(self, tmp_path, monkeypatch):
         from api.index import wrapped
 
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/history").status_code == 200
+        assert client.get("/history").status_code == 404
 
     def test_no_prefix_stripped_from_deep_static(self, tmp_path, monkeypatch):
         from api.index import wrapped
@@ -963,8 +985,8 @@ class TestVercelEntrypoint:
 
         client = self._client(tmp_path, monkeypatch)
         assert client.get("/api/index.py").status_code == 200
-        assert client.get("/api/index.py/history").status_code == 200
-        assert client.get("/api/history").status_code == 200
+        assert client.get("/api/index.py/history").status_code == 404
+        assert client.get("/api/history").status_code == 404
 
 
 class TestSettingsPage:
@@ -983,7 +1005,8 @@ class TestSettingsPage:
         client = self._client(tmp_path, monkeypatch)
         r = client.get("/settings")
         assert r.status_code == 200
-        assert "Run History Storage" in r.text
+        assert "Run History Storage" not in r.text
+        assert "Last recorded run" not in r.text
         assert "gsad_theme_v1" in r.text
         assert "data-theme-btn" in r.text
 

@@ -4,7 +4,7 @@ Every analytics page renders for students AND faculty/admins straight from the
 synced account fleet (approved accounts' snapshots) — no roster upload needed.
 A student who walked the onboarding → approval flow sees their own snapshot on
 Overview / My Profile plus the whole fleet on Students / Repositories /
-Leaderboards / History; Issues and Verification stay faculty/admin-only.
+Leaderboards; Issues and Verification stay faculty/admin-only.
 The ``POST /sync/accounts`` endpoint enforces its RBAC + cron-secret gate and
 runs the sweep. The sync engine itself is covered in tests/test_accounts.py.
 """
@@ -105,9 +105,9 @@ class TestStudentPages:
         r = client.get("/overview")
         assert r.status_code == 200
         html = r.text
-        assert "Analyzed 1 student(s)" in html
+        assert "Key Metrics" in html
         assert "Division 1" in html
-        assert "2 repositories found" in html
+        assert "Repositories Found" in html
 
     def test_overview_shows_primary_language(self):
         seeded_account()
@@ -277,14 +277,11 @@ class TestFleetPages:
 
     def test_student_sees_fleet_on_every_analytics_page(self):
         client, _ = self._fleet()
-        for path in ("/students", "/repositories", "/leaderboards"):
+        for path in ("/repositories", "/leaderboards"):
             r = self._get(client, path)
             assert r.status_code == 200, path
             assert "alice-dev" in r.text or "Alice Example" in r.text, path
             assert self.PLACEHOLDER_FRAGMENT not in r.text, path
-        r = self._get(client, "/history")
-        assert r.status_code == 200
-        assert not r.headers.get("location")
 
     def test_faculty_and_admin_see_the_same_fleet(self):
         seeded_account()
@@ -297,12 +294,27 @@ class TestFleetPages:
 
     def test_empty_fleet_shows_placeholder_not_403(self):
         client, _ = make_client("student", email="ghost@college.edu")
-        for path in ("/students", "/repositories", "/leaderboards"):
+        for path in ("/repositories", "/leaderboards"):
             r = self._get(client, path)
             assert r.status_code == 200, path
             assert self.PLACEHOLDER_FRAGMENT in r.text, path
 
-    def test_student_redirected_from_issues_and_verification(self):
+    def test_student_redirected_from_verification(self):
         client, _ = self._fleet()
-        assert self._get(client, "/issues").status_code == 303  # 5.5: Issues is faculty/admin-only again
-        assert self._get(client, "/verification").status_code == 303  # Verification stays faculty/admin-only
+        assert self._get(client, "/verification").status_code == 303  # 5.5: Verification is faculty/admin-only again
+
+    def test_issues_page_is_gone(self):
+        client, _ = self._fleet()
+        assert self._get(client, "/issues").status_code == 404  # page removed
+
+    def test_student_redirected_from_students_and_history(self):
+        # 4be7609 "Changed which tabs student account can see" narrows the
+        # student stack back to Overview/Onboarding/Repositories/Leaderboards/
+        # Settings/Support/My Profile, so the fleet-backed Students page stays
+        # faculty/admin-only even though the fleet populates it. The /history
+        # page itself was removed — unknown path falls through to 404.
+        client, _ = self._fleet()
+        r = self._get(client, "/students")
+        assert r.status_code == 303, "/students"
+        assert r.headers.get("location", "").rstrip("/") in ("", "/", "/overview"), "/students"
+        assert self._get(client, "/history").status_code == 404

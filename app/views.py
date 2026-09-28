@@ -7,7 +7,6 @@ columns, ordering, labels and formatting. No Streamlit, no network.
 
 import re
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
 
 import pandas as pd
 
@@ -242,6 +241,12 @@ REPO_COLS = [
     "Commits",
     "Commits_30d",
     "Commits_90d",
+    "Pull_Requests",
+    "Issues",
+    "Contributors",
+    "Has_README",
+    "Topics_Count",
+    "Total_Commits",
 ]
 ISSUE_COLS = [
     STUDENT_ID_COL,
@@ -361,8 +366,10 @@ def account_view(email: str):
     Returns None when the account has no stored snapshot yet; otherwise the
     same ``{records, state, students, repos, team_repos, issues}`` contract
     ``analysis_view`` produces, sized to the single student — so the existing
-    page builders (overview / students / repositories / own_profile) run
-    unchanged against account-driven pages.
+    page builders (overview / students / repositories / own_profile /
+    leaderboards) run unchanged against account-driven pages. Owned repos and
+    team-contributed repos both come from the snapshot, matching the file
+    upload pipeline's two frames.
     """
     from app import accounts
 
@@ -383,14 +390,19 @@ def account_view(email: str):
     for column in REPO_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS]
+    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    team_repos = pd.DataFrame(snapshot.get("team_repos") or [])
+    for column in TEAM_REPOS_COLS:
+        if column not in team_repos.columns:
+            team_repos[column] = None
+    team_repos = team_repos[TEAM_REPOS_COLS] if not team_repos.empty else pd.DataFrame(columns=TEAM_REPOS_COLS)
     return {
         "roster_id": "",
         "records": records,
         "state": {"status": "complete", "valid": 1, "invalid": 0, "errors": 0, "elapsed": 0},
         "students": students,
         "repos": repos,
-        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "team_repos": team_repos,
         "issues": _frame({}, "issues", ISSUE_COLS),
     }
 
@@ -400,11 +412,17 @@ def fleet_view():
     (Phase 5.2 — roster-less pages). Same ``analysis_view`` contract, sized to
     the whole fleet, so the shared page builders render without any uploaded
     roster or Excel file. Returns None when no synced accounts exist yet.
+
+    Owned repos and team-contributed repos are both aggregated from the
+    snapshots — the same two frames the upload pipeline produces — so
+    leaderboards, profiles, repositories and overview totals match the file
+    upload system for the same GitHub accounts.
     """
     from app import accounts, auth
 
     all_rows: list[dict] = []
     repo_rows: list[dict] = []
+    team_rows: list[dict] = []
     try:
         approved = auth.get_approved_accounts()
     except Exception:
@@ -421,6 +439,8 @@ def fleet_view():
             continue
         all_rows.append(student)
         repo_rows.extend(snapshot.get("repos") or [])
+        # Old snapshots (pre-team persistence) lack the key: default to [].
+        team_rows.extend(snapshot.get("team_repos") or [])
 
     if not all_rows:
         return None
@@ -447,7 +467,13 @@ def fleet_view():
     for column in REPO_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS]
+    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+
+    team_repos = pd.DataFrame(team_rows)
+    for column in TEAM_REPOS_COLS:
+        if column not in team_repos.columns:
+            team_repos[column] = None
+    team_repos = team_repos[TEAM_REPOS_COLS] if not team_repos.empty else pd.DataFrame(columns=TEAM_REPOS_COLS)
 
     return {
         "roster_id": "",
@@ -455,7 +481,7 @@ def fleet_view():
         "state": {"status": "complete", "valid": len(all_rows), "invalid": 0, "errors": 0, "elapsed": 0},
         "students": students,
         "repos": repos,
-        "team_repos": _frame({}, "team_repos", TEAM_REPOS_COLS),
+        "team_repos": team_repos,
         "issues": _frame({}, "issues", ISSUE_COLS),
     }
 
@@ -470,19 +496,6 @@ def friendly_timestamp(value) -> str:
         return parsed.astimezone(IST).strftime("%d %b %Y at %I:%M %p")
     except (TypeError, ValueError):
         return str(value)
-
-
-def last_analysis_time() -> str:
-    from app import database
-
-    run = None
-    if database.db_configured():
-        from app import db
-
-        run = db.last_recorded_run()
-    if run is None:
-        run = storage.last_recorded_run()
-    return run.get("run_timestamp", "Never") if run else "Never"
 
 
 def run_outcome(state: dict | None) -> str:
@@ -627,17 +640,6 @@ def overview_payload(view) -> dict:
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
-        "elapsed": float(state.get("elapsed") or 0.0),
-        "last_analysis": friendly_timestamp(last_analysis_time()),
-        "log": [
-            f"Loaded Excel - {total} rows",
-            "Extracted usernames",
-            f"Validated accounts - {valid} valid, {invalid} invalid, {errors} API errors",
-            f"Fetched repositories - {combined_repos_found} found",
-            f"Collected contributions - {prs} pull request(s), {opened_issues} issue(s), {team_commits} team commit(s)",
-            "Building analytics...",
-            "Complete",
-        ],
         "valid_users": valid,
     }
 
@@ -890,7 +892,7 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
 AUDIT_COLS = [
     STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
     "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following", "Last Updated",
+    "Followers", "Following",
 ]
 
 
@@ -927,7 +929,6 @@ def verification_payload(view: dict, references: list[dict], query: str = "", st
             "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
             "Followers": int(stat.get("Followers", 0) or 0),
             "Following": int(stat.get("Following", 0) or 0),
-            "Last Updated": friendly_timestamp(last_analysis_time()),
         })
 
     audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
@@ -1184,51 +1185,11 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
     repos = view.get("repos")
     if repos is None:
         repos = pd.DataFrame(columns=["Username", "Language", "Updated"])
+    team_repos = view.get("team_repos")
     try:
-        return students_payload_profile(row, repos)
+        return students_payload_profile(row, repos, team_repos)
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
-
-
-def own_issue_notifications(view: dict, email: str, run_time: str = "", roster_id: str = "", workflow=None) -> list:
-    """Issue alerts for the signed-in student's notification bell: their own
-    non-resolved issues, each with the analysis run time and a Fix link into
-    the (self-scoped) Issues page pre-filtered to that issue type."""
-    if not view or not email:
-        return []
-    own = find_own_student_row(view.get("students"), email)
-    if own is None:
-        return []
-    own_id = str(own.get(STUDENT_ID_COL, ""))
-    issues = view.get("issues")
-    if issues is None or getattr(issues, "empty", True):
-        return []
-    workflow = workflow or {}
-    notifications = []
-    try:
-        rows = issues[issues[STUDENT_ID_COL].astype(str) == own_id]
-    except (KeyError, TypeError, ValueError):
-        return []
-    for _, record in rows.iterrows():
-        issue = str(record.get("Issue", "") or "").strip()
-        if not issue:
-            continue
-        key = "|".join(
-            str(record.get(c, "") or "") for c in (STUDENT_ID_COL, "Issue", "GitHub_Username")
-        )
-        status = workflow.get(key, {}).get("Status", "Open")
-        if status == "Resolved":
-            continue
-        notifications.append(
-            {
-                "issue": issue,
-                "status": status,
-                "time": run_time,
-                "fix_url": f"/issues?roster={roster_id}&issue={quote(issue)}",
-                "key": key,
-            }
-        )
-    return notifications
 
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:
@@ -1876,44 +1837,3 @@ def leaderboard_language_rows(languages) -> list[dict]:
         {"rank": rank, "name": row["Language"], "score": int(row["Repositories"])}
         for rank, (_, row) in enumerate(languages.iterrows(), start=1)
     ]
-
-
-# ---------------------------------------------------------------------------
-# Issues (3.6g)
-# ---------------------------------------------------------------------------
-
-WORKFLOW_COLS = [STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "Issue", "Status", "Owner", "Notes"]
-
-
-def issues_payload(view, issue_type="All", workflow=None) -> dict:
-    issues = view["issues"].copy()
-    filtered = apply_value_filter(issues, "Issue", issue_type)
-    types = ["All"] + sorted(issues["Issue"].dropna().astype(str).unique().tolist()) if not issues.empty else ["All"]
-    if filtered.empty:
-        rows = []
-    else:
-        workflow = workflow or {}
-        result = filtered.copy()
-
-        def _key(row):
-            return "|".join(str(row.get(c, "") or "") for c in (STUDENT_ID_COL, "Issue", "GitHub_Username"))
-
-        keys = result.apply(_key, axis=1)
-        result["Status"] = [workflow.get(k, {}).get("Status", "Open") for k in keys]
-        result["Owner"] = [workflow.get(k, {}).get("Owner", "") for k in keys]
-        result["Notes"] = [workflow.get(k, {}).get("Notes", "") for k in keys]
-        rows = [
-            {
-                "student_id": str(r.get(STUDENT_ID_COL, "")),
-                "name": r.get("Student Name", ""),
-                "division": r.get("Division", ""),
-                "username": r.get("GitHub_Username", ""),
-                "issue": r.get("Issue", ""),
-                "status": r.get("Status", "Open"),
-                "owner": r.get("Owner", ""),
-                "notes": r.get("Notes", ""),
-                "key": _key(r),
-            }
-            for _, r in result.iterrows()
-        ]
-    return {"total": len(filtered), "rows": rows, "types": types}

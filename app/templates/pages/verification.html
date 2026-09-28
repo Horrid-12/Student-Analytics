@@ -73,7 +73,7 @@
   <div class="data-table-wrap">
     <table class="data-table">
       <thead>
-        <tr><th>Student</th><th>Division</th><th>GitHub Username</th><th>Reference Username</th><th>Validation Status</th><th>Repos Found</th><th>Followers</th><th>Following</th><th>Last Updated</th></tr>
+        <tr><th>Student</th><th>Division</th><th>GitHub Username</th><th>Reference Username</th><th>Validation Status</th><th>Repos Found</th><th>Followers</th><th>Following</th></tr>
       </thead>
       <tbody>
         {% for row in payload.display.to_dict('records') %}
@@ -97,7 +97,6 @@
           <td>{{ row['Repositories Found'] }}</td>
           <td>{{ row.Followers }}</td>
           <td>{{ row.Following }}</td>
-          <td>{{ row['Last Updated'] }}</td>
         </tr>
         {% endfor %}
       </tbody>

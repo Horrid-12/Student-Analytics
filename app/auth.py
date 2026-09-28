@@ -101,8 +101,6 @@ _PRONS_TAKEN_STATUSES = ("pending", "approved")
 _PAGE_BY_PREFIX = (
     ("/settings", "Settings"),
     ("/support", "Support"),
-    ("/issues", "Issues"),
-    ("/history", "History"),
     ("/leaderboards", "Leaderboards"),
     ("/repositories", "Repositories"),
     ("/students", "Students"),
@@ -113,15 +111,17 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Issues", "Verification", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Verification", "Support", "Settings", "My Profile")
 
-# BUG-044/046 RBAC: faculty and admin see everything. Students get the full
-# analytics stack (Phase 5.2 — every page populates from the synced account
-# fleet, no roster needed) plus Settings/Support/My Profile; Issues and
-# Verification are faculty/admin management pages only.
+# BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
+# Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
+# (Students + Verification stay faculty/admin pages: 5.2 widened the
+# student stack to the full fleet-backed analytics set, but the later 4be7609
+# "Changed which tabs student account can see" narrowed it back to this list,
+# which is the current product decision.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "History", "Settings", "Support", "My Profile"),
+    "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
@@ -921,6 +921,36 @@ def db_set_github_handle(email: str, github_username: str) -> bool:
         return False
 
 
+def delete_user(email: str) -> tuple[bool, str]:
+    """Delete one account by email (students only). Returns ``(ok, reason)``.
+
+    Removes the ``users`` row; callers also clear the account snapshot so the
+    fleet/leaderboards drop the student. Refuses protected roles and unknown
+    addresses instead of failing silently.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "no_user"
+    user = get_user(email)
+    if user is None:
+        return False, "no_user"
+    if (user.get("role") or "student") != "student":
+        return False, "protected_role"
+    if database.db_configured():
+        ok = db.delete_user_by_email(email)
+        return (True, "") if ok else (False, "storage_unavailable")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute("DELETE FROM users WHERE email = ?", (email,))
+                ok = (cur.rowcount or 0) > 0
+        return (True, "") if ok else (False, "storage_unavailable")
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("delete_user failed for %s: %s", email, exc)
+        return False, "storage_unavailable"
+
+
 def linked_identity(user: dict | None) -> dict:
     """4.11 (e): resolve the confirmed sidebar identity from a user row.
     Returns a dict with source/handle/avatar keys (empty strings when the
@@ -938,6 +968,40 @@ def linked_identity(user: dict | None) -> dict:
     if not handle:
         return {"source": "", "handle": "", "avatar": ""}
     return {"source": source, "handle": handle, "avatar": avatar}
+
+
+def github_sidebar_identity(user_row: dict | None) -> dict:
+    """Student navbar identity, auto-resolved from GitHub (no confirm step).
+
+    Prefers the stored linked avatar, falling back to the public
+    ``https://github.com/<username>.png`` avatar URL so the sidebar shows a
+    photo even when only the username was persisted (e.g. ``github_username``
+    from onboarding link or GitHub sign-in). Never raises; returns
+    ``{"handle", "avatar"}`` with empty strings when no GitHub username is
+    known. Pure function of the row — no I/O, so page renders never block on
+    the GitHub API.
+    """
+    row = user_row or {}
+    handle = (
+        (row.get("github_username") or "").strip()
+        or (row.get("linked_github_username") or "").strip()
+    )
+    # A confirmed GitHub identity also counts (covers rows where only the
+    # linked candidate was ever saved).
+    if not handle:
+        try:
+            confirmed = linked_identity(row)
+        except Exception:
+            confirmed = {"source": "", "handle": "", "avatar": ""}
+        if confirmed.get("source") == "github":
+            return {"handle": confirmed.get("handle", ""), "avatar": confirmed.get("avatar", "")}
+        return {"handle": "", "avatar": ""}
+    avatar = _clean_avatar(row.get("linked_github_avatar") or "")
+    if not avatar:
+        # Public avatar redirect — no API call, no token, no rate limit.
+        # GitHub serves https://github.com/<user>.png as the profile photo.
+        avatar = f"https://github.com/{handle}.png"
+    return {"handle": handle, "avatar": avatar}
 
 
 def create_session_token(user: dict) -> str:

@@ -60,8 +60,7 @@ CREATE TABLE IF NOT EXISTS students (
 );
 
 -- 4. Live analysis progress (replaces the in-cache analysis: state dict).
---    One row per roster, updated per batch; contains the live counters and the
---    `recorded` flag so record_analysis_run_if_fresh remains idempotent.
+--    One row per roster, updated per batch; contains the live counters.
 CREATE TABLE IF NOT EXISTS run_summary (
     roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
     file_hash   TEXT,
@@ -180,11 +179,23 @@ CREATE TABLE IF NOT EXISTS roster_repositories (
     commits                     INTEGER NOT NULL DEFAULT 0,
     commits_30d                 INTEGER NOT NULL DEFAULT 0,
     commits_90d                 INTEGER NOT NULL DEFAULT 0,
+    pull_requests               INTEGER NOT NULL DEFAULT 0,
+    issues                      INTEGER NOT NULL DEFAULT 0,
+    contributors                INTEGER NOT NULL DEFAULT 0,
+    has_readme                  INTEGER NOT NULL DEFAULT 0,
+    topics_count                INTEGER NOT NULL DEFAULT 0,
+    total_commits               INTEGER NOT NULL DEFAULT 0,
     UNIQUE (roster_id, username, repository_url)
 );
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_30d INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits_90d INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS pull_requests INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS issues INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS contributors INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS has_readme INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS topics_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS total_commits INTEGER NOT NULL DEFAULT 0;
 
 -- 6b. Team-contributed repos (per-roster snapshot of external-repo activity
 --     derived from the public events API — the group-project fix).
@@ -331,7 +342,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
 
 -- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
 --     One row per synced account: JSONB holds the dashboard-shaped student
---     record + the REPO_COLS repository list, so student pages rebuild the
+--     record + the REPO_COLS repository list + the TEAM_REPOS_COLS
+--     contributed-repo list, so student pages rebuild the
 --     analysis_view shape without re-fetching GitHub on every request.
 CREATE TABLE IF NOT EXISTS account_snapshots (
     email        TEXT PRIMARY KEY,
@@ -339,10 +351,12 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
     status       TEXT NOT NULL DEFAULT '',
     student_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     repos_json   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     synced_at    TEXT NOT NULL DEFAULT '',
     error        TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
+ALTER TABLE account_snapshots ADD COLUMN IF NOT EXISTS team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 13. Reference sheet for the Verification cross-check (Phase 4.12).
 --     A single active "Student Details"-schema workbook uploaded by faculty:

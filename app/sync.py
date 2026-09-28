@@ -182,38 +182,84 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
     }
 
 
+def _academic_year_for(value) -> str:
+    """July-June academic-year label from an onboarding timestamp.
+
+    Mirrors ``services.add_academic_periods`` so account snapshots carry the
+    same ``Academic_Year`` semantics as uploaded rosters (which derive it from
+    the form Timestamp). Falls back to "" when the timestamp is missing.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return ""
+    try:
+        text = str(value).strip()
+        # Same split as services._parse_roster_timestamps: slash-led
+        # DD/MM/YYYY parses dayfirst, everything else uses the default so ISO
+        # "2025-08-01" is not misread as 8 Jan.
+        import re as _re
+
+        dayfirst = bool(_re.match(r"^\s*\d{1,2}/\d{1,2}/\d{2,4}", text))
+        ts = pd.to_datetime(text, errors="coerce", dayfirst=dayfirst)
+    except Exception:
+        return ""
+    try:
+        if pd.isna(ts):
+            return ""
+    except Exception:
+        pass
+    try:
+        year = int(ts.year)
+        month = int(ts.month)
+    except Exception:
+        return ""
+    start = year if month >= 7 else year - 1
+    return f"{start}-{str(start + 1)[-2:]}"
+
+
 def compute_account_snapshot(
     username: str, token: str | None, user: dict | None = None
-) -> tuple[dict | None, list[dict], str]:
-    """Fetch one account's GitHub data and reduce it to the dashboard shape.
+) -> tuple[dict | None, list[dict], list[dict], str]:
+    """Fetch one account's GitHub data through a fast lightweight fetch.
 
-    Returns ``(student, repos, error)`` where ``error`` is "" on success and
-    one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
+    Returns ``(student, repos, team_repos, error)`` where ``error`` is "" on
+    success and one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
     ``rate_limited`` otherwise. ``student`` is None on failure. Never raises.
+
+    To avoid Vercel 10s timeouts during login, this avoids the heavy batch
+    GraphQL pipelines. Commits/PRs and team_repos will be zero/empty until
+    the global Excel upload runs.
     """
     username = (username or "").strip()
     if not username:
-        return None, [], "not_found"
+        return None, [], [], "not_found"
     user = user or {}
     try:
         is_valid, payload, is_error, _ = services.get_user(username, token)
     except services.RateLimitError:
-        return None, [], "rate_limited"
-    except Exception:
-        return None, [], "api_error"
+        return None, [], [], "rate_limited"
+    except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"get_user Exception: {e}")
+        logger.error(traceback.format_exc())
+        return None, [], [], "api_error"
     if not is_valid or not payload:
-        return None, [], ("not_found" if not is_error else "api_error")
+        return None, [], [], ("not_found" if not is_error else "api_error")
     try:
         raw_repos, fetched_ok = services.get_repos(username, token)
     except services.RateLimitError:
-        return None, [], "rate_limited"
+        return None, [], [], "rate_limited"
     except Exception:
         raw_repos, fetched_ok = [], False
     if not fetched_ok:
-        return None, [], "repo_fetch_failed"
+        return None, [], [], "repo_fetch_failed"
     repos = _repos_frame(raw_repos, username).to_dict(orient="records")
     student = _student_row(user, username, payload, repos)
-    return student, repos, ""
+    
+    # Return empty team_repos so it aligns with Animesh's new schema
+    # without crashing the serverless function.
+    return student, repos, [], ""
 
 
 def _parse_synced(synced_at: str):
@@ -251,19 +297,25 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
         return False, "no_handle", "account has no verified GitHub username"
     if not force and _is_fresh(email):
         return True, "", "fresh"
-    student, repos, err = compute_account_snapshot(username, token, user_row)
+    unpacked = compute_account_snapshot(username, token, user_row)
+    # Backward-compatible unpack: older callers/tests expect 3-tuple.
+    if len(unpacked) == 4:
+        student, repos, team_repos, err = unpacked
+    else:  # pragma: no cover - legacy 3-tuple
+        student, repos, err = unpacked
+        team_repos = []
     now = time.strftime(_SYNC_TIME_FORMAT)
     if err:
         accounts.init_db()
         accounts.save_snapshot(
             email, username=username, status="error", student={}, repos=[],
-            synced_at=now, error=err,
+            synced_at=now, error=err, team_repos=[],
         )
         return False, err, err
     accounts.init_db()
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
-        repos=repos, synced_at=now, error="",
+        repos=repos, team_repos=team_repos, synced_at=now, error="",
     )
     if not ok:
         return False, "storage", "snapshot storage unavailable"

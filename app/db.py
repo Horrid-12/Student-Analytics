@@ -397,8 +397,9 @@ def upsert_batch_results(
                             "INSERT INTO roster_repositories "
                             "(roster_id,username,repository,language,stars,forks,description,license,"
                             "created_at,updated_at,repository_url,maintenance_status,"
-                            "repository_quality_score,quality_band,commits,commits_30d,commits_90d) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "repository_quality_score,quality_band,commits,commits_30d,commits_90d,"
+                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -417,6 +418,12 @@ def upsert_batch_results(
                                 commits,
                                 commits_30d,
                                 commits_90d,
+                                int(r.get("Pull_Requests") or 0),
+                                int(r.get("Issues") or 0),
+                                int(r.get("Contributors") or 0),
+                                1 if r.get("Has_README") else 0,
+                                int(r.get("Topics_Count") or 0),
+                                int(r.get("Total_Commits") or 0),
                             ),
                         )
                     except Exception:
@@ -550,24 +557,6 @@ def upsert_batch_results(
         return None
 
 
-def mark_run_recorded(roster_id: str) -> bool:
-    """Mark the run_summary as recorded (one-shot idempotency for the history
-    write). Returns True if this call was the one that flipped the flag."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "UPDATE run_summary SET recorded = TRUE, recorded_at = NOW() "
-                "WHERE roster_id = %s AND recorded = FALSE",
-                (roster_id,),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("mark_run_recorded failed: %s", exc)
-        return False
-
-
 def mark_run_rate_limited(roster_id: str) -> None:
     try:
         with database.conn() as c:
@@ -692,7 +681,10 @@ def get_repositories_data(roster_id: str) -> list[dict]:
                     'maintenance_status AS "Maintenance_Status", '
                     'repository_quality_score AS "Repository_Quality_Score", '
                     'quality_band AS "Quality_Band", commits AS "Commits", '
-                    'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d" '
+                    'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d", '
+                    'pull_requests AS "Pull_Requests", issues AS "Issues", '
+                    'contributors AS "Contributors", has_readme AS "Has_README", '
+                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits" '
                     "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
                     (roster_id,),
                 )
@@ -764,37 +756,6 @@ def get_issues_data(roster_id: str) -> list[dict]:
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("get_issues_data failed: %s", exc)
         return []
-
-
-# ── workflow ───────────────────────────────────────────────────────────────────
-
-def get_workflow(roster_id: str) -> dict:
-    """Return the workflow state dict (issue index → {status, owner, notes})."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return {}
-            cur = c.execute(
-                "SELECT state FROM workflow_state WHERE roster_id = %s",
-                (roster_id,),
-            )
-            row = cur.fetchone()
-            return row["state"] if row else {}
-    except (psycopg.errors.DatabaseError, OSError):
-        return {}
-
-
-def put_workflow(roster_id: str, state: dict) -> None:
-    try:
-        with database.conn() as c:
-            if c is not None:
-                c.execute(
-                    "INSERT INTO workflow_state (roster_id, state) VALUES (%s, %s) "
-                    "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
-                    (roster_id, Jsonb(state)),
-                )
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("put_workflow failed: %s", exc)
 
 
 def get_blacklist(roster_id: str) -> dict:
@@ -1194,87 +1155,7 @@ def clear_support_attachment(ticket_id, slot: str = "admin") -> bool:
         return False
 
 
-# ── run history + audit log (mirrors storage.py signatures) ────────────────────
-
-def record_analysis_run(
-    status: str,
-    total_students: int,
-    valid_accounts: int,
-    invalid_accounts: int,
-    error_accounts: int,
-    repos_found: int,
-    active_repos: int = 0,
-    avg_quality_score: Optional[float] = None,
-    elapsed_seconds: float = 0.0,
-    source_file_hash: Optional[str] = None,
-    roster_id: Optional[str] = None,
-) -> bool:
-    """Insert a completed analysis run (mirrors ``storage.record_analysis_run``)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            c.execute(
-                "INSERT INTO analysis_runs "
-                "(roster_id, status, total_students, valid_accounts, invalid_accounts, "
-                "error_accounts, repos_found, active_repos, avg_quality_score, "
-                "elapsed_seconds, source_file_hash) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    roster_id,
-                    status,
-                    total_students,
-                    valid_accounts,
-                    invalid_accounts,
-                    error_accounts,
-                    repos_found,
-                    active_repos,
-                    avg_quality_score,
-                    elapsed_seconds,
-                    source_file_hash,
-                ),
-            )
-        return True
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("record_analysis_run (postgres) failed: %s", exc)
-        return False
-
-
-def load_run_history() -> pd.DataFrame:
-    try:
-        with database.conn() as c:
-            if c is None:
-                return pd.DataFrame()
-            cur = c.execute(
-                "SELECT id, roster_id, run_timestamp, status, total_students, valid_accounts, "
-                "invalid_accounts, error_accounts, repos_found, active_repos, "
-                "avg_quality_score, elapsed_seconds, source_file_hash "
-                "FROM analysis_runs ORDER BY id"
-            )
-            rows = cur.fetchall()
-            if not rows:
-                return pd.DataFrame()
-            return pd.DataFrame([dict(r) for r in rows])
-    except (psycopg.errors.DatabaseError, OSError):
-        return pd.DataFrame()
-
-
-def last_recorded_run() -> Optional[dict]:
-    try:
-        with database.conn() as c:
-            if c is None:
-                return None
-            cur = c.execute(
-                "SELECT id, run_timestamp, status, total_students, valid_accounts, "
-                "invalid_accounts, error_accounts, repos_found, active_repos, "
-                "avg_quality_score, elapsed_seconds, source_file_hash "
-                "FROM analysis_runs ORDER BY id DESC LIMIT 1"
-            )
-            row = cur.fetchone()
-            return dict(row) if row else None
-    except (psycopg.errors.DatabaseError, OSError):
-        return None
-
+# ── audit log (mirrors storage.py signatures) ────────────────────────────────────
 
 def log_event(event_type: str, detail: str = "") -> bool:
     try:
@@ -1605,6 +1486,7 @@ def save_account_snapshot(
     repos: Optional[list] = None,
     synced_at: str = "",
     error: str = "",
+    team_repos: Optional[list] = None,
 ) -> bool:
     """Upsert one account's dashboard-shaped analytics snapshot (Postgres leg)."""
     email = (email or "").strip().lower()
@@ -1614,24 +1496,48 @@ def save_account_snapshot(
         with database.conn() as c:
             if c is None:
                 return False
-            cur = c.execute(
-                "INSERT INTO account_snapshots "
-                "(email, username, status, student_json, repos_json, synced_at, error) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (email) DO UPDATE SET "
-                "username = EXCLUDED.username, status = EXCLUDED.status, "
-                "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
-                "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
-                (
-                    email,
-                    (username or "").strip(),
-                    (status or "").strip(),
-                    Jsonb(_json_safe(student or {})),
-                    Jsonb(_json_safe(repos or [])),
-                    synced_at or "",
-                    (error or "").strip(),
-                ),
-            )
+            try:
+                cur = c.execute(
+                    "INSERT INTO account_snapshots "
+                    "(email, username, status, student_json, repos_json, team_repos_json, synced_at, error) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (email) DO UPDATE SET "
+                    "username = EXCLUDED.username, status = EXCLUDED.status, "
+                    "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
+                    "team_repos_json = EXCLUDED.team_repos_json, "
+                    "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
+                    (
+                        email,
+                        (username or "").strip(),
+                        (status or "").strip(),
+                        Jsonb(_json_safe(student or {})),
+                        Jsonb(_json_safe(repos or [])),
+                        Jsonb(_json_safe(team_repos or [])),
+                        synced_at or "",
+                        (error or "").strip(),
+                    ),
+                )
+            except Exception:
+                c.rollback()
+                # Pre-migration database without team_repos_json: legacy shape.
+                cur = c.execute(
+                    "INSERT INTO account_snapshots "
+                    "(email, username, status, student_json, repos_json, synced_at, error) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (email) DO UPDATE SET "
+                    "username = EXCLUDED.username, status = EXCLUDED.status, "
+                    "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
+                    "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
+                    (
+                        email,
+                        (username or "").strip(),
+                        (status or "").strip(),
+                        Jsonb(_json_safe(student or {})),
+                        Jsonb(_json_safe(repos or [])),
+                        synced_at or "",
+                        (error or "").strip(),
+                    ),
+                )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("save_account_snapshot failed: %s", exc)
@@ -1640,29 +1546,42 @@ def save_account_snapshot(
 
 def _snapshot_row(row: dict) -> dict:
     """Normalize one account_snapshots row into the public dict shape."""
+    team = row.get("team_repos_json", [])
+    # Postgres Jsonb returns list; legacy rows / SQLite fallback may lack it.
+    if not isinstance(team, list):
+        team = []
     return {
         "email": row.get("email", ""),
         "username": row.get("username", ""),
         "status": row.get("status", ""),
         "student": row.get("student_json") if isinstance(row.get("student_json"), (dict, list)) else {},
         "repos": row.get("repos_json") if isinstance(row.get("repos_json"), list) else [],
+        "team_repos": team,
         "synced_at": row.get("synced_at", ""),
         "error": row.get("error", ""),
     }
 
 
 def get_account_snapshot(email: str) -> Optional[dict]:
-    """One account's snapshot dict (student/repos parsed), or None."""
+    """One account's snapshot dict (student/repos/team_repos parsed), or None."""
     email = (email or "").strip().lower()
     try:
         with database.conn() as c:
             if c is None:
                 return None
-            cur = c.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots WHERE email = %s",
-                (email,),
-            )
+            try:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = %s",
+                    (email,),
+                )
+            except Exception:
+                c.rollback()
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = %s",
+                    (email,),
+                )
             row = cur.fetchone()
             return _snapshot_row(dict(row)) if row else None
     except (psycopg.errors.DatabaseError, OSError) as exc:
@@ -1676,10 +1595,17 @@ def list_account_snapshots() -> list[dict]:
         with database.conn() as c:
             if c is None:
                 return []
-            cur = c.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
-            )
+            try:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                )
+            except Exception:
+                c.rollback()
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                )
             return [_snapshot_row(dict(row)) for row in cur.fetchall()]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("list_account_snapshots failed: %s", exc)
@@ -1804,7 +1730,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     ``{roster_id, records, state, students, repos, team_repos, issues}`` where
     students, repos, team_repos and issues are DataFrames with the canonical
     column ordering. Reconstructs the state dict from run_summary + result
-    tables so callers (and ``run_metrics``) need no changes."""
+    tables so callers need no changes."""
     from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS, TEAM_REPOS_COLS
 
     try:
@@ -1840,50 +1766,6 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
         return None
 
 
-def record_analysis_run_if_unrecorded(roster_id: str) -> bool:
-    """Read run_summary, compute metrics, insert into analysis_runs if not
-    yet recorded. Mirrors ``record_analysis_run_if_fresh`` behaviour."""
-    if not mark_run_recorded(roster_id):
-        return False
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            # Compute metrics from the result tables
-            cur = c.execute(
-                "SELECT "
-                "  s.status, s.total, s.valid, s.invalid, s.errors, s.file_hash, "
-                "  (SELECT COUNT(*) FROM roster_repositories r WHERE r.roster_id = s.roster_id) AS repos_found, "
-                "  (SELECT COUNT(*) FROM roster_repositories r "
-                "     WHERE r.roster_id = s.roster_id AND LOWER(r.maintenance_status) = 'active') AS active_repos, "
-                "  (SELECT AVG(repository_quality_score) FROM roster_repositories r "
-                "     WHERE r.roster_id = s.roster_id AND repository_quality_score > 0) AS avg_quality_score, "
-                "  EXTRACT(EPOCH FROM (NOW() - s.started_at)) AS elapsed_seconds "
-                "FROM run_summary s WHERE s.roster_id = %s",
-                (roster_id,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                return False
-            record_analysis_run(
-                status=row["status"],
-                total_students=row["total"],
-                valid_accounts=row["valid"],
-                invalid_accounts=row["invalid"],
-                error_accounts=row["errors"],
-                repos_found=row["repos_found"],
-                active_repos=row["active_repos"],
-                avg_quality_score=row["avg_quality_score"],
-                elapsed_seconds=row["elapsed_seconds"] or 0.0,
-                source_file_hash=row["file_hash"],
-                roster_id=roster_id,
-            )
-            log_event("analysis_run", f"roster={roster_id}; status={row['status']}")
-        return True
-    except Exception as exc:
-        logger.warning("record_analysis_run_if_unrecorded failed: %s", exc)
-        return False
-
 def link_github_username(email: str, github_username: str) -> bool:
     """Set the github_username column for an existing user."""
     try:
@@ -1911,5 +1793,21 @@ def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
             )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError):
+        return False
+
+
+def delete_user_by_email(email: str) -> bool:
+    """Delete one user row by email (Postgres leg). Returns True when a row was removed."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute("DELETE FROM users WHERE email = %s", (email,))
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("delete_user_by_email failed: %s", exc)
         return False
 

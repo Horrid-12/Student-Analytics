@@ -1,11 +1,9 @@
-"""Tests for the 3.5 batched analysis.
+"""Tests for the batched analysis worker (app/batch.py).
 
-- ``analyze_records`` (app/batch.py) must byte-for-byte match the frozen
+- ``analyze_records`` must byte-for-byte match the frozen
   ``services.run_analysis`` output on identical inputs (parity: disproves drift
   between the composed pipeline and the monolithic runner).
-- FastAPI transport tests for POST /analysis/batch, GET /analysis/progress and
-  GET /roster/{roster_id} (accumulation, 404/400/429 contract). No network, no
-  Streamlit; the app pipeline's ``_cached_get_json`` is monkeypatched.
+No network, no Streamlit; the app pipeline's ``_cached_get_json`` is monkeypatched.
 """
 
 import io
@@ -14,12 +12,8 @@ import os
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
-from app import auth, batch, storage
-from app.main import app, roster_store
-
-XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+from app import batch
 
 import app.services as psvc
 
@@ -71,7 +65,7 @@ class FakeGitHub:
         self.repo_commits = repo_commits or {}
         self.repo_meta = repo_meta or {}
 
-    def __call__(self, url, token, timeout=None):
+    def __call__(self, url, token, timeout=None, accept=None):
         from services import GITHUB_API_BASE
 
         if "/search/issues" in url:
@@ -170,33 +164,11 @@ def crash_free_fake() -> FakeGitHub:
     )
 
 
-def patch_app_pipeline(monkeypatch, fake):
-    monkeypatch.setattr(psvc.time, "sleep", lambda _: None)
-    monkeypatch.setattr(psvc, "_cached_get_json", fake)
-
-
 def prepared_records():
     from services import load_excel, prepare_students
 
     prepared, _ = prepare_students(load_excel(make_roster_xlsx()))
     return json.loads(prepared.to_json(orient="records"))
-
-
-def upload_roster(client):
-    buf = make_roster_xlsx()
-    response = client.post("/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)})
-    assert response.status_code == 200
-    return response.json()
-
-
-def login_admin(client):
-    import uuid
-
-    email = f"admin-{uuid.uuid4().hex[:6]}@test.local"
-    assert auth.create_user(email, "secret123", "admin", "Test User"), "seed failed"
-    r = client.post("/login", data={"email": email, "password": "secret123"})
-    assert r.status_code in (200, 302), f"login failed: {r.status_code}"
-    return email
 
 
 class TestAnalyzeRecordsParity:
@@ -238,161 +210,3 @@ class TestAnalyzeRecordsParity:
         assert got["issues"] == []
         assert got["status"] == "Complete"
         assert got["analyzed"] == 0
-
-
-class TestBatchEndpoints:
-    def setup_method(self):
-        self.client = TestClient(app)
-        login_admin(self.client)
-
-    def test_batches_accumulate_then_complete(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-        roster_id = data["roster_id"]
-        student_ids = [s["student_id"] for s in data["students"]]
-
-        first = self.client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": student_ids[:1]},
-        )
-        assert first.status_code == 200
-        body = first.json()
-        assert body["status"] == "ok"
-        assert body["result"]["valid_users"] == 1
-        assert body["progress"]["done"] == 1
-        assert body["progress"]["total"] == 2
-        assert body["progress"]["run_status"] == "running"
-
-        second = self.client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": student_ids[1:]},
-        )
-        assert second.status_code == 200
-        state = roster_store.get_analysis(roster_id)
-        assert state["done"] == 2
-        assert state["status"] == "complete"
-        assert len(state["students"]) == 2
-
-    def test_replayed_batch_is_idempotent(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-        roster_id = data["roster_id"]
-        student_ids = [s["student_id"] for s in data["students"]]
-        payload = {"roster_id": roster_id, "student_ids": student_ids}
-
-        first = self.client.post("/analysis/batch", json=payload)
-        second = self.client.post("/analysis/batch", json=payload)
-
-        assert first.status_code == 200
-        assert second.status_code == 200
-        state = roster_store.get_analysis(roster_id)
-        assert state["done"] == 2
-        assert state["valid"] == 2
-        assert len(state["students"]) == 2
-        assert len(state["repos"]) == 3
-
-    def test_history_write_failure_is_retryable(self, monkeypatch, tmp_path):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "history.db")
-        original_record = storage.record_analysis_run
-        calls = []
-
-        def fail_once(*args, **kwargs):
-            calls.append(True)
-            return False if len(calls) == 1 else original_record(*args, **kwargs)
-
-        monkeypatch.setattr(storage, "record_analysis_run", fail_once)
-        data = upload_roster(self.client)
-        payload = {
-            "roster_id": data["roster_id"],
-            "student_ids": [s["student_id"] for s in data["students"]],
-        }
-
-        first = self.client.post("/analysis/batch", json=payload)
-        assert first.status_code == 200
-        assert roster_store.get_analysis(data["roster_id"])["recorded"] is False
-        assert len(storage.load_run_history()) == 0
-
-        second = self.client.post("/analysis/batch", json=payload)
-        assert second.status_code == 200
-        assert roster_store.get_analysis(data["roster_id"])["recorded"] is True
-        assert len(storage.load_run_history()) == 1
-
-    def test_progress_endpoint(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        assert self.client.get("/analysis/progress").json()["status"] == "idle"
-
-        data = upload_roster(self.client)
-        roster_id = data["roster_id"]
-        assert self.client.get(f"/analysis/progress?roster_id={roster_id}").json()["status"] == "idle"
-
-        student_ids = [s["student_id"] for s in data["students"]]
-        self.client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": student_ids},
-        )
-        progress = self.client.get(f"/analysis/progress?roster_id={roster_id}").json()
-        assert progress["done"] == 2
-        assert progress["total"] == 2
-        assert progress["status"] == "complete"
-        assert progress["valid"] == 2
-
-    def test_unknown_roster_404(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        response = self.client.post(
-            "/analysis/batch", json={"roster_id": "does-not-exist", "student_ids": ["1"]}
-        )
-        assert response.status_code == 404
-
-    def test_no_matching_students_400(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-        response = self.client.post(
-            "/analysis/batch",
-            json={"roster_id": data["roster_id"], "student_ids": ["nope"]},
-        )
-        assert response.status_code == 400
-
-    def test_roster_summary_restore(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-        roster_id = data["roster_id"]
-        summary = self.client.get(f"/roster/{roster_id}").json()
-        assert summary["student_count"] == 2
-        assert summary["student_ids"] == [s["student_id"] for s in data["students"]]
-        assert summary["analysis"] is None
-
-        summary = self.client.get("/roster/does-not-exist")
-        assert summary.status_code == 404
-
-    def test_rate_limit_is_friendly_429(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-
-        def raiser(records, token=None):
-            raise psvc.RateLimitError(reset_epoch="1700000000")
-
-        monkeypatch.setattr(batch, "analyze_records", raiser)
-        student_ids = [s["student_id"] for s in data["students"]]
-        response = self.client.post(
-            "/analysis/batch",
-            json={"roster_id": data["roster_id"], "student_ids": student_ids},
-        )
-        assert response.status_code == 429
-        body = response.json()
-        assert body["status"] == "rate_limit"
-        assert body["reset_epoch"] == "1700000000"
-        state = roster_store.get_analysis(data["roster_id"])
-        assert state["status"] == "rate_limited"
-
-    def test_reset_clears_analysis_and_roster(self, monkeypatch):
-        patch_app_pipeline(monkeypatch, crash_free_fake())
-        data = upload_roster(self.client)
-        roster_id = data["roster_id"]
-        student_ids = [s["student_id"] for s in data["students"]]
-        self.client.post("/analysis/batch", json={"roster_id": roster_id, "student_ids": student_ids})
-        assert roster_store.get_analysis(roster_id) is not None
-
-        self.client.post(f"/upload/reset?roster_id={roster_id}")
-        assert roster_store.get_analysis(roster_id) is None
-        assert roster_store.get(roster_id) is None

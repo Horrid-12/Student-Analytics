@@ -104,7 +104,6 @@ class AnalysisResult:
     repo_unavailable_users: list[str]
     contributions_df: pd.DataFrame
     contrib_unavailable_users: list[str]
-    log: list[str]
     # Keep the analysis outcome as data on every result.  The UI receives this
     # object, so an explicit field is safer than asking the UI to calculate it.
     status: str
@@ -1360,12 +1359,21 @@ def fetch_owned_commit_data(
     return pd.DataFrame(summaries, columns=OWNED_COMMIT_SUMMARY_COLS), enriched, unavailable_users
 
 
-def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
-    """Add explainable metadata and maintenance signals to repository data.
+def _quality_number(result: pd.DataFrame, column: str) -> pd.Series:
+    """Per-row integer for a quality-metric column (missing/garbage → 0)."""
+    if column not in result.columns:
+        return pd.Series(0, index=result.index, dtype=int)
+    return pd.to_numeric(result[column], errors="coerce").fillna(0).astype(int)
 
-    The score intentionally excludes stars and forks so popularity is not
-    presented as code quality. It measures documentation, metadata, licensing,
-    and recent maintenance only.
+
+def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
+    """Strict 100-point "Professional Developer" score for a repository.
+
+    Four fixed categories — Collaboration & Workflow (30), Community &
+    Popularity (20), Activity & Maintenance (30), Hygiene & Documentation
+    (20) — use hard tier boundaries and are structurally capped, so the best
+    repo scores exactly 100 and the worst 0. Missing columns (old runs, team
+    rows) read as 0.
     """
     result = repo_df.copy()
     if result.empty:
@@ -1373,20 +1381,76 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
 
     updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
     age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
-    description_score = result["Description"].fillna("").astype(str).str.strip().ne("").astype(int) * 30
-    language_score = result["Language"].notna().astype(int) * 20
-    license_score = result["License"].fillna("").astype(str).str.strip().ne("").astype(int) * 15
-    maintenance_score = age_days.map(
-        lambda days: 35 if pd.notna(days) and days <= 180 else 20 if pd.notna(days) and days <= 365 else 10 if pd.notna(days) and days <= 730 else 0
+
+    # Collaboration & Workflow (max 30): 15 / 10 / 5
+    prs = _quality_number(result, "Pull_Requests")
+    issues = _quality_number(result, "Issues")
+    contributors = _quality_number(result, "Contributors")
+    collaboration = (
+        ((prs > 0).astype(int) * 15)
+        + ((issues > 0).astype(int) * 10)
+        + ((contributors > 1).astype(int) * 5)
     )
+
+    # Community & Popularity (max 20): stars tiers + forks
+    stars = _quality_number(result, "Stars")
+    stars_score = pd.Series(0, index=result.index, dtype=int)
+    stars_score[stars >= 20] = 15
+    stars_score[(stars >= 5) & (stars < 20)] = 10
+    stars_score[(stars >= 1) & (stars < 5)] = 5
+    forks = _quality_number(result, "Forks")
+    community = stars_score + (forks > 0).astype(int) * 5
+
+    # Activity & Maintenance (max 30): commit volume + recency
+    total_commits = _quality_number(result, "Total_Commits")
+    commits_score = pd.Series(0, index=result.index, dtype=int)
+    commits_score[total_commits > 50] = 15
+    commits_score[(total_commits >= 10) & (total_commits <= 50)] = 10
+    commits_score[(total_commits >= 1) & (total_commits < 10)] = 5
+    recency_score = age_days.map(
+        lambda days: 15
+        if pd.notna(days) and days <= 30
+        else 10
+        if pd.notna(days) and days <= 90
+        else 5
+        if pd.notna(days) and days <= 180
+        else 0
+    ).fillna(0).astype(int)
+    activity = commits_score + recency_score
+
+    # Hygiene & Documentation (max 20): readme / description-or-topics / license
+    if "Description" in result.columns:
+        description_present = result["Description"].fillna("").astype(str).str.strip().ne("")
+    else:
+        description_present = pd.Series(False, index=result.index)
+    if "License" in result.columns:
+        license_present = result["License"].fillna("").astype(str).str.strip().ne("")
+    else:
+        license_present = pd.Series(False, index=result.index)
+    has_readme = _quality_number(result, "Has_README") > 0
+    has_topics = _quality_number(result, "Topics_Count") > 0
+    hygiene = (
+        has_readme.astype(int) * 10
+        + ((description_present | has_topics).astype(int) * 5)
+        + license_present.astype(int) * 5
+    )
+
     result["Maintenance_Status"] = age_days.map(
         lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
     ).fillna("Unknown")
     result["Repository_Quality_Score"] = (
-        description_score + language_score + license_score + maintenance_score
+        collaboration + community + activity + hygiene
     ).astype(int)
     result["Quality_Band"] = result["Repository_Quality_Score"].map(
-        lambda score: "Strong signals" if score >= 75 else "Developing" if score >= 50 else "Needs attention"
+        lambda score: (
+            "Exceptional / Open Source Ready"
+            if score >= 80
+            else "Strong Signals"
+            if score >= 55
+            else "Developing"
+            if score >= 30
+            else "Needs Attention"
+        )
     )
     return result
 
@@ -1814,14 +1878,11 @@ def run_analysis(
     sample_size: int | None = None,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> AnalysisResult:
-    log: list[str] = []
     df = load_excel(uploaded_file)
     if sample_size:
         df = df.head(sample_size).copy()
-    log.append(f"Loaded Excel - {len(df)} rows")
 
     df, _ = prepare_students(df)
-    log.append("Extracted usernames")
 
     usernames = df["GitHub_Username"].tolist()
 
@@ -1834,12 +1895,7 @@ def run_analysis(
         token,
         validation_progress,
     )
-    log.append(
-        f"Validated accounts - {len(valid_users)} valid, {len(invalid_users)} invalid, {len(error_users)} API errors"
-    )
-
     github_stats = build_github_stats(valid_users, user_payloads)
-    log.append("Fetched user stats")
 
     def repo_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1850,9 +1906,6 @@ def run_analysis(
         token,
         repo_progress,
     )
-    if repo_unavailable_users:
-        log.append(f"Repository data unavailable for {len(repo_unavailable_users)} account(s)")
-    log.append(f"Fetched repositories - {len(repo_df)} found")
 
     def contrib_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1863,14 +1916,6 @@ def run_analysis(
         token,
         contrib_progress,
     )
-    if contrib_unavailable_users:
-        log.append(
-            f"PR/issue data unavailable for {len(contrib_unavailable_users)} account(s) — the GitHub Search API "
-            "has a strict per-minute limit; add a GITHUB_TOKEN to improve reliability"
-        )
-    total_prs = int(contributions_df["Pull_Requests"].sum()) if not contributions_df.empty else 0
-    total_issues = int(contributions_df["Issues_Opened"].sum()) if not contributions_df.empty else 0
-    log.append(f"Collected contributions - {total_prs} pull request(s), {total_issues} issue(s)")
 
     def team_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1881,11 +1926,6 @@ def run_analysis(
         token,
         team_progress,
     )
-    if team_unavailable_users:
-        log.append(f"Team activity unavailable for {len(team_unavailable_users)} account(s)")
-    total_team_commits = int(team_summary_df["Team_Commits"].sum()) if not team_summary_df.empty else 0
-    total_team_repos = int(team_summary_df["Contributed_Repos_Count"].sum()) if not team_summary_df.empty else 0
-    log.append(f"Collected team activity - {total_team_commits} commit(s) across {total_team_repos} contributed repo link(s)")
 
     def commit_progress(index: int, total: int, username: str) -> None:
         if progress_callback:
@@ -1896,10 +1936,6 @@ def run_analysis(
         token,
         commit_progress,
     )
-    if commit_unavailable_users:
-        log.append(f"Owned commit history unavailable for {len(commit_unavailable_users)} account(s)")
-    total_owned_commits = int(commit_summary_df["Owned_Commits"].sum()) if not commit_summary_df.empty else 0
-    log.append(f"Collected owned commits - {total_owned_commits} commit(s)")
 
     dashboard_df = build_dashboard_df(
         df,
@@ -1916,24 +1952,14 @@ def run_analysis(
     invalid_issues_df = build_invalid_issues(df, invalid_users, error_users)
     duplicate_issues_df = build_duplicate_issues(df)
     if not duplicate_issues_df.empty:
-        log.append(f"Detected {len(duplicate_issues_df)} duplicate username submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_issues_df], ignore_index=True).drop_duplicates()
         )
     duplicate_student_issues_df = build_duplicate_student_issues(df)
     if not duplicate_student_issues_df.empty:
-        log.append(f"Detected {len(duplicate_student_issues_df)} duplicate student submission(s)")
         invalid_issues_df = (
             pd.concat([invalid_issues_df, duplicate_student_issues_df], ignore_index=True).drop_duplicates()
         )
-    count_mismatches = find_repo_count_mismatches(dashboard_df)
-    if count_mismatches:
-        log.append(
-            f"{len(count_mismatches)} student record(s) show a different fetched repository count than their "
-            "profile reports (profiles also count hidden/private repos that public listings cannot see)"
-        )
-    log.append("Building analytics...")
-    log.append("Complete")
 
     return AnalysisResult(
         source_df=df,
@@ -1947,7 +1973,6 @@ def run_analysis(
         repo_unavailable_users=repo_unavailable_users,
         contributions_df=contributions_df,
         contrib_unavailable_users=contrib_unavailable_users,
-        log=log,
         status=determine_analysis_status(valid_users, error_users),
         team_summary_df=team_summary_df,
         team_repos_df=team_repos_df,

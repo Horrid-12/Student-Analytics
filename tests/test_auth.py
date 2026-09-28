@@ -133,24 +133,35 @@ class TestRBACGating:
         assert client.get("/").status_code == 200
         assert client.get("/leaderboards").status_code in (200, 404)  # roster not loaded -> placeholder/404
 
-    def test_student_can_open_analytics_pages_but_not_issues_or_verification(self, client):
+    def test_student_can_open_analytics_pages_but_not_verification(self, client):
         self._session(client, "student")
-        assert client.get("/students").status_code == 200  # empty account fleet -> placeholder, not 403
-        assert client.get("/history").status_code == 200
+        assert client.get("/repositories").status_code == 200
         assert client.get("/settings").status_code == 200
-        # 5.5: Issues + Verification are faculty/admin-only (student bell + self-scoped Issues removed)
-        assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
+        # 4be7609 "Changed which tabs student account can see": students lost the
+        # Students tab 5.2 had opened up (fleet-backed, but
+        # faculty/admin-only pages in the current product decision).
+        assert client.get("/students", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
+        # /history page removed — unknown path falls through to 404, not a redirect.
+        assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
+        # /issues page removed — unknown path falls through to 404, not a redirect.
+        assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
+        # 5.5: Verification is faculty/admin-only.
         assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
 
     def test_faculty_and_admin_open_all_pages(self, client):
         for role in ("faculty", "admin"):
             c = TestClient(app)
             self._session(c, role)
-            for path in ("/students", "/settings", "/history", "/repositories", "/issues"):
+            for path in ("/students", "/settings", "/repositories"):
                 assert c.get(path).status_code in (200, 404), f"{role} blocked on {path}"
+            # /history and /issues pages removed.
+            assert c.get("/history").status_code == 404
+            assert c.get("/issues").status_code == 404
 
     def test_api_endpoints_require_a_session(self, client):
-        assert client.get("/analysis/batch").status_code in (400, 401, 405)
+        # POST /analysis/batch was removed with the Excel-upload feature:
+        # the route is gone entirely (plain 404, not an auth-gated API).
+        assert client.get("/analysis/batch").status_code == 404
 
 
 class TestSessionTokens:
