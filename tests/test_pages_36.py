@@ -287,7 +287,7 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
         assert "Key Metrics" in body
-        assert "Account Validation Status" in body
+        assert "Account Validation Status" not in body
         assert "Analysis Pipeline" not in body
         assert "Run Log" not in body
         assert "plotly" in body or "Plotly.react" in body

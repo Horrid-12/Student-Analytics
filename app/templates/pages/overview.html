@@ -96,42 +96,6 @@
 </section>
 
 <section class="panel">
-  <div class="panel-title">Account Validation Status</div>
-  {% set status = payload.account_status %}
-  {% set total  = payload.total %}
-  <div class="capsule-wrap">
-    {# ── Stat labels ── #}
-    <div class="capsule-stats">
-      {% for item in status %}
-      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
-      <div class="capsule-stat">
-        <span class="capsule-dot capsule-dot--{{ item.Status | lower }}"></span>
-        <strong>{{ item.Count }}</strong> {{ item.Status }}
-        <span class="capsule-pct">({{ pct }}%)</span>
-      </div>
-      {% endfor %}
-    </div>
-    {# ── Capsule bar ── #}
-    <div class="capsule-track">
-      {% for item in status %}
-      {% if item.Count > 0 %}
-      {% set pct = (item.Count / total * 100) | round(1) if total else 0 %}
-      <div class="capsule-seg capsule-seg--{{ item.Status | lower }}"
-           style="width:{{ pct }}%"
-           aria-label="{{ item.Status }}: {{ item.Count }}">
-        <div class="capsule-tip">
-          <b>{{ item.Status }}</b><br>
-          {{ item.Count }} student{{ 's' if item.Count != 1 else '' }}<br>
-          <span>{{ pct }}%</span>
-        </div>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-<section class="panel">
   <div class="panel-title">Analysis Results</div>
   <div class="two-col-grid">
     <div>
