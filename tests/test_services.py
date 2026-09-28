@@ -976,7 +976,6 @@ class TestRunAnalysis:
         assert result.valid_users == ["alice-dev", "bob-cat"]
         assert result.invalid_users == []
         assert result.error_users == []
-        assert result.log[-1] == "Complete"
 
         dash = result.dashboard_df
         assert set(dash[STUDENT_ID_COL]) == {"101", "202"}

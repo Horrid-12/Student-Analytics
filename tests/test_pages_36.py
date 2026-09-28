@@ -251,7 +251,7 @@ class TestPageRenderingWithData:
         assert "Key Metrics" in body
         assert "Account Validation Status" in body
         assert "Analysis Pipeline" in body
-        assert "Run Log" in body
+        assert "Run Log" not in body
         assert "plotly" in body or "Plotly.react" in body
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):

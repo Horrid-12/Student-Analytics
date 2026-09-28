@@ -656,15 +656,6 @@ def overview_payload(view) -> dict:
         "status": run_outcome(state),
         "elapsed": float(state.get("elapsed") or 0.0),
         "last_analysis": friendly_timestamp(last_analysis_time()),
-        "log": [
-            f"Loaded Excel - {total} rows",
-            "Extracted usernames",
-            f"Validated accounts - {valid} valid, {invalid} invalid, {errors} API errors",
-            f"Fetched repositories - {combined_repos_found} found",
-            f"Collected contributions - {prs} pull request(s), {opened_issues} issue(s), {team_commits} team commit(s)",
-            "Building analytics...",
-            "Complete",
-        ],
         "valid_users": valid,
     }
 
