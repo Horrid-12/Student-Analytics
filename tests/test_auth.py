@@ -154,7 +154,9 @@ class TestRBACGating:
                 assert c.get(path).status_code in (200, 404), f"{role} blocked on {path}"
 
     def test_api_endpoints_require_a_session(self, client):
-        assert client.get("/analysis/batch").status_code in (400, 401, 405)
+        # POST /analysis/batch was removed with the Excel-upload feature:
+        # the route is gone entirely (plain 404, not an auth-gated API).
+        assert client.get("/analysis/batch").status_code == 404
 
 
 class TestSessionTokens:

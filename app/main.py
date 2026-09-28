@@ -56,16 +56,15 @@ def shutdown_event():
 # /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
 # anonymous browsers can reach the consent redirect and callback.
 _PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico", "/privacy")
-_API_REQUIRE_LOGIN = ("/upload", "/analysis/", "/roster/")
 
 
 @app.middleware("http")
 async def auth_gate(request: Request, call_next):
     """Phase 4.7 login + RBAC gate (BUG-043/044/045). Static and the auth pages
-    are public; known page paths are role-gated; upload/batch/roster API calls
-    need a session too. Unknown garbage slugs stay ungated so the friendly 404
-    still works for anonymous browsers. Browser (Accept: text/html) GETs bounce
-    to /login or home; fetch/HTMX calls get JSON 401/403s.
+    are public; known page paths are role-gated. Unknown garbage slugs stay
+    ungated so the friendly 404 still works for anonymous browsers. Browser
+    (Accept: text/html) GETs bounce to /login or home; fetch/HTMX calls get
+    JSON 401/403s.
     """
     path = request.url.path
     request.state.user = auth.current_user(request)
@@ -77,8 +76,6 @@ async def auth_gate(request: Request, call_next):
     wants_html = "text/html" in request.headers.get("accept", "")
 
     if page is None:
-        if path.startswith(_API_REQUIRE_LOGIN) and user is None:
-            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
         return await call_next(request)
 
     if user is None:
@@ -542,53 +539,6 @@ class RosterStore:
 
 roster_store = RosterStore()
 
-# Caps how many analyze_records threads run concurrently. A threading
-# BoundedSemaphore (not asyncio.Semaphore) so it stays valid across the
-# per-request event loops TestClient and uvicorn create independently.
-_BATCH_THREAD_LIMIT = threading.BoundedSemaphore(8)
-
-
-class BatchRequest(BaseModel):
-    roster_id: str
-    student_ids: list[str] = Field(default_factory=list)
-
-
-async def run_batch_unlocked(records: list[dict]) -> dict:
-    """Run one batch's analysis on a worker thread, bounded by the global
-    thread limit so bursts of batches cannot oversubscribe GitHub."""
-    await asyncio.to_thread(_BATCH_THREAD_LIMIT.acquire)
-    try:
-        token = github_client.load_token()
-        return await asyncio.to_thread(batch.analyze_records, records, token)
-    finally:
-        _BATCH_THREAD_LIMIT.release()
-
-
-def _roster_records(prepared):
-    """JSON-safe student records from a prepared roster â€” same contracts as
-    services.prepare_students (normalized Student_ID, extracted usernames)."""
-    return json.loads(prepared.to_json(orient="records"))
-
-
-def _roster_record_keys(records: list[dict]) -> list[str]:
-    """Return stable client-visible keys, including for blank/duplicate IDs."""
-    counts: dict[str, int] = {}
-    for record in records:
-        student_id = str(record.get(services.STUDENT_ID_COL) or "").strip()
-        if student_id:
-            counts[student_id] = counts.get(student_id, 0) + 1
-
-    keys = []
-    for index, record in enumerate(records):
-        student_id = str(record.get(services.STUDENT_ID_COL) or "").strip()
-        if student_id and counts[student_id] == 1:
-            keys.append(student_id)
-        elif student_id:
-            keys.append(f"student:{student_id}:row:{index}")
-        else:
-            keys.append(f"row:{index}")
-    return keys
-
 
 def _is_complete(view) -> bool:
     state = view.get("state")
@@ -626,7 +576,6 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     return {
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name, role=role, roster_id=roster_id),
-        "last_analysis": views.friendly_timestamp(views.last_analysis_time()),
         "auth_role": role.title() if role else "",
         "auth_user": display,
         "auth_status": status,
@@ -772,42 +721,6 @@ def run_metrics(state: dict) -> dict:
         "avg_quality_score": round(sum(quality) / len(quality), 2) if quality else None,
         "elapsed_seconds": float(state.get("elapsed") or 0.0),
     }
-
-
-class _NamedFileView:
-    """Expose a filename over an UploadFile buffer so the frozen load_excel
-    contract (which sniffs ``uploaded_file.name``) keeps deciding csv/xlsx/xls.
-    Everything else (seekable/readable/closed/...) forwards to the raw buffer,
-    so openpyxl/zipfile and pandas use it as a normal binary file-like."""
-
-    def __init__(self, name: str, raw):
-        self.name = name
-        self._raw = raw
-
-    def __getattr__(self, item):
-        return getattr(self._raw, item)
-
-    def seek(self, offset, whence=0):
-        return self._raw.seek(offset, whence)
-
-    def tell(self):
-        return self._raw.tell()
-
-    def read(self, size=-1):
-        return self._raw.read(size)
-
-    def readline(self, size=-1):
-        return self._raw.readline(size)
-
-
-def _upload_failure(request: Request, message: str):
-    if request.headers.get("HX-Request") == "true":
-        return templates.TemplateResponse(
-            request,
-            "partials/upload_result.html",
-            {"roster_id": None, "count": 0, "invalid_format_count": 0, "error": message},
-        )
-    return JSONResponse(status_code=400, content={"status": "error", "message": message})
 
 
 def topbar_date() -> str:
@@ -2243,220 +2156,6 @@ def settings_page(request: Request, linked: str = ""):
     )
 
 
-@app.post("/upload")
-async def upload_roster(request: Request, file: UploadFile = File(...)):
-    """Parse an uploaded roster with the frozen parser contract, store the
-    prepared frames behind a roster_id, and hand the client back the student
-    summary (JSON for API/tests, an HTMX partial when the request comes from
-    the HTMX upload bar)."""
-    await file.seek(0)
-    raw_bytes = await file.read()
-    file_hash = hashlib.sha256(raw_bytes).hexdigest()
-    await file.seek(0)
-    view = _NamedFileView(file.filename or "roster.xlsx", file.file)
-    try:
-        df = services.load_excel(view)
-    except ValueError as exc:
-        return _upload_failure(request, str(exc))
-    except Exception as exc:
-        return _upload_failure(
-            request, f"Could not read the uploaded file as a spreadsheet ({type(exc).__name__})."
-        )
-
-    prepared, invalid_format = services.prepare_students(df)
-    if prepared.empty:
-        return _upload_failure(request, "The roster contains no student rows.")
-    records = _roster_records(prepared)
-    roster_id = uuid.uuid4().hex
-    roster_store.put(roster_id, records)
-    roster_store.put_meta(
-        roster_id,
-        {
-            "filename": file.filename or "roster.xlsx",
-            "file_hash": file_hash,
-            "uploaded_at": datetime.now(IST).isoformat(),
-        },
-    )
-    if database.db_configured():
-        db.register_roster(
-            records,
-            filename=file.filename or "roster.xlsx",
-            file_hash=file_hash,
-            student_count=len(prepared),
-            invalid_count=len(invalid_format),
-            roster_id=roster_id,
-        )
-        db.ensure_run_summary(roster_id, len(prepared), file_hash)
-
-    if request.headers.get("HX-Request") == "true":
-        return templates.TemplateResponse(
-            request,
-            "partials/upload_result.html",
-            {
-                "roster_id": roster_id,
-                "count": len(prepared),
-                "invalid_format_count": len(invalid_format),
-                "ids": _roster_record_keys(records),
-                "error": None,
-            },
-        )
-
-    return {
-        "status": "ok",
-        "roster_id": roster_id,
-        "student_count": len(prepared),
-        "invalid_format_count": len(invalid_format),
-        "student_ids": _roster_record_keys(records),
-        "students": [
-            {
-                "student_id": str(row.get(services.STUDENT_ID_COL) or ""),
-                "name": str(row.get("Student Name") or ""),
-                "division": str(row.get("Division") or ""),
-                "batch": str(row.get("Batch") or ""),
-                "username": row.get("GitHub_Username") or "",
-                "github_username": row.get("GitHub_Username") or "",
-                "linkedin_username": row.get("LinkedIn_Username") or "",
-                "hackerrank_username": row.get("HackerRank_Username") or "",
-            }
-            for row in records
-        ],
-    }
-
-
-@app.post("/upload/reset")
-async def upload_reset(request: Request, roster_id: str = ""):
-    """Ditch the stored roster for this upload and restore the pristine upload bar."""
-    if roster_id:
-        roster_store.clear(roster_id)
-        if database.db_configured():
-            db.clear_roster(roster_id)
-    return templates.TemplateResponse(request, "partials/upload_bar.html", {})
-
-
-@app.get("/roster/{roster_id}")
-def roster_summary(roster_id: str):
-    """Roster summary for UI restore (localStorage survivors a reload/tab
-    close) â€” whether it still exists server-side, its size, ids, and any
-    accumulated analysis results so far."""
-    if database.db_configured():
-        records = db.get_roster_records(roster_id)
-        state = db.get_run_summary(roster_id)
-    else:
-        records = roster_store.get(roster_id)
-        state = roster_store.get_analysis(roster_id)
-    if records is None:
-        raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
-    return {
-        "roster_id": roster_id,
-        "student_count": len(records),
-        "student_ids": _roster_record_keys(records),
-        "analysis": state,
-    }
-
-
-@app.get("/analysis/progress")
-async def analysis_progress(roster_id: str = ""):
-    """Server-side accumulation view for the run bar (done/total/status)."""
-    if not roster_id:
-        return {"roster_id": "", "total": 0, "done": 0, "status": "idle"}
-    state = None
-    if database.db_configured():
-        state = db.get_run_summary(roster_id)
-    else:
-        state = roster_store.get_analysis(roster_id)
-    if state is None:
-        return {"roster_id": roster_id, "total": 0, "done": 0, "status": "idle"}
-    return {
-        "roster_id": roster_id,
-        "total": state.get("total", 0),
-        "done": state.get("done", 0),
-        "status": state.get("status", "idle"),
-        "valid": state.get("valid", 0),
-        "invalid": state.get("invalid", 0),
-        "errors": state.get("errors", 0),
-    }
-
-
-@app.post("/analysis/batch")
-async def analysis_batch(payload: BatchRequest):
-    """Analyze a ~25-student slice of the stored roster. Results accumulate into
-    ``analysis:<roster_id>`` (thread-safe appends) so progress is server-authoritative."""
-    records = roster_store.get(payload.roster_id)
-    if records is None and database.db_configured():
-        # Serverless cold start — the in-memory RosterStore is empty, but the
-        # roster was persisted to Postgres at upload time. Rehydrate it.
-        records = db.get_roster_records(payload.roster_id)
-        if records is not None:
-            roster_store.put(payload.roster_id, records)
-    if records is None:
-        raise HTTPException(status_code=404, detail="Roster not found â€” upload it again")
-
-    keys = _roster_record_keys(records)
-    wanted = {str(sid).strip() for sid in payload.student_ids}
-    selected = [(key, row) for key, row in zip(keys, records) if key in wanted]
-    # Keep compatibility with callers that send a unique normalized Student_ID
-    # directly, while canonical upload responses use the stable row keys above.
-    if not selected:
-        selected = [
-            (key, row)
-            for key, row in zip(keys, records)
-            if str(row.get(services.STUDENT_ID_COL) or "").strip() in wanted
-        ]
-    subset = [dict(row, _analysis_key=key) for key, row in selected]
-    if not subset:
-        raise HTTPException(status_code=400, detail="No roster students matched this batch")
-
-    meta = roster_store.get_meta(payload.roster_id) or {}
-    if not meta.get("file_hash") and database.db_configured():
-        summary = db.get_run_summary(payload.roster_id)
-        if summary and summary.get("file_hash"):
-            meta = dict(meta, file_hash=summary["file_hash"])
-    roster_store.ensure_analysis(
-        payload.roster_id, len(records), file_hash=meta.get("file_hash")
-    )
-    if database.db_configured():
-        db.ensure_run_summary(payload.roster_id, len(records), file_hash=meta.get("file_hash"))
-    try:
-        result = await run_batch_unlocked(subset)
-    except services.RateLimitError as exc:
-        roster_store.mark_analysis(payload.roster_id, "rate_limited")
-        if database.db_configured():
-            db.mark_run_rate_limited(payload.roster_id)
-        return JSONResponse(
-            status_code=429,
-            content={
-                "status": "rate_limit",
-                "message": str(exc),
-                "reset_epoch": exc.reset_epoch,
-            },
-        )
-
-    result = dict(result)
-    result["analyzed_keys"] = [key for key, _ in selected]
-    state = roster_store.append_analysis(payload.roster_id, result)
-    if not state:
-        raise HTTPException(status_code=404, detail="Roster was reset while this batch was running")
-    if database.db_configured():
-        db.upsert_batch_results(payload.roster_id, result, result["analyzed_keys"])
-    if state.get("status") == "complete":
-        _db_record_run_if_unrecorded(payload.roster_id, state)
-    client_result = {
-        key: value
-        for key, value in result.items()
-        if key not in {"analyzed_keys", "student_outcomes"}
-    }
-    return {
-        "status": "ok",
-        "result": client_result,
-        "progress": {
-            "roster_id": payload.roster_id,
-            "total": state.get("total", len(records)),
-            "done": state.get("done", 0),
-            "run_status": state.get("status", "running"),
-        },
-    }
-
-
 @app.get("/{slug}", response_class=HTMLResponse)
 def placeholder_page(request: Request, slug: str):
     for name, (icon, title, message, needs_run) in PAGE_PLACEHOLDERS.items():
@@ -2479,7 +2178,6 @@ async def custom_404_handler(request: Request, exc: Exception):
     path = request.url.path
     if (
         "application/json" in accept
-        or path.startswith(("/analysis/", "/upload", "/roster/"))
         or path.endswith("/export")
     ):
         detail = getattr(exc, "detail", "Not Found")

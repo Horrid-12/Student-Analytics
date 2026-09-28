@@ -1,10 +1,10 @@
 """Tests for the 3.6 page ports.
 
-End-to-end over TestClient with a fake GitHub backend: upload the synthetic
-roster, run both batches (state accumulates & completes, the run is recorded
-into a temp history DB), then assert every ported page renders with data,
-filters/export/workflow behave, and pages without an analysis show the legacy
-placeholder. No network, no Streamlit.
+End-to-end over TestClient with a fake GitHub backend: seed the synthetic
+roster directly into the roster store, run both batches (state accumulates &
+completes, the run is recorded into a temp history DB), then assert every
+ported page renders with data, filters/export/workflow behave, and pages
+without an analysis show the legacy placeholder. No network, no Streamlit.
 """
 
 import io
@@ -208,22 +208,63 @@ def client(tmp_path, monkeypatch):
     yield test_client
 
 
-def upload_roster(client):
+def upload_roster(_client=None):
+    """Seed the roster store directly from the synthetic workbook.
+
+    POST /upload was removed with the Excel-upload feature; page tests now
+    seed the same prepared records the route used to store.
+    """
+    import services as legacy_services
+
     buf = make_roster_xlsx()
-    response = client.post("/upload", files={"file": ("roster.xlsx", buf.getvalue(), XLSX_MIME)})
-    assert response.status_code == 200
-    return response.json()
+    df = legacy_services.load_excel(buf)
+    prepared, _invalid_format = legacy_services.prepare_students(df)
+    records = json.loads(prepared.to_json(orient="records"))
+    roster_id = uuid.uuid4().hex
+    roster_store.put(roster_id, records)
+    roster_store.put_meta(
+        roster_id,
+        {
+            "filename": "roster.xlsx",
+            "file_hash": "test-file-hash",
+            "uploaded_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    student_ids = [str(row.get(legacy_services.STUDENT_ID_COL) or "") for row in records]
+    return {
+        "status": "ok",
+        "roster_id": roster_id,
+        "student_count": len(prepared),
+        "student_ids": student_ids,
+        "students": [{"student_id": sid} for sid in student_ids],
+    }
 
 
-def run_all_batches(client, data):
+def run_all_batches(_client, data):
+    """Run every student's batch through the worker directly.
+
+    POST /analysis/batch was removed with the Excel-upload feature; this
+    mirrors the route's accumulate-then-record flow via RosterStore.
+    """
+    import services as legacy_services
+
+    from app import batch as batch_worker
+    from app.main import _db_record_run_if_unrecorded
+
     roster_id = data["roster_id"]
-    ids = [s["student_id"] for s in data["students"]]
-    for sid in ids:
-        response = client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": [sid]},
-        )
-        assert response.status_code == 200
+    records = roster_store.get(roster_id)
+    wanted = {str(s["student_id"]).strip() for s in data["students"]}
+    roster_store.ensure_analysis(roster_id, len(records), file_hash="test-file-hash")
+    for row in records:
+        sid = str(row.get(legacy_services.STUDENT_ID_COL) or "").strip()
+        if sid not in wanted:
+            continue
+        result = dict(batch_worker.analyze_records([dict(row, _analysis_key=sid)], token=None))
+        result["analyzed_keys"] = [sid]
+        roster_store.append_analysis(roster_id, result)
+    state = roster_store.get_analysis(roster_id)
+    if state and state.get("status") == "complete":
+        _db_record_run_if_unrecorded(roster_id, state)
     return roster_id
 
 
@@ -255,17 +296,19 @@ class TestPageRenderingWithData:
         assert "plotly" in body or "Plotly.react" in body
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
-        """BUG-107 regression: a complete Overview must still carry the
-        previous-results wrapper the run script hides while a new run starts,
-        without the removed pipeline-status ids."""
+        """BUG-107 regression (updated for upload removal): a complete Overview
+        carries no run-trigger UI — no Run Analysis button, no upload bar, no
+        run script — while the previous-results wrapper still groups results."""
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/?roster={roster_id}").text
         assert 'id="pipeline-status-badge"' not in body
         assert 'id="pipeline-status-text"' not in body
         assert 'id="pipeline-completed-at"' not in body
+        assert 'id="run-analysis"' not in body
+        assert 'id="roster-form"' not in body
+        assert 'id="upload-result"' not in body
+        assert "runAll" not in body
         assert 'id="previous-results"' in body
-        assert "prevResults.hidden = true" in body
-        assert "restorePreviousResults" in body
 
     def test_overview_without_roster_shows_empty_state(self, tmp_path):
         self.monkeypatch.setattr(storage, "DB_PATH", tmp_path / "analytics_history.db")
@@ -275,6 +318,9 @@ class TestPageRenderingWithData:
         body = self.client.get("/").text
         assert "Student Analytics Workspace" in body
         assert "No student data loaded yet" in body
+        assert "complete onboarding" in body
+        assert "Upload a roster" not in body
+        assert "Run Analysis" not in body
 
     def test_students_page_renders_rows_and_profile(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -889,10 +935,7 @@ class TestPageRenderingWithData:
         roster_id = self._setup(tmp_path)
         ids = roster_store.get(roster_id)
         first_ids = [str(row["Student_ID"]) for row in ids[:1]]
-        self.client.post(
-            "/analysis/batch",
-            json={"roster_id": roster_id, "student_ids": first_ids},
-        )
+        run_all_batches(self.client, {"roster_id": roster_id, "students": [{"student_id": sid} for sid in first_ids]})
         assert len(storage.load_run_history()) == 1
 
     def test_pages_without_analysis_show_placeholder(self, tmp_path):

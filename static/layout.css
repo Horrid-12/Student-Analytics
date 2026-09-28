@@ -317,115 +317,6 @@ button {
     color: var(--text);
 }
 
-/* Uploader bar — BUG-087: uses theme tokens so the control adapts to both
-   dark and light themes instead of hardcoding white. */
-.upload-bar {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    background-color: rgba(249, 247, 241, 0.60);
-    background-image: linear-gradient(rgba(249, 247, 241, 0.34), rgba(249, 247, 241, 0.34)), url('/static/paper-fiber-texture.png');
-    background-position: center;
-    background-size: cover;
-    background-attachment: fixed;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px 26px 20px;
-    min-height: 176px;
-    box-sizing: border-box;
-}
-
-.upload-browse {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    background: transparent;
-    border: 1px dashed rgba(27, 38, 51, 0.46);
-    border-radius: 8px;
-    min-height: 112px;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 16px 18px;
-    color: var(--text);
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    transition: background 150ms ease, border-color 150ms ease;
-}
-
-.upload-browse::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 130px;
-    height: 74px;
-    background-image: radial-gradient(rgba(27, 38, 51, 0.24) 0.7px, transparent 0.8px);
-    background-size: 5px 5px;
-    -webkit-mask-image: linear-gradient(135deg, transparent 30%, black 85%);
-    mask-image: linear-gradient(135deg, transparent 30%, black 85%);
-    opacity: 0.18;
-    pointer-events: none;
-}
-
-.upload-browse:hover {
-    background: var(--hover-bg);
-    border-color: var(--blue-hover-border);
-}
-
-.upload-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(86, 98, 113, 0.40);
-}
-
-.upload-title {
-    font-family: var(--font-display);
-    font-size: 24px;
-    font-weight: 800;
-}
-
-.upload-copy {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    position: relative;
-    z-index: 1;
-}
-
-.upload-copy strong {
-    font-size: 17px;
-}
-
-.upload-copy small {
-    color: rgba(20, 34, 53, 0.82);
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.upload-bar.is-dragging {
-    border-color: var(--red);
-    background: rgba(190, 52, 43, 0.06);
-}
-
-.upload-bar.is-dragging .upload-browse {
-    border-color: var(--red);
-    color: var(--red);
-}
-
-.upload-hint {
-    font-size: 14px;
-    color: var(--muted);
-}
-
 /* Buttons — replicates Streamlit button styling (style.css 1043-1089). */
 .btn {
     display: inline-flex;
@@ -1105,7 +996,6 @@ button {
 [data-theme="dark"] .app-sidebar,
 [data-theme="dark"] .topbar-card,
 [data-theme="dark"] .auth-notice,
-[data-theme="dark"] .upload-bar,
 [data-theme="dark"] .panel {
     background-color: var(--card);
     background-image: linear-gradient(rgba(58, 58, 62, 0.5), rgba(58, 58, 62, 0.5)), url('/static/paper-fiber-texture-dark.png');
