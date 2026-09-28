@@ -1615,6 +1615,7 @@ def save_account_snapshot(
     repos: Optional[list] = None,
     synced_at: str = "",
     error: str = "",
+    team_repos: Optional[list] = None,
 ) -> bool:
     """Upsert one account's dashboard-shaped analytics snapshot (Postgres leg)."""
     email = (email or "").strip().lower()
@@ -1624,24 +1625,47 @@ def save_account_snapshot(
         with database.conn() as c:
             if c is None:
                 return False
-            cur = c.execute(
-                "INSERT INTO account_snapshots "
-                "(email, username, status, student_json, repos_json, synced_at, error) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (email) DO UPDATE SET "
-                "username = EXCLUDED.username, status = EXCLUDED.status, "
-                "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
-                "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
-                (
-                    email,
-                    (username or "").strip(),
-                    (status or "").strip(),
-                    Jsonb(_json_safe(student or {})),
-                    Jsonb(_json_safe(repos or [])),
-                    synced_at or "",
-                    (error or "").strip(),
-                ),
-            )
+            try:
+                cur = c.execute(
+                    "INSERT INTO account_snapshots "
+                    "(email, username, status, student_json, repos_json, team_repos_json, synced_at, error) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (email) DO UPDATE SET "
+                    "username = EXCLUDED.username, status = EXCLUDED.status, "
+                    "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
+                    "team_repos_json = EXCLUDED.team_repos_json, "
+                    "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
+                    (
+                        email,
+                        (username or "").strip(),
+                        (status or "").strip(),
+                        Jsonb(_json_safe(student or {})),
+                        Jsonb(_json_safe(repos or [])),
+                        Jsonb(_json_safe(team_repos or [])),
+                        synced_at or "",
+                        (error or "").strip(),
+                    ),
+                )
+            except Exception:
+                # Pre-migration database without team_repos_json: legacy shape.
+                cur = c.execute(
+                    "INSERT INTO account_snapshots "
+                    "(email, username, status, student_json, repos_json, synced_at, error) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (email) DO UPDATE SET "
+                    "username = EXCLUDED.username, status = EXCLUDED.status, "
+                    "student_json = EXCLUDED.student_json, repos_json = EXCLUDED.repos_json, "
+                    "synced_at = EXCLUDED.synced_at, error = EXCLUDED.error",
+                    (
+                        email,
+                        (username or "").strip(),
+                        (status or "").strip(),
+                        Jsonb(_json_safe(student or {})),
+                        Jsonb(_json_safe(repos or [])),
+                        synced_at or "",
+                        (error or "").strip(),
+                    ),
+                )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("save_account_snapshot failed: %s", exc)
@@ -1650,29 +1674,41 @@ def save_account_snapshot(
 
 def _snapshot_row(row: dict) -> dict:
     """Normalize one account_snapshots row into the public dict shape."""
+    team = row.get("team_repos_json", [])
+    # Postgres Jsonb returns list; legacy rows / SQLite fallback may lack it.
+    if not isinstance(team, list):
+        team = []
     return {
         "email": row.get("email", ""),
         "username": row.get("username", ""),
         "status": row.get("status", ""),
         "student": row.get("student_json") if isinstance(row.get("student_json"), (dict, list)) else {},
         "repos": row.get("repos_json") if isinstance(row.get("repos_json"), list) else [],
+        "team_repos": team,
         "synced_at": row.get("synced_at", ""),
         "error": row.get("error", ""),
     }
 
 
 def get_account_snapshot(email: str) -> Optional[dict]:
-    """One account's snapshot dict (student/repos parsed), or None."""
+    """One account's snapshot dict (student/repos/team_repos parsed), or None."""
     email = (email or "").strip().lower()
     try:
         with database.conn() as c:
             if c is None:
                 return None
-            cur = c.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots WHERE email = %s",
-                (email,),
-            )
+            try:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = %s",
+                    (email,),
+                )
+            except Exception:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots WHERE email = %s",
+                    (email,),
+                )
             row = cur.fetchone()
             return _snapshot_row(dict(row)) if row else None
     except (psycopg.errors.DatabaseError, OSError) as exc:
@@ -1686,10 +1722,16 @@ def list_account_snapshots() -> list[dict]:
         with database.conn() as c:
             if c is None:
                 return []
-            cur = c.execute(
-                "SELECT email, username, status, student_json, repos_json, synced_at, error "
-                "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
-            )
+            try:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, team_repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                )
+            except Exception:
+                cur = c.execute(
+                    "SELECT email, username, status, student_json, repos_json, synced_at, error "
+                    "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
+                )
             return [_snapshot_row(dict(row)) for row in cur.fetchall()]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("list_account_snapshots failed: %s", exc)

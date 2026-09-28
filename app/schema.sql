@@ -343,7 +343,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
 
 -- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
 --     One row per synced account: JSONB holds the dashboard-shaped student
---     record + the REPO_COLS repository list, so student pages rebuild the
+--     record + the REPO_COLS repository list + the TEAM_REPOS_COLS
+--     contributed-repo list, so student pages rebuild the
 --     analysis_view shape without re-fetching GitHub on every request.
 CREATE TABLE IF NOT EXISTS account_snapshots (
     email        TEXT PRIMARY KEY,
@@ -351,10 +352,12 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
     status       TEXT NOT NULL DEFAULT '',
     student_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     repos_json   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     synced_at    TEXT NOT NULL DEFAULT '',
     error        TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
+ALTER TABLE account_snapshots ADD COLUMN IF NOT EXISTS team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 13. Reference sheet for the Verification cross-check (Phase 4.12).
 --     A single active "Student Details"-schema workbook uploaded by faculty:
