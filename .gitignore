@@ -11,6 +11,10 @@ __pycache__/
 .streamlit/secrets.toml
 analytics_history.db
 users.db
+support.db
+accounts.db
+reference.db
+*.xlsx
 .vercel
 all_templates.txt
 

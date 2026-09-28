@@ -1,28 +1,187 @@
 {# Shared notification bell (top-right of the topbar). Staff get support-ticket
-   alerts as `notifications` (issue/sub/time/fix_url dicts) with
-   `notif_count`. Handlers set `notif_empty` (None renders no bell); the
-   dropdown shows at most 5 at once and scrolls (CSS). #}
-{% if notif_empty %}
-<details class="notif-bell">
-  <summary class="notif-bell-btn" aria-label="Notifications{% if notif_count %}, {{ notif_count }} open{% endif %}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-    {% if notif_count %}<span class="notif-badge">{{ notif_count }}</span>{% endif %}
+alerts as `notifications` (issue/sub/time/fix_url dicts) with `notif_count`.
+Handlers set `notif_empty` (None renders no bell); the dropdown shows at most 5
+at once and scrolls (CSS). #} {% if notif_empty %}
+<details class="notif-bell" id="global-notif-bell">
+  <summary
+    class="notif-bell-btn"
+    aria-label="Notifications{% if notif_count %}, {{ notif_count }} open{% endif %}"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+    {% if notif_count %}<span class="notif-badge">{{ notif_count }}</span>{%
+    endif %}
   </summary>
   <div class="notif-dropdown" role="menu" aria-label="Notifications">
-    <div class="notif-head">Notifications</div>
+    <div
+      class="notif-head"
+      style="display: flex; justify-content: space-between; align-items: center"
+    >
+      <span>Notifications</span>
+      {% if notif_count and (auth_role|lower == 'student' or not auth_role) %}
+      <button type="button" class="notif-mark-all-btn" id="notif-mark-all-btn">
+        Mark all as read
+      </button>
+      {% endif %}
+    </div>
     {% if notifications %}
-    <div class="notif-list">
+    <div class="notif-list" id="notif-list-container">
       {% for n in notifications %}
-      <div class="notif-item">
-        <div class="notif-text">{{ n.issue }}</div>
-        {% if n.sub %}<div class="notif-sub">{{ n.sub }}</div>{% endif %}
-        <div class="notif-meta">{% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}<a class="notif-fix" href="{{ n.fix_url }}">Fix</a></div>
+      <div
+        class="notif-item{% if n.is_unread %} notif-unread{% endif %}"
+        data-notif-id="{{ n.id or '' }}"
+      >
+        <div style="display: flex; align-items: flex-start; gap: 6px">
+          {% if n.is_unread %}<span
+            class="notif-unread-dot"
+            aria-hidden="true"
+          ></span
+          >{% endif %}
+          <div class="notif-text" style="flex: 1">{{ n.issue }}</div>
+        </div>
+        {% if n.sub %}
+        <div class="notif-sub">{{ n.sub }}</div>
+        {% endif %}
+        <div class="notif-meta">
+          {% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}
+          <a
+            class="notif-fix"
+            href="{{ n.fix_url }}"
+            data-notif-id="{{ n.id or '' }}"
+            >Fix</a
+          >
+        </div>
       </div>
       {% endfor %}
     </div>
     {% else %}
-    <p class="notif-empty">{{ notif_empty }}</p>
+    <p class="notif-empty" id="notif-empty-msg">{{ notif_empty }}</p>
     {% endif %}
   </div>
 </details>
+<script>
+  (function () {
+    var bell = document.getElementById("global-notif-bell");
+    if (!bell) return;
+
+    bell.addEventListener("click", function (e) {
+      var target = e.target.closest("a.notif-fix, .notif-item");
+      if (!target) return;
+      var notifId =
+        target.getAttribute("data-notif-id") ||
+        (target.closest(".notif-item") &&
+          target.closest(".notif-item").getAttribute("data-notif-id"));
+      if (notifId) {
+        fetch("/api/notifications/" + encodeURIComponent(notifId) + "/read", {
+          method: "POST",
+        })
+          .then(function (res) {
+            return res.json();
+          })
+          .then(function (data) {
+            if (data && data.ok) {
+              var item = target.closest(".notif-item");
+              if (item) {
+                item.classList.remove("notif-unread");
+                var dot = item.querySelector(".notif-unread-dot");
+                if (dot) dot.remove();
+              }
+              updateBadge(data.unread_count);
+            }
+          })
+          .catch(function () {});
+      }
+    });
+
+    var markAllBtn = document.getElementById("notif-mark-all-btn");
+    if (markAllBtn) {
+      markAllBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        fetch("/api/notifications/read-all", { method: "POST" })
+          .then(function (res) {
+            return res.json();
+          })
+          .then(function (data) {
+            if (data && data.ok) {
+              bell.querySelectorAll(".notif-unread").forEach(function (el) {
+                el.classList.remove("notif-unread");
+                var dot = el.querySelector(".notif-unread-dot");
+                if (dot) dot.remove();
+              });
+              updateBadge(0);
+              markAllBtn.remove();
+            }
+          })
+          .catch(function () {});
+      });
+    }
+
+    function updateBadge(count) {
+      var summary = bell.querySelector("summary.notif-bell-btn");
+      if (!summary) return;
+      var bCls = ["notif", "badge"].join("-");
+      var badge = summary.querySelector("." + bCls);
+      if (count > 0) {
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = bCls;
+          summary.appendChild(badge);
+        }
+        badge.textContent = count;
+        summary.setAttribute("aria-label", "Notifications, " + count + " open");
+      } else {
+        if (badge) badge.remove();
+        summary.setAttribute("aria-label", "Notifications");
+      }
+    }
+
+    var hasSSE = typeof EventSource !== "undefined";
+    if (hasSSE) {
+      try {
+        var source = new EventSource("/api/notifications/stream");
+        source.addEventListener("notification", function (e) {
+          try {
+            var payload = JSON.parse(e.data);
+            if (payload && typeof payload.unreadCount === "number") {
+              updateBadge(payload.unreadCount);
+            }
+          } catch (err) {}
+        });
+        source.onerror = function () {
+          source.close();
+          startPolling();
+        };
+      } catch (e) {
+        startPolling();
+      }
+    } else {
+      startPolling();
+    }
+
+    function startPolling() {
+      setInterval(function () {
+        fetch("/api/notifications")
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (data) {
+            if (data && typeof data.unread_count === "number") {
+              updateBadge(data.unread_count);
+            }
+          })
+          .catch(function () {});
+      }, 15000);
+    }
+  })();
+</script>
 {% endif %}

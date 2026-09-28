@@ -121,7 +121,7 @@ ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards
 # which is the current product decision.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
+    "student": ("Overview", "Students", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }

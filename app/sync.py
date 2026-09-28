@@ -237,7 +237,12 @@ def compute_account_snapshot(
         is_valid, payload, is_error, _ = services.get_user(username, token)
     except services.RateLimitError:
         return None, [], [], "rate_limited"
-    except Exception:
+    except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"get_user Exception: {e}")
+        logger.error(traceback.format_exc())
         return None, [], [], "api_error"
     if not is_valid or not payload:
         return None, [], [], ("not_found" if not is_error else "api_error")
@@ -350,3 +355,109 @@ def sync_all(token: str | None = None, force: bool = False) -> dict:
             summary["error_kinds"][code] = summary["error_kinds"].get(code, 0) + 1
     summary["finished_at"] = time.strftime(_SYNC_TIME_FORMAT)
     return summary
+
+def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str, str]:
+    """Perform a deep, heavy fetch of commits, PRs, and team repos for a single user."""
+    from app import batch, accounts
+    
+    email = _clean_text(user_row.get("email"))
+    username = _clean_text(user_row.get("github_username"))
+    if not email or not username:
+        return False, "no_handle", "account has no verified GitHub username"
+
+    record = {
+        "Student_ID": user_row.get("prn") or email,
+        "Student Name": user_row.get("name"),
+        "Division": user_row.get("division"),
+        "Batch": user_row.get("practical_batch"),
+        "Semester": user_row.get("semester"),
+        "Roster_Email": email,
+        services.GITHUB_COL: f"https://github.com/{username}",
+        "GitHub_Username": username,
+        "Submitted_GitHub_Username": username,
+        "Academic_Year": "2026-2027",
+        "LinkedIn_Username": "",
+        "LinkedIn_URL": "",
+        "HackerRank_Username": "",
+        "HackerRank_URL": ""
+    }
+
+    try:
+        result = batch.analyze_records([record], token)
+        now = time.strftime(_SYNC_TIME_FORMAT)
+        
+        student_rows = { s.get("Email address") or s.get("Roster_Email") or s.get("Student_ID"): s for s in result.get("students", []) }
+        student = student_rows.get(email) or student_rows.get(record["Student_ID"])
+        if not student:
+            return False, "api_error", "Failed to fetch student data"
+
+        repo_rows = result.get("repos", [])
+        team_rows = result.get("team_repos", [])
+        my_repos = [r for r in repo_rows if str(r.get("Username")).lower() == username.lower()]
+        my_team = [r for r in team_rows if str(r.get("Username")).lower() == username.lower()]
+        
+        accounts.init_db()
+        saved = accounts.save_snapshot(
+            email,
+            username=username,
+            status="ok",
+            student=student,
+            repos=my_repos,
+            team_repos=my_team,
+            synced_at=now,
+            error=""
+        )
+        if not saved:
+            return False, "storage", "failed to save snapshot"
+        return True, "saved", "Heavy snapshot saved successfully"
+    except Exception as e:
+        return False, "api_error", str(e)
+
+
+def sync_heavy_next(token: str | None = None) -> dict:
+    """Round-robin heavy sync: pick the single approved student whose snapshot
+    is oldest (or missing) and run ``sync_heavy_one`` for just them.
+
+    Designed to be called by a Vercel cron every 10-15 minutes so the entire
+    fleet rotates through automatically without hitting the serverless timeout.
+
+    Returns a JSON-friendly summary dict.
+    """
+    approved = auth.get_approved_accounts()
+    if not approved:
+        return {"status": "skip", "reason": "no_approved_users"}
+
+    # Find the stalest: no snapshot → epoch 0, otherwise parse synced_at
+    stalest_user = None
+    stalest_time = float("inf")
+    for user_row in approved:
+        email = _clean_text(user_row.get("email"))
+        if not email or not _clean_text(user_row.get("github_username")):
+            continue
+        snapshot = accounts.get_snapshot(email)
+        if snapshot is None or snapshot.get("status") != "ok":
+            # Never synced or errored — top priority
+            stalest_user = user_row
+            stalest_time = 0
+            break
+        parsed = _parse_synced(snapshot.get("synced_at", ""))
+        ts = parsed.timestamp() if parsed else 0
+        if ts < stalest_time:
+            stalest_time = ts
+            stalest_user = user_row
+
+    if stalest_user is None:
+        return {"status": "skip", "reason": "no_eligible_users"}
+
+    email = _clean_text(stalest_user.get("email"))
+    username = _clean_text(stalest_user.get("github_username"))
+    logger.info("sync_heavy_next: picking %s (@%s)", email, username)
+
+    ok, code, detail = sync_heavy_one(stalest_user, token)
+    return {
+        "status": "ok" if ok else "error",
+        "email": email,
+        "username": username,
+        "code": code,
+        "detail": detail,
+    }
