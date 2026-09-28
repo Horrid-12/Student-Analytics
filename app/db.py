@@ -758,37 +758,6 @@ def get_issues_data(roster_id: str) -> list[dict]:
         return []
 
 
-# ── workflow ───────────────────────────────────────────────────────────────────
-
-def get_workflow(roster_id: str) -> dict:
-    """Return the workflow state dict (issue index → {status, owner, notes})."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return {}
-            cur = c.execute(
-                "SELECT state FROM workflow_state WHERE roster_id = %s",
-                (roster_id,),
-            )
-            row = cur.fetchone()
-            return row["state"] if row else {}
-    except (psycopg.errors.DatabaseError, OSError):
-        return {}
-
-
-def put_workflow(roster_id: str, state: dict) -> None:
-    try:
-        with database.conn() as c:
-            if c is not None:
-                c.execute(
-                    "INSERT INTO workflow_state (roster_id, state) VALUES (%s, %s) "
-                    "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
-                    (roster_id, Jsonb(state)),
-                )
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("put_workflow failed: %s", exc)
-
-
 def get_blacklist(roster_id: str) -> dict:
     """Return the leaderboard blacklist ({student_id: [boards]})."""
     try:

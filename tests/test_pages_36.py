@@ -3,7 +3,8 @@
 End-to-end over TestClient with a fake GitHub backend: seed the synthetic
 roster directly into the roster store, run both batches (state accumulates &
 completes, the run is recorded into a temp history DB), then assert every
-ported page renders with data, filters/export/workflow behave, and pages
+ported page renders with data,
+filters/export behave, and pages
 without an analysis show the legacy placeholder. No network, no Streamlit.
 """
 
@@ -877,18 +878,10 @@ class TestPageRenderingWithData:
         assert "Validation Status" in csv.text
         assert "alice-dev" in csv.text and "Unreferenced" in csv.text
 
-    def test_issues_page_and_workflow_save(self, tmp_path):
+    def test_issues_page_and_workflow_are_gone(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        body = self.client.get(f"/issues?roster={roster_id}").text
-        assert "Issues" in body and "Student" in body
-
-        response = self.client.post(
-            "/issues/workflow?roster=" + roster_id,
-            json={"101|test|alice-dev": {"Status": "Resolved", "Owner": "faculty", "Notes": "fixed"}},
-        )
-        assert response.status_code == 200
-        workflow = roster_store.get_workflow(roster_id)
-        assert workflow["101|test|alice-dev"]["Status"] == "Resolved"
+        assert self.client.get(f"/issues?roster={roster_id}").status_code == 404
+        assert self.client.post("/issues/workflow?roster=" + roster_id, json={}).status_code == 404
 
     def test_students_export_csv_and_xlsx(self, tmp_path):
         roster_id = self._setup(tmp_path)
@@ -930,9 +923,10 @@ class TestPageRenderingWithData:
         make_user(self.client, "admin")
         data = upload_roster(self.client)
         roster_id = data["roster_id"]
-        for path in ("students", "repositories", "leaderboards", "issues"):
+        for path in ("students", "repositories", "leaderboards"):
             body = self.client.get(f"/{path}?roster={roster_id}").text
             assert "synced student accounts" in body
+        assert self.client.get(f"/issues?roster={roster_id}").status_code == 404
         body = self.client.get("/students").text
         assert "synced student accounts" in body
 

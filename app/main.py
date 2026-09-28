@@ -154,13 +154,6 @@ def _fleet_view(request: Request, roster: str = ""):
         return None
 
 
-def _workflow_state(roster_id: str) -> dict:
-    """Workflow state: prefer Postgres; fall back to RosterStore cache."""
-    if database.db_configured():
-        return db.get_workflow(roster_id)
-    return roster_store.get_workflow(roster_id)
-
-
 def _blacklist_state(roster_id: str) -> dict:
     """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache."""
     if database.db_configured():
@@ -182,7 +175,7 @@ def _db_log_event(event_type: str, detail: str = "") -> bool:
     return storage.log_event(event_type, detail)
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Issues", "Verification", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Verification", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -191,7 +184,6 @@ NAV_SVG = {
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
-    "Issues": '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
@@ -206,7 +198,6 @@ def slug_for(page: str) -> str:
         "Students": "students",
         "Repositories": "repositories",
         "Leaderboards": "leaderboards",
-        "Issues": "issues",
         "Verification": "verification",
         "Support": "support",
         "Settings": "settings",
@@ -238,7 +229,6 @@ PAGE_PLACEHOLDERS = {
     "Students": ("students", "Student Explorer", "Search, filter, and inspect validated GitHub student profiles.", True),
     "Repositories": ("repositories", "Repositories", "Browse every public repository in the fleet with language and activity details.", True),
     "Leaderboards": ("leaderboards", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students.", True),
-    "Issues": ("issues", "Open Issues", "Review open issues and technical debt across student repositories.", True),
     "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
     "Verification": ("verification", "Verification", "Confirm each GitHub account against the uploaded reference sheet, review validation results, and export per-student status.", True),
 }
@@ -304,19 +294,6 @@ class RosterStore:
             return data if isinstance(data, dict) else None
         except (TypeError, ValueError):
             return None
-
-    def put_workflow(self, roster_id: str, workflow: dict) -> None:
-        self._cache.set(f"workflow:{roster_id}", json.dumps(workflow, default=str), self._ttl)
-
-    def get_workflow(self, roster_id: str) -> dict:
-        raw = self._cache.get(f"workflow:{roster_id}")
-        if not raw:
-            return {}
-        try:
-            data = json.loads(raw)
-            return data if isinstance(data, dict) else {}
-        except (TypeError, ValueError):
-            return {}
 
     def put_blacklist(self, roster_id: str, blacklist: dict) -> None:
         self._cache.set(f"blacklist:{roster_id}", json.dumps(blacklist, default=str), self._ttl)
@@ -1007,24 +984,14 @@ async def force_sync_all_users(request: Request):
 
 
 def _bell_context(request: Request, view=None, roster: str = "") -> dict:
-    """Topbar bell data for the shared partial. Students get their own issue
-    alerts (needs a completed view); staff get support-ticket alerts (needs no
-    view, so the bell works even before any roster loads). Returns the
-    notifications/notif_count/notif_empty template keys — notif_empty None
-    renders no bell at all."""
+    """Topbar bell data for the shared partial. Staff get support-ticket
+    alerts (needs no view, so the bell works even before any roster loads).
+    Students get no bell. Returns the notifications/notif_count/notif_empty
+    template keys — notif_empty None renders no bell at all."""
     user = getattr(request.state, "user", None) or {}
     role = user.get("role")
     if role == "student":
-        if view is None or not _is_complete(view):
-            return {"notifications": [], "notif_count": 0, "notif_empty": None}
-        notifications = views.own_issue_notifications(
-            view, user.get("email", ""), roster, _workflow_state(roster)
-        )
-        return {
-            "notifications": notifications,
-            "notif_count": len(notifications),
-            "notif_empty": "No open issues — you're all clear.",
-        }
+        return {"notifications": [], "notif_count": 0, "notif_empty": None}
     if role in _STAFF_ROLES:
         try:
             rows = _support_tickets(user.get("email", ""), role)
@@ -1449,43 +1416,6 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
     if database.db_configured():
         db.put_hidden_repos(roster, state)
     return {"status": "ok", "hidden": hidden}
-
-
-@app.get("/issues", response_class=HTMLResponse)
-def issues_page(request: Request, roster: str = "", issue: str = "All"):
-    """Issues is a faculty/admin management page (students are RBAC-gated off
-    it; the account fleet carries no validation issues, so the page shows the
-    empty state until a roster analysis contributes rows)."""
-    ctx = _base_context(request, "Issues", roster)
-    view, response = _guard_page(request, ctx, "Issues", roster)
-    if response is not None:
-        return response
-    payload = views.issues_payload(view, issue, _workflow_state(roster))
-    return templates.TemplateResponse(
-        request,
-        "pages/issues.html",
-        {**ctx, "view": view, "payload": payload, "roster_id": roster, "issue_type": issue},
-    )
-
-
-@app.post("/issues/workflow")
-async def issues_workflow_save(request: Request, roster: str = ""):
-    """Persist the editable issue workflow per-roster (keyed on roster_id)."""
-    user = getattr(request.state, "user", None) or {}
-    if user.get("role") == "student":
-        raise HTTPException(status_code=403, detail="Students cannot edit workflow")
-    if not roster:
-        raise HTTPException(status_code=400, detail="Missing roster")
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Workflow must be a JSON object")
-    roster_store.put_workflow(roster, body)
-    if database.db_configured():
-        db.put_workflow(roster, body)
-    return {"status": "ok", "saved": len(body)}
 
 
 # ── Account verification (cross-check against uploaded reference sheet) ─────

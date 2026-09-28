@@ -299,10 +299,13 @@ class TestFleetPages:
             assert r.status_code == 200, path
             assert self.PLACEHOLDER_FRAGMENT in r.text, path
 
-    def test_student_redirected_from_issues_and_verification(self):
+    def test_student_redirected_from_verification(self):
         client, _ = self._fleet()
-        assert self._get(client, "/issues").status_code == 303  # 5.5: Issues is faculty/admin-only again
-        assert self._get(client, "/verification").status_code == 303  # Verification stays faculty/admin-only
+        assert self._get(client, "/verification").status_code == 303  # 5.5: Verification is faculty/admin-only again
+
+    def test_issues_page_is_gone(self):
+        client, _ = self._fleet()
+        assert self._get(client, "/issues").status_code == 404  # page removed
 
     def test_student_redirected_from_students_and_history(self):
         # 4be7609 "Changed which tabs student account can see" narrows the

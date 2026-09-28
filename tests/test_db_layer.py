@@ -263,19 +263,6 @@ class TestIdempotentBatch:
         assert len(db.get_repositories_data(rid)) == 3
 
 
-class TestWorkflow:
-    def test_roundtrip(self):
-        rid = db.register_roster(
-            _roster_records(), filename="roster.xlsx", file_hash="abc123",
-            student_count=2, invalid_count=0,
-        )
-        state = {"0": {"Status": "Open", "Owner": "faculty", "Notes": "checking"}}
-        db.put_workflow(rid, state)
-        assert db.get_workflow(rid) == state
-        db.put_workflow(rid, {})
-        assert db.get_workflow(rid) == {}
-
-
 class TestHistoryAndAudit:
     def test_audit_roundtrip(self):
         assert db.log_event("analysis_run", "test") is True
