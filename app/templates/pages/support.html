@@ -607,6 +607,16 @@
         if (btn) toggleTicket(btn);
       });
     });
+    if (window.location.hash && window.location.hash.startsWith('#ticket-detail-')) {
+      var targetRow = document.querySelector(window.location.hash);
+      if (targetRow) {
+        var toggleBtn = document.querySelector('[data-target="' + window.location.hash.substring(1) + '"]');
+        if (toggleBtn && targetRow.hidden) {
+          toggleTicket(toggleBtn);
+        }
+        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
     function humanFileSize(bytes) {
       if (!bytes) return '0 bytes';
       var units = ['bytes', 'KB', 'MB'];

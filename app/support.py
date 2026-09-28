@@ -177,6 +177,20 @@ def image_upload_error(filename: str, data: bytes) -> str | None:
     return None
 
 
+_NOTIF_SCHEMA = """
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    ticket_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+)
+"""
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Create the table and add newer columns to pre-existing databases.
 
@@ -185,6 +199,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     """
     try:
         conn.execute(_SCHEMA)
+        conn.execute(_NOTIF_SCHEMA)
         for statement in _ATTACHMENT_MIGRATION:
             try:
                 conn.execute(statement)
@@ -531,3 +546,141 @@ def submit_followup_question(ticket_id, question: str | None) -> bool:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Support follow-up submit failed: %s", exc)
         return False
+
+
+def create_notification(user_id: str, ticket_id: int, type: str, title: str, message: str) -> dict | None:
+    user_id = (user_id or "").strip()
+    if not user_id or not message:
+        return None
+    now = _now()
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                cur = conn.execute(
+                    "INSERT INTO notifications (user_id, ticket_id, type, title, message, is_read, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, 0, ?)",
+                    (user_id, ticket_id, type or "TICKET_FOLLOW_UP", title or "Notification", message, now),
+                )
+                notif_id = cur.lastrowid
+                return {
+                    "id": notif_id,
+                    "user_id": user_id,
+                    "userId": user_id,
+                    "ticket_id": ticket_id,
+                    "ticketId": ticket_id,
+                    "type": type or "TICKET_FOLLOW_UP",
+                    "title": title or "Notification",
+                    "message": message,
+                    "is_read": False,
+                    "isRead": False,
+                    "created_at": now,
+                    "createdAt": now,
+                }
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("create_notification failed: %s", exc)
+        return None
+
+
+def list_notifications(user_id: str, limit: int = 50) -> list[dict]:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return []
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            cur = conn.execute(
+                "SELECT id, user_id, ticket_id, type, title, message, is_read, created_at "
+                "FROM notifications WHERE lower(user_id) = ? ORDER BY id DESC LIMIT ?",
+                (user_id, limit),
+            )
+            rows = []
+            for r in cur.fetchall():
+                rows.append({
+                    "id": r["id"],
+                    "user_id": r["user_id"],
+                    "userId": r["user_id"],
+                    "ticket_id": r["ticket_id"],
+                    "ticketId": r["ticket_id"],
+                    "type": r["type"],
+                    "title": r["title"],
+                    "message": r["message"],
+                    "is_read": bool(r["is_read"]),
+                    "isRead": bool(r["is_read"]),
+                    "created_at": r["created_at"],
+                    "createdAt": r["created_at"],
+                })
+            return rows
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("list_notifications failed: %s", exc)
+        return []
+
+
+def mark_notification_as_read(notification_id: int, user_id: str = "") -> bool:
+    try:
+        notification_id = int(notification_id)
+    except (TypeError, ValueError):
+        return False
+    user_id = (user_id or "").strip().lower()
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                if user_id:
+                    cur = conn.execute(
+                        "UPDATE notifications SET is_read = 1 WHERE id = ? AND lower(user_id) = ?",
+                        (notification_id, user_id),
+                    )
+                else:
+                    cur = conn.execute(
+                        "UPDATE notifications SET is_read = 1 WHERE id = ?",
+                        (notification_id,),
+                    )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("mark_notification_as_read failed: %s", exc)
+        return False
+
+
+def mark_all_notifications_as_read(user_id: str) -> int:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return 0
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                cur = conn.execute(
+                    "UPDATE notifications SET is_read = 1 WHERE lower(user_id) = ? AND is_read = 0",
+                    (user_id,),
+                )
+                return cur.rowcount or 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("mark_all_notifications_as_read failed: %s", exc)
+        return 0
+
+
+def count_unread_notifications(user_id: str) -> int:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return 0
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM notifications WHERE lower(user_id) = ? AND is_read = 0",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("count_unread_notifications failed: %s", exc)
+        return 0

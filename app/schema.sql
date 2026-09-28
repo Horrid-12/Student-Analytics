@@ -369,3 +369,19 @@ CREATE TABLE IF NOT EXISTS reference_sheets (
     uploaded_at TEXT NOT NULL DEFAULT '',
     rows_json   JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+
+-- 14. Notifications (Real-time student alerts for support ticket updates)
+CREATE TABLE IF NOT EXISTS notifications (
+    id          SERIAL PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    ticket_id   INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
+
