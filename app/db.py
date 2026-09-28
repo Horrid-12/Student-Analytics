@@ -1965,3 +1965,19 @@ def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
     except (psycopg.errors.DatabaseError, OSError):
         return False
 
+
+def delete_user_by_email(email: str) -> bool:
+    """Delete one user row by email (Postgres leg). Returns True when a row was removed."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute("DELETE FROM users WHERE email = %s", (email,))
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("delete_user_by_email failed: %s", exc)
+        return False
+
