@@ -130,7 +130,7 @@ class TestOAuthCallbacksPersist:
         self._state(client)
         resp = client.get("/auth/github/callback?state=s123", follow_redirects=False)
         assert resp.status_code == 302
-        assert resp.headers["location"] == "/settings?linked=github"
+        assert resp.headers["location"] == "/onboarding?linked=github"  # link flow lands on onboarding
         row = auth.get_user(email)
         assert row["linked_github_username"] == "octocat"
         assert row["linked_github_avatar"] == "https://example.com/a.png"
