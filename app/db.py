@@ -1811,3 +1811,147 @@ def delete_user_by_email(email: str) -> bool:
         logger.warning("delete_user_by_email failed: %s", exc)
         return False
 
+
+# ── notifications ─────────────────────────────────────────────────────────────
+
+def create_notification(user_id: str, ticket_id: int, type: str, title: str, message: str) -> Optional[dict]:
+    user_id = (user_id or "").strip()
+    if not user_id or not message:
+        return None
+    try:
+        ticket_id = int(ticket_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "INSERT INTO notifications (user_id, ticket_id, type, title, message, is_read) "
+                "VALUES (%s, %s, %s, %s, %s, FALSE) RETURNING id, created_at",
+                (user_id, ticket_id, type or "TICKET_FOLLOW_UP", title or "Notification", message),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "user_id": user_id,
+                "userId": user_id,
+                "ticket_id": ticket_id,
+                "ticketId": ticket_id,
+                "type": type or "TICKET_FOLLOW_UP",
+                "title": title or "Notification",
+                "message": message,
+                "is_read": False,
+                "isRead": False,
+                "created_at": str(row["created_at"]),
+                "createdAt": str(row["created_at"]),
+            }
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("create_notification failed: %s", exc)
+        return None
+
+
+def list_notifications(user_id: str, limit: int = 50) -> list[dict]:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return []
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT id, user_id, ticket_id, type, title, message, is_read, created_at "
+                "FROM notifications WHERE lower(user_id) = %s ORDER BY id DESC LIMIT %s",
+                (user_id, limit),
+            )
+            rows = []
+            for r in cur.fetchall():
+                rows.append({
+                    "id": r["id"],
+                    "user_id": r["user_id"],
+                    "userId": r["user_id"],
+                    "ticket_id": r["ticket_id"],
+                    "ticketId": r["ticket_id"],
+                    "type": r["type"],
+                    "title": r["title"],
+                    "message": r["message"],
+                    "is_read": bool(r["is_read"]),
+                    "isRead": bool(r["is_read"]),
+                    "created_at": str(r["created_at"]),
+                    "createdAt": str(r["created_at"]),
+                })
+            return rows
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("list_notifications failed: %s", exc)
+        return []
+
+
+def mark_notification_as_read(notification_id: int, user_id: str = "") -> bool:
+    try:
+        notification_id = int(notification_id)
+    except (TypeError, ValueError):
+        return False
+    user_id = (user_id or "").strip().lower()
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            if user_id:
+                cur = c.execute(
+                    "UPDATE notifications SET is_read = TRUE WHERE id = %s AND lower(user_id) = %s",
+                    (notification_id, user_id),
+                )
+            else:
+                cur = c.execute(
+                    "UPDATE notifications SET is_read = TRUE WHERE id = %s",
+                    (notification_id,),
+                )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("mark_notification_as_read failed: %s", exc)
+        return False
+
+
+def mark_all_notifications_as_read(user_id: str) -> int:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return 0
+    try:
+        with database.conn() as c:
+            if c is None:
+                return 0
+            cur = c.execute(
+                "UPDATE notifications SET is_read = TRUE WHERE lower(user_id) = %s AND is_read = FALSE",
+                (user_id,),
+            )
+            return cur.rowcount or 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("mark_all_notifications_as_read failed: %s", exc)
+        return 0
+
+
+def count_unread_notifications(user_id: str) -> int:
+    user_id = (user_id or "").strip().lower()
+    if not user_id:
+        return 0
+    try:
+        with database.conn() as c:
+            if c is None:
+                return 0
+            cur = c.execute(
+                "SELECT COUNT(*) as cnt FROM notifications WHERE lower(user_id) = %s AND is_read = FALSE",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            return int(row["cnt"]) if row and "cnt" in row else 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("count_unread_notifications failed: %s", exc)
+        return 0
+
+

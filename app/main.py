@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -986,12 +986,35 @@ async def force_sync_all_users(request: Request):
 def _bell_context(request: Request, view=None, roster: str = "") -> dict:
     """Topbar bell data for the shared partial. Staff get support-ticket
     alerts (needs no view, so the bell works even before any roster loads).
-    Students get no bell. Returns the notifications/notif_count/notif_empty
-    template keys — notif_empty None renders no bell at all."""
+    Students get support-ticket notifications (follow-ups/resolutions) when
+    present. Returns the notifications/notif_count/notif_empty template keys
+    — notif_empty None renders no bell at all."""
     user = getattr(request.state, "user", None) or {}
     role = user.get("role")
     if role == "student":
-        return {"notifications": [], "notif_count": 0, "notif_empty": None}
+        email = (user.get("email") or "").strip()
+        support_notifs = _list_notifications(email) if email else []
+        unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
+        if not support_notifs:
+            return {"notifications": [], "notif_count": 0, "notif_empty": None}
+        notifications = [
+            {
+                "id": n.get("id"),
+                "issue": n.get("title") or "Support Update",
+                "sub": n.get("message") or "",
+                "time": views.friendly_timestamp(n.get("created_at") or ""),
+                "fix_url": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+                "is_unread": not n.get("is_read"),
+                "type": n.get("type"),
+                "ticket_id": n.get("ticket_id"),
+            }
+            for n in support_notifs
+        ]
+        return {
+            "notifications": notifications,
+            "notif_count": unread_support,
+            "notif_empty": "No notifications — all clear.",
+        }
     if role in _STAFF_ROLES:
         try:
             rows = _support_tickets(user.get("email", ""), role)
@@ -1244,6 +1267,111 @@ async def get_approved_users_list(request: Request):
         {"email": u.get("email"), "name": u.get("name"), "prn": u.get("prn")}
         for u in approved
     ])
+
+
+# ── Notification API Endpoints ─────────────────────────────────────────────
+
+@app.get("/api/notifications")
+async def api_list_notifications(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    email = (user.get("email") or "").strip()
+    notifs = _list_notifications(email)
+    formatted = []
+    unread_count = 0
+    for n in notifs:
+        is_read = bool(n.get("is_read") or n.get("isRead"))
+        if not is_read:
+            unread_count += 1
+        formatted.append({
+            "id": n.get("id"),
+            "userId": n.get("user_id") or n.get("userId"),
+            "ticketId": n.get("ticket_id") or n.get("ticketId"),
+            "type": n.get("type"),
+            "title": n.get("title"),
+            "message": n.get("message"),
+            "isRead": is_read,
+            "createdAt": n.get("created_at") or n.get("createdAt"),
+            "time": views.friendly_timestamp(n.get("created_at") or ""),
+            "fixUrl": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+        })
+    return JSONResponse(content={
+        "notifications": formatted,
+        "unreadCount": unread_count,
+        "unread_count": unread_count,
+        "total": len(formatted),
+    })
+
+
+@app.post("/api/notifications/{notification_id}/read")
+async def api_mark_notification_read(request: Request, notification_id: int):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    email = (user.get("email") or "").strip()
+    ok = _mark_notification_as_read(notification_id, user_id=email)
+    unread = _count_unread_notifications(email)
+    return JSONResponse(content={"ok": ok, "id": notification_id, "unread_count": unread, "unreadCount": unread})
+
+
+@app.post("/api/notifications/read-all")
+async def api_mark_all_notifications_read(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    email = (user.get("email") or "").strip()
+    marked = _mark_all_notifications_as_read(email)
+    return JSONResponse(content={"ok": True, "marked": marked, "unread_count": 0, "unreadCount": 0})
+
+
+@app.get("/api/notifications/stream")
+async def api_notifications_stream(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    email = (user.get("email") or "").strip()
+
+    async def event_generator():
+        last_count = -1
+        yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
+        for _ in range(30):
+            if await request.is_disconnected():
+                break
+            unread = _count_unread_notifications(email)
+            if unread != last_count:
+                last_count = unread
+                notifs = _list_notifications(email, limit=10)
+                formatted = [
+                    {
+                        "id": n.get("id"),
+                        "userId": n.get("user_id"),
+                        "ticketId": n.get("ticket_id"),
+                        "type": n.get("type"),
+                        "title": n.get("title"),
+                        "message": n.get("message"),
+                        "isRead": bool(n.get("is_read")),
+                        "createdAt": n.get("created_at"),
+                        "time": views.friendly_timestamp(n.get("created_at") or ""),
+                        "fixUrl": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+                    }
+                    for n in notifs
+                ]
+                payload = json.dumps({"unreadCount": unread, "notifications": formatted})
+                yield f"event: notification\ndata: {payload}\n\n"
+            else:
+                yield ": ping\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/students", response_class=HTMLResponse)
@@ -1666,6 +1794,37 @@ def _ticket_is_resolved(ticket: dict | None) -> bool:
     return bool(ticket) and ticket.get("status") == "Resolved"
 
 
+def _create_notification(user_id: str, ticket_id: int, type: str, title: str, message: str) -> dict | None:
+    if database.db_configured():
+        return db.create_notification(user_id, ticket_id, type, title, message)
+    return support.create_notification(user_id, ticket_id, type, title, message)
+
+
+def _list_notifications(user_id: str, limit: int = 50) -> list[dict]:
+    if database.db_configured():
+        return db.list_notifications(user_id, limit=limit)
+    return support.list_notifications(user_id, limit=limit)
+
+
+def _mark_notification_as_read(notification_id: int, user_id: str = "") -> bool:
+    if database.db_configured():
+        return db.mark_notification_as_read(notification_id, user_id=user_id)
+    return support.mark_notification_as_read(notification_id, user_id=user_id)
+
+
+def _mark_all_notifications_as_read(user_id: str) -> int:
+    if database.db_configured():
+        return db.mark_all_notifications_as_read(user_id)
+    return support.mark_all_notifications_as_read(user_id)
+
+
+def _count_unread_notifications(user_id: str) -> int:
+    if database.db_configured():
+        return db.count_unread_notifications(user_id)
+    return support.count_unread_notifications(user_id)
+
+
+
 def _tickets_for(email: str, limit: int = 500) -> list[dict]:
     """Every ticket raised by one account, newest first, either backend."""
     if database.db_configured():
@@ -1803,14 +1962,44 @@ async def support_update(
     if ticket.get("status") == "Resolved":
         raise HTTPException(status_code=403, detail="Resolved tickets are read-only")
     filename, file_bytes = await _read_upload(attachment)
+    recipient = ticket.get("created_by") or ""
     if status == "Follow up":
         # Publish the question as a submitted thread entry (clearing the
         # compose box) and open a fresh answer round for the student.
         if not _submit_followup_question(ticket_id, admin_reply):
             raise HTTPException(status_code=404, detail="Ticket not found")
         _clear_student_reply(ticket_id)
+        if recipient:
+            q_text = (admin_reply or "").strip()
+            truncated = (q_text[:57] + "...") if len(q_text) > 60 else q_text
+            _create_notification(
+                user_id=recipient,
+                ticket_id=ticket_id,
+                type="TICKET_FOLLOW_UP",
+                title="Follow-up Question",
+                message=f"Admin asked a follow-up question on ticket #{ticket_id}: '{truncated}'",
+            )
     elif not _update_support_ticket(ticket_id, status, admin_reply):
         raise HTTPException(status_code=404, detail="Ticket not found")
+    else:
+        if recipient and status == "Resolved":
+            _create_notification(
+                user_id=recipient,
+                ticket_id=ticket_id,
+                type="TICKET_RESOLVED",
+                title="Ticket Resolved",
+                message=f"Your support ticket #{ticket_id} has been marked as Resolved.",
+            )
+        elif recipient and (admin_reply or "").strip():
+            r_text = (admin_reply or "").strip()
+            truncated = (r_text[:57] + "...") if len(r_text) > 60 else r_text
+            _create_notification(
+                user_id=recipient,
+                ticket_id=ticket_id,
+                type="TICKET_FOLLOW_UP",
+                title="Ticket Update",
+                message=f"Admin asked a follow-up question on ticket #{ticket_id}: '{truncated}'",
+            )
     if filename and not _save_attachment(ticket_id, filename, file_bytes, slot="admin"):
         raise HTTPException(status_code=400, detail="Could not save attachment")
     return RedirectResponse("/support", status_code=302)
