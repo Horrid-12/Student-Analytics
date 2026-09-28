@@ -348,17 +348,6 @@
   })();
 </script>
 
-<script>
-(function () {
-  var form = document.querySelector('.filter-bar');
-  if (!form) return;
-  ['division-filter', 'batch-filter', 'semester-filter'].forEach(function (id) {
-    var sel = document.getElementById(id);
-    if (sel) sel.addEventListener('change', function () { form.submit(); });
-  });
-})();
-</script>
-
 {% if payload.profile %}
   {% set p = payload.profile %}
   {% set close_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (payload.page_size|string) %}

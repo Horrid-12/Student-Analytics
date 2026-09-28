@@ -74,18 +74,7 @@
   </div>
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/overview?roster={{ roster_id }}">Clear</a>
-  <span class="filter-count">{{ payload.total }} students</span>
 </form>
-<script>
-(function () {
-  var form = document.querySelector('.filter-bar');
-  if (!form) return;
-  ['division-filter', 'batch-filter', 'semester-filter'].forEach(function (id) {
-    var sel = document.getElementById(id);
-    if (sel) sel.addEventListener('change', function () { form.submit(); });
-  });
-})();
-</script>
 <div id="previous-results">
 <section class="panel">
   <div class="panel-title">Overview Metrics</div>

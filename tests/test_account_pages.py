@@ -126,10 +126,18 @@ class TestStudentPages:
         seeded_account()
         sync.sync_all(force=True)
         client, _ = make_client("student", email="alice@college.edu")
-        assert "1 students" in client.get("/overview").text
-        assert "0 students" in client.get("/overview?division=Division+2").text
-        assert "1 students" in client.get("/overview?division=Division+1").text
-        assert "0 students" in client.get("/overview?q=nosuchstudent").text
+
+        def students_metric(text, n):
+            compact = " ".join(text.split())
+            return (
+                f'<div class="metric-value">{n}</div> '
+                f'<div class="metric-label">Number of Students</div>'
+            ) in compact
+
+        assert students_metric(client.get("/overview").text, 1)
+        assert students_metric(client.get("/overview?division=Division+2").text, 0)
+        assert students_metric(client.get("/overview?division=Division+1").text, 1)
+        assert students_metric(client.get("/overview?q=nosuchstudent").text, 0)
 
     def test_overview_shows_primary_language(self):
         seeded_account()

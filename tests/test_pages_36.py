@@ -300,7 +300,7 @@ class TestPageRenderingWithData:
         assert 'name="batch"' in body
         assert 'name="semester"' in body
         assert 'id="division-filter"' in body
-        assert "2 students" in body
+        assert '<div class="metric-value">2</div>' in body
         assert "Key Metrics" not in body
         assert "API Status" not in body
         assert "Analysis Status" not in body
@@ -313,11 +313,20 @@ class TestPageRenderingWithData:
 
     def test_overview_filters_match_students_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        assert "2 students" in self.client.get(f"/?roster={roster_id}").text
-        assert "1 students" in self.client.get(f"/?roster={roster_id}&division=A").text
-        assert "0 students" in self.client.get(f"/?roster={roster_id}&division=Z").text
-        assert "1 students" in self.client.get(f"/?roster={roster_id}&q=alice").text
-        assert "0 students" in self.client.get(f"/?roster={roster_id}&q=nosuchstudent").text
+
+        def students_metric(params, n):
+            text = self.client.get(f"/?roster={roster_id}{params}").text
+            compact = " ".join(text.split())
+            assert (
+                f'<div class="metric-value">{n}</div> '
+                f'<div class="metric-label">Number of Students</div>'
+            ) in compact
+
+        students_metric("", 2)
+        students_metric("&division=A", 1)
+        students_metric("&division=Z", 0)
+        students_metric("&q=alice", 1)
+        students_metric("&q=nosuchstudent", 0)
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
         """BUG-107 regression (updated for upload removal): a complete Overview
