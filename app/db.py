@@ -1647,6 +1647,7 @@ def save_account_snapshot(
                     ),
                 )
             except Exception:
+                c.rollback()
                 # Pre-migration database without team_repos_json: legacy shape.
                 cur = c.execute(
                     "INSERT INTO account_snapshots "
@@ -1704,6 +1705,7 @@ def get_account_snapshot(email: str) -> Optional[dict]:
                     (email,),
                 )
             except Exception:
+                c.rollback()
                 cur = c.execute(
                     "SELECT email, username, status, student_json, repos_json, synced_at, error "
                     "FROM account_snapshots WHERE email = %s",
@@ -1728,6 +1730,7 @@ def list_account_snapshots() -> list[dict]:
                     "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
                 )
             except Exception:
+                c.rollback()
                 cur = c.execute(
                     "SELECT email, username, status, student_json, repos_json, synced_at, error "
                     "FROM account_snapshots ORDER BY synced_at DESC, email ASC"
