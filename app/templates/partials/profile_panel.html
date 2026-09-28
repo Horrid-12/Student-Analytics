@@ -9,14 +9,15 @@
           <div>
             <div class="profile-name-row">
               <div class="profile-name">{{ p.name }}</div>
-              {% if auth_role == 'Admin' and roster_id %}
+              {% if auth_role == 'Admin' %}
               {% set bl_boards = blacklist.get(p.student_id, []) if blacklist is defined and blacklist else [] %}
+              {% set _bl_key = bl_roster if bl_roster is defined and bl_roster else (roster_id if roster_id is defined and roster_id else 'fleet') %}
               <details class="blacklist-dropdown">
                 <summary class="blacklist-btn{% if bl_boards %} is-active{% endif %}" title="Leaderboard blacklist" aria-label="Leaderboard blacklist options">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
                   {% if bl_boards %}<span class="bl-dot" aria-hidden="true"></span>{% endif %}
                 </summary>
-                <div class="blacklist-menu" role="menu" aria-label="Blacklist from leaderboards" data-blacklist-menu data-roster="{{ roster_id }}" data-student="{{ p.student_id }}">
+                <div class="blacklist-menu" role="menu" aria-label="Blacklist from leaderboards" data-blacklist-menu data-roster="{{ _bl_key }}" data-student="{{ p.student_id }}">
                   <div class="blacklist-head">Leaderboards</div>
                   {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories')] %}
                   <div class="bl-row{% if key in bl_boards %} is-blacklisted{% endif %}">
@@ -74,8 +75,9 @@
               <div class="repo-meta-row">
                 <div class="repo-meta">{{ repo.Language or 'Unknown' }} &middot; {{ repo.Stars }} stars &middot; {{ repo.Quality_Band or 'Unrated' }}</div>
                 <div class="repo-right">
-                  {% if auth_role == 'Admin' and roster_id %}
-                  <button type="button" class="repo-hide-btn{% if rhidden %} is-active{% endif %}" title="{% if rhidden %}Unhide from leaderboard{% else %}Hide from leaderboard{% endif %}" aria-label="{% if rhidden %}Unhide {{ repo.Repository }} from leaderboards{% else %}Hide {{ repo.Repository }} from leaderboards{% endif %}" data-hide-repo data-roster="{{ roster_id }}" data-student="{{ p.student_id }}" data-repo="{{ rkey }}" data-hidden="{{ '1' if rhidden else '0' }}">
+                  {% if auth_role == 'Admin' %}
+                  {% set _hide_key = bl_roster if bl_roster is defined and bl_roster else (roster_id if roster_id is defined and roster_id else 'fleet') %}
+                  <button type="button" class="repo-hide-btn{% if rhidden %} is-active{% endif %}" title="{% if rhidden %}Unhide from leaderboard{% else %}Hide from leaderboard{% endif %}" aria-label="{% if rhidden %}Unhide {{ repo.Repository }} from leaderboards{% else %}Hide {{ repo.Repository }} from leaderboards{% endif %}" data-hide-repo data-roster="{{ _hide_key }}" data-student="{{ p.student_id }}" data-repo="{{ rkey }}" data-hidden="{{ '1' if rhidden else '0' }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
                   </button>
                   {% endif %}

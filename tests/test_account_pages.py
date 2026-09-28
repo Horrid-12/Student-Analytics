@@ -105,9 +105,39 @@ class TestStudentPages:
         r = client.get("/overview")
         assert r.status_code == 200
         html = r.text
-        assert "Key Metrics" in html
+        assert "Class Metrics Radar" in html
         assert "Division 1" in html
-        assert "Repositories Found" in html
+        assert "Analysis Results" in html
+        assert "Overview Metrics" in html
+        assert "Number of Students" in html
+        assert "Active Repositories" in html
+        assert "Total Stars" in html
+        assert "Total Forks" in html
+        assert "data-active-number" in html
+        assert "data-active-value" in html
+        # Same filters as the Students page.
+        assert 'name="q"' in html
+        assert 'name="division"' in html
+        assert 'name="batch"' in html
+        assert 'name="semester"' in html
+        assert 'id="division-filter"' in html
+
+    def test_overview_filters_narrow_cohort(self):
+        seeded_account()
+        sync.sync_all(force=True)
+        client, _ = make_client("student", email="alice@college.edu")
+
+        def students_metric(text, n):
+            compact = " ".join(text.split())
+            return (
+                f'<div class="metric-value">{n}</div> '
+                f'<div class="metric-label">Number of Students</div>'
+            ) in compact
+
+        assert students_metric(client.get("/overview").text, 1)
+        assert students_metric(client.get("/overview?division=Division+2").text, 0)
+        assert students_metric(client.get("/overview?division=Division+1").text, 1)
+        assert students_metric(client.get("/overview?q=nosuchstudent").text, 0)
 
     def test_overview_shows_primary_language(self):
         seeded_account()

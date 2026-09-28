@@ -286,11 +286,47 @@ class TestPageRenderingWithData:
         roster_id = self._setup(tmp_path)
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
-        assert "Key Metrics" in body
+        assert "Class Metrics Radar" in body
+        assert "Overview Metrics" in body
+        assert "Number of Students" in body
+        assert "Active Repositories" in body
+        assert "Total Stars" in body
+        assert "Total Forks" in body
+        assert "data-active-number" in body
+        assert "data-active-value" in body
+        # Same filters as the Students page.
+        assert 'name="q"' in body
+        assert 'name="division"' in body
+        assert 'name="batch"' in body
+        assert 'name="semester"' in body
+        assert 'id="division-filter"' in body
+        assert '<div class="metric-value">2</div>' in body
+        assert "Key Metrics" not in body
+        assert "API Status" not in body
+        assert "Analysis Status" not in body
+        assert "Average Followers" not in body
+        assert "Signed in as" not in body
         assert "Account Validation Status" not in body
         assert "Analysis Pipeline" not in body
         assert "Run Log" not in body
         assert "plotly" in body or "Plotly.react" in body
+
+    def test_overview_filters_match_students_page(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+
+        def students_metric(params, n):
+            text = self.client.get(f"/?roster={roster_id}{params}").text
+            compact = " ".join(text.split())
+            assert (
+                f'<div class="metric-value">{n}</div> '
+                f'<div class="metric-label">Number of Students</div>'
+            ) in compact
+
+        students_metric("", 2)
+        students_metric("&division=A", 1)
+        students_metric("&division=Z", 0)
+        students_metric("&q=alice", 1)
+        students_metric("&q=nosuchstudent", 0)
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
         """BUG-107 regression (updated for upload removal): a complete Overview
@@ -790,7 +826,9 @@ class TestPageRenderingWithData:
         assert self.client.post(url, json={"student_id": "", "repo": "x/y", "action": "hide"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "repo": "", "action": "hide"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "repo": "x/y", "action": "ban"}).status_code == 400
-        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 400
+        # Fleet mode (no roster) shares the 'fleet' key instead of 400.
+        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 200
+        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "unhide"}).status_code == 200
         student_client = TestClient(app)
         make_user(student_client, "student")
         assert student_client.post(url, json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 403
@@ -803,7 +841,9 @@ class TestPageRenderingWithData:
         assert self.client.post(url, json={"student_id": "101", "board": "nope", "action": "blacklist"}).status_code == 400
         assert self.client.post(url, json={"student_id": "", "board": "commits", "action": "blacklist"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "board": "commits", "action": "ban"}).status_code == 400
-        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 400
+        # Fleet mode (no roster) shares the 'fleet' key instead of 400.
+        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 200
+        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "whitelist"}).status_code == 200
         # Non-admins are refused, and see no button.
         student_client = TestClient(app)
         make_user(student_client, "student")

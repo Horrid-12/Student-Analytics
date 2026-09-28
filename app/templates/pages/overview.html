@@ -2,6 +2,30 @@
 {% import "macros/charts.html" as mc %}
 {% import "macros/echarts.html" as ec %}
 {% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
+{% block head %}
+<style>
+  .filter-bar {
+    align-items: flex-end;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .filter-field.search-box-row {
+    flex: 1 1 260px;
+  }
+  .filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+</style>
+{% endblock %}
 {% block content %}
 
 {% set complete = view is not none and view.state is not none and view.state.status == 'complete' %}
@@ -17,48 +41,90 @@
     </div>
   </div>
 </div>
-<div class="auth-notice">
-  <svg class="auth-notice-icon" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-4.5-1.2L3 20l1.5-4.2A8.7 8.7 0 0 1 3 11.5a9 9 0 1 1 18 0Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-  <span>Signed in as <b>{{ auth_user }}</b> ({{ auth_role }}). Public sign-up creates student accounts; admin and faculty accounts are provisioned by the administrator.</span>
-</div>
-
-{% if complete %}
+{% if complete and payload %}
+<form class="filter-bar" method="get">
+  <input type="hidden" name="roster" value="{{ roster_id }}">
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="student-search">Search</label>
+    <input id="student-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="division-filter">Division</label>
+    <select id="division-filter" class="filter-select" name="division">
+      {% for value in payload.divisions %}
+      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="batch-filter">Batch</label>
+    <select id="batch-filter" class="filter-select" name="batch">
+      {% for value in payload.batches %}
+      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="filter-label" for="semester-filter">Semester</label>
+    <select id="semester-filter" class="filter-select" name="semester">
+      {% for value in payload.semesters %}
+      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/overview?roster={{ roster_id }}">Clear</a>
+</form>
 <div id="previous-results">
 <section class="panel">
-  <div class="panel-title">Key Metrics</div>
-  <div class="metric-grid">
+  <div class="panel-title">Overview Metrics</div>
+  <div class="metric-grid metric-grid-4">
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-blue">Total</span></div>
+      <div class="metric-top"><span class="badge-blue">Students</span></div>
       <div class="metric-value">{{ payload.total }}</div>
-      <div class="metric-label">Students</div>
+      <div class="metric-label">Number of Students</div>
     </div>
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-green">Connected</span></div>
-      <div class="metric-value">{{ payload.valid }}</div>
-      <div class="metric-label">Valid Accounts</div>
+      <div class="metric-top">
+        <span class="badge-green">Active</span>
+        <span class="activity-tabs" role="group" aria-label="Active period">
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['30d'] }}" aria-pressed="false">30D</button>
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['90d'] }}" aria-pressed="false">90D</button>
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['all'] }}" aria-pressed="true">All</button>
+        </span>
+      </div>
+      <div class="metric-value" data-active-number>{{ payload.active_windows['all'] }}</div>
+      <div class="metric-label">Active Repositories</div>
     </div>
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-red">Invalid</span></div>
-      <div class="metric-value">{{ payload.invalid }}</div>
-      <div class="metric-label">Invalid Accounts</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-amber">Repos</span></div>
-      <div class="metric-value">{{ payload.repos_found }}</div>
-      <div class="metric-label">Repositories Found</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-purple">Active</span></div>
-      <div class="metric-value">{{ payload.submission_rate }}%</div>
-      <div class="metric-label">Submission Rate</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-top"><span class="badge-green">Stars</span></div>
+      <div class="metric-top"><span class="badge-amber">Stars</span></div>
       <div class="metric-value">{{ payload.total_stars }}</div>
-      <div class="metric-label">Total Stars / Forks</div>
+      <div class="metric-label">Total Stars</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-purple">Forks</span></div>
+      <div class="metric-value">{{ payload.total_forks }}</div>
+      <div class="metric-label">Total Forks</div>
     </div>
   </div>
 </section>
+<script>
+  (function () {
+    // Overview active-repo period switcher: swaps the big number between
+    // the pre-rendered 30D / 90D / All values (same pattern as profile).
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('[data-active-value]') : null;
+      if (!btn) return;
+      var card = btn.closest('.metric-card');
+      if (!card) return;
+      card.querySelectorAll('[data-active-value]').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      var number = card.querySelector('[data-active-number]');
+      if (number) number.textContent = btn.getAttribute('data-active-value');
+    });
+  })();
+</script>
 
 <section class="panel">
   <div class="panel-title">Class Metrics Radar</div>
@@ -68,24 +134,12 @@
     </div>
     <div class="system-grid">
       <div class="system-item">
-        <div class="system-label">API Status</div>
-        <div class="system-value">{{ payload.api_status }}</div>
-      </div>
-      <div class="system-item">
-        <div class="system-label">Analysis Status</div>
-        <div class="system-value">{{ payload.status }}</div>
-      </div>
-      <div class="system-item">
         <div class="system-label">Language Distribution</div>
         <div class="system-value">{{ payload.most_used_language }}</div>
       </div>
       <div class="system-item">
         <div class="system-label">Average Repositories</div>
         <div class="system-value">{{ payload.avg_repos }}</div>
-      </div>
-      <div class="system-item">
-        <div class="system-label">Average Followers</div>
-        <div class="system-value">{{ payload.avg_followers }}</div>
       </div>
       <div class="system-item">
         <div class="system-label">Average Quality Score</div>

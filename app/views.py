@@ -514,17 +514,65 @@ def run_outcome(state: dict | None) -> str:
 # Overview (3.6b)
 # ---------------------------------------------------------------------------
 
-def overview_payload(view) -> dict:
-    students = _with_combined_metrics(view["students"]) if view.get("students") is not None else view["students"]
+def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
+    _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
+    students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
+    # Same filters as the Students page: text search + Division/Batch/Semester.
+    try:
+        students = filter_text(
+            students,
+            query or "",
+            [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+        )
+    except Exception:
+        pass
+    for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
+        try:
+            students = apply_value_filter(students, _col, _val or "All")
+        except Exception:
+            pass
+    # Restrict repos/team to the filtered cohort so every headline number and
+    # chart below respects the same filters.
+    try:
+        _cohort = set(students["GitHub_Username"].dropna().astype(str)) if students is not None and not students.empty and "GitHub_Username" in students.columns else set()
+    except Exception:
+        _cohort = set()
     repos = view["repos"]
     team_repos = view.get("team_repos")
+    try:
+        if repos is not None and not repos.empty and "Username" in repos.columns and _cohort:
+            repos = repos[repos["Username"].astype(str).isin(_cohort)].copy()
+        elif repos is not None and students is not None and students.empty:
+            repos = repos.iloc[0:0].copy()
+    except Exception:
+        pass
+    try:
+        if team_repos is not None and not team_repos.empty and "Username" in team_repos.columns and _cohort:
+            team_repos = team_repos[team_repos["Username"].astype(str).isin(_cohort)].copy()
+        elif team_repos is not None and students is not None and students.empty:
+            team_repos = team_repos.iloc[0:0].copy()
+    except Exception:
+        pass
+    try:
+        _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
+    except Exception:
+        _div_opts = ["All"]
+    try:
+        _batch_opts = dist_options(_orig_students["Batch"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Batch" in _orig_students.columns else ["All"]
+    except Exception:
+        _batch_opts = ["All"]
+    try:
+        _sem_opts = dist_options(_orig_students["Semester"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Semester" in _orig_students.columns else ["All"]
+    except Exception:
+        _sem_opts = ["All"]
     records = view["records"]
     state = view["state"] or {}
-    total = len(records)
+    total = len(students) if students is not None else 0
     valid = int(state.get("valid", 0))
     invalid = int(state.get("invalid", 0))
     errors = int(state.get("errors", 0))
-    submission_rate = (valid / total * 100) if total else 0
+    _total_all = len(records) if records is not None else 0
+    submission_rate = (valid / _total_all * 100) if _total_all else 0
 
     missing = sum(
         1
@@ -567,6 +615,40 @@ def overview_payload(view) -> dict:
     team_commits = int(students["Team_Commits"].sum()) if not students.empty and "Team_Commits" in students.columns else 0
     team_repos_count = int(students["Contributed_Repos_Count"].sum()) if not students.empty and "Contributed_Repos_Count" in students.columns else 0
     combined_repos_found = int(len(repos) + (len(team_repos) if team_repos is not None and not team_repos.empty else 0))
+
+    # ── Overview headline metrics: active repos per window (Updated /
+    # Last_Active_At within 30d / 90d / all). Same windows as leaderboards.
+    def _active_total(frame, date_col: str, days: int | None) -> int:
+        if frame is None or frame.empty or date_col not in frame.columns:
+            return 0
+        if days is None:
+            try:
+                return int(len(frame))
+            except Exception:
+                return 0
+        try:
+            return int(sum(_recent_counts(frame, "Username", date_col, days).values()))
+        except Exception:
+            return 0
+
+    _has_team = team_repos is not None and not team_repos.empty
+    _active_30d = _active_total(repos, "Updated", 30) + (_active_total(team_repos, "Last_Active_At", 30) if _has_team else 0)
+    _active_90d = _active_total(repos, "Updated", 90) + (_active_total(team_repos, "Last_Active_At", 90) if _has_team else 0)
+    _active_all = combined_repos_found
+    active_windows = {"30d": _active_30d, "90d": _active_90d, "all": _active_all}
+
+    def _col_sum(frame, column: str) -> int:
+        try:
+            if frame is None or frame.empty or column not in frame.columns:
+                return 0
+            return int(pd.to_numeric(frame[column], errors="coerce").fillna(0).sum())
+        except Exception:
+            return 0
+
+    _owned_stars = _col_sum(repos, "Stars")
+    _team_stars = _col_sum(team_repos, "Stars") if _has_team else 0
+    _owned_forks = _col_sum(repos, "Forks")
+    _team_forks = _col_sum(team_repos, "Forks") if _has_team else 0
 
     # ── Raw data for ECharts advanced charts ────────────────────────────────
     # Treemap: account validation categories
@@ -614,6 +696,10 @@ def overview_payload(view) -> dict:
 
     return {
         "total": total,
+        "filtered": total,
+        "divisions": _div_opts,
+        "batches": _batch_opts,
+        "semesters": _sem_opts,
         "valid": valid,
         "invalid": invalid,
         "errors": errors,
@@ -624,8 +710,12 @@ def overview_payload(view) -> dict:
         "avg_repos": f"{students[_repos_col].mean():.1f}" if not students.empty else "0.0",
         "avg_followers": f"{students['Followers'].mean():.1f}" if not students.empty else "0.0",
         "most_used_language": most_used_language,
-        "total_stars": int(repos["Stars"].fillna(0).sum()) if not repos.empty else 0,
-        "total_forks": int(repos["Forks"].fillna(0).sum()) if not repos.empty else 0,
+        "total_stars": _owned_stars + _team_stars,
+        "total_forks": _owned_forks + _team_forks,
+        "active_repos_30d": _active_30d,
+        "active_repos_90d": _active_90d,
+        "active_repos_all": _active_all,
+        "active_windows": active_windows,
         "avg_quality": f"{repos['Repository_Quality_Score'].mean():.1f}" if not repos.empty else "0.0",
         "account_status": account_status,
         "donut_fig": donut_fig,
