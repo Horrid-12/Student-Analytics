@@ -17,7 +17,7 @@ from app import database, db
 def main() -> int:
     if not database.pool_url():
         print("No DATABASE_URL/POSTGRES_URL/TEST_DATABASE_URL found — nothing to do (SQLite fallback active).")
-        return 2
+        return 0
     healthy = db.schema_healthy()
     print(f"Postgres reachable: {healthy}")
     if not healthy:
