@@ -185,7 +185,7 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
 def compute_account_snapshot(
     username: str, token: str | None, user: dict | None = None
 ) -> tuple[dict | None, list[dict], str]:
-    """Fetch one account's GitHub data and reduce it to the dashboard shape.
+    """Fetch one account's GitHub data through the shared roster pipeline.
 
     Returns ``(student, repos, error)`` where ``error`` is "" on success and
     one of ``not_found`` / ``api_error`` / ``repo_fetch_failed`` /
@@ -195,24 +195,40 @@ def compute_account_snapshot(
     if not username:
         return None, [], "not_found"
     user = user or {}
+    # Run the same validation, repository, contribution, team-activity, and
+    # owned-commit stages as an uploaded roster. The previous account-only
+    # implementation fetched just the profile and repositories, which left
+    # PR, issue, and commit metrics at zero and caused dashboard totals to
+    # disagree for the same GitHub account.
+    from app import batch
+
+    record = {
+        STUDENT_ID_COL: _clean_text(user.get("prn")) or _clean_text(user.get("email")),
+        "Student Name": _clean_text(user.get("name")),
+        "Division": _clean_text(user.get("division")),
+        "Batch": _clean_text(user.get("practical_batch")),
+        "Semester": _clean_text(user.get("semester")),
+        ROSTER_EMAIL_COL: _clean_text(user.get("email")),
+        "GitHub_Username": username,
+    }
     try:
-        is_valid, payload, is_error, _ = services.get_user(username, token)
+        result = batch.analyze_records([record], token)
     except services.RateLimitError:
         return None, [], "rate_limited"
     except Exception:
+        logger.exception("Account analysis failed for %s", username)
         return None, [], "api_error"
-    if not is_valid or not payload:
-        return None, [], ("not_found" if not is_error else "api_error")
-    try:
-        raw_repos, fetched_ok = services.get_repos(username, token)
-    except services.RateLimitError:
-        return None, [], "rate_limited"
-    except Exception:
-        raw_repos, fetched_ok = [], False
-    if not fetched_ok:
+
+    if not result.get("students"):
+        if result.get("error_users"):
+            return None, [], "api_error"
+        return None, [], "not_found"
+    student = result["students"][0]
+    repos = result.get("repos") or []
+    if username.strip().lower() in {
+        str(value).strip().lower() for value in result.get("repo_unavailable_users", [])
+    }:
         return None, [], "repo_fetch_failed"
-    repos = _repos_frame(raw_repos, username).to_dict(orient="records")
-    student = _student_row(user, username, payload, repos)
     return student, repos, ""
 
 
