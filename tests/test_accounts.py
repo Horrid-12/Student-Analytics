@@ -174,7 +174,9 @@ class TestCompute:
         assert student["Semester"] == "Semester 3"
         assert student["GitHub_Username"] == "alice-dev"
         assert student["Repository_Count"] == 2
-        assert student["Primary_Language"] == "Python"
+        # Match the roster pipeline's mode tie-break (alphabetical): Markdown
+        # and Python each appear once, so the shared pipeline selects Markdown.
+        assert student["Primary_Language"] == "Markdown"
         assert repos[0]["Repository"] == "stud-dashboard"
         # Stars/quality columns flow onto the REPO_COLS rows.
         assert {"Stars", "Repository_Quality_Score"} <= set(repos[0].keys())

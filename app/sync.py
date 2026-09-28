@@ -209,7 +209,14 @@ def compute_account_snapshot(
         "Batch": _clean_text(user.get("practical_batch")),
         "Semester": _clean_text(user.get("semester")),
         ROSTER_EMAIL_COL: _clean_text(user.get("email")),
+        services.GITHUB_COL: f"https://github.com/{username}",
         "GitHub_Username": username,
+        "Submitted_GitHub_Username": username,
+        "Academic_Year": "",
+        "LinkedIn_Username": "",
+        "LinkedIn_URL": "",
+        "HackerRank_Username": "",
+        "HackerRank_URL": "",
     }
     try:
         result = batch.analyze_records([record], token)
