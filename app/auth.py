@@ -872,7 +872,7 @@ def set_onboarding_status(email: str, status: str, promote_github: bool = False)
     the OAuth-linked GitHub handle into the verified ``github_username`` and
     stamps ``github_verified_at``. Returns ``(ok, reason)``."""
     email = (email or "").strip().lower()
-    if status not in ("approved", "rejected"):
+    if status not in ("approved", "rejected", "pending"):
         return False, "bad_status"
     user = get_user(email)
     if user is None:

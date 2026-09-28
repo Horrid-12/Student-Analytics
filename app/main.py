@@ -1071,7 +1071,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
                 await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
         except Exception:
             logger.exception("Post-link sync failed for %s", user["email"])
-        response = RedirectResponse("/settings?linked=github", status_code=302)
+        response = RedirectResponse("/onboarding?linked=github", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -1342,6 +1342,11 @@ async def onboarding_approve(request: Request, email: str = Form("")):
 async def onboarding_reject(request: Request, email: str = Form("")):
     return await _onboarding_review(request, email, "rejected", promote_github=False)
 
+
+@app.post("/onboarding/disapprove", response_class=HTMLResponse)
+async def onboarding_disapprove(request: Request, email: str = Form("")):
+    """Admin revokes approval — moves the account back to pending."""
+    return await _onboarding_review(request, email, "pending", promote_github=False)
 
 async def _onboarding_review(request: Request, email: str, status: str, promote_github: bool):
     user = getattr(request.state, "user", None)
