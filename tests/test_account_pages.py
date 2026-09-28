@@ -105,9 +105,9 @@ class TestStudentPages:
         r = client.get("/overview")
         assert r.status_code == 200
         html = r.text
-        assert "Analyzed 1 student(s)" in html
+        assert "Key Metrics" in html
         assert "Division 1" in html
-        assert "2 repositories found" in html
+        assert "Repositories Found" in html
 
     def test_overview_shows_primary_language(self):
         seeded_account()

@@ -157,18 +157,6 @@ def _fleet_view(request: Request, roster: str = ""):
         return None
 
 
-def _account_sync_stamp(request: Request, roster: str = "") -> str:
-    """Last-sync label for the Overview in account mode (the shared pipeline
-    timestamp has no meaning there)."""
-    if roster:
-        return ""
-    user = getattr(request.state, "user", None)
-    snapshot = accounts.get_snapshot((user or {}).get("email", ""))
-    if snapshot and snapshot.get("synced_at"):
-        return views.friendly_timestamp(str(snapshot["synced_at"]).replace(" UTC", "+00:00"))
-    return ""
-
-
 def _workflow_state(roster_id: str) -> dict:
     """Workflow state: prefer Postgres; fall back to RosterStore cache."""
     if database.db_configured():
@@ -1148,20 +1136,6 @@ def logout(request: Request):
     return response
 
 
-def _fleet_sync_stamp() -> str:
-    """Newest synced_at across the approved fleet (Overview "last sync" label
-    in fleet mode, since the shared pipeline timestamp means nothing there)."""
-    try:
-        latest = ""
-        for row in auth.get_approved_accounts():
-            snapshot = accounts.get_snapshot((row or {}).get("email", ""))
-            if snapshot and snapshot.get("synced_at") and str(snapshot["synced_at"]) > latest:
-                latest = str(snapshot["synced_at"])
-        return views.friendly_timestamp(latest.replace(" UTC", "+00:00")) if latest else ""
-    except Exception:
-        return ""
-
-
 def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
     """Where to land after a successful login (Phase 5.4).
 
@@ -1263,16 +1237,11 @@ def overview(request: Request, roster: str = ""):
     ctx["view"] = None
     ctx["payload"] = None
     ctx["past_runs"] = _run_history_rows()
-    account_mode = not roster
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
             ctx["payload"] = views.overview_payload(view)
-            if account_mode:
-                stamp = _fleet_sync_stamp() or _account_sync_stamp(request)
-                if stamp:
-                    ctx["payload"]["last_analysis"] = stamp
         except Exception:
             ctx["view"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))

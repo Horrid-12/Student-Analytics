@@ -32,32 +32,6 @@
 {% include "partials/upload_bar.html" %}
 <div id="upload-result"></div>
 
-<section class="panel">
-  <div class="panel-title">Analysis Pipeline</div>
-  <div class="pipeline" id="analysis-pipeline">
-    <div class="pipeline-step" data-step="1"><span class="pipeline-index">1</span>Excel Upload</div>
-    <div class="pipeline-step" data-step="2"><span class="pipeline-index">2</span>Username Extraction</div>
-    <div class="pipeline-step" data-step="3"><span class="pipeline-index">3</span>Account Validation</div>
-    <div class="pipeline-step" data-step="4"><span class="pipeline-index">4</span>Repository Fetch</div>
-    <div class="pipeline-step" data-step="5"><span class="pipeline-index">5</span>Contribution Trends</div>
-    <div class="pipeline-step" data-step="6"><span class="pipeline-index">6</span>Analytics Build</div>
-  </div>
-  <div class="pipeline-rule"></div>
-  <div class="pipeline-meta" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-    <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
-      {% if complete %}
-      <span class="badge-green" id="pipeline-status-badge">{{ payload.status }}</span>
-      <span id="pipeline-status-text">Analyzed {{ payload.total }} student(s) in {{ payload.elapsed }}s &mdash; {{ payload.valid }} connected, {{ payload.invalid }} invalid, {{ payload.repos_found }} repositories found.</span>
-      {% else %}
-      <span class="badge-muted" id="pipeline-status-badge">Idle</span>
-      <span id="pipeline-status-text">Upload a roster filled in from the spreadsheet, then run analysis to populate this workspace.</span>
-      {% endif %}
-    </div>
-    {% if complete %}<span id="pipeline-completed-at" style="font-size:12px; color:var(--muted);">Completed {{ payload.last_analysis }}</span>{% endif %}
-  </div>
-  <div id="analysis-log" class="run-log-scroll run-log-live" hidden></div>
-</section>
-
 {% if complete %}
 <div id="previous-results">
 <section class="panel">
@@ -256,46 +230,22 @@
     } catch (e) { return null; }
   }
 
-  var logEl = document.getElementById('analysis-log');
-  var pipelineEl = document.getElementById('analysis-pipeline');
-  var statusBadge = document.getElementById('pipeline-status-badge');
-  var statusText = document.getElementById('pipeline-status-text');
   var prevResults = document.getElementById('previous-results');
-  var completedAt = document.getElementById('pipeline-completed-at');
+  var noticeEl = document.getElementById('upload-result');
 
   window.__gsadOnRoster = function (data) { current = data || null; };
 
-  function logLine(text, cls) {
-    if (!logEl) return;
-    if (logEl.hidden) logEl.hidden = false;
-    var line = document.createElement('div');
-    line.className = 'batch-log-item' + (cls ? ' ' + cls : '');
-    line.textContent = text;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
-  function updatePipelineStep(step, state) {
-    if (!pipelineEl) return;
-    var stepEl = pipelineEl.querySelector('[data-step="' + step + '"]');
-    if (!stepEl) return;
-    stepEl.classList.remove('is-running', 'is-done', 'is-error');
-    if (state === 'running') stepEl.classList.add('is-running');
-    else if (state === 'done') stepEl.classList.add('is-done');
-    else if (state === 'error') stepEl.classList.add('is-error');
-  }
-
-  function updatePipelineStatus(text, isComplete, isError) {
-    if (statusBadge) {
-      statusBadge.className = 'badge-' + (isError ? 'red' : isComplete ? 'green' : 'muted');
-      statusBadge.textContent = isComplete ? 'Complete' : isError ? 'Error' : 'Running';
-    }
-    if (statusText) statusText.textContent = text;
+  function showNotice(text) {
+    if (!noticeEl) return;
+    noticeEl.innerHTML = '<div class="roster-loaded-card roster-load-error" role="alert">'
+      + '<span class="roster-load-title">Analysis stopped</span>'
+      + '<span class="roster-load-meta"></span></div>';
+    var meta = noticeEl.querySelector('.roster-load-meta');
+    if (meta) meta.textContent = text;
   }
 
   function restorePreviousResults() {
     if (prevResults) prevResults.hidden = false;
-    if (completedAt) completedAt.hidden = false;
   }
 
   function chunk(list, size) {
@@ -333,26 +283,13 @@
 
   function runAll() {
     if (running) return;
-    logEl.innerHTML = '';
-    logEl.scrollTop = 0;
     if (!current || !Array.isArray(current.ids) || !current.ids.length) {
-      logLine('Upload a roster first, then run analysis.', 'error');
+      showNotice('Upload a roster first, then run analysis.');
       return;
     }
     running = true;
     if (runBtn) runBtn.disabled = true;
     if (prevResults) prevResults.hidden = true;
-    if (completedAt) completedAt.hidden = true;
-
-    // Reset pipeline to initial state (step 1 done = upload)
-    if (pipelineEl) {
-      pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
-        el.classList.remove('is-running', 'is-done', 'is-error');
-      });
-      updatePipelineStep(1, 'done');
-    }
-    updatePipelineStatus('Starting analysis...', false, false);
-    logLine('Starting analysis for ' + current.ids.length + ' student(s)...');
 
     var rosterId = current.roster_id;
     var ids = current.ids;
@@ -361,29 +298,18 @@
 
     batchedFetch(rosterId, chunk(ids, batchSize), total)
       .then(function (summary) {
-        logLine(summary.text, summary.ok ? '' : 'error');
         if (summary.ok) {
-          // Mark all steps as done
-          if (pipelineEl) {
-            pipelineEl.querySelectorAll('.pipeline-step').forEach(function(el) {
-              el.classList.remove('is-running');
-              el.classList.add('is-done');
-            });
-          }
-          updatePipelineStatus('Analyzed ' + total + ' student(s) in ' + (summary.elapsed || 0) + 's — ' + summary.valid + ' connected, ' + summary.invalid + ' invalid, ' + summary.repos_found + ' repositories found.', true, false);
-          logLine('Analysis complete! Loading dashboard...', '');
           setTimeout(function () {
             window.location.href = '/?roster=' + encodeURIComponent(rosterId);
           }, 300);
         } else {
           restorePreviousResults();
-          updatePipelineStatus('Analysis stopped: ' + summary.text, false, true);
+          showNotice('Analysis stopped: ' + summary.text);
         }
       })
       .catch(function (err) {
         restorePreviousResults();
-        logLine('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), 'error');
-        updatePipelineStatus('Analysis stopped: ' + (err && err.message ? err.message : 'network error'), false, true);
+        showNotice('Analysis stopped: ' + (err && err.message ? err.message : 'network error'));
       })
       .finally(function () {
         running = false;
@@ -393,35 +319,12 @@
 
   function batchedFetch(rosterId, batches, total) {
     var done = 0;
-    var totalBatches = batches.length;
-    var batchNum = 0;
-    var pipelineStages = [
-      { step: 2, name: 'Username Extraction', threshold: 0 },
-      { step: 3, name: 'Account Validation', threshold: 0.15 },
-      { step: 4, name: 'Repository Fetch', threshold: 0.45 },
-      { step: 5, name: 'Contribution Trends', threshold: 0.7 },
-      { step: 6, name: 'Analytics Build', threshold: 0.9 }
-    ];
-    var currentStage = 0;
 
     var reduce = function () {
       if (!batches.length) {
-        return Promise.resolve({ ok: true, done: done, valid: 0, invalid: 0, repos_found: 0, elapsed: 0, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
+        return Promise.resolve({ ok: true, done: done, text: 'Done — ' + done + ' of ' + total + ' student(s) analyzed.' });
       }
       var chunkIds = batches.shift();
-      batchNum++;
-      var statusLabel = totalBatches > 1 ? 'running (batch ' + batchNum + '/' + totalBatches + ')' : 'running';
-      updatePipelineStatus('Batch ' + batchNum + '/' + totalBatches + ' — analyzing ' + done + ' of ' + total + ' student(s)...', false, false);
-      
-      // Update pipeline stage based on progress
-      var progress = total > 0 ? done / total : 0;
-      while (currentStage < pipelineStages.length && progress >= pipelineStages[currentStage].threshold) {
-        updatePipelineStep(pipelineStages[currentStage].step, 'done');
-        currentStage++;
-      }
-      if (currentStage < pipelineStages.length) {
-        updatePipelineStep(pipelineStages[currentStage].step, 'running');
-      }
 
       return fetch('/analysis/batch', {
         method: 'POST',
@@ -438,19 +341,8 @@
             throw new Error((body && body.detail) || ('Request failed (' + resp.status + ')'));
           });
         }
-        return resp.json().then(function (data) {
+        return resp.json().then(function () {
           done += chunkIds.length;
-          var r = data.result || {};
-          if (r.students && r.students.length) {
-            r.students.forEach(function (s) {
-              var name = s['Student Name'] || s['GitHub_Username'] || 'Student';
-              var u = s['GitHub_Username'] ? '@' + s['GitHub_Username'] : 'invalid';
-              var repos = s['Repository_Count'] !== undefined ? s['Repository_Count'] + ' repos' : '';
-              logLine('✓ ' + name + ' (' + u + ')' + (repos ? ' — ' + repos : ''));
-            });
-          } else {
-            logLine('Batch ' + batchNum + ' done (' + chunkIds.length + ' student(s)) — ' + r.valid_users + ' valid, ' + r.invalid_users + ' invalid.');
-          }
           return reduce();
         });
       });

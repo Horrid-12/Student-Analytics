@@ -654,8 +654,6 @@ def overview_payload(view) -> dict:
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
-        "elapsed": float(state.get("elapsed") or 0.0),
-        "last_analysis": friendly_timestamp(last_analysis_time()),
         "valid_users": valid,
     }
 
