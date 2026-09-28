@@ -108,6 +108,13 @@ class TestStudentPages:
         assert "Class Metrics Radar" in html
         assert "Division 1" in html
         assert "Analysis Results" in html
+        assert "Overview Metrics" in html
+        assert "Number of Students" in html
+        assert "Active Repositories" in html
+        assert "Total Stars" in html
+        assert "Total Forks" in html
+        assert "data-active-number" in html
+        assert "data-active-value" in html
 
     def test_overview_shows_primary_language(self):
         seeded_account()

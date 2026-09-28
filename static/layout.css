@@ -626,6 +626,10 @@ button {
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; }
 @media (max-width: 1400px) { .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.metric-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1400px) { .metric-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .metric-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.metric-grid-4 .metric-top { gap: 8px; flex-wrap: wrap; }
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 1100px) { .two-col-grid { grid-template-columns: 1fr; } }
 .radar-grid { display: grid; grid-template-columns: 5fr 3fr; gap: 24px; align-items: start; }

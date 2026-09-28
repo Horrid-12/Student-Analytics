@@ -568,6 +568,40 @@ def overview_payload(view) -> dict:
     team_repos_count = int(students["Contributed_Repos_Count"].sum()) if not students.empty and "Contributed_Repos_Count" in students.columns else 0
     combined_repos_found = int(len(repos) + (len(team_repos) if team_repos is not None and not team_repos.empty else 0))
 
+    # ── Overview headline metrics: active repos per window (Updated /
+    # Last_Active_At within 30d / 90d / all). Same windows as leaderboards.
+    def _active_total(frame, date_col: str, days: int | None) -> int:
+        if frame is None or frame.empty or date_col not in frame.columns:
+            return 0
+        if days is None:
+            try:
+                return int(len(frame))
+            except Exception:
+                return 0
+        try:
+            return int(sum(_recent_counts(frame, "Username", date_col, days).values()))
+        except Exception:
+            return 0
+
+    _has_team = team_repos is not None and not team_repos.empty
+    _active_30d = _active_total(repos, "Updated", 30) + (_active_total(team_repos, "Last_Active_At", 30) if _has_team else 0)
+    _active_90d = _active_total(repos, "Updated", 90) + (_active_total(team_repos, "Last_Active_At", 90) if _has_team else 0)
+    _active_all = combined_repos_found
+    active_windows = {"30d": _active_30d, "90d": _active_90d, "all": _active_all}
+
+    def _col_sum(frame, column: str) -> int:
+        try:
+            if frame is None or frame.empty or column not in frame.columns:
+                return 0
+            return int(pd.to_numeric(frame[column], errors="coerce").fillna(0).sum())
+        except Exception:
+            return 0
+
+    _owned_stars = _col_sum(repos, "Stars")
+    _team_stars = _col_sum(team_repos, "Stars") if _has_team else 0
+    _owned_forks = _col_sum(repos, "Forks")
+    _team_forks = _col_sum(team_repos, "Forks") if _has_team else 0
+
     # ── Raw data for ECharts advanced charts ────────────────────────────────
     # Treemap: account validation categories
     treemap_data = [
@@ -624,8 +658,12 @@ def overview_payload(view) -> dict:
         "avg_repos": f"{students[_repos_col].mean():.1f}" if not students.empty else "0.0",
         "avg_followers": f"{students['Followers'].mean():.1f}" if not students.empty else "0.0",
         "most_used_language": most_used_language,
-        "total_stars": int(repos["Stars"].fillna(0).sum()) if not repos.empty else 0,
-        "total_forks": int(repos["Forks"].fillna(0).sum()) if not repos.empty else 0,
+        "total_stars": _owned_stars + _team_stars,
+        "total_forks": _owned_forks + _team_forks,
+        "active_repos_30d": _active_30d,
+        "active_repos_90d": _active_90d,
+        "active_repos_all": _active_all,
+        "active_windows": active_windows,
         "avg_quality": f"{repos['Repository_Quality_Score'].mean():.1f}" if not repos.empty else "0.0",
         "account_status": account_status,
         "donut_fig": donut_fig,

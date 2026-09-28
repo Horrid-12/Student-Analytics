@@ -154,18 +154,33 @@ def _fleet_view(request: Request, roster: str = ""):
         return None
 
 
+FLEET_BLACKLIST_KEY = "fleet"
+
+
+def _bl_roster(roster_id: str) -> str:
+    """Storage key for leaderboard blacklist/hidden-repos.
+
+    Roster uploads use their roster id; the roster-less fleet/account views
+    (Phase 5.2) share the single ``fleet`` key so the admin blacklist feature
+    keeps working without a ``?roster=`` attached.
+    """
+    return (roster_id or "").strip() or FLEET_BLACKLIST_KEY
+
+
 def _blacklist_state(roster_id: str) -> dict:
     """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache."""
+    key = _bl_roster(roster_id)
     if database.db_configured():
-        return db.get_blacklist(roster_id)
-    return roster_store.get_blacklist(roster_id)
+        return db.get_blacklist(key)
+    return roster_store.get_blacklist(key)
 
 
 def _hidden_repos_state(roster_id: str) -> dict:
     """Hidden repositories: prefer Postgres; fall back to RosterStore cache."""
+    key = _bl_roster(roster_id)
     if database.db_configured():
-        return db.get_hidden_repos(roster_id)
-    return roster_store.get_hidden_repos(roster_id)
+        return db.get_hidden_repos(key)
+    return roster_store.get_hidden_repos(key)
 
 
 def _db_log_event(event_type: str, detail: str = "") -> bool:
@@ -1217,6 +1232,7 @@ def students_page(
             "blacklist": _blacklist_state(roster),
             "hidden_repos": _hidden_repos_state(roster),
             "roster_id": roster,
+            "bl_roster": _bl_roster(roster),
             "q": q,
             "division": division,
             "batch": batch,
@@ -1336,7 +1352,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 
@@ -1346,8 +1362,7 @@ async def leaderboards_blacklist_save(request: Request, roster: str = ""):
     user = getattr(request.state, "user", None) or {}
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only admins can edit the leaderboard blacklist")
-    if not roster:
-        raise HTTPException(status_code=400, detail="Missing roster")
+    roster = _bl_roster(roster)
     try:
         body = await request.json()
     except Exception:
@@ -1385,8 +1400,7 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
     user = getattr(request.state, "user", None) or {}
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only admins can hide leaderboard repositories")
-    if not roster:
-        raise HTTPException(status_code=400, detail="Missing roster")
+    roster = _bl_roster(roster)
     try:
         body = await request.json()
     except Exception:

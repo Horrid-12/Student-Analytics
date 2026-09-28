@@ -287,6 +287,13 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
         assert "Class Metrics Radar" in body
+        assert "Overview Metrics" in body
+        assert "Number of Students" in body
+        assert "Active Repositories" in body
+        assert "Total Stars" in body
+        assert "Total Forks" in body
+        assert "data-active-number" in body
+        assert "data-active-value" in body
         assert "Key Metrics" not in body
         assert "API Status" not in body
         assert "Analysis Status" not in body
@@ -795,7 +802,9 @@ class TestPageRenderingWithData:
         assert self.client.post(url, json={"student_id": "", "repo": "x/y", "action": "hide"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "repo": "", "action": "hide"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "repo": "x/y", "action": "ban"}).status_code == 400
-        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 400
+        # Fleet mode (no roster) shares the 'fleet' key instead of 400.
+        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 200
+        assert self.client.post("/leaderboards/hidden-repos", json={"student_id": "101", "repo": "x/y", "action": "unhide"}).status_code == 200
         student_client = TestClient(app)
         make_user(student_client, "student")
         assert student_client.post(url, json={"student_id": "101", "repo": "x/y", "action": "hide"}).status_code == 403
@@ -808,7 +817,9 @@ class TestPageRenderingWithData:
         assert self.client.post(url, json={"student_id": "101", "board": "nope", "action": "blacklist"}).status_code == 400
         assert self.client.post(url, json={"student_id": "", "board": "commits", "action": "blacklist"}).status_code == 400
         assert self.client.post(url, json={"student_id": "101", "board": "commits", "action": "ban"}).status_code == 400
-        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 400
+        # Fleet mode (no roster) shares the 'fleet' key instead of 400.
+        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "blacklist"}).status_code == 200
+        assert self.client.post("/leaderboards/blacklist", json={"student_id": "101", "board": "commits", "action": "whitelist"}).status_code == 200
         # Non-admins are refused, and see no button.
         student_client = TestClient(app)
         make_user(student_client, "student")

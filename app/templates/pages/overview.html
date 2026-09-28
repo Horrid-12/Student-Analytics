@@ -20,6 +20,56 @@
 {% if complete %}
 <div id="previous-results">
 <section class="panel">
+  <div class="panel-title">Overview Metrics</div>
+  <div class="metric-grid metric-grid-4">
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-blue">Students</span></div>
+      <div class="metric-value">{{ payload.total }}</div>
+      <div class="metric-label">Number of Students</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="badge-green">Active</span>
+        <span class="activity-tabs" role="group" aria-label="Active period">
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['30d'] }}" aria-pressed="false">30D</button>
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['90d'] }}" aria-pressed="false">90D</button>
+          <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['all'] }}" aria-pressed="true">All</button>
+        </span>
+      </div>
+      <div class="metric-value" data-active-number>{{ payload.active_windows['all'] }}</div>
+      <div class="metric-label">Active Repositories</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-amber">Stars</span></div>
+      <div class="metric-value">{{ payload.total_stars }}</div>
+      <div class="metric-label">Total Stars</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-top"><span class="badge-purple">Forks</span></div>
+      <div class="metric-value">{{ payload.total_forks }}</div>
+      <div class="metric-label">Total Forks</div>
+    </div>
+  </div>
+</section>
+<script>
+  (function () {
+    // Overview active-repo period switcher: swaps the big number between
+    // the pre-rendered 30D / 90D / All values (same pattern as profile).
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('[data-active-value]') : null;
+      if (!btn) return;
+      var card = btn.closest('.metric-card');
+      if (!card) return;
+      card.querySelectorAll('[data-active-value]').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      var number = card.querySelector('[data-active-number]');
+      if (number) number.textContent = btn.getAttribute('data-active-value');
+    });
+  })();
+</script>
+
+<section class="panel">
   <div class="panel-title">Class Metrics Radar</div>
   <div class="radar-grid">
     <div>
