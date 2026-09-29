@@ -223,3 +223,5 @@ Github-website-/
 >
 > Whatever wins, these carry over unchanged: `services.py` logic, the fixed Excel schema contract,
 > and the auth requirement above. Execution = **Phase 3**; this section remains as the decision record.
+
+> **2026-09-29 (Security Hardening & Cloudflare Security):** Audited the codebase for security vulnerabilities. Dependabot and CodeQL alerts were clear. Executed 5 security fixes from the Security Hardening Plan (disabled FastAPI auto-docs, random fallback secret in auth.py, secure=True cookie adaptation for TestClient, sanitized debug endpoint output, rewrote SECURITY.md). Added 5 HTTP security headers to vercel.json. Generated a manual Cloudflare Dashboard Checklist artifact for the user. Tests were run and confirmed no new failures were introduced.
