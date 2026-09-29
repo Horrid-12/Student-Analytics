@@ -167,7 +167,13 @@ def _secret() -> str:
         )
         _WARNED_AUTH_SECRET = True
     if _DEV_SECRET is None:
-        stable_seed = os.environ.get("DATABASE_URL") or os.environ.get("GITHUB_TOKEN")
+        stable_seed = (
+            os.environ.get("DATABASE_URL") or 
+            os.environ.get("GITHUB_TOKEN") or 
+            os.environ.get("ADMIN_PASSWORD_HASH") or 
+            os.environ.get("GOOGLE_CLIENT_ID") or
+            os.environ.get("VERCEL_PROJECT_ID")
+        )
         if stable_seed:
             _DEV_SECRET = hashlib.sha256(f"gsad-secret-seed:{stable_seed}".encode("utf-8")).hexdigest()
         else:
