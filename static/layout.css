@@ -743,20 +743,14 @@ button {
 }
 
 /* ── Deterministic Packed Bubble Chart ──────────────────────────────── */
-.bubble-chart-wrap {
-  position: relative;
-  overflow: hidden;
-}
-.bub-node {
-  cursor: default;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: center;
-}
+.bubble-chart-wrap { position: relative; overflow: hidden; }
+.bub-node { cursor: default; transition: transform 0.2s cubic-bezier(0.16,1,0.3,1); transform-origin: center; }
 .bub-node:hover {
   transform: scale(1.08);
   filter: brightness(1.1);
   z-index: 2;
 }
+.bub-node:hover circle { fill-opacity: 1; }
 .bubble-tooltip {
   position: absolute;
   pointer-events: none;
