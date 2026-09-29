@@ -1889,9 +1889,42 @@ button {
   text-decoration: underline;
 }
 .notif-empty {
-  padding: 2px 14px 14px;
-  font-size: 13px;
-  color: var(--muted);
+    padding: 2px 14px 14px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* Settings legal rows (Privacy Policy entry point). */
+.legal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 8px;
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--text);
+}
+.legal-row:hover {
+    background: var(--hover-bg);
+}
+.legal-row svg {
+    flex-shrink: 0;
+    color: var(--muted);
+}
+.legal-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.legal-title {
+    font-weight: 700;
+    font-size: 15px;
+}
+.legal-sub {
+    font-size: 13px;
+    color: var(--muted);
 }
 .notif-unread {
   background: rgba(59, 130, 246, 0.08);

@@ -48,6 +48,17 @@
 </section>
 
 <section class="panel">
+  <div class="panel-title">Legal</div>
+  <a class="legal-row" href="/privacy">
+    <span class="legal-text">
+      <span class="legal-title">Privacy Policy</span>
+      <span class="legal-sub">How we collect, use, and protect your data.</span>
+    </span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  </a>
+</section>
+
+<section class="panel">
   <div class="panel-title">Account</div>
 <div style="display:flex; align-items:center; gap:12px;">
       <div class="user-avatar-pill" style="width:36px; height:36px;">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>

@@ -626,10 +626,13 @@ def topbar_date() -> str:
 
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy_page(request: Request):
+    # Public by design (pre-login consent reads it from /login). Full base
+    # context keeps the sidebar/nav sane for anonymous and signed-in readers.
+    ctx = _base_context(request, "Privacy")
     return templates.TemplateResponse(
         request,
         "pages/privacy.html",
-        {"page_name": "privacy", "user": getattr(request.state, "user", None)},
+        {**ctx, "page_name": "privacy"},
     )
 
 
