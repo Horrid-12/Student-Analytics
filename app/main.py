@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="GitHub Student Analytics Platform")
+app = FastAPI(title="GitHub Student Analytics Platform", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=BASE_DIR.parent / "static"), name="static")
 
 #: Indian Standard Time (UTC+5:30, no daylight saving) — every wall-clock
@@ -664,6 +664,7 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
         auth.create_session_token(user),
         max_age=auth._SESSION_TTL_SECONDS,
         httponly=True,
+        secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
     return response
@@ -725,6 +726,7 @@ def auth_google(request: Request):
         state,
         max_age=auth._OAUTH_STATE_TTL_SECONDS,
         httponly=True,
+        secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
     return response
@@ -781,6 +783,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         auth.create_session_token(user),
         max_age=auth._SESSION_TTL_SECONDS,
         httponly=True,
+        secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
     return response
@@ -798,8 +801,8 @@ def auth_github(request: Request):
     state = auth.new_oauth_state()
     url = github_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
-    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
 
 @app.get("/auth/github/callback")
@@ -870,8 +873,8 @@ def auth_linkedin(request: Request):
     state = auth.new_oauth_state()
     url = linkedin_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
-    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, samesite="lax")
+    response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
 
 @app.get("/auth/linkedin/callback")
@@ -979,7 +982,8 @@ async def force_sync_all_users(request: Request):
             ok, code, _ = await asyncio.to_thread(sync.sync_one, full_user, token, True)
             results[email] = f"ok={ok}, code={code}"
         except Exception as e:
-            results[email] = f"error={e}"
+            logger.exception("force_sync_all error for %s", email)
+            results[email] = f"error={type(e).__name__}"
     return JSONResponse(content={"status": "done", "results": results})
 
 

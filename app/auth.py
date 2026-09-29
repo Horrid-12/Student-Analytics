@@ -26,6 +26,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import time
 import tomllib
@@ -131,6 +132,9 @@ _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 _COOKIE_NAME = "gsad_session"
 _OAUTH_STATE_COOKIE = "gsad_oauth_state"
 _OAUTH_STATE_TTL_SECONDS = 10 * 60  # state nonce lifetime
+#: Secure flag for cookies — True in production (Vercel = HTTPS always),
+#: False under pytest where TestClient uses plain HTTP.
+_SECURE_COOKIES = "___APP_UNDER_PYTEST___" not in os.environ
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -145,22 +149,26 @@ CREATE TABLE IF NOT EXISTS users (
 
 
 _WARNED_AUTH_SECRET = False
+_DEV_SECRET: str | None = None
 
 
 def _secret() -> str:
     """HMAC key for session cookies. Use AUTH_SECRET in production; the dev
-    fallback keeps TestClient sessions working without env setup but warrants a
-    warning."""
-    global _WARNED_AUTH_SECRET
+    fallback generates a random per-process key so sessions can never be
+    forged even when AUTH_SECRET is unset (they just won't survive restarts)."""
+    global _WARNED_AUTH_SECRET, _DEV_SECRET
     value = os.environ.get("AUTH_SECRET")
     if value:
         return value
     if not _WARNED_AUTH_SECRET:
         logger.warning(
-            "AUTH_SECRET is not set — using the insecure dev secret; sessions invalidate if it ever changes."
+            "AUTH_SECRET is not set — using a random per-process secret; "
+            "sessions will not survive restarts."
         )
         _WARNED_AUTH_SECRET = True
-    return "gsad-dev-secret-change-me"
+    if _DEV_SECRET is None:
+        _DEV_SECRET = secrets.token_hex(32)
+    return _DEV_SECRET
 
 
 def _env_or_secrets(key: str, default: str = "") -> str:
