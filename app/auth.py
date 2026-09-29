@@ -162,12 +162,16 @@ def _secret() -> str:
         return value
     if not _WARNED_AUTH_SECRET:
         logger.warning(
-            "AUTH_SECRET is not set — using a random per-process secret; "
-            "sessions will not survive restarts."
+            "AUTH_SECRET is not set — falling back to a derived or random secret; "
+            "set AUTH_SECRET in your environment for stable sessions."
         )
         _WARNED_AUTH_SECRET = True
     if _DEV_SECRET is None:
-        _DEV_SECRET = secrets.token_hex(32)
+        stable_seed = os.environ.get("DATABASE_URL") or os.environ.get("GITHUB_TOKEN")
+        if stable_seed:
+            _DEV_SECRET = hashlib.sha256(f"gsad-secret-seed:{stable_seed}".encode("utf-8")).hexdigest()
+        else:
+            _DEV_SECRET = secrets.token_hex(32)
     return _DEV_SECRET
 
 
