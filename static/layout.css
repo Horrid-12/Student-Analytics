@@ -1926,6 +1926,98 @@ button {
     font-size: 13px;
     color: var(--muted);
 }
+
+/* Breadcrumb trail (e.g. Settings / Privacy Policy). */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+.breadcrumb a {
+    color: var(--muted);
+    text-decoration: none;
+}
+.breadcrumb a:hover {
+    color: var(--text);
+    text-decoration: underline;
+}
+
+/* Privacy Policy reading layout: sticky contents card + narrow body column. */
+.privacy-layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 0.9rem;
+    align-items: start;
+    margin-bottom: 16px;
+}
+.privacy-toc {
+    position: sticky;
+    top: 20px;
+}
+.privacy-toc ul {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.privacy-toc a {
+    display: block;
+    padding: 7px 10px;
+    border-radius: 8px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+.privacy-toc a:hover {
+    color: var(--text);
+    background: var(--hover-bg);
+}
+.privacy-body {
+    min-width: 0;
+    max-width: 76ch;
+}
+.privacy-body .panel {
+    margin-bottom: 16px;
+}
+.privacy-body .panel:last-child {
+    margin-bottom: 0;
+}
+.privacy-body h2.panel-title {
+    margin-bottom: 12px;
+}
+.privacy-body p {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text);
+    margin: 0 0 10px;
+}
+.privacy-body p:last-child {
+    margin-bottom: 0;
+}
+.privacy-body ul {
+    margin: 10px 0 4px;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text);
+}
+@media (max-width: 900px) {
+    .privacy-layout {
+        grid-template-columns: 1fr;
+    }
+    .privacy-toc {
+        position: static;
+    }
+}
 .notif-unread {
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.35);

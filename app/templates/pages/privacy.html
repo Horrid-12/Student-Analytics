@@ -1,45 +1,79 @@
 {% extends "base.html" %}
-{% block title %}Privacy Policy{% endblock %}
+{% block title %}Privacy Policy — GitHub Student Analytics Platform{% endblock %}
 {% block content %}
+
 <div class="topbar-card">
-    <div class="topbar-title">Privacy Policy</div>
-    <div class="topbar-subtitle">How we handle your data and privacy.</div>
+  <div class="topbar">
+    <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        {% if auth_logged_in %}<a href="/settings">Settings</a><span aria-hidden="true">/</span>{% endif %}<span aria-current="page">Privacy Policy</span>
+      </nav>
+      <div class="topbar-title">Privacy Policy</div>
+      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
+        <span>How we handle your data and privacy</span><span>&bull;</span>
+        <span>Last updated: September 2026</span>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="panel" style="padding: 32px; line-height: 1.6;">
-    <h2 style="margin-top: 0;">1. Introduction</h2>
-    <p>This Privacy Policy explains how the GitHub Student Analytics Platform ("we", "us", or "our") collects, uses, and protects your information when you use our service.</p>
-    
-    <h2>2. Information We Collect</h2>
-    <p>When you use our platform, we collect the following types of information:</p>
-    <ul style="margin-bottom: 16px;">
+<div class="privacy-layout">
+  <aside class="panel privacy-toc" aria-label="On this page">
+    <div class="panel-minor-title">On this page</div>
+    <ul>
+      <li><a href="#introduction">1. Introduction</a></li>
+      <li><a href="#information-we-collect">2. Information We Collect</a></li>
+      <li><a href="#how-we-use">3. How We Use Your Information</a></li>
+      <li><a href="#sharing">4. Data Sharing and Disclosure</a></li>
+      <li><a href="#third-parties">5. Third-Party Services</a></li>
+      <li><a href="#contact">6. Contact Us</a></li>
+    </ul>
+  </aside>
+
+  <div class="privacy-body">
+    <section class="panel" id="introduction" aria-labelledby="privacy-h1">
+      <h2 class="panel-title" id="privacy-h1">1. Introduction</h2>
+      <p>This Privacy Policy explains how the GitHub Student Analytics Platform ("we", "us", or "our") collects, uses, and protects your information when you use our service.</p>
+    </section>
+
+    <section class="panel" id="information-we-collect" aria-labelledby="privacy-h2">
+      <h2 class="panel-title" id="privacy-h2">2. Information We Collect</h2>
+      <p>When you use our platform, we collect the following types of information:</p>
+      <ul>
         <li><strong>Account Information:</strong> Your name, university email address, and role.</li>
         <li><strong>OAuth Data:</strong> If you link your GitHub or LinkedIn accounts, we collect public profile information (such as usernames and avatars) provided by those services.</li>
         <li><strong>Academic Data:</strong> Student roll numbers (PRN), division, batch, and other enrollment details required for verification.</li>
-    </ul>
+      </ul>
+    </section>
 
-    <h2>3. How We Use Your Information</h2>
-    <p>We use the collected information for the following purposes:</p>
-    <ul style="margin-bottom: 16px;">
+    <section class="panel" id="how-we-use" aria-labelledby="privacy-h3">
+      <h2 class="panel-title" id="privacy-h3">3. How We Use Your Information</h2>
+      <p>We use the collected information for the following purposes:</p>
+      <ul>
         <li>To verify student identity and academic status.</li>
         <li>To aggregate and display GitHub repository analytics and leaderboards.</li>
         <li>To provide administrative features for faculty and staff.</li>
-    </ul>
+      </ul>
+    </section>
 
-    <h2>4. Data Sharing and Disclosure</h2>
-    <p>We do not sell your personal data. We only share information in the following circumstances:</p>
-    <ul style="margin-bottom: 16px;">
+    <section class="panel" id="sharing" aria-labelledby="privacy-h4">
+      <h2 class="panel-title" id="privacy-h4">4. Data Sharing and Disclosure</h2>
+      <p>We do not sell your personal data. We only share information in the following circumstances:</p>
+      <ul>
         <li><strong>Within the Platform:</strong> Certain data (like GitHub statistics) is visible to faculty and other verified students on the leaderboards.</li>
         <li><strong>Legal Requirements:</strong> If required by law, subpoena, or other legal processes.</li>
-    </ul>
+      </ul>
+    </section>
 
-    <h2>5. Third-Party Services</h2>
-    <p>Our platform integrates with third-party APIs (GitHub, LinkedIn, Google). Your interactions with these services are governed by their respective privacy policies.</p>
+    <section class="panel" id="third-parties" aria-labelledby="privacy-h5">
+      <h2 class="panel-title" id="privacy-h5">5. Third-Party Services</h2>
+      <p>Our platform integrates with third-party APIs (GitHub, LinkedIn, Google). Your interactions with these services are governed by their respective privacy policies.</p>
+    </section>
 
-    <h2>6. Contact Us</h2>
-    <p>If you have questions about this Privacy Policy, please contact your university's academic administration or the platform administrator.</p>
-    
-    <p style="margin-top: 32px; font-size: 13px; color: var(--muted);">Last Updated: September 2026</p>
+    <section class="panel" id="contact" aria-labelledby="privacy-h6">
+      <h2 class="panel-title" id="privacy-h6">6. Contact Us</h2>
+      <p>If you have questions about this Privacy Policy, please contact your university's academic administration or the platform administrator.</p>
+    </section>
+  </div>
 </div>
 {% endblock %}
-
