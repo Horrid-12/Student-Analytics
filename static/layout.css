@@ -678,6 +678,38 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.metric-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1400px) {
+  .metric-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .metric-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .metric-grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.metric-grid-4 .metric-card {
+  min-width: 0;
+}
+.metric-top-right {
+  justify-content: flex-end;
+}
+.metric-top-spacer {
+  min-height: 24px;
+}
+.metric-card .metric-pill {
+  font-size: 17px;
+  line-height: 1.3;
+  padding: 6px 14px;
+}
 .two-col-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
