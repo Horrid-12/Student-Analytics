@@ -514,6 +514,25 @@ def run_outcome(state: dict | None) -> str:
 # Overview (3.6b)
 # ---------------------------------------------------------------------------
 
+def _known_languages(series) -> "pd.Series":
+    """Repo languages minus the unclassified bucket (null/blank/Misc/Unknown).
+
+    Unclassified repos must never headline language stats — no "Misc"
+    most-used language, no Misc bubble/bar slice. Only real detected
+    languages are ranked.
+    """
+    try:
+        langs = series.dropna().astype(str).str.strip()
+    except Exception:
+        return pd.Series(dtype=str)
+    langs = langs[langs != ""]
+    try:
+        langs = langs[~langs.str.lower().isin({"misc", "unknown"})]
+    except Exception:
+        pass
+    return langs
+
+
 def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
@@ -582,8 +601,10 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     invalid_residual = max(total - valid - missing, 0)
 
     most_used_language = "Unknown"
-    if not repos.empty:
-        most_used_language = str(repos["Language"].fillna("Misc").mode().iloc[0])
+    if not repos.empty and "Language" in repos.columns:
+        _known = _known_languages(repos["Language"])
+        if not _known.empty:
+            most_used_language = str(_known.mode().iloc[0])
 
     account_status = [
         {"Status": "Connected", "Count": int(valid)},
@@ -592,8 +613,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     ]
     donut_fig = _donut(*_donut_args(account_status))
 
-    language_counts = repos["Language"].fillna("Misc").value_counts().head(10).reset_index()
-    language_counts.columns = ["Language", "Repositories"]
+    if not repos.empty and "Language" in repos.columns:
+        language_counts = _known_languages(repos["Language"]).value_counts().head(10).reset_index()
+        language_counts.columns = ["Language", "Repositories"]
+    else:
+        language_counts = pd.DataFrame(columns=["Language", "Repositories"])
 
     repo_distribution, followers_distribution = _distributions(students)
 
@@ -1111,10 +1135,11 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
         if not student_repos.empty and "Language" in student_repos.columns
         else pd.Series(dtype=int)
     )
-    # "Unknown" is never shown — drop it before ranking so it cannot occupy a
-    # slot or skew the scale. Every remaining language is shown (no cap).
+    # "Unknown"/"Misc" are never shown — drop them before ranking so the
+    # unclassified bucket cannot occupy a slot or skew the scale. Every
+    # remaining language is shown (no cap).
     if not lang_counts.empty:
-        lang_counts = lang_counts[lang_counts.index != "Unknown"]
+        lang_counts = lang_counts[~lang_counts.index.isin(["Unknown", "Misc"])]
     top_languages = []
     if not lang_counts.empty and int(lang_counts.max()) > 0:
         peak = int(lang_counts.max())

@@ -115,12 +115,19 @@ class TestStudentPages:
         assert "Total Forks" in html
         assert "data-active-number" in html
         assert "data-active-value" in html
-        # Same filters as the Students page.
-        assert 'name="q"' in html
+        # Division/Batch/Semester filters (no search on Overview).
+        assert 'name="q"' not in html
+        assert 'student-search' not in html
         assert 'name="division"' in html
         assert 'name="batch"' in html
         assert 'name="semester"' in html
         assert 'id="division-filter"' in html
+        # Labels live in pills below the numbers; no badges above them.
+        assert 'metric-pill' in html
+        assert '<span class="badge-blue">Students</span>' not in html
+        assert '<span class="badge-green">Active</span>' not in html
+        assert '<span class="badge-amber">Stars</span>' not in html
+        assert '<span class="badge-purple">Forks</span>' not in html
 
     def test_overview_filters_narrow_cohort(self):
         seeded_account()
@@ -131,7 +138,7 @@ class TestStudentPages:
             compact = " ".join(text.split())
             return (
                 f'<div class="metric-value">{n}</div> '
-                f'<div class="metric-label">Number of Students</div>'
+                f'<div class="metric-label"><span class="badge-blue metric-pill">Number of Students</span></div>'
             ) in compact
 
         assert students_metric(client.get("/overview").text, 1)

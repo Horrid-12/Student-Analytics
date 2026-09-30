@@ -294,12 +294,19 @@ class TestPageRenderingWithData:
         assert "Total Forks" in body
         assert "data-active-number" in body
         assert "data-active-value" in body
-        # Same filters as the Students page.
-        assert 'name="q"' in body
+        # Division/Batch/Semester filters (no search on Overview).
+        assert 'name="q"' not in body
+        assert 'student-search' not in body
         assert 'name="division"' in body
         assert 'name="batch"' in body
         assert 'name="semester"' in body
         assert 'id="division-filter"' in body
+        # Labels live in pills below the numbers; no badges above them.
+        assert 'metric-pill' in body
+        assert '<span class="badge-blue">Students</span>' not in body
+        assert '<span class="badge-green">Active</span>' not in body
+        assert '<span class="badge-amber">Stars</span>' not in body
+        assert '<span class="badge-purple">Forks</span>' not in body
         assert '<div class="metric-value">2</div>' in body
         assert "Key Metrics" not in body
         assert "API Status" not in body
@@ -319,7 +326,7 @@ class TestPageRenderingWithData:
             compact = " ".join(text.split())
             assert (
                 f'<div class="metric-value">{n}</div> '
-                f'<div class="metric-label">Number of Students</div>'
+                f'<div class="metric-label"><span class="badge-blue metric-pill">Number of Students</span></div>'
             ) in compact
 
         students_metric("", 2)
@@ -327,6 +334,44 @@ class TestPageRenderingWithData:
         students_metric("&division=Z", 0)
         students_metric("&q=alice", 1)
         students_metric("&q=nosuchstudent", 0)
+
+    def test_overview_language_stats_exclude_unclassified(self):
+        """Unclassified repos (null language) must never headline language
+        stats — no "Misc" most-used language, no Misc bubble/bar slice."""
+        from app import views as app_views
+
+        students = pd.DataFrame([
+            {"Student_ID": "1", "Student Name": "A", "GitHub_Username": "a-dev",
+             "Division": "A", "Batch": "2026", "Semester": "S1",
+             "Repository_Count": 4, "Followers": 5, "Pull_Requests": 1, "Issues_Opened": 0},
+            {"Student_ID": "2", "Student Name": "B", "GitHub_Username": "b-dev",
+             "Division": "A", "Batch": "2026", "Semester": "S1",
+             "Repository_Count": 2, "Followers": 3, "Pull_Requests": 0, "Issues_Opened": 0},
+        ])
+        repos = pd.DataFrame([
+            {"Username": "a-dev", "Repository": "r1", "Language": None, "Stars": 1, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 50},
+            {"Username": "a-dev", "Repository": "r2", "Language": None, "Stars": 0, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 40},
+            {"Username": "a-dev", "Repository": "r3", "Language": None, "Stars": 0, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 30},
+            {"Username": "a-dev", "Repository": "r4", "Language": "Python", "Stars": 2, "Forks": 1,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 80},
+            {"Username": "b-dev", "Repository": "r5", "Language": "Python", "Stars": 1, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 70},
+            {"Username": "b-dev", "Repository": "r6", "Language": None, "Stars": 0, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 20},
+        ])
+        view = {
+            "students": students,
+            "repos": repos,
+            "team_repos": pd.DataFrame(),
+            "records": [{"GitHub_Username": "a-dev"}, {"GitHub_Username": "b-dev"}],
+            "state": {"status": "complete", "valid": 2, "invalid": 0, "errors": 0},
+        }
+        payload = app_views.overview_payload(view)
+        assert payload["most_used_language"] == "Python"
+        assert [row["name"] for row in payload["bubble_data"]] == ["Python"]
 
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
         """BUG-107 regression (updated for upload removal): a complete Overview

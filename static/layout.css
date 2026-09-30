@@ -699,14 +699,16 @@ button {
 .metric-grid-4 .metric-card {
   min-width: 0;
 }
-.metric-card .metric-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
+.metric-top-right {
+  justify-content: flex-end;
 }
-.metric-card .metric-filter .activity-tabs {
-  flex-wrap: wrap;
+.metric-top-spacer {
+  min-height: 24px;
+}
+.metric-card .metric-pill {
+  font-size: 17px;
+  line-height: 1.3;
+  padding: 6px 14px;
 }
 .two-col-grid {
   display: grid;

@@ -13,9 +13,6 @@
     gap: 4px;
     min-width: 0;
   }
-  .filter-field.search-box-row {
-    flex: 1 1 260px;
-  }
   .filter-label {
     font-size: 11px;
     font-weight: 600;
@@ -44,10 +41,6 @@
 {% if complete and payload %}
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
-  <div class="filter-field search-box-row">
-    <label class="filter-label" for="student-search">Search</label>
-    <input id="student-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
-  </div>
   <div class="filter-field">
     <label class="filter-label" for="division-filter">Division</label>
     <select id="division-filter" class="filter-select" name="division">
@@ -80,13 +73,12 @@
   <div class="panel-title">Overview Metrics</div>
   <div class="metric-grid metric-grid-4">
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-blue">Students</span></div>
+      <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.total }}</div>
-      <div class="metric-label">Number of Students</div>
+      <div class="metric-label"><span class="badge-blue metric-pill">Number of Students</span></div>
     </div>
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-green">Active</span></div>
-      <div class="metric-filter">
+      <div class="metric-top metric-top-right">
         <span class="activity-tabs" role="group" aria-label="Active period">
           <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['30d'] }}" aria-pressed="false">30D</button>
           <button type="button" class="activity-tab" data-active-value="{{ payload.active_windows['90d'] }}" aria-pressed="false">90D</button>
@@ -94,17 +86,17 @@
         </span>
       </div>
       <div class="metric-value" data-active-number>{{ payload.active_windows['all'] }}</div>
-      <div class="metric-label">Active Repositories</div>
+      <div class="metric-label"><span class="badge-green metric-pill">Active Repositories</span></div>
     </div>
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-amber">Stars</span></div>
+      <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.total_stars }}</div>
-      <div class="metric-label">Total Stars</div>
+      <div class="metric-label"><span class="badge-amber metric-pill">Total Stars</span></div>
     </div>
     <div class="metric-card">
-      <div class="metric-top"><span class="badge-purple">Forks</span></div>
+      <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.total_forks }}</div>
-      <div class="metric-label">Total Forks</div>
+      <div class="metric-label"><span class="badge-purple metric-pill">Total Forks</span></div>
     </div>
   </div>
 </section>
