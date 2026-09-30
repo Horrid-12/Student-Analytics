@@ -1290,21 +1290,22 @@ button {
   opacity: 0.5;
   cursor: default;
 }
-.activity-label-tabs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 .activity-tabs {
-  display: inline-flex;
-  gap: 6px;
+  position: absolute;
+  top: 5px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
 }
 .activity-tab {
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px 6px;
+  min-width: 44px;
+  text-align: center;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--muted);
@@ -1700,6 +1701,11 @@ button {
 .activity-stat {
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+.activity-stat-period {
+  position: relative;
+  padding-right: 58px;
+  min-height: 56px;
 }
 .activity-stat:last-child {
   border-bottom: none;
