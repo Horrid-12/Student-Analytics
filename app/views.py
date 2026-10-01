@@ -701,8 +701,27 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _avg_repos = float(students[_repos_col].mean()) if not students.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
-    _sr = float(submission_rate)
     _total_prs = float(prs)
+    _total_students = len(students) if students is not None else 0
+
+    def _pos_mask(frame, col) -> "pd.Series":
+        """Boolean per-student mask for "column value > 0" (absent/NaN-safe)."""
+        if col not in frame.columns:
+            return pd.Series(False, index=frame.index)
+        return pd.to_numeric(frame[col], errors="coerce").fillna(0) > 0
+
+    # Active Contributor Rate: % of students with ≥1 owned OR team commit in
+    # the last 90 days — reuses the leaderboards' 90-day commit window.
+    # Collaboration Rate: % of students who pushed to a teammate's repo.
+    if not students.empty:
+        _active_contributors_90d = int(
+            (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d")).sum()
+        )
+        _collaborators = int(_pos_mask(students, "Contributed_Repos_Count").sum())
+    else:
+        _active_contributors_90d = 0
+        _collaborators = 0
+    _share = lambda n: (100.0 * n / _total_students) if _total_students else 0.0
 
     def _radar_max(val, floor=10):
         """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
@@ -710,11 +729,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
 
     radar_data = {
         "metrics": [
-            {"name": "Avg Repos",       "value": round(_avg_repos, 1),    "max": _radar_max(_avg_repos, 5)},
-            {"name": "Avg Followers",    "value": round(_avg_followers, 1),"max": _radar_max(_avg_followers, 10)},
-            {"name": "Quality Score",    "value": round(_avg_quality, 1),  "max": 100},
-            {"name": "Submission %",     "value": round(_sr, 1),           "max": 100},
-            {"name": "Pull Requests",    "value": round(_total_prs, 0),    "max": _radar_max(_total_prs, 10)},
+            {"name": "Avg Repos",               "value": round(_avg_repos, 1),         "max": _radar_max(_avg_repos, 5)},
+            {"name": "Active Contributor Rate", "value": round(_share(_active_contributors_90d), 1), "max": 100, "unit": "%"},
+            {"name": "Quality Score",           "value": round(_avg_quality, 1),       "max": 100},
+            {"name": "Collaboration Rate",      "value": round(_share(_collaborators), 1),          "max": 100, "unit": "%"},
+            {"name": "Pull Requests",           "value": round(_total_prs, 0),         "max": _radar_max(_total_prs, 10)},
         ]
     }
 
