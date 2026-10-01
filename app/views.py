@@ -787,20 +787,23 @@ def _weekly_activity_trend(
     team_repos: pd.DataFrame | None,
     students: pd.DataFrame,
 ) -> list:
-    """Build weekly and monthly activity trend data for the overview chart.
+    """Build weekly, monthly and semester activity trend data for the overview chart.
 
-    Groups repo activity (Updated timestamps) by ISO week (and calendar
-    month) and student Batch. For each (period, batch) pair, computes the
-    average number of repo updates per student in that batch (i.e. total
-    repos updated in that period by students in the batch, divided by the
-    number of students in the batch).
+    Groups repo activity (Updated timestamps) by ISO week, calendar month,
+    and roster semester, each across student Batch. For each (period, batch)
+    pair, computes the average number of repo updates per student in that
+    batch (i.e. total repos updated in that period by students in the batch,
+    divided by the number of students in the batch — for semesters the
+    denominator is the students in that semester+batch cell).
 
-    Returns a JSON-serialisable structure with both aggregations so the
-    overview can switch between Weekly and Monthly views:
+    Returns a JSON-serialisable structure with the three aggregations so the
+    overview can switch between Weekly, Monthly and Semester views:
         { "weeks": ["2026-W35", ...],
           "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ],
           "months": ["2026-08", ...],
-          "monthly_series": [ { "batch": "B1", "values": [3.1, ...] }, ... ] }
+          "monthly_series": [ { "batch": "B1", "values": [3.1, ...] }, ... ],
+          "semesters": ["2026-27 · Semester 1", ...],
+          "semester_series": [ { "batch": "B1", "values": [4.2, ...] }, ... ] }
     """
     if students is None or students.empty:
         return {"weeks": [], "series": []}
@@ -813,6 +816,31 @@ def _weekly_activity_trend(
     stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
     user_batch = dict(zip(stu["GitHub_Username"], stu["Batch"]))
     batch_student_count = stu.groupby("Batch")["GitHub_Username"].nunique().to_dict()
+
+    # Build username → semester label mapping. Label = Academic_Year + the
+    # roster Semester (e.g. "2026-27 · Semester 1"); drops "Unknown"/blank
+    # parts so a known half keeps a readable label.
+    seed = students.copy()
+    seed["_yr"] = (
+        students["Academic_Year"].astype(str).str.strip()
+        if "Academic_Year" in students.columns
+        else "Unknown"
+    )
+    seed["_sem"] = (
+        students["Semester"].astype(str).str.strip()
+        if "Semester" in students.columns
+        else "Unknown"
+    )
+    seed["_yr"] = seed["_yr"].replace({"Unknown": "", "nan": "", "None": ""})
+    seed["_sem"] = seed["_sem"].replace({"Unknown": "", "nan": "", "None": ""})
+    _both = (seed["_yr"] != "") & (seed["_sem"] != "")
+    _label = seed["_yr"] + " · " + seed["_sem"]
+    seed["Semester_Label"] = _label.where(_both, seed["_yr"] + seed["_sem"]).str.strip()
+    seed["Semester_Label"] = seed["Semester_Label"].replace({"": "Unknown"})
+    seed = seed.dropna(subset=["GitHub_Username"])
+    seed["GitHub_Username"] = seed["GitHub_Username"].astype(str)
+    user_semester = dict(zip(seed["GitHub_Username"], seed["Semester_Label"]))
+    semester_batch_student_count = seed.groupby(["Semester_Label", "Batch"])["GitHub_Username"].nunique().to_dict()
 
     # Combine owned + team repos into a single frame with (Username, Updated)
     frames = []
@@ -832,24 +860,25 @@ def _weekly_activity_trend(
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Map each repo row to its owner's batch
+    # Map each repo row to its owner's batch and semester
     combined["Batch"] = combined["Username"].map(user_batch)
+    combined["Semester"] = combined["Username"].map(user_semester)
     combined = combined.dropna(subset=["Batch"])
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Compute ISO year-week and calendar month labels.
+    # Compute ISO year-week, calendar month, and semester labels.
     combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
     combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
 
     batches = sorted(combined["Batch"].unique())
 
-    def _aggregate(period: str) -> tuple[list[str], list[dict]]:
+    def _aggregate(period: str, count_lookup) -> tuple[list[str], list[dict]]:
         labels = sorted(combined[period].dropna().unique())
         counts = combined.groupby([period, "Batch"]).size().reset_index(name="count")
-        # Average per student in batch
+        # Average per student (batch, or semester+batch, whichever the lookup keyed on)
         counts["avg"] = counts.apply(
-            lambda r: round(r["count"] / max(batch_student_count.get(r["Batch"], 1), 1), 2),
+            lambda r: round(r["count"] / max(count_lookup(r), 1), 2),
             axis=1,
         )
         pivot = counts.pivot_table(index=period, columns="Batch", values="avg", fill_value=0)
@@ -859,14 +888,28 @@ def _weekly_activity_trend(
             series.append({"batch": b, "values": vals})
         return labels, series
 
-    weeks, weekly_series = _aggregate("Week")
-    months, monthly_series = _aggregate("Month")
+    weeks, weekly_series = _aggregate(
+        "Week",
+        lambda r: batch_student_count.get(r["Batch"], 1),
+    )
+    months, monthly_series = _aggregate(
+        "Month",
+        lambda r: batch_student_count.get(r["Batch"], 1),
+    )
+    semesters, semester_series = _aggregate(
+        "Semester",
+        lambda r: semester_batch_student_count.get(
+            (r["Semester"], r["Batch"]), batch_student_count.get(r["Batch"], 1)
+        ),
+    )
 
     return {
         "weeks": weeks,
         "series": weekly_series,
         "months": months,
         "monthly_series": monthly_series,
+        "semesters": semesters,
+        "semester_series": semester_series,
     }
 
 

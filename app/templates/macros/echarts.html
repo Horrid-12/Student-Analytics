@@ -796,6 +796,8 @@ window.__EC_THEME = (function () {
   function render(view) {
     if (view === 'monthly' && raw.months && raw.monthly_series) {
       current = { weeks: raw.months, series: raw.monthly_series };
+    } else if (view === 'semester' && raw.semesters && raw.semester_series) {
+      current = { weeks: raw.semesters, series: raw.semester_series };
     } else {
       current = { weeks: raw.weeks || [], series: raw.series || [] };
     }

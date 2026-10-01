@@ -32,6 +32,14 @@
   .trend-header .panel-title {
     margin-bottom: 0;
   }
+  .trend-header .activity-tabs {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+  }
+  .trend-header .activity-tabs .activity-tab {
+    white-space: nowrap;
+  }
 
   /* Class Metrics Radar: the two side cards fill the right rail beside the radar. */
   .radar-grid {
@@ -184,6 +192,7 @@
     <div class="activity-tabs" role="group" aria-label="Trend period">
       <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="true">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
+      <button type="button" class="activity-tab" data-trend="semester" aria-pressed="false">Semester</button>
     </div>
   </div>
   <div class="two-col-grid">
