@@ -674,10 +674,8 @@ window.__EC_THEME = (function () {
   var raw = {{ data | tojson }};
   var chart = echarts.init(el);
 
-  function opts() {
+  function build(weeks, seriesData) {
     var p = window.__EC_THEME.get();
-    var weeks = raw.weeks || [];
-    var seriesData = raw.series || [];
 
     /* Convert hex to rgba for translucent area fills. */
     function hexToRgba(hex, alpha) {
@@ -793,8 +791,27 @@ window.__EC_THEME = (function () {
     };
   }
 
-  chart.setOption(opts());
-  window.__EC_THEME.register(chart, opts);
+  var current = { weeks: raw.weeks || [], series: raw.series || [] };
+
+  function render(view) {
+    if (view === 'monthly' && raw.months && raw.monthly_series) {
+      current = { weeks: raw.months, series: raw.monthly_series };
+    } else {
+      current = { weeks: raw.weeks || [], series: raw.series || [] };
+    }
+    chart.setOption(build(current.weeks, current.series));
+  }
+
+  /* Initial (weekly) render. */
+  render('weekly');
+
+  /* Page-level bridge so an Overview toggle can switch Weekly/Monthly. */
+  window.__chartBridge = window.__chartBridge || {};
+  window.__chartBridge['{{ id }}'] = { chart: chart, render: render };
+
+  window.__EC_THEME.register(chart, function () {
+    return build(current.weeks, current.series);
+  });
   window.addEventListener('resize', function () { chart.resize(); });
 })();
 </script>

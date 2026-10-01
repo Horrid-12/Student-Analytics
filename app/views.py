@@ -787,16 +787,20 @@ def _weekly_activity_trend(
     team_repos: pd.DataFrame | None,
     students: pd.DataFrame,
 ) -> list:
-    """Build weekly activity trend data for the overview multi-line chart.
+    """Build weekly and monthly activity trend data for the overview chart.
 
-    Groups repo activity (Updated timestamps) by ISO week and student Batch.
-    For each (week, batch) pair, computes the average number of repo updates
-    per student in that batch (i.e. total repos updated that week by students
-    in the batch, divided by the number of students in the batch).
+    Groups repo activity (Updated timestamps) by ISO week (and calendar
+    month) and student Batch. For each (period, batch) pair, computes the
+    average number of repo updates per student in that batch (i.e. total
+    repos updated in that period by students in the batch, divided by the
+    number of students in the batch).
 
-    Returns a JSON-serialisable structure:
+    Returns a JSON-serialisable structure with both aggregations so the
+    overview can switch between Weekly and Monthly views:
         { "weeks": ["2026-W35", ...],
-          "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ] }
+          "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ],
+          "months": ["2026-08", ...],
+          "monthly_series": [ { "batch": "B1", "values": [3.1, ...] }, ... ] }
     """
     if students is None or students.empty:
         return {"weeks": [], "series": []}
@@ -834,30 +838,36 @@ def _weekly_activity_trend(
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Compute ISO year-week label
+    # Compute ISO year-week and calendar month labels.
     combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
+    combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
 
-    # Count repos updated per (Week, Batch)
-    counts = combined.groupby(["Week", "Batch"]).size().reset_index(name="count")
+    batches = sorted(combined["Batch"].unique())
 
-    # Average per student in batch
-    counts["avg"] = counts.apply(
-        lambda r: round(r["count"] / max(batch_student_count.get(r["Batch"], 1), 1), 2),
-        axis=1,
-    )
+    def _aggregate(period: str) -> tuple[list[str], list[dict]]:
+        labels = sorted(combined[period].dropna().unique())
+        counts = combined.groupby([period, "Batch"]).size().reset_index(name="count")
+        # Average per student in batch
+        counts["avg"] = counts.apply(
+            lambda r: round(r["count"] / max(batch_student_count.get(r["Batch"], 1), 1), 2),
+            axis=1,
+        )
+        pivot = counts.pivot_table(index=period, columns="Batch", values="avg", fill_value=0)
+        series = []
+        for b in batches:
+            vals = [float(pivot.loc[lab, b]) if lab in pivot.index and b in pivot.columns else 0.0 for lab in labels]
+            series.append({"batch": b, "values": vals})
+        return labels, series
 
-    # Determine sorted week labels and batch list
-    weeks = sorted(counts["Week"].unique())
-    batches = sorted(counts["Batch"].unique())
+    weeks, weekly_series = _aggregate("Week")
+    months, monthly_series = _aggregate("Month")
 
-    # Build per-batch value arrays aligned to weeks
-    pivot = counts.pivot_table(index="Week", columns="Batch", values="avg", fill_value=0)
-    series = []
-    for b in batches:
-        vals = [float(pivot.loc[w, b]) if w in pivot.index and b in pivot.columns else 0.0 for w in weeks]
-        series.append({"batch": b, "values": vals})
-
-    return {"weeks": weeks, "series": series}
+    return {
+        "weeks": weeks,
+        "series": weekly_series,
+        "months": months,
+        "monthly_series": monthly_series,
+    }
 
 
 def _build_language_fig(language_counts: pd.DataFrame):
