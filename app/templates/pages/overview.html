@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros/charts.html" as mc %}
 {% import "macros/echarts.html" as ec %}
 {% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
@@ -144,13 +143,9 @@
 <section class="panel">
   <div class="panel-title">Analysis Results</div>
   <div class="two-col-grid">
-    <div>
-      <div class="panel-minor-title">Repository Distribution (Students)</div>
-      <div class="donut-chart">{{ mc.chart('repo-dist-area', payload.repo_dist_fig) }}</div>
-    </div>
-    <div>
-      <div class="panel-minor-title">Followers Distribution</div>
-      <div class="donut-chart">{{ mc.chart('followers-dist-area', payload.followers_dist_fig) }}</div>
+    <div class="full-width">
+      <div class="panel-minor-title">Weekly Commit &amp; Activity Trend Across Batches</div>
+      {{ ec.multi_line('weekly-trend', payload.weekly_trend_data) }}
     </div>
     <div class="full-width">
       <div class="panel-minor-title">Top 10 Languages</div>

@@ -701,6 +701,7 @@ button {
 }
 .metric-top-right {
   justify-content: flex-end;
+  position: relative;
 }
 .metric-top-spacer {
   min-height: 24px;
@@ -1293,6 +1294,7 @@ button {
 .activity-tabs {
   display: inline-flex;
   gap: 6px;
+  align-items: center;
 }
 .activity-tab {
   font-size: 11px;
@@ -1714,6 +1716,13 @@ button {
   position: relative;
   padding-right: 58px;
   min-height: 56px;
+}
+.activity-stat-period .activity-tabs {
+  position: absolute;
+  top: 5px;
+  right: 0;
+  flex-direction: column;
+  align-items: stretch;
 }
 .activity-stat:last-child {
   border-bottom: none;

@@ -619,7 +619,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     else:
         language_counts = pd.DataFrame(columns=["Language", "Repositories"])
 
-    repo_distribution, followers_distribution = _distributions(students)
+    weekly_trend_data = _weekly_activity_trend(repos, team_repos, students)
 
     heatmap_rows = (
         students.groupby(["Division", "Batch"], dropna=False)["Combined_Repos"].sum().reset_index()
@@ -744,8 +744,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "account_status": account_status,
         "donut_fig": donut_fig,
         "language_fig": _build_language_fig(language_counts),
-        "repo_dist_fig": _build_area_fig(repo_distribution, "Repository Count", "Students", ACCENT),
-        "followers_dist_fig": _build_area_fig(followers_distribution, "Followers", "Students", PURPLE),
+        "weekly_trend_data": weekly_trend_data,
         "heatmap_fig": _build_heatmap_fig(heatmap_rows),
         # ECharts advanced chart data
         "treemap_data": treemap_data,
@@ -762,17 +761,84 @@ def _donut_args(rows):
     return [row["Status"] for row in rows], [row["Count"] for row in rows]
 
 
-def _distributions(students: pd.DataFrame):
-    repo_distribution = pd.DataFrame()
-    followers_distribution = pd.DataFrame()
-    if not students.empty:
-        dist_col = "Combined_Repos" if "Combined_Repos" in students.columns else "Repository_Count"
-        repo_counts = students[dist_col].value_counts().sort_index().reset_index()
-        repo_counts.columns = ["Repository Count", "Students"]
-        follower_counts = students["Followers"].value_counts().sort_index().reset_index()
-        follower_counts.columns = ["Followers", "Students"]
-        repo_distribution, followers_distribution = repo_counts, follower_counts
-    return repo_distribution, followers_distribution
+
+
+def _weekly_activity_trend(
+    repos: pd.DataFrame,
+    team_repos: pd.DataFrame | None,
+    students: pd.DataFrame,
+) -> list:
+    """Build weekly activity trend data for the overview multi-line chart.
+
+    Groups repo activity (Updated timestamps) by ISO week and student Batch.
+    For each (week, batch) pair, computes the average number of repo updates
+    per student in that batch (i.e. total repos updated that week by students
+    in the batch, divided by the number of students in the batch).
+
+    Returns a JSON-serialisable structure:
+        { "weeks": ["2026-W35", ...],
+          "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ] }
+    """
+    if students is None or students.empty:
+        return {"weeks": [], "series": []}
+    if "Batch" not in students.columns or "GitHub_Username" not in students.columns:
+        return {"weeks": [], "series": []}
+
+    # Build username → batch mapping and batch → student count
+    stu = students[["GitHub_Username", "Batch"]].dropna(subset=["GitHub_Username"]).copy()
+    stu["GitHub_Username"] = stu["GitHub_Username"].astype(str)
+    stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
+    user_batch = dict(zip(stu["GitHub_Username"], stu["Batch"]))
+    batch_student_count = stu.groupby("Batch")["GitHub_Username"].nunique().to_dict()
+
+    # Combine owned + team repos into a single frame with (Username, Updated)
+    frames = []
+    if repos is not None and not repos.empty and "Updated" in repos.columns and "Username" in repos.columns:
+        frames.append(repos[["Username", "Updated"]].copy())
+    if team_repos is not None and not team_repos.empty and "Last_Active_At" in team_repos.columns and "Username" in team_repos.columns:
+        tr = team_repos[["Username", "Last_Active_At"]].copy()
+        tr.columns = ["Username", "Updated"]
+        frames.append(tr)
+    if not frames:
+        return {"weeks": [], "series": []}
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined["Username"] = combined["Username"].astype(str)
+    combined["Updated"] = pd.to_datetime(combined["Updated"], errors="coerce", utc=True, format="mixed")
+    combined = combined.dropna(subset=["Updated"])
+    if combined.empty:
+        return {"weeks": [], "series": []}
+
+    # Map each repo row to its owner's batch
+    combined["Batch"] = combined["Username"].map(user_batch)
+    combined = combined.dropna(subset=["Batch"])
+    if combined.empty:
+        return {"weeks": [], "series": []}
+
+    # Compute ISO year-week label
+    combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
+
+    # Count repos updated per (Week, Batch)
+    counts = combined.groupby(["Week", "Batch"]).size().reset_index(name="count")
+
+    # Average per student in batch
+    counts["avg"] = counts.apply(
+        lambda r: round(r["count"] / max(batch_student_count.get(r["Batch"], 1), 1), 2),
+        axis=1,
+    )
+
+    # Determine sorted week labels and batch list
+    weeks = sorted(counts["Week"].unique())
+    batches = sorted(counts["Batch"].unique())
+
+    # Build per-batch value arrays aligned to weeks
+    pivot = counts.pivot_table(index="Week", columns="Batch", values="avg", fill_value=0)
+    series = []
+    for b in batches:
+        vals = [float(pivot.loc[w, b]) if w in pivot.index and b in pivot.columns else 0.0 for w in weeks]
+        series.append({"batch": b, "values": vals})
+
+    return {"weeks": weeks, "series": series}
 
 
 def _build_language_fig(language_counts: pd.DataFrame):
@@ -785,12 +851,6 @@ def _build_language_fig(language_counts: pd.DataFrame):
     )
 
 
-def _build_area_fig(distribution: pd.DataFrame, x_label: str, y_label: str, color: str):
-    from app import charts
-
-    if distribution.empty:
-        return None
-    return charts.area(list(distribution[x_label]), list(distribution[y_label]), color=color)
 
 
 def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
@@ -808,7 +868,7 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
     return charts.heatmap(batches, divisions, z)
 
 
-from app.charts import ACCENT, PURPLE, SECONDARY, SUCCESS, WARNING
+from app.charts import ACCENT, SUCCESS, WARNING
 
 
 def _donut(labels, values):
