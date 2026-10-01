@@ -103,10 +103,17 @@ button {
   display: block;
   flex-shrink: 0;
 }
-/* 4.11 (e): fetched handle below the role line (role small above, name bold). */
-.sidebar-stack .sidebar-identity .user-name {
-    font-size: 16px;
+/* Onboarded display name below the role line: bold, spaced, opens Settings. */
+.sidebar-stack .sidebar-identity .sidebar-name-link {
+    font-size: 19px;
     font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    margin-top: 4px;
+    display: inline-block;
+}
+.sidebar-stack .sidebar-identity .sidebar-name-link:hover {
+    text-decoration: underline;
 }
 .sidebar-stack .user-role-line {
     font-size: 13px;

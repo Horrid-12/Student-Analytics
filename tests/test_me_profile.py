@@ -174,13 +174,14 @@ class TestSidebarIdentity:
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert 'href="/me"' in body
 
-    def test_role_label_sits_above_handle(self):
+    def test_role_label_sits_above_name_linking_settings(self):
         from pathlib import Path
 
         source = (
             Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         ).read_text(encoding="utf-8")
-        assert source.index("user-role-line") < source.index("sidebar_handle")
+        assert source.index("user-role-line") < source.index("sidebar_name")
+        assert 'class="sidebar-name-link" href="/settings"' in source
 
     def test_students_modal_still_renders_after_extract(self, client, monkeypatch):
         import app.main as main

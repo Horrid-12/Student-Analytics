@@ -1197,7 +1197,7 @@ class TestSidebarIdentityContext:
         assert "{{ profile_href }}" in source
         assert "{{ avatar_initial }}" in source
         assert "{{ sidebar_avatar_url }}" in source
-        assert "{{ sidebar_handle }}" in source
+        assert "{{ sidebar_name }}" in source
         assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
         for hardcoded in (
             "Faculty Workspace",
