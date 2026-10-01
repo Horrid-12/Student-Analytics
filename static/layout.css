@@ -103,13 +103,15 @@ button {
   display: block;
   flex-shrink: 0;
 }
-/* 4.11 (e): fetched handle above the role line. */
+/* 4.11 (e): fetched handle below the role line (role small above, name bold). */
 .sidebar-stack .sidebar-identity .user-name {
-  font-size: 15px;
+    font-size: 16px;
+    font-weight: 700;
 }
 .sidebar-stack .user-role-line {
-  font-size: 20px;
-  font-weight: 800;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
 }
 .sidebar-stack .user-details {
   overflow: visible;
