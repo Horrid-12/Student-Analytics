@@ -572,6 +572,18 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
             team_repos = team_repos.iloc[0:0].copy()
     except Exception:
         pass
+    # Average Quality Score uses the SAME merged repo list (owned +
+    # contributed, scored identically) as the Repositories page, restricted to
+    # the filtered cohort, so the radar card and the repositories list always
+    # agree.
+    _score_repos = _merged_repos_frame(view)
+    try:
+        if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
+            _score_repos = _score_repos[_score_repos["Username"].astype(str).isin(_cohort)].copy()
+        elif _score_repos is not None and students is not None and students.empty:
+            _score_repos = _score_repos.iloc[0:0].copy()
+    except Exception:
+        pass
     try:
         _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
     except Exception:
@@ -700,7 +712,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
     _avg_repos = float(students[_repos_col].mean()) if not students.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
-    _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
+    _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
     _total_prs = float(prs)
     _total_students = len(students) if students is not None else 0
 
@@ -759,7 +771,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "active_repos_90d": _active_90d,
         "active_repos_all": _active_all,
         "active_windows": active_windows,
-        "avg_quality": f"{repos['Repository_Quality_Score'].mean():.1f}" if not repos.empty else "0.0",
+        "avg_quality": f"{_score_repos['Repository_Quality_Score'].mean():.1f}" if _score_repos is not None and not _score_repos.empty else "0.0",
         "account_status": account_status,
         "donut_fig": donut_fig,
         "language_fig": _build_language_fig(language_counts),
@@ -1637,7 +1649,14 @@ def _repo_sort(filtered: pd.DataFrame, mode: str) -> pd.DataFrame:
     return frame.drop(columns=drop).reset_index(drop=True)
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+def _merged_repos_frame(view) -> pd.DataFrame:
+    """Owned repos + contributed-into-team repos — exactly the frame the
+    Repositories page renders and scores from. Contributed rows reuse the
+    team-repo's last-active stamp and carry a hard-coded quality score of 0
+    with the 'Contributed' band, mirroring the page's Score column. This is
+    the single source of truth for "the same list" so the Overview's Average
+    Quality Score card and the Repositories page are always identical.
+    """
     repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
     team_repos = view.get("team_repos")
     # Merge contributed repos into the same list so team members' work on a
@@ -1687,6 +1706,11 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         if mapped_rows:
             mapped = pd.DataFrame(mapped_rows)
             repos = pd.concat([repos, mapped], ignore_index=True) if not repos.empty else mapped
+    return repos
+
+
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+    repos = _merged_repos_frame(view)
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))
