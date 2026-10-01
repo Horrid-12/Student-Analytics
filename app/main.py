@@ -509,6 +509,17 @@ def _is_complete(view) -> bool:
     return bool(state and state.get("status") == "complete")
 
 
+def _short_sidebar_name(display: str, has_real_name: bool) -> str:
+    """Sidebar name: first + last only (middle names dropped; email fallback
+    untouched when the account has no real name stored)."""
+    if not has_real_name:
+        return display
+    parts = display.split()
+    if len(parts) <= 2:
+        return display
+    return f"{parts[0]} {parts[-1]}"
+
+
 def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict:
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
@@ -549,7 +560,7 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         "sidebar_avatar_url": sidebar_avatar_url,
         # Onboarded display name (users.name at signup) — shown in the sidebar
         # instead of the linked GitHub/LinkedIn handle.
-        "sidebar_name": display if user else "",
+        "sidebar_name": _short_sidebar_name(display, bool(user and user.get("name"))) if user else "",
     }
 
 
