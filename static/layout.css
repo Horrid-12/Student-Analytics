@@ -109,7 +109,7 @@ button {
     font-weight: 700;
     color: var(--text);
     text-decoration: none;
-    margin-top: 4px;
+    margin-top: 2px;
     display: inline-block;
 }
 .sidebar-stack .sidebar-identity .sidebar-name-link:hover {
