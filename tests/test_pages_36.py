@@ -1189,6 +1189,16 @@ class TestSidebarIdentityContext:
         body = client.get("/settings").text
         assert '<div class="user-role-line">Admin</div>' in body
 
+    def test_favicon_served_and_linked(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "fav.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app)
+        icon = client.get("/favicon.ico")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/")
+        login = client.get("/login", headers={"Accept": "text/html"}).text
+        assert "favicon.ico" in login
+
     def test_base_template_uses_context_variables(self):
         base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         source = base.read_text(encoding="utf-8")

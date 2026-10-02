@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -632,6 +632,12 @@ def _export_response(df, format: str, name: str):
 
 def topbar_date() -> str:
     return datetime.now(IST).strftime("%A, %d %B %Y")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browser-automatic icon request (already public in _PUBLIC_PREFIXES)."""
+    return FileResponse(BASE_DIR.parent / "static" / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/privacy", response_class=HTMLResponse)
