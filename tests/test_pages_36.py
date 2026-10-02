@@ -1197,7 +1197,7 @@ class TestSidebarIdentityContext:
         assert "{{ profile_href }}" in source
         assert "{{ avatar_initial }}" in source
         assert "{{ sidebar_avatar_url }}" in source
-        assert "{{ sidebar_handle }}" in source
+        assert "{{ sidebar_name }}" in source
         assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
         for hardcoded in (
             "Faculty Workspace",
@@ -1216,7 +1216,9 @@ class TestSidebarIdentityContext:
         source = settings.read_text(encoding="utf-8")
         assert "{{ auth_role }}" in source
         assert "{{ auth_user }}" in source
-        assert "{{ auth_footer }}" in source
+        # Account card stacks role above name (no duplicated "Role • name" footer).
+        assert "{{ auth_footer }}" not in source
+        assert source.index("user-role-line") < source.index('class="user-name"')
         for hardcoded in ("Faculty Workspace", 'user-name">anonymous', "Connected &bull; Open Access"):
             assert hardcoded not in source
 

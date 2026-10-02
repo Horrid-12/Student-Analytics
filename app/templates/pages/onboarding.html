@@ -210,7 +210,7 @@
                     <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %}>
                         <option value="" disabled {% if not submission.division %}selected{% endif %} hidden>(Select your Division)</option>
                         {% for n in range(1, 15) %}
-                        {% set option = 'Division ' ~ n %}
+                        {% set option = n | string %}
                         <option value="{{ option }}" {% if option == submission.division %}selected{% endif %}>{{ option }}</option>
                         {% endfor %}
                     </select>

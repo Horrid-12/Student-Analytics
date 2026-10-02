@@ -19,3 +19,5 @@ reference.db
 all_templates.txt
 
 .env*
+
+invalid_accounts.md

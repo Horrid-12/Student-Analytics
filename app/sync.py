@@ -389,7 +389,7 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         student_rows = { s.get("Email address") or s.get("Roster_Email") or s.get("Student_ID"): s for s in result.get("students", []) }
         student = student_rows.get(email) or student_rows.get(record["Student_ID"])
         if not student:
-            return False, "api_error", "Failed to fetch student data"
+            return False, "api_error", f"Failed to fetch student data. Result students: {result.get('students')}"
 
         repo_rows = result.get("repos", [])
         team_rows = result.get("team_repos", [])

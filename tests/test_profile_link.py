@@ -227,7 +227,9 @@ class TestConfirmFlow:
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert "sidebar-avatar-img" in body
         assert 'src="https://example.com/a.png"' in body
-        assert "octocat" in body
+        # Sidebar shows the onboarded name, not the linked handle.
+        assert "Stu Dent" in body
+        assert "sidebar-name-link" in body
 
     def test_sidebar_falls_back_to_pill_before_confirm(self, client):
         seed_student(client)

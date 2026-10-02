@@ -103,13 +103,22 @@ button {
   display: block;
   flex-shrink: 0;
 }
-/* 4.11 (e): fetched handle above the role line. */
-.sidebar-stack .sidebar-identity .user-name {
-  font-size: 15px;
+/* Onboarded display name below the role line: bold, spaced, opens Settings. */
+.sidebar-stack .sidebar-identity .sidebar-name-link {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    margin-top: 2px;
+    display: inline-block;
+}
+.sidebar-stack .sidebar-identity .sidebar-name-link:hover {
+    text-decoration: underline;
 }
 .sidebar-stack .user-role-line {
-  font-size: 20px;
-  font-weight: 800;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
 }
 .sidebar-stack .user-details {
   overflow: visible;
@@ -701,6 +710,7 @@ button {
 }
 .metric-top-right {
   justify-content: flex-end;
+  position: relative;
 }
 .metric-top-spacer {
   min-height: 24px;
@@ -743,20 +753,14 @@ button {
 }
 
 /* ── Deterministic Packed Bubble Chart ──────────────────────────────── */
-.bubble-chart-wrap {
-  position: relative;
-  overflow: hidden;
-}
-.bub-node {
-  cursor: default;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: center;
-}
+.bubble-chart-wrap { position: relative; overflow: hidden; }
+.bub-node { cursor: default; transition: transform 0.2s cubic-bezier(0.16,1,0.3,1); transform-origin: center; }
 .bub-node:hover {
   transform: scale(1.08);
   filter: brightness(1.1);
   z-index: 2;
 }
+.bub-node:hover circle { fill-opacity: 1; }
 .bubble-tooltip {
   position: absolute;
   pointer-events: none;
@@ -1296,15 +1300,10 @@ button {
   opacity: 0.5;
   cursor: default;
 }
-.activity-label-tabs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 .activity-tabs {
   display: inline-flex;
   gap: 6px;
+  align-items: center;
 }
 .activity-tab {
   font-size: 11px;
@@ -1329,6 +1328,21 @@ button {
   background: var(--blue-active-bg);
   color: var(--blue);
   border-color: var(--blue-active-border);
+}
+.activity-stat-period .activity-tabs {
+  position: absolute;
+  top: 5px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+.activity-stat-period .activity-tab {
+  padding: 3px 6px;
+  min-width: 44px;
+  text-align: center;
+  border-radius: 8px;
 }
 .external-link-button {
   display: inline-block;
@@ -1707,6 +1721,18 @@ button {
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
+.activity-stat-period {
+  position: relative;
+  padding-right: 58px;
+  min-height: 56px;
+}
+.activity-stat-period .activity-tabs {
+  position: absolute;
+  top: 5px;
+  right: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
 .activity-stat:last-child {
   border-bottom: none;
 }
@@ -1977,42 +2003,11 @@ button {
     text-decoration: underline;
 }
 
-/* Privacy Policy reading layout: sticky contents card + narrow body column. */
-.privacy-layout {
-    display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
-    gap: 0.9rem;
-    align-items: start;
-    margin-bottom: 16px;
-}
-.privacy-toc {
-    position: sticky;
-    top: 20px;
-}
-.privacy-toc ul {
-    list-style: none;
-    margin: 10px 0 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.privacy-toc a {
-    display: block;
-    padding: 7px 10px;
-    border-radius: 8px;
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 13.5px;
-    line-height: 1.4;
-}
-.privacy-toc a:hover {
-    color: var(--text);
-    background: var(--hover-bg);
-}
+/* Privacy Policy reading column. */
 .privacy-body {
     min-width: 0;
     max-width: 76ch;
+    margin-bottom: 16px;
 }
 .privacy-body .panel {
     margin-bottom: 16px;
@@ -2041,14 +2036,6 @@ button {
     font-size: 15px;
     line-height: 1.7;
     color: var(--text);
-}
-@media (max-width: 900px) {
-    .privacy-layout {
-        grid-template-columns: 1fr;
-    }
-    .privacy-toc {
-        position: static;
-    }
 }
 .notif-unread {
   background: rgba(59, 130, 246, 0.08);

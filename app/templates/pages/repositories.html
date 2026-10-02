@@ -77,7 +77,8 @@
       {% endfor %}
     </select>
   </div>
-  <a class="btn" href="/repositories?roster={{ roster_id }}" id="repo-clear">Clear</a>
+  <button class="btn" type="submit" id="repo-apply">Apply</button>
+  <button class="btn" type="button" id="repo-clear">Clear</button>
   <span class="filter-count" role="status" aria-live="polite"><span id="shown-count">{{ payload.showing }}</span> of {{ payload.total }} shown</span>
 </form>
 
@@ -240,12 +241,24 @@
     });
   });
 
-  [divSel, batchSel, semSel, sortSel].forEach(function (sel) {
-    sel.addEventListener('change', function () { savePrefs(); form.submit(); });
+  var searchInput = document.getElementById('repo-search');
+
+  // Staged selection model: changing a filter or sort only updates the
+  // control locally. The list/table is NOT re-fetched until Apply is clicked,
+  // and pressing Enter in the search box stages instead of submitting.
+  form.addEventListener('submit', function () { savePrefs(); });
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); }
   });
 
   clearBtn.addEventListener('click', function () {
     var p = readPrefs() || {};
+    searchInput.value = '';
+    divSel.value = 'All';
+    batchSel.value = 'All';
+    semSel.value = 'All';
+    sortSel.value = 'top';
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         division: 'All',

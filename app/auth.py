@@ -80,7 +80,7 @@ LINK_SOURCES = ("github", "linkedin")
 DEGREE_BRANCHES = ("Core", "AI/DS", "Cloud Computing", "Cyber Security and Forensics")
 
 #: Allowed division labels (1-14), matching the onboarding <select> options.
-DIVISIONS = tuple(f"Division {n}" for n in range(1, 15))
+DIVISIONS = tuple(str(n) for n in range(1, 15))
 
 #: Main batch = admission cohort (stored, never shown on the dashboard).
 MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))

@@ -107,7 +107,8 @@ class TestStudentPages:
         html = r.text
         assert "Class Metrics Radar" in html
         assert "Division 1" in html
-        assert "Analysis Results" in html
+        assert "Activity Trend Across Batches" in html
+        assert "Analysis Results" not in html
         assert "Overview Metrics" in html
         assert "Number of Students" in html
         assert "Active Repositories" in html
