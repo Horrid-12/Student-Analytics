@@ -174,6 +174,39 @@ class TestSidebarIdentity:
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert 'href="/me"' in body
 
+    def test_role_label_sits_above_name_linking_settings(self):
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
+        ).read_text(encoding="utf-8")
+        assert source.index("user-role-line") < source.index("sidebar_name")
+        assert 'class="sidebar-name-link" href="/settings"' in source
+
+
+class TestSidebarShortName:
+    def test_middle_name_dropped(self):
+        import app.main as main
+
+        assert main._short_sidebar_name("Aarav Kumar Sharma", True) == "Aarav Sharma"
+
+    def test_two_part_and_single_names_kept(self):
+        import app.main as main
+
+        assert main._short_sidebar_name("Riya Sharma", True) == "Riya Sharma"
+        assert main._short_sidebar_name("Admin", True) == "Admin"
+
+    def test_email_fallback_untouched(self):
+        import app.main as main
+
+        assert main._short_sidebar_name("stu@college.edu", False) == "stu@college.edu"
+
+    def test_sidebar_renders_short_name(self, client):
+        assert auth.create_user("aarav@college.edu", "secret123", "student", "Aarav Kumar Sharma")
+        client.post("/login", data={"email": "aarav@college.edu", "password": "secret123"})
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert ">Aarav Sharma</a>" in body  # sidebar link: first + last only
+
     def test_students_modal_still_renders_after_extract(self, client, monkeypatch):
         import app.main as main
 

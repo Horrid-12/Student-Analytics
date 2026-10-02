@@ -509,6 +509,17 @@ def _is_complete(view) -> bool:
     return bool(state and state.get("status") == "complete")
 
 
+def _short_sidebar_name(display: str, has_real_name: bool) -> str:
+    """Sidebar name: first + last only (middle names dropped; email fallback
+    untouched when the account has no real name stored)."""
+    if not has_real_name:
+        return display
+    parts = display.split()
+    if len(parts) <= 2:
+        return display
+    return f"{parts[0]} {parts[-1]}"
+
+
 def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict:
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
@@ -523,20 +534,17 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     # (no Settings confirm step); other roles keep the confirmed
     # GitHub/LinkedIn fetch. One get_user lookup per page render; fail-safe
     # to the pill so auth never breaks rendering.
-    sidebar_avatar_url, sidebar_handle = "", ""
+    sidebar_avatar_url = ""
     if user:
         try:
             row = auth.get_user(user.get("email", ""))
             if (role or "") == "student":
                 identity = auth.github_sidebar_identity(row)
-                sidebar_avatar_url = identity.get("avatar", "")
-                sidebar_handle = identity.get("handle", "")
             else:
                 identity = auth.linked_identity(row)
-                sidebar_avatar_url = identity.get("avatar", "")
-                sidebar_handle = identity.get("handle", "")
+            sidebar_avatar_url = identity.get("avatar", "")
         except Exception:
-            sidebar_avatar_url, sidebar_handle = "", ""
+            sidebar_avatar_url = ""
     return {
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name, role=role, roster_id=roster_id),
@@ -550,7 +558,9 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         "avatar_initial": (display[:1].upper() if display and display != "Guest" else "?"),
         "profile_href": ("/me?roster=" + roster_id) if roster_id else "/me",
         "sidebar_avatar_url": sidebar_avatar_url,
-        "sidebar_handle": sidebar_handle,
+        # Onboarded display name (users.name at signup) — shown in the sidebar
+        # instead of the linked GitHub/LinkedIn handle.
+        "sidebar_name": _short_sidebar_name(display, bool(user and user.get("name"))) if user else "",
     }
 
 

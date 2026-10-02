@@ -311,6 +311,7 @@ window.__EC_THEME = (function () {
       circ.setAttribute('cy', n.y);
       circ.setAttribute('r', n.r);
       circ.setAttribute('fill', p.series[i % p.series.length]);
+      circ.setAttribute('fill-opacity', '0.85');
       circ.setAttribute('stroke', p.card);
       circ.setAttribute('stroke-width', '2');
       circ.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.12))';
@@ -367,15 +368,37 @@ window.__EC_THEME = (function () {
         var pct = total > 0 ? (n.value / total * 100).toFixed(1) : '0';
         tipEl.innerHTML = '<b>' + n.name + '</b><br>Repositories: ' + n.value + '<br>Share: ' + pct + '%';
         tipEl.style.opacity = '1';
-        /* Position tooltip above the bubble */
-        var rect = el.getBoundingClientRect();
+        /* Position tooltip relative to the wrap. Coordinates are in the
+           viewBox space scaled to the rendered SVG size. */
         var svgRect = svg.getBoundingClientRect();
         var scaleX = svgRect.width / W;
         var scaleY = svgRect.height / H;
-        var tipX = n.x * scaleX;
-        var tipY = n.y * scaleY - n.r * scaleY - 12;
-        tipEl.style.left = tipX + 'px';
-        tipEl.style.top = tipY + 'px';
+        var ax = n.x * scaleX;
+        var ay = n.y * scaleY;
+        var rPx = n.r * scaleY;
+        var tipW = tipEl.offsetWidth;
+        var tipH = tipEl.offsetHeight;
+        var m = 6;
+        /* Clamp horizontally so translateX(-50%) keeps it inside the wrap. */
+        var cx;
+        if (tipW > W - 2 * m) {
+          cx = W / 2;
+        } else {
+          cx = Math.min(Math.max(ax, tipW / 2 + m), W - tipW / 2 - m);
+        }
+        tipEl.style.left = cx + 'px';
+        var above = ay - rPx - 12;
+        if (above - tipH >= m) {
+          /* Fits above the bubble — default translateY(-100%). */
+          tipEl.style.transform = 'translateX(-50%) translateY(-100%)';
+          tipEl.style.top = above + 'px';
+        } else {
+          /* No room above (bubble near the top edge, previously clipped by
+             overflow:hidden on the wrap) — flip the tip below the bubble. */
+          tipEl.style.transform = 'translateX(-50%) translateY(0)';
+          var below = ay + rPx + 12;
+          tipEl.style.top = Math.min(below, H - tipH - m) + 'px';
+        }
       });
       g.addEventListener('mouseleave', function () {
         tipEl.style.opacity = '0';
@@ -629,6 +652,168 @@ window.__EC_THEME = (function () {
 
   chart.setOption(opts());
   window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% endif %}
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 5 — MULTI-LINE AREA  (Weekly Activity Trend Across Batches)
+   data: { weeks: ["2026-W35", ...],
+           series: [ { batch: "B1", values: [1.2, ...] }, ... ] }
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro multi_line(id, data) %}
+{% if data and data.weeks and data.series %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function build(weeks, seriesData) {
+    var p = window.__EC_THEME.get();
+
+    /* Convert hex to rgba for translucent area fills. */
+    function hexToRgba(hex, alpha) {
+      hex = hex.replace('#', '');
+      var r = parseInt(hex.substring(0, 2), 16);
+      var g = parseInt(hex.substring(2, 4), 16);
+      var b = parseInt(hex.substring(4, 6), 16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
+    var series = seriesData.map(function (s, i) {
+      var color = p.series[i % p.series.length];
+      return {
+        name: s.batch,
+        type: 'line',
+        data: s.values,
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 5,
+        showSymbol: weeks.length <= 20,
+        lineStyle: { color: color, width: 2 },
+        itemStyle: {
+          color: color,
+          borderColor: p.card,
+          borderWidth: 1.5
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: hexToRgba(color, 0.25) },
+              { offset: 1, color: hexToRgba(color, 0.02) }
+            ]
+          }
+        },
+        emphasis: {
+          focus: 'series',
+          lineStyle: { width: 3 },
+          itemStyle: { borderWidth: 2.5 }
+        },
+        animationDuration: 800,
+        animationEasing: 'cubicOut'
+      };
+    });
+
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross',
+          lineStyle: { color: p.grid, width: 1 },
+          crossStyle: { color: p.grid },
+          label: { backgroundColor: p.tooltip_bg, color: p.tooltip_text, borderColor: p.tooltip_border }
+        },
+        formatter: function (params) {
+          if (!params || !params.length) return '';
+          var html = '<b>' + params[0].axisValue + '</b>';
+          params.forEach(function (item) {
+            html += '<br/>' +
+              '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+              item.color + ';margin-right:6px;"></span>' +
+              item.seriesName + ': <b>' + item.value + '</b>';
+          });
+          return html;
+        }
+      }),
+      legend: {
+        data: seriesData.map(function (s) { return s.batch; }),
+        bottom: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'roundRect',
+        itemWidth: 14,
+        itemHeight: 8,
+        itemGap: 12,
+        type: seriesData.length > 8 ? 'scroll' : 'plain',
+        pageTextStyle: { color: p.textSoft },
+        pageIconColor: p.accent,
+        pageIconInactiveColor: p.muted
+      },
+      grid: {
+        left: 12,
+        right: 16,
+        top: 16,
+        bottom: seriesData.length > 8 ? 50 : 36,
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: weeks,
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: p.grid } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: p.textSoft,
+          fontFamily: 'Inter',
+          fontSize: 11,
+          rotate: weeks.length > 16 ? 35 : 0,
+          interval: weeks.length > 30 ? Math.floor(weeks.length / 15) : 'auto'
+        },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Avg Activity / Student',
+        nameTextStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        splitLine: { lineStyle: { color: p.grid, type: 'dashed' } }
+      },
+      series: series
+    };
+  }
+
+  var current = { weeks: raw.weeks || [], series: raw.series || [] };
+
+  function render(view) {
+    if (view === 'monthly' && raw.months && raw.monthly_series) {
+      current = { weeks: raw.months, series: raw.monthly_series };
+    } else if (view === 'semester' && raw.semesters && raw.semester_series) {
+      current = { weeks: raw.semesters, series: raw.semester_series };
+    } else {
+      current = { weeks: raw.weeks || [], series: raw.series || [] };
+    }
+    chart.setOption(build(current.weeks, current.series));
+  }
+
+  /* Initial (weekly) render. */
+  render('weekly');
+
+  /* Page-level bridge so an Overview toggle can switch Weekly/Monthly. */
+  window.__chartBridge = window.__chartBridge || {};
+  window.__chartBridge['{{ id }}'] = { chart: chart, render: render };
+
+  window.__EC_THEME.register(chart, function () {
+    return build(current.weeks, current.series);
+  });
   window.addEventListener('resize', function () { chart.resize(); });
 })();
 </script>

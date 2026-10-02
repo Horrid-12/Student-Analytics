@@ -572,6 +572,18 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
             team_repos = team_repos.iloc[0:0].copy()
     except Exception:
         pass
+    # Average Quality Score uses the SAME merged repo list (owned +
+    # contributed, scored identically) as the Repositories page, restricted to
+    # the filtered cohort, so the radar card and the repositories list always
+    # agree.
+    _score_repos = _merged_repos_frame(view)
+    try:
+        if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
+            _score_repos = _score_repos[_score_repos["Username"].astype(str).isin(_cohort)].copy()
+        elif _score_repos is not None and students is not None and students.empty:
+            _score_repos = _score_repos.iloc[0:0].copy()
+    except Exception:
+        pass
     try:
         _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
     except Exception:
@@ -619,7 +631,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     else:
         language_counts = pd.DataFrame(columns=["Language", "Repositories"])
 
-    repo_distribution, followers_distribution = _distributions(students)
+    weekly_trend_data = _weekly_activity_trend(repos, team_repos, students)
 
     heatmap_rows = (
         students.groupby(["Division", "Batch"], dropna=False)["Combined_Repos"].sum().reset_index()
@@ -700,9 +712,28 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
     _avg_repos = float(students[_repos_col].mean()) if not students.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
-    _avg_quality = float(repos["Repository_Quality_Score"].mean()) if not repos.empty else 0.0
-    _sr = float(submission_rate)
+    _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
     _total_prs = float(prs)
+    _total_students = len(students) if students is not None else 0
+
+    def _pos_mask(frame, col) -> "pd.Series":
+        """Boolean per-student mask for "column value > 0" (absent/NaN-safe)."""
+        if col not in frame.columns:
+            return pd.Series(False, index=frame.index)
+        return pd.to_numeric(frame[col], errors="coerce").fillna(0) > 0
+
+    # Active Contributor Rate: % of students with ≥1 owned OR team commit in
+    # the last 90 days — reuses the leaderboards' 90-day commit window.
+    # Collaboration Rate: % of students who pushed to a teammate's repo.
+    if not students.empty:
+        _active_contributors_90d = int(
+            (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d")).sum()
+        )
+        _collaborators = int(_pos_mask(students, "Contributed_Repos_Count").sum())
+    else:
+        _active_contributors_90d = 0
+        _collaborators = 0
+    _share = lambda n: (100.0 * n / _total_students) if _total_students else 0.0
 
     def _radar_max(val, floor=10):
         """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
@@ -710,11 +741,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
 
     radar_data = {
         "metrics": [
-            {"name": "Avg Repos",       "value": round(_avg_repos, 1),    "max": _radar_max(_avg_repos, 5)},
-            {"name": "Avg Followers",    "value": round(_avg_followers, 1),"max": _radar_max(_avg_followers, 10)},
-            {"name": "Quality Score",    "value": round(_avg_quality, 1),  "max": 100},
-            {"name": "Submission %",     "value": round(_sr, 1),           "max": 100},
-            {"name": "Pull Requests",    "value": round(_total_prs, 0),    "max": _radar_max(_total_prs, 10)},
+            {"name": "Avg Repos",               "value": round(_avg_repos, 1),         "max": _radar_max(_avg_repos, 5)},
+            {"name": "Active Contributor Rate", "value": round(_share(_active_contributors_90d), 1), "max": 100, "unit": "%"},
+            {"name": "Quality Score",           "value": round(_avg_quality, 1),       "max": 100},
+            {"name": "Collaboration Rate",      "value": round(_share(_collaborators), 1),          "max": 100, "unit": "%"},
+            {"name": "Pull Requests",           "value": round(_total_prs, 0),         "max": _radar_max(_total_prs, 10)},
         ]
     }
 
@@ -740,12 +771,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "active_repos_90d": _active_90d,
         "active_repos_all": _active_all,
         "active_windows": active_windows,
-        "avg_quality": f"{repos['Repository_Quality_Score'].mean():.1f}" if not repos.empty else "0.0",
+        "avg_quality": f"{_score_repos['Repository_Quality_Score'].mean():.1f}" if _score_repos is not None and not _score_repos.empty else "0.0",
         "account_status": account_status,
         "donut_fig": donut_fig,
         "language_fig": _build_language_fig(language_counts),
-        "repo_dist_fig": _build_area_fig(repo_distribution, "Repository Count", "Students", ACCENT),
-        "followers_dist_fig": _build_area_fig(followers_distribution, "Followers", "Students", PURPLE),
+        "weekly_trend_data": weekly_trend_data,
         "heatmap_fig": _build_heatmap_fig(heatmap_rows),
         # ECharts advanced chart data
         "treemap_data": treemap_data,
@@ -762,17 +792,137 @@ def _donut_args(rows):
     return [row["Status"] for row in rows], [row["Count"] for row in rows]
 
 
-def _distributions(students: pd.DataFrame):
-    repo_distribution = pd.DataFrame()
-    followers_distribution = pd.DataFrame()
-    if not students.empty:
-        dist_col = "Combined_Repos" if "Combined_Repos" in students.columns else "Repository_Count"
-        repo_counts = students[dist_col].value_counts().sort_index().reset_index()
-        repo_counts.columns = ["Repository Count", "Students"]
-        follower_counts = students["Followers"].value_counts().sort_index().reset_index()
-        follower_counts.columns = ["Followers", "Students"]
-        repo_distribution, followers_distribution = repo_counts, follower_counts
-    return repo_distribution, followers_distribution
+
+
+def _weekly_activity_trend(
+    repos: pd.DataFrame,
+    team_repos: pd.DataFrame | None,
+    students: pd.DataFrame,
+) -> list:
+    """Build weekly, monthly and semester activity trend data for the overview chart.
+
+    Groups repo activity (Updated timestamps) by ISO week, calendar month,
+    and roster semester, each across student Batch. For each (period, batch)
+    pair, computes the average number of repo updates per student in that
+    batch (i.e. total repos updated in that period by students in the batch,
+    divided by the number of students in the batch — for semesters the
+    denominator is the students in that semester+batch cell).
+
+    Returns a JSON-serialisable structure with the three aggregations so the
+    overview can switch between Weekly, Monthly and Semester views:
+        { "weeks": ["2026-W35", ...],
+          "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ],
+          "months": ["2026-08", ...],
+          "monthly_series": [ { "batch": "B1", "values": [3.1, ...] }, ... ],
+          "semesters": ["2026-27 · Semester 1", ...],
+          "semester_series": [ { "batch": "B1", "values": [4.2, ...] }, ... ] }
+    """
+    if students is None or students.empty:
+        return {"weeks": [], "series": []}
+    if "Batch" not in students.columns or "GitHub_Username" not in students.columns:
+        return {"weeks": [], "series": []}
+
+    # Build username → batch mapping and batch → student count
+    stu = students[["GitHub_Username", "Batch"]].dropna(subset=["GitHub_Username"]).copy()
+    stu["GitHub_Username"] = stu["GitHub_Username"].astype(str)
+    stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
+    user_batch = dict(zip(stu["GitHub_Username"], stu["Batch"]))
+    batch_student_count = stu.groupby("Batch")["GitHub_Username"].nunique().to_dict()
+
+    # Build username → semester label mapping. Label = Academic_Year + the
+    # roster Semester (e.g. "2026-27 · Semester 1"); drops "Unknown"/blank
+    # parts so a known half keeps a readable label.
+    seed = students.copy()
+    seed["_yr"] = (
+        students["Academic_Year"].astype(str).str.strip()
+        if "Academic_Year" in students.columns
+        else "Unknown"
+    )
+    seed["_sem"] = (
+        students["Semester"].astype(str).str.strip()
+        if "Semester" in students.columns
+        else "Unknown"
+    )
+    seed["_yr"] = seed["_yr"].replace({"Unknown": "", "nan": "", "None": ""})
+    seed["_sem"] = seed["_sem"].replace({"Unknown": "", "nan": "", "None": ""})
+    _both = (seed["_yr"] != "") & (seed["_sem"] != "")
+    _label = seed["_yr"] + " · " + seed["_sem"]
+    seed["Semester_Label"] = _label.where(_both, seed["_yr"] + seed["_sem"]).str.strip()
+    seed["Semester_Label"] = seed["Semester_Label"].replace({"": "Unknown"})
+    seed = seed.dropna(subset=["GitHub_Username"])
+    seed["GitHub_Username"] = seed["GitHub_Username"].astype(str)
+    user_semester = dict(zip(seed["GitHub_Username"], seed["Semester_Label"]))
+    semester_batch_student_count = seed.groupby(["Semester_Label", "Batch"])["GitHub_Username"].nunique().to_dict()
+
+    # Combine owned + team repos into a single frame with (Username, Updated)
+    frames = []
+    if repos is not None and not repos.empty and "Updated" in repos.columns and "Username" in repos.columns:
+        frames.append(repos[["Username", "Updated"]].copy())
+    if team_repos is not None and not team_repos.empty and "Last_Active_At" in team_repos.columns and "Username" in team_repos.columns:
+        tr = team_repos[["Username", "Last_Active_At"]].copy()
+        tr.columns = ["Username", "Updated"]
+        frames.append(tr)
+    if not frames:
+        return {"weeks": [], "series": []}
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined["Username"] = combined["Username"].astype(str)
+    combined["Updated"] = pd.to_datetime(combined["Updated"], errors="coerce", utc=True, format="mixed")
+    combined = combined.dropna(subset=["Updated"])
+    if combined.empty:
+        return {"weeks": [], "series": []}
+
+    # Map each repo row to its owner's batch and semester
+    combined["Batch"] = combined["Username"].map(user_batch)
+    combined["Semester"] = combined["Username"].map(user_semester)
+    combined = combined.dropna(subset=["Batch"])
+    if combined.empty:
+        return {"weeks": [], "series": []}
+
+    # Compute ISO year-week, calendar month, and semester labels.
+    combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
+    combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
+
+    batches = sorted(combined["Batch"].unique())
+
+    def _aggregate(period: str, count_lookup) -> tuple[list[str], list[dict]]:
+        labels = sorted(combined[period].dropna().unique())
+        counts = combined.groupby([period, "Batch"]).size().reset_index(name="count")
+        # Average per student (batch, or semester+batch, whichever the lookup keyed on)
+        counts["avg"] = counts.apply(
+            lambda r: round(r["count"] / max(count_lookup(r), 1), 2),
+            axis=1,
+        )
+        pivot = counts.pivot_table(index=period, columns="Batch", values="avg", fill_value=0)
+        series = []
+        for b in batches:
+            vals = [float(pivot.loc[lab, b]) if lab in pivot.index and b in pivot.columns else 0.0 for lab in labels]
+            series.append({"batch": b, "values": vals})
+        return labels, series
+
+    weeks, weekly_series = _aggregate(
+        "Week",
+        lambda r: batch_student_count.get(r["Batch"], 1),
+    )
+    months, monthly_series = _aggregate(
+        "Month",
+        lambda r: batch_student_count.get(r["Batch"], 1),
+    )
+    semesters, semester_series = _aggregate(
+        "Semester",
+        lambda r: semester_batch_student_count.get(
+            (r["Semester"], r["Batch"]), batch_student_count.get(r["Batch"], 1)
+        ),
+    )
+
+    return {
+        "weeks": weeks,
+        "series": weekly_series,
+        "months": months,
+        "monthly_series": monthly_series,
+        "semesters": semesters,
+        "semester_series": semester_series,
+    }
 
 
 def _build_language_fig(language_counts: pd.DataFrame):
@@ -785,12 +935,6 @@ def _build_language_fig(language_counts: pd.DataFrame):
     )
 
 
-def _build_area_fig(distribution: pd.DataFrame, x_label: str, y_label: str, color: str):
-    from app import charts
-
-    if distribution.empty:
-        return None
-    return charts.area(list(distribution[x_label]), list(distribution[y_label]), color=color)
 
 
 def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
@@ -808,7 +952,7 @@ def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
     return charts.heatmap(batches, divisions, z)
 
 
-from app.charts import ACCENT, PURPLE, SECONDARY, SUCCESS, WARNING
+from app.charts import ACCENT, SUCCESS, WARNING
 
 
 def _donut(labels, values):
@@ -1505,7 +1649,14 @@ def _repo_sort(filtered: pd.DataFrame, mode: str) -> pd.DataFrame:
     return frame.drop(columns=drop).reset_index(drop=True)
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+def _merged_repos_frame(view) -> pd.DataFrame:
+    """Owned repos + contributed-into-team repos — exactly the frame the
+    Repositories page renders and scores from. Contributed rows reuse the
+    team-repo's last-active stamp and carry a hard-coded quality score of 0
+    with the 'Contributed' band, mirroring the page's Score column. This is
+    the single source of truth for "the same list" so the Overview's Average
+    Quality Score card and the Repositories page are always identical.
+    """
     repos = view["repos"].copy() if view.get("repos") is not None else pd.DataFrame()
     team_repos = view.get("team_repos")
     # Merge contributed repos into the same list so team members' work on a
@@ -1555,6 +1706,11 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         if mapped_rows:
             mapped = pd.DataFrame(mapped_rows)
             repos = pd.concat([repos, mapped], ignore_index=True) if not repos.empty else mapped
+    return repos
+
+
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+    repos = _merged_repos_frame(view)
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))

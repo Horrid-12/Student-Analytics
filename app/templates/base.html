@@ -29,8 +29,8 @@
         {% if sidebar_avatar_url %}<img class="sidebar-avatar-img" src="{{ sidebar_avatar_url }}" alt="">{% else %}<div class="user-avatar-pill">{{ avatar_initial }}</div>{% endif %}
       </a>
       <div class="user-details">
-        {% if sidebar_handle %}<div class="user-name">{{ sidebar_handle }}</div>{% endif %}
         <div class="user-role-line">{{ auth_status }}</div>
+        {% if sidebar_name %}<a class="sidebar-name-link" href="/settings" title="Open settings">{{ sidebar_name }}</a>{% endif %}
       </div>
       {% if auth_logged_in %}
       <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out">

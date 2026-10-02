@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros/charts.html" as mc %}
 {% import "macros/echarts.html" as ec %}
 {% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
@@ -19,6 +18,72 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--muted);
+  }
+
+  /* Promoted trend heading + Weekly/Monthly capsule toggle row. */
+  .trend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .trend-header .panel-title {
+    margin-bottom: 0;
+  }
+  .trend-header .activity-tabs {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+  }
+  .trend-header .activity-tabs .activity-tab {
+    white-space: nowrap;
+  }
+
+  /* Class Metrics Radar: the two side cards fill the right rail beside the radar. */
+  .radar-grid {
+    align-items: stretch;
+  }
+  .radar-grid .system-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    min-height: 320px;
+  }
+  .radar-grid .system-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: var(--card);
+    min-height: 146px;
+  }
+  .radar-grid .system-label {
+    color: var(--muted);
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .radar-grid .system-value {
+    color: var(--text);
+    font-size: 46px;
+    line-height: 1;
+    font-weight: 800;
+  }
+  @media (max-width: 1100px) {
+    .radar-grid .system-grid {
+      grid-template-rows: auto auto;
+      min-height: 0;
+    }
+    .trend-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .trend-header .activity-tabs {
+      align-self: flex-end;
+    }
   }
 
 </style>
@@ -126,10 +191,6 @@
     </div>
     <div class="system-grid">
       <div class="system-item">
-        <div class="system-label">Language Distribution</div>
-        <div class="system-value">{{ payload.most_used_language }}</div>
-      </div>
-      <div class="system-item">
         <div class="system-label">Average Repositories</div>
         <div class="system-value">{{ payload.avg_repos }}</div>
       </div>
@@ -142,18 +203,20 @@
 </section>
 
 <section class="panel">
-  <div class="panel-title">Analysis Results</div>
-  <div class="two-col-grid">
-    <div>
-      <div class="panel-minor-title">Repository Distribution (Students)</div>
-      <div class="donut-chart">{{ mc.chart('repo-dist-area', payload.repo_dist_fig) }}</div>
+  <div class="trend-header">
+    <div class="panel-title">Weekly Commit &amp; Activity Trend Across Batches</div>
+    <div class="activity-tabs" role="group" aria-label="Trend period">
+      <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="true">Weekly</button>
+      <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
+      <button type="button" class="activity-tab" data-trend="semester" aria-pressed="false">Semester</button>
     </div>
-    <div>
-      <div class="panel-minor-title">Followers Distribution</div>
-      <div class="donut-chart">{{ mc.chart('followers-dist-area', payload.followers_dist_fig) }}</div>
+  </div>
+  <div class="two-col-grid">
+    <div class="full-width">
+      {{ ec.multi_line('weekly-trend', payload.weekly_trend_data) }}
     </div>
     <div class="full-width">
-      <div class="panel-minor-title">Top 10 Languages</div>
+      <div class="panel-title">Top 10 Languages</div>
       {{ ec.bubble('language-bubble', payload.bubble_data) }}
     </div>
     <div class="full-width">
@@ -162,6 +225,22 @@
     </div>
   </div>
 </section>
+<script>
+  (function () {
+    // Weekly / Monthly trend switcher for the Commit & Activity Trend graph.
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('[data-trend]') : null;
+      if (!btn) return;
+      var group = btn.closest('.activity-tabs');
+      if (!group) return;
+      group.querySelectorAll('[data-trend]').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      var bridge = window.__chartBridge && window.__chartBridge['weekly-trend'];
+      if (bridge) bridge.render(btn.getAttribute('data-trend'));
+    });
+  })();
+</script>
 
 </div>
 

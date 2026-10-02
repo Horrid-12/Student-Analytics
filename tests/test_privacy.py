@@ -36,10 +36,10 @@ class TestPrivacyPage:
     def test_anonymous_can_read_privacy(self, tmp_path, monkeypatch):
         body = client(tmp_path, monkeypatch).get("/privacy", headers={"Accept": "text/html"}).text
         assert "Privacy Policy" in body
-        assert "privacy-layout" in body
+        assert "privacy-body" in body
+        assert "privacy-toc" not in body  # index removed; sections read top to bottom
         for section in SECTIONS:
             assert f'id="{section}"' in body
-            assert f'href="#{section}"' in body
 
     def test_anonymous_breadcrumb_has_no_settings_link(self, tmp_path, monkeypatch):
         body = client(tmp_path, monkeypatch).get("/privacy", headers={"Accept": "text/html"}).text
@@ -60,7 +60,7 @@ class TestPrivacyPage:
         ).read_text(encoding="utf-8")
         # The shared topbar shell keeps its app-wide inline wrapper; the
         # redesigned privacy content itself must be class-driven.
-        content = source.split("privacy-layout")[1]
+        content = source.split("privacy-body")[1]
         assert "style=\"" not in content
 
 
