@@ -756,7 +756,10 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
 
     # Radar: key class metrics (normalised per-axis for balanced shape)
     _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
-    _avg_repos = float(students[_repos_col].mean()) if not students.empty else 0.0
+    # Average repos per student that actually owns/contributes repos — a
+    # roster full of not-yet-synced students otherwise drags the mean toward 0.
+    _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
+    _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
     _total_prs = float(prs)
@@ -808,7 +811,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "repos_found": combined_repos_found,
         "team_commits": team_commits,
         "team_repos_count": team_repos_count,
-        "avg_repos": f"{students[_repos_col].mean():.1f}" if not students.empty else "0.0",
+        "avg_repos": f"{_repo_haves[_repos_col].mean():.1f}" if not _repo_haves.empty else "0.0",
         "avg_followers": f"{students['Followers'].mean():.1f}" if not students.empty else "0.0",
         "most_used_language": most_used_language,
         "total_stars": _owned_stars + _team_stars,
@@ -848,11 +851,14 @@ def _weekly_activity_trend(
     """Build weekly, monthly and semester activity trend data for the overview chart.
 
     Groups repo activity (Updated timestamps) by ISO week, calendar month,
-    and roster semester, each across student Batch. For each (period, batch)
-    pair, computes the average number of repo updates per student in that
-    batch (i.e. total repos updated in that period by students in the batch,
-    divided by the number of students in the batch — for semesters the
-    denominator is the students in that semester+batch cell).
+    and semester period, each across student Batch. Semester periods are
+    derived from each activity timestamp (July–December = Semester 1 of
+    YY-(YY+1); January–June = Semester 2 of (YY-1)-YY) so the semester view is
+    a true time bucketing that stays populated after a batch filter. For each
+    (period, batch) pair, computes the average number of repo updates per
+    student in that batch (i.e. total repos updated in that period by students
+    in the batch, divided by the number of students in the batch — for
+    semesters the denominator is the students in that semester+batch cell).
 
     Returns a JSON-serialisable structure with the three aggregations so the
     overview can switch between Weekly, Monthly and Semester views:
@@ -897,7 +903,9 @@ def _weekly_activity_trend(
     seed["Semester_Label"] = seed["Semester_Label"].replace({"": "Unknown"})
     seed = seed.dropna(subset=["GitHub_Username"])
     seed["GitHub_Username"] = seed["GitHub_Username"].astype(str)
-    user_semester = dict(zip(seed["GitHub_Username"], seed["Semester_Label"]))
+    # Students per (stored semester, batch) cell — the denominator for the
+    # semester view. Stored labels use the same "YYYY-YY · Semester N" format
+    # as the timestamp-derived period labels below, so the keys align.
     semester_batch_student_count = seed.groupby(["Semester_Label", "Batch"])["GitHub_Username"].nunique().to_dict()
 
     # Combine owned + team repos into a single frame with (Username, Updated)
@@ -918,16 +926,28 @@ def _weekly_activity_trend(
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Map each repo row to its owner's batch and semester
+    # Map each repo row to its owner's batch.
     combined["Batch"] = combined["Username"].map(user_batch)
-    combined["Semester"] = combined["Username"].map(user_semester)
     combined = combined.dropna(subset=["Batch"])
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Compute ISO year-week, calendar month, and semester labels.
+    # Compute ISO year-week and calendar-month labels, then derive the
+    # semester period from each ACTIVITY timestamp (July–December = Semester 1
+    # of YY-(YY+1); January–June = Semester 2 of (YY-1)-YY — the same calendar
+    # convention as add_academic_periods). Bucketing by the activity time keeps
+    # multiple semester categories across a batch filter, so the line renders.
     combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
     combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
+
+    def _sem_period(ts) -> str:
+        if pd.isna(ts):
+            return None
+        _start = ts.year if ts.month >= 7 else ts.year - 1
+        _half = 1 if ts.month >= 7 else 2
+        return f"{_start}-{str(_start + 1)[-2:]} · Semester {_half}"
+
+    combined["Semester"] = combined["Updated"].apply(_sem_period)
 
     batches = sorted(combined["Batch"].unique())
 

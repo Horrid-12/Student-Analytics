@@ -794,13 +794,16 @@ window.__EC_THEME = (function () {
   var current = { weeks: raw.weeks || [], series: raw.series || [] };
 
   function render(view) {
+    var next;
     if (view === 'monthly' && raw.months && raw.monthly_series) {
-      current = { weeks: raw.months, series: raw.monthly_series };
+      next = { weeks: raw.months, series: raw.monthly_series };
     } else if (view === 'semester' && raw.semesters && raw.semester_series) {
-      current = { weeks: raw.semesters, series: raw.semester_series };
+      next = { weeks: raw.semesters, series: raw.semester_series };
     } else {
-      current = { weeks: raw.weeks || [], series: raw.series || [] };
+      next = { weeks: raw.weeks || [], series: raw.series || [] };
     }
+    if (!next.weeks.length || !next.series.length) { return; }
+    current = next;
     chart.setOption(build(current.weeks, current.series));
   }
 
