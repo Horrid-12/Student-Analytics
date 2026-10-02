@@ -375,7 +375,32 @@ def account_view(email: str):
 
     snapshot = accounts.get_snapshot(email)
     if snapshot is None or snapshot.get("status") != "ok":
-        return None
+        from app import auth
+        user_row = auth.get_user(email)
+        if not user_row:
+            return None
+        student = {
+            "Student_ID": user_row.get("prn") or user_row.get("email"),
+            "Student Name": user_row.get("name"),
+            "Division": user_row.get("division"),
+            "Batch": user_row.get("practical_batch"),
+            "Semester": user_row.get("semester"),
+            "GitHub_Username": user_row.get("github_username"),
+            "Submitted_GitHub_Username": user_row.get("github_username"),
+            "Roster_Email": user_row.get("email"),
+            "Repository_Count": 0,
+            "Active_Repositories": 0,
+            "Primary_Language": "Unknown",
+            "Followers": 0,
+            "Following": 0,
+            "Owned_Commits": 0,
+            "Pull_Requests": 0,
+            "Issues_Opened": 0,
+            "Profile_URL": f"https://github.com/{user_row.get('github_username')}" if user_row.get("github_username") else "",
+            "Avatar_URL": ""
+        }
+        snapshot = {"student": student, "repos": [], "team_repos": []}
+    
     student = snapshot.get("student") or {}
     if not student:
         return None
@@ -433,6 +458,27 @@ def fleet_view():
         except Exception:
             snapshot = None
         if snapshot is None or snapshot.get("status") != "ok":
+            student = {
+                "Student_ID": user_row.get("prn") or user_row.get("email"),
+                "Student Name": user_row.get("name"),
+                "Division": user_row.get("division"),
+                "Batch": user_row.get("practical_batch"),
+                "Semester": user_row.get("semester"),
+                "GitHub_Username": user_row.get("github_username"),
+                "Submitted_GitHub_Username": user_row.get("github_username"),
+                "Roster_Email": user_row.get("email"),
+                "Repository_Count": 0,
+                "Active_Repositories": 0,
+                "Primary_Language": "Unknown",
+                "Followers": 0,
+                "Following": 0,
+                "Owned_Commits": 0,
+                "Pull_Requests": 0,
+                "Issues_Opened": 0,
+                "Profile_URL": f"https://github.com/{user_row.get('github_username')}" if user_row.get("github_username") else "",
+                "Avatar_URL": ""
+            }
+            all_rows.append(student)
             continue
         student = snapshot.get("student") or {}
         if not student:
