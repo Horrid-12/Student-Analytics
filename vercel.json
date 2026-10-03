@@ -43,6 +43,10 @@
     {
       "path": "/sync/accounts",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/sync/weekly",
+      "schedule": "0 0 * * 0"
     }
   ]
 }

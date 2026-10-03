@@ -352,3 +352,175 @@ class TestCountUserWeek:
         monkeypatch.setattr(accounts, "get_snapshot", lambda email: None)
         assert weekly.count_user_week("", "m@c.edu", "s", "t") == (0, 0, False)
         assert weekly.count_user_week("me", "m@c.edu", "s", "t") == (0, 0, True)
+
+
+def _login(client, role, email, name="Test User"):
+    created = auth.create_user(email, "secret123", role, name)
+    assert created is not None, f"seed failed for {email}"
+    resp = client.post("/login", data={"email": email, "password": "secret123"})
+    assert resp.status_code in (200, 302), f"login {resp.status_code} -> {resp.url}"
+    return email
+
+
+def _fleet_two():
+    return [
+        {"email": "a@c.edu", "name": "Ann A", "github_username": "aaa", "role": "student"},
+        {"email": "b@c.edu", "name": "Bob B", "github_username": "bbb", "role": "student"},
+    ]
+
+
+class TestWeeklyEndpoint:
+    def test_unauthorized_is_forbidden(self, tmp_path, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from fastapi.testclient import TestClient
+
+        from app import storage
+        from app.main import app
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        client = TestClient(app)
+        assert client.post("/sync/weekly").status_code == 403
+        assert client.get("/sync/weekly").status_code == 403
+
+    def test_cron_secret_runs_both_methods(self, tmp_path, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from fastapi.testclient import TestClient
+
+        from app import storage, weekly
+        from app.main import app
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        monkeypatch.setenv("CRON_SECRET", "s3cret")
+        monkeypatch.setattr(
+            weekly, "run_weekly", lambda token=None, **k: {"week_id": "2026-W39", "status": "complete"}
+        )
+        client = TestClient(app)
+        for method in ("post", "get"):
+            resp = getattr(client, method)(
+                "/sync/weekly", headers={"Authorization": "Bearer s3cret"}
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["week_id"] == "2026-W39"
+        bad = client.post("/sync/weekly", headers={"Authorization": "Bearer wrong"})
+        assert bad.status_code == 403
+
+    def test_full_run_through_endpoint_publishes(self, tmp_path, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from fastapi.testclient import TestClient
+
+        from app import accounts, storage, weekly
+        from app.main import app
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        monkeypatch.setenv("CRON_SECRET", "s3cret")
+        monkeypatch.setattr(auth, "get_approved_accounts", _fleet_two)
+        monkeypatch.setattr(
+            auth, "list_user_emails", lambda: ["a@c.edu", "b@c.edu", "c@c.edu", "boss@c.edu"]
+        )
+        monkeypatch.setattr(accounts, "get_snapshot", lambda email: {"username": "x", "repos": []})
+        monkeypatch.setattr(
+            weekly, "count_user_week", lambda u, e, s, t: {"aaa": (2, 0, True), "bbb": (7, 0, True)}[u]
+        )
+        client = TestClient(app)
+        resp = client.post("/sync/weekly", headers={"X-Cron-Secret": "s3cret"})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "complete" and body["published"] is True
+        assert body["top"]["kind"] == "winner"
+        rows = [n for n in support.list_notifications("boss@c.edu") if n["type"] == "WEEKLY_TOP_STUDENT"]
+        assert len(rows) == 1 and "@bbb" in rows[0]["message"]
+
+
+class TestWeeklyBell:
+    def _setup(self, client, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from app import accounts, storage, weekly
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        monkeypatch.setenv("ALLOWED_OAUTH_DOMAINS", "c.edu")
+        monkeypatch.setenv("CRON_SECRET", "s3cret")
+        monkeypatch.setattr(auth, "get_approved_accounts", _fleet_two)
+        monkeypatch.setattr(
+            auth, "list_user_emails", lambda: ["a@c.edu", "b@c.edu", "c@c.edu", "boss@c.edu"]
+        )
+        monkeypatch.setattr(accounts, "get_snapshot", lambda email: {"username": "x", "repos": []})
+        monkeypatch.setattr(
+            weekly, "count_user_week", lambda u, e, s, t: {"aaa": (2, 0, True), "bbb": (7, 0, True)}[u]
+        )
+        resp = client.post("/sync/weekly", headers={"X-Cron-Secret": "s3cret"})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "complete", resp.text
+
+    def test_student_and_staff_bells_show_announcement(self, tmp_path, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from fastapi.testclient import TestClient
+
+        from app import storage
+        from app.main import app
+        import app.main as main
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        anon = TestClient(app)
+        self._setup(anon, monkeypatch)
+        view = {
+            "roster_id": "r1",
+            "records": [],
+            "state": {"status": "complete"},
+            "students": __import__("pandas").DataFrame(),
+            "repos": __import__("pandas").DataFrame(),
+            "issues": __import__("pandas").DataFrame(),
+        }
+        monkeypatch.setattr(main, "_analysis_view", lambda rid: view)
+        student = TestClient(app)
+        _login(student, "student", "a@c.edu")
+        body = student.get("/?roster=r1", headers={"Accept": "text/html"}).text
+        assert "notif-bell" in body
+        assert ">View<" in body
+        assert "/leaderboards" in body
+        assert "@bbb" in body
+        admin = TestClient(app)
+        _login(admin, "admin", "boss@c.edu", name="Boss")
+        admin_body = admin.get("/", headers={"Accept": "text/html"}).text
+        assert "notif-bell" in admin_body and "@bbb" in admin_body
+
+    def test_mark_read_drops_badge(self, tmp_path, monkeypatch):
+        import tempfile
+        from pathlib import Path
+
+        from fastapi.testclient import TestClient
+
+        from app import storage
+        from app.main import app
+
+        monkeypatch.setattr(storage, "DB_PATH", Path(tempfile.mkdtemp()) / "h.db")
+        anon = TestClient(app)
+        self._setup(anon, monkeypatch)
+        student = TestClient(app)
+        _login(student, "student", "a@c.edu")
+        listed = student.get("/api/notifications").json()
+        assert listed["unread_count"] == 1
+        nid = listed["notifications"][0]["id"]
+        assert listed["notifications"][0]["fixUrl"] == "/leaderboards"
+        read = student.post(f"/api/notifications/{nid}/read")
+        assert read.status_code == 200 and read.json()["ok"] is True
+        assert student.get("/api/notifications").json()["unread_count"] == 0
+
+    def test_vercel_json_schedules_sunday_cron(self):
+        import json
+        from pathlib import Path
+
+        vercel = json.loads(
+            (Path(__file__).resolve().parent.parent / "vercel.json").read_text(encoding="utf-8")
+        )
+        paths = {c.get("path"): c.get("schedule") for c in vercel.get("crons", [])}
+        assert paths.get("/sync/weekly") == "0 0 * * 0"
