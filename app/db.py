@@ -1818,10 +1818,15 @@ def create_notification(user_id: str, ticket_id: int, type: str, title: str, mes
     user_id = (user_id or "").strip()
     if not user_id or not message:
         return None
-    try:
-        ticket_id = int(ticket_id)
-    except (TypeError, ValueError):
-        return None
+    # Announcements carry no ticket: NULL is allowed (FK only constrains
+    # non-null refs); ticket rows still require a real id.
+    if ticket_id is None:
+        ticket_value = None
+    else:
+        try:
+            ticket_value = int(ticket_id)
+        except (TypeError, ValueError):
+            return None
     try:
         with database.conn() as c:
             if c is None:
@@ -1829,7 +1834,7 @@ def create_notification(user_id: str, ticket_id: int, type: str, title: str, mes
             cur = c.execute(
                 "INSERT INTO notifications (user_id, ticket_id, type, title, message, is_read) "
                 "VALUES (%s, %s, %s, %s, %s, FALSE) RETURNING id, created_at",
-                (user_id, ticket_id, type or "TICKET_FOLLOW_UP", title or "Notification", message),
+                (user_id, ticket_value, type or "TICKET_FOLLOW_UP", title or "Notification", message),
             )
             row = cur.fetchone()
             if not row:
@@ -1838,8 +1843,8 @@ def create_notification(user_id: str, ticket_id: int, type: str, title: str, mes
                 "id": row["id"],
                 "user_id": user_id,
                 "userId": user_id,
-                "ticket_id": ticket_id,
-                "ticketId": ticket_id,
+                "ticket_id": ticket_value,
+                "ticketId": ticket_value,
                 "type": type or "TICKET_FOLLOW_UP",
                 "title": title or "Notification",
                 "message": message,
@@ -1953,5 +1958,122 @@ def count_unread_notifications(user_id: str) -> int:
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("count_unread_notifications failed: %s", exc)
         return 0
+
+
+def list_user_emails() -> list[str]:
+    """Every account email, smallest first; [] on failure. Used for
+    broadcast fan-out (weekly announcements reach every role)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute("SELECT email FROM users ORDER BY email ASC")
+            return [str(r["email"]) for r in cur.fetchall() if r and r.get("email")]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("list_user_emails failed: %s", exc)
+        return []
+
+
+def save_weekly_commits(week_id: str, rows: list[dict]) -> int:
+    """Upsert per-user weekly commit counts (Postgres leg). Returns rows
+    saved; 0 on bad input or failure. Never raises."""
+    week_id = (week_id or "").strip()
+    if not week_id or not isinstance(rows, list):
+        return 0
+    saved = 0
+    try:
+        with database.conn() as c:
+            if c is None:
+                return 0
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                email = str(row.get("email") or "").strip().lower()
+                if not email:
+                    continue
+                try:
+                    commits = max(0, int(row.get("commits") or 0))
+                    checked = max(0, int(row.get("repos_checked") or 0))
+                except (TypeError, ValueError):
+                    continue
+                c.execute(
+                    "INSERT INTO weekly_commits (week_id, email, username, commits, "
+                    "repos_checked, status, updated_at) VALUES (%s, %s, %s, %s, %s, %s, NOW()) "
+                    "ON CONFLICT (week_id, email) DO UPDATE SET username = EXCLUDED.username, "
+                    "commits = EXCLUDED.commits, repos_checked = EXCLUDED.repos_checked, "
+                    "status = EXCLUDED.status, updated_at = NOW()",
+                    (week_id, email, str(row.get("username") or ""), commits, checked,
+                     str(row.get("status") or "ok")),
+                )
+                saved += 1
+            return saved
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_weekly_commits failed: %s", exc)
+        return 0
+
+
+def get_weekly_commits(week_id: str) -> list[dict]:
+    """All per-user counts recorded for a week; [] on bad input/failure."""
+    week_id = (week_id or "").strip()
+    if not week_id:
+        return []
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT week_id, email, username, commits, repos_checked, status, updated_at "
+                "FROM weekly_commits WHERE week_id = %s ORDER BY email ASC",
+                (week_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_weekly_commits failed: %s", exc)
+        return []
+
+
+def get_weekly_run(week_id: str) -> dict | None:
+    """One week's run record (for idempotent publish); None when absent."""
+    week_id = (week_id or "").strip()
+    if not week_id:
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT week_id, label, status, top_json, published_at, created_at "
+                "FROM weekly_runs WHERE week_id = %s",
+                (week_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_weekly_run failed: %s", exc)
+        return None
+
+
+def save_weekly_run(week_id: str, label: str, status: str, top_json: str) -> bool:
+    """Upsert one week's run record. Returns True on success. Never raises."""
+    week_id = (week_id or "").strip()
+    if not week_id or status not in ("complete", "partial"):
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            c.execute(
+                "INSERT INTO weekly_runs (week_id, label, status, top_json, published_at, created_at) "
+                "VALUES (%s, %s, %s, %s, CASE WHEN %s = 'complete' THEN NOW() ELSE NULL END, NOW()) "
+                "ON CONFLICT (week_id) DO UPDATE SET label = EXCLUDED.label, "
+                "status = EXCLUDED.status, top_json = EXCLUDED.top_json, "
+                "published_at = CASE WHEN EXCLUDED.status = 'complete' THEN NOW() "
+                "ELSE weekly_runs.published_at END",
+                (week_id, label or "", status, top_json or "{}", status),
+            )
+            return True
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_weekly_run failed: %s", exc)
+        return False
 
 

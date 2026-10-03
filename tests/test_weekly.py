@@ -7,7 +7,7 @@ cron endpoint auth, and bell wiring (all roles, mark-read, unread polling).
 
 import pytest
 
-from app import services
+from app import auth, services, support
 
 
 def commit(day):
@@ -58,3 +58,48 @@ class TestCountAuthorCommitsSince:
         monkeypatch.setattr(services, "_cached_get_json", lambda u, t, timeout=None: (200, {}, payload))
         count, ok = services.count_author_commits_since("o/r", "u", "2026-09-21T00:00:00+00:00", "t")
         assert (count, ok) == (1, True)
+
+
+class TestWeeklyStore:
+    def test_commits_round_trip_and_upsert(self):
+        rows = [
+            {"email": "a@c.edu", "username": "aaa", "commits": 5, "repos_checked": 2, "status": "ok"},
+            {"email": "b@c.edu", "username": "bbb", "commits": 0, "repos_checked": 1, "status": "ok"},
+        ]
+        assert support.save_weekly_commits("2026-W39", rows) == 2
+        got = {r["email"]: r for r in support.get_weekly_commits("2026-W39")}
+        assert got["a@c.edu"]["commits"] == 5
+        assert got["b@c.edu"]["repos_checked"] == 1
+        assert support.save_weekly_commits(
+            "2026-W39",
+            [{"email": "a@c.edu", "username": "aaa", "commits": 9, "repos_checked": 3, "status": "ok"}],
+        ) == 1
+        assert support.get_weekly_commits("2026-W39")[0]["commits"] == 9
+
+    def test_commits_bad_inputs(self):
+        assert support.save_weekly_commits("", []) == 0
+        assert support.save_weekly_commits("2026-W39", "nope") == 0
+        assert support.save_weekly_commits("2026-W39", [{"username": "x"}]) == 0
+        assert support.save_weekly_commits("2026-W39", [{"email": "x@c.edu", "commits": "NaN"}]) == 0
+        assert support.get_weekly_commits("") == []
+        assert support.get_weekly_commits("nope") == []
+
+    def test_run_round_trip(self):
+        assert support.get_weekly_run("2026-W39") is None
+        assert support.save_weekly_run("2026-W39", "Week of Sep 21", "complete", '{"top": []}') is True
+        run = support.get_weekly_run("2026-W39")
+        assert run["status"] == "complete"
+        assert run["label"] == "Week of Sep 21"
+        assert run["published_at"] != ""
+
+    def test_run_bad_inputs(self):
+        assert support.save_weekly_run("", "L", "complete", "{}") is False
+        assert support.save_weekly_run("2026-W39", "L", "bogus", "{}") is False
+        assert support.get_weekly_run("") is None
+
+
+class TestListUserEmails:
+    def test_sorted_emails(self):
+        assert auth.create_user("z@c.edu", "secret123", "student", "Zed") is not None
+        assert auth.create_user("a@c.edu", "secret123", "admin", "Ann") is not None
+        assert auth.list_user_emails() == ["a@c.edu", "z@c.edu"]

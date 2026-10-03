@@ -385,3 +385,28 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
 
+-- Weekly top-student announcements carry no ticket: the FK only constrains
+-- non-null refs, so allow NULL ticket refs (announcements insert NULL).
+ALTER TABLE notifications ALTER COLUMN ticket_id DROP NOT NULL;
+
+-- 15. Weekly top-student tracking (announcement producer state; the
+-- announcements themselves reuse the notifications table).
+CREATE TABLE IF NOT EXISTS weekly_commits (
+    week_id       TEXT NOT NULL,
+    email         TEXT NOT NULL,
+    username      TEXT NOT NULL DEFAULT '',
+    commits       INTEGER NOT NULL DEFAULT 0,
+    repos_checked INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT '',
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (week_id, email)
+);
+CREATE TABLE IF NOT EXISTS weekly_runs (
+    week_id      TEXT NOT NULL PRIMARY KEY,
+    label        TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT '',
+    top_json     TEXT NOT NULL DEFAULT '{}',
+    published_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+

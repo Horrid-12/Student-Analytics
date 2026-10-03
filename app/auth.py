@@ -882,6 +882,21 @@ def get_approved_accounts() -> list[dict]:
         return []
 
 
+def list_user_emails() -> list[str]:
+    """Every account email, smallest first; [] on storage failure. Used for
+    broadcast fan-out (weekly announcements reach every role)."""
+    if database.db_configured():
+        return db.list_user_emails()
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            rows = conn.execute("SELECT email FROM users ORDER BY email ASC").fetchall()
+        return [str(r[0]) for r in rows if r and r[0]]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("user-email lookup failed: %s", exc)
+        return []
+
+
 def set_onboarding_status(email: str, status: str, promote_github: bool = False) -> tuple[bool, str]:
     """Approve/reject a submission. ``promote_github`` (approval) also promotes
     the OAuth-linked GitHub handle into the verified ``github_username`` and
