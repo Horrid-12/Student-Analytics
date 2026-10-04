@@ -100,10 +100,16 @@
     justify-content: space-between;
     gap: 12px 16px;
     flex-wrap: wrap;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
   }
   .radar-header .panel-title {
     margin-bottom: 0;
+  }
+  .radar-caption {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
   }
   .radar-controls {
     display: flex;
@@ -294,17 +300,24 @@
   <div class="radar-header">
     <div class="panel-title">Class Metrics Radar</div>
     <div class="radar-controls">
-      <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a cohort">
-        <option value="" selected disabled>+ Compare cohort</option>
-        {% for s in payload.radar_data.series %}
-        {% if s.kind in ('current', 'cohort') %}
-        <option value="{{ s.key }}">{{ s.label }}</option>
+      <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a class">
+        <option value="" selected disabled>+ Compare class…</option>
+        {% if payload.radar_data.has_current %}
+        <option value="current">{{ payload.radar_data.current_label }}</option>
         {% endif %}
+        <option value="overall">All students (whole roster)</option>
+        {% for g in payload.radar_data.cohort_groups %}
+        <optgroup label="{{ g.label }}">
+          {% for item in g.options %}
+          <option value="{{ item.key }}">{{ item.name }}</option>
+          {% endfor %}
+        </optgroup>
         {% endfor %}
       </select>
-      <div id="radar-hint" class="radar-hint">Maximum 3 cohorts can be compared at once.</div>
+      <div id="radar-hint" class="radar-hint">Maximum 3 classes can be compared at the same time.</div>
     </div>
   </div>
+  <p class="radar-caption">Dashed line = average of all students. Pick a batch + division above to overlay a specific class.</p>
   <div id="radar-legend" class="radar-legend"></div>
   <div class="radar-grid">
     <div>

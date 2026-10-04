@@ -597,7 +597,7 @@ window.__EC_THEME = (function () {
   /* Accent order follows activation position among the non-benchmark series. */
   function styleFor(key) {
     if (key === BENCH_KEY) {
-      return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.12)', symbol: 4 };
+      return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.14)', symbol: 4 };
     }
     var non = active.filter(function (k) { return k !== BENCH_KEY; });
     var pos = non.indexOf(key);
@@ -656,7 +656,7 @@ window.__EC_THEME = (function () {
         value: s.values,
         symbol: 'circle',
         symbolSize: st.symbol,
-        lineStyle: { color: st.color, width: st.dash ? 1.5 : 2.5, type: st.dash ? 'dashed' : 'solid' },
+        lineStyle: { color: st.color, width: st.dash ? 2 : 2.5, type: st.dash ? 'dashed' : 'solid' },
         itemStyle: {
           color: st.color,
           borderColor: p.card,

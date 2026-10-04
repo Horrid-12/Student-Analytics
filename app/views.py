@@ -590,6 +590,30 @@ RADAR_METRIC_NAMES = (
 )
 
 
+def _clean_batch_text(value) -> str:
+    """Roster Batch value for display: '2026.0' -> '2026', blank/missing -> ''."""
+    s = str(value).strip() if pd.notna(value) else ""
+    if not s:
+        return ""
+    s = re.sub(r"\.0+$", "", s).strip()
+    return "" if s.lower() in {"nan", "none", "n/a", "na", "unknown", "unassigned"} else s
+
+
+def _clean_division_text(value) -> str:
+    """Roster Division value for display: 'Div A'/'Division 1' -> 'A'/'1'."""
+    s = str(value).strip() if pd.notna(value) else ""
+    s = re.sub(r"^(?:div\.?\s+|division\s+)", "", s, flags=re.IGNORECASE).strip()
+    if not s:
+        return ""
+    return "" if s.lower() in {"nan", "none", "n/a", "na", "unknown", "unassigned"} else s
+
+
+def _batch_year_key(batch_label: str):
+    """Leading integer in a batch label, for numeric rather than text sorting."""
+    m = re.search(r"\d+", batch_label)
+    return int(m.group(0)) if m else None
+
+
 def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> list:
     """Return the 5 Class Metrics Radar values in fixed axis order:
     [Avg Repos, Pull Requests, Collaboration Rate, Quality Score,
@@ -834,6 +858,9 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
 
     # Cohort picker options: distinct (Batch × Division) combos in the roster.
+    # Labels are user-friendly ("Batch 2026" groups + "Division A" items) and the
+    # groups sort by batch YEAR numerically, so mixed/messy roster values still
+    # read in a sensible top-to-bottom order.
     _cohort_rows = []
     if _all_students is not None and not _all_students.empty and {"Batch", "Division"}.issubset(_all_students.columns):
         try:
@@ -841,36 +868,66 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         except Exception:
             _grouped = pd.DataFrame()
         for _, _row in _grouped.iterrows():
-            _batch = str(_row["Batch"]) if pd.notna(_row["Batch"]) else "Unknown"
-            _div = str(_row["Division"]) if pd.notna(_row["Division"]) else "Unknown"
-            _cohort_rows.append({"key": f"{_batch}|{_div}", "label": f"{_batch} · {_div}", "batch": _batch, "div": _div})
-    _cohort_rows.sort(key=lambda c: (c["batch"].lower(), c["div"].lower()))
+            _batch_raw = str(_row["Batch"]) if pd.notna(_row["Batch"]) else "nan"
+            _div_raw = str(_row["Division"]) if pd.notna(_row["Division"]) else "nan"
+            _batch = _clean_batch_text(_row["Batch"])
+            _div = _clean_division_text(_row["Division"])
+            _group = f"Batch {_batch}" if _batch else "No batch"
+            _name = f"Division {_div}" if _div else "Division not listed"
+            try:
+                _slice = _all_students[(_all_students["Batch"].astype(str) == _batch_raw) & (_all_students["Division"].astype(str) == _div_raw)]
+                _users = _cohort_usernames(_slice)
+            except Exception:
+                _slice = pd.DataFrame()
+                _users = set()
+            _cohort_rows.append({
+                "key": f"{_batch_raw or '?'}|{_div_raw or '?'}",
+                "group": _group,
+                "name": _name,
+                "label": f"{_group} · {_name}",
+                "batch": _batch,
+                "div": _div,
+                "students": _slice,
+                "users": _users,
+            })
+    _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, c["name"].lower()))
 
     _radar_series = []
     _radar_active = []
-    # 1. Current (page-filtered) view — the sky accent the class already knew.
+    _has_current = False
+    _current_label = ""
+    _filtered = division != "All" or batch != "All" or semester != "All"
     if students is not None and not students.empty:
-        _current_label = "Current View"
-        if division != "All" or batch != "All" or semester != "All":
+        # 1. "Your class": the student set the page filters are showing.
+        _current_label = "Your class"
+        if _filtered:
             _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
             _current_label += " · " + " · ".join(_bits)
-        else:
-            _current_label += " · Whole roster"
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
         _radar_active.append("current")
-    # 2. Overall Average benchmark (whole roster, unfiltered).
-    _radar_series.append({"key": "overall", "kind": "overall", "label": "Overall Average", "values": _radar_metric_values(_all_students, _all_score_repos)})
-    _radar_active.append("overall")
+        _has_current = True
+    # 2. "All students": the whole-roster baseline. Only auto-shown when it adds
+    #    information (a filtered view exists); otherwise it would draw an
+    #    identical shape on top of "Your class".
+    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_all_students, _all_score_repos)})
+    if (not _has_current) or _filtered:
+        _radar_active.append("overall")
     # 3. Every selectable cohort, measured with the same formulas.
     for _c in _cohort_rows:
         try:
-            _c_students = apply_value_filter(_all_students, "Batch", _c["batch"])
-            _c_students = apply_value_filter(_c_students, "Division", _c["div"])
-            _c_users = _cohort_usernames(_c_students)
-            _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
-            _radar_series.append({"key": _c["key"], "kind": "cohort", "label": _c["label"], "values": _radar_metric_values(_c_students, _c_score)})
+            _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c["users"])].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+            _radar_series.append({"key": _c["key"], "kind": "cohort", "group": _c["group"], "name": _c["name"], "label": _c["label"], "values": _radar_metric_values(_c["students"], _c_score)})
         except Exception:
             continue
+
+    # Dropdown groups for the picker (one <optgroup> per batch).
+    _cohort_groups = []
+    _last_group = None
+    for _c in _cohort_rows:
+        if _c["group"] != _last_group:
+            _cohort_groups.append({"label": _c["group"], "options": []})
+            _last_group = _c["group"]
+        _cohort_groups[-1]["options"].append({"key": _c["key"], "name": _c["name"]})
 
     # Axis normalization: percentage axes are exact 0–100; count axes scale to
     # 1.5× the largest value seen across all series (with a readable floor).
@@ -889,6 +946,9 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         ],
         "series": _radar_series,
         "active": _radar_active,
+        "cohort_groups": _cohort_groups,
+        "has_current": _has_current,
+        "current_label": _current_label,
     }
 
     return {
