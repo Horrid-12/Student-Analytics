@@ -1965,6 +1965,19 @@ button {
   font-weight: 800;
   color: var(--text);
 }
+/* Solved-question rows: name left, date right. */
+.hr-solve-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.hr-solve-date {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list
    shows at most ~5 notifications and scrolls for the rest. */

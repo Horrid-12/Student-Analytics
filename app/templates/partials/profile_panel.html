@@ -272,16 +272,19 @@
         html += '<div class="hr-active-box">Last active ' + escHR(lastActive) + ' · ' + activeDays.length + ' active days.</div>';
       }
       if (recent.length) {
-        html += '<div class="panel-minor-title">Recently solved (' + recent.length + ')</div><div class="repo-dropdown-body">'
-          + recent.slice(0, 10).map(function (r) {
+        html += '<details class="repo-dropdown"><summary class="repo-dropdown-btn"><span>Solved questions (' + recent.length + ')</span>'
+          + '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+          + '</summary><div class="repo-dropdown-body">'
+          + recent.map(function (r) {
             var href = r.url ? (String(r.url).charAt(0) === '/' ? 'https://www.hackerrank.com' + r.url : r.url) : '';
-            var label = escHR(r.name) + (r.date ? ' · ' + escHR(r.date) : '');
-            return href
-              ? '<div class="profile-repo"><a class="repo-name" href="' + escHR(href) + '" target="_blank" rel="noopener">' + label + '</a></div>'
-              : '<div class="profile-repo"><span class="repo-name">' + label + '</span></div>';
-          }).join('') + '</div>';
+            var nameHtml = href
+              ? '<a class="repo-name" href="' + escHR(href) + '" target="_blank" rel="noopener">' + escHR(r.name) + '</a>'
+              : '<span class="repo-name">' + escHR(r.name) + '</span>';
+            return '<div class="profile-repo"><div class="hr-solve-row">' + nameHtml
+              + '<span class="hr-solve-date">' + escHR(r.date || '') + '</span></div></div>';
+          }).join('') + '</div></details>';
       } else {
-        html += '<p class="tab-empty">No recent solves found.</p>';
+        html += '<p class="tab-empty">No solved questions found.</p>';
       }
       box.innerHTML = html;
       box.hidden = false;

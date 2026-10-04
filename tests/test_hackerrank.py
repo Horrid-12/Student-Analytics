@@ -105,7 +105,7 @@ def test_profile_tab_shows_skills_progress_recent():
     assert "Solved (est.)" not in html
     assert "/api/hackerrank/" in html
     assert "data-hr-username" in html
-    assert "Recently solved" in html
+    assert "Solved questions" in html
     assert "Last active" in html
     assert "to next star" in html
     assert "hr-badge-hex" in html
