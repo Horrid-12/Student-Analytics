@@ -810,6 +810,28 @@ button {
 .ab-list {
   max-height: 380px;
   overflow-y: auto;
+  /* Keep the count column clear of the scrollbar track: a stable gutter stops
+     rows shifting when scrolling kicks in, and right padding gives the
+     right-aligned totals comfortable clearance from the track. */
+  scrollbar-gutter: stable;
+  padding-right: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent; /* slate-700 thumb, transparent track */
+}
+.ab-list::-webkit-scrollbar {
+  width: 6px;
+}
+.ab-list::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+.ab-list::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 9999px;
+}
+.ab-list::-webkit-scrollbar-thumb:hover {
+  background-color: #475569; /* slate-600 */
 }
 .ab-row {
   display: grid;
