@@ -1860,6 +1860,47 @@ button {
   color: #2ec866;
 }
 
+/* HackerRank hex badges (profile HackerRank tab): tier colors mirror
+   hackerrank.com — bronze 1-2 stars, silver 3-4, gold 5-6. */
+.hr-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 6px 0 4px;
+}
+.hr-badge {
+  width: 112px;
+  text-align: center;
+}
+.hr-badge-hex {
+  width: 112px;
+  height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 16px;
+  color: #2d3e50;
+  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+.hr-badge-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.hr-badge-stars {
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+.hr-badge-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list
    shows at most ~5 notifications and scrolls for the rest. */
 .notif-bell {

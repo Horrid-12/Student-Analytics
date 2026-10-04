@@ -47,7 +47,7 @@
               {% endif %}
               {% if p.hackerrank_username %}
               <a class="profile-icon-btn profile-icon-hackerrank" href="{{ p.hackerrank_url }}" target="_blank" rel="noopener" title="HackerRank: {{ p.hackerrank_username }}" aria-label="Open HackerRank profile of {{ p.name }}">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.508 6.268L12 10.762l4.485-4.495-2.493-2.489-1.992 1.994-1.997-1.996-2.495 2.492zM23.999 20.943l-7.128-7.13 7.128-7.129-2.828-2.828-7.13 7.129-7.122-7.124-2.824 2.828 7.128 7.13-7.128 7.129 2.828 2.828 7.122-7.124 7.13 7.129 2.818-2.834zm-11.129-7.133l-.004-.004.004.004z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.5 5.5 7.75 2 11 5.5Z M6 5h3.5v14H6Z M6 10.5h12v3H6Z M14.5 5H18v14h-3.5Z M13 18.5l3.25 3.5 3.25-3.5Z"/></svg>
               </a>
               {% endif %}
             </div>
@@ -147,7 +147,6 @@
       <div id="profile-panel-hackerrank" role="tabpanel" aria-labelledby="profile-tab-hackerrank" hidden>
         {% if p.hackerrank_username %}
         <div class="hr-profile" data-hr-username="{{ p.hackerrank_username }}" data-hr-state="idle">
-          <div class="panel-minor-title">HackerRank &middot; <a href="{{ p.hackerrank_url }}" target="_blank" rel="noopener">{{ p.hackerrank_username }}</a></div>
           <p class="tab-empty" data-hr-status>Loading live details&hellip;</p>
           <div data-hr-content hidden></div>
         </div>
@@ -215,20 +214,24 @@
       var recent = Array.isArray(data.recent) ? data.recent : [];
       var html = '';
       if (badges.length) {
-        html += '<div class="panel-minor-title">Skills (' + badges.length + ')</div><div class="lang-bars">'
+        html += '<div class="panel-minor-title">Badges</div><div class="hr-badges">'
           + badges.map(function (b) {
-            var stars = Number(b.stars) || 0;
+            var stars = Math.min(6, Math.max(0, Number(b.stars) || 0));
             var solved = Number(b.solved) || 0;
             var total = Number(b.total_challenges) || 0;
             var prog = Math.min(100, Math.max(0, Math.round((Number(b.progress) || 0) * 100)));
-            var progLabel = prog >= 100 ? 'Maxed' : prog + '% to next star';
+            var bg = stars >= 5 ? '#f7c948' : stars >= 3 ? '#cfd8dc' : stars >= 1 ? '#f2a488' : '#d3d8dc';
+            var shortName = b.track === 'C++' ? 'CPP' : String(b.track || '');
+            var starRow = stars > 0 ? new Array(stars + 1).join('★') : '☆';
             var solvedLabel = total > 0 ? solved + ' of ' + total + ' solved' : solved + ' solved';
-            return '<div class="lang-row"><span class="lang-name" title="' + escHR(b.track) + '">' + escHR(b.track) + '</span>'
-              + '<span class="lang-track" title="' + escHR(progLabel) + '"><span class="lang-fill" style="width:' + prog + '%"></span></span>'
-              + '<span class="lang-count">' + stars + '★ · ' + escHR(solvedLabel) + '</span></div>';
+            var progLabel = prog >= 100 ? 'Maxed' : prog + '% to next star';
+            return '<div class="hr-badge"><div class="hr-badge-hex" style="background:' + bg + '">'
+              + '<div class="hr-badge-label">' + escHR(shortName) + '</div>'
+              + '<div class="hr-badge-stars">' + starRow + '</div></div>'
+              + '<div class="hr-badge-meta">' + escHR(solvedLabel) + '<br>' + escHR(progLabel) + '</div></div>';
           }).join('') + '</div>';
       } else {
-        html += '<p class="tab-empty">No skill badges yet.</p>';
+        html += '<p class="tab-empty">No badges yet.</p>';
       }
       var activeDays = heat.filter(function (d) { return Number(d.count) > 0; });
       var lastActive = '';
