@@ -563,14 +563,15 @@ window.__EC_THEME = (function () {
    Styling: kind == 'overall' (the institutional benchmark) renders as a muted,
    dashed slate baseline (fill 0.12). Every other series follows activation
    order — 1st = Sky (#38bdf8, fill 0.25), 2nd = Violet (#a855f7, fill 0.2).
-   Axis order is NEVER rearranged. Points illuminate on hover and the tooltip
-   shows every visible series' value on the hovered axis, side by side. The
-   page-level cohort picker drives addSeries/removeSeries through __chartBridge.
+   Axis order is NEVER rearranged. Points illuminate on hover; the tooltip is
+   disabled because per-series values are shown in the comparison cards beside
+   the chart. The page-level cohort picker drives addSeries/removeSeries through
+   __chartBridge, and getSeries() exposes each series' values for those cards.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro radar(id, data) %}
 {% if data %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:320px;"></div>
+<div id="{{ id }}" class="echart-box" style="height:400px;"></div>
 <script>
 (function () {
   'use strict';
@@ -607,50 +608,25 @@ window.__EC_THEME = (function () {
   }
   function colorFor(key) { return styleFor(key).color; }
 
-  function fmt(val, metric) {
-    var n = (typeof val === 'number' && !isNaN(val)) ? val : 0;
-    var s = n.toFixed(1);
-    if (metric && metric.unit === '%') s += '%';
-    return s;
-  }
-
-  function tooltipFormatter(params) {
-    if (!params) return '';
-    var idx = (typeof params.valueIndex === 'number') ? params.valueIndex : -1;
-    var lines = [];
-    if (idx >= 0 && raw.metrics[idx]) {
-      /* Hovered axis × every visible series, side by side. */
-      lines.push('<b>' + raw.metrics[idx].name + '</b>');
-      active.forEach(function (key) {
-        var s = byKey[key];
-        var st = styleFor(key);
-        var v = (s.values && typeof s.values[idx] === 'number') ? s.values[idx] : 0;
-        lines.push(
-          '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">' +
-          '<span style="width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;background:' + st.color + ';"></span>' +
-          '<span style="opacity:0.85;">' + s.label + '</span>' +
-          '<b style="margin-left:auto;">' + fmt(v, raw.metrics[idx]) + '</b></div>'
-        );
-      });
-    } else {
-      /* Fallback: hovered series × all axes. */
-      lines.push('<b>' + params.name + '</b>');
-      raw.metrics.forEach(function (m, i) {
-        var vals = active.map(function (key) {
-          var s = byKey[key];
-          return s.label + ' ' + fmt((s.values && typeof s.values[i] === 'number') ? s.values[i] : 0, m);
-        });
-        lines.push('<div style="margin-top:4px;display:flex;justify-content:space-between;gap:14px;">' +
-          '<span style="opacity:0.7;">' + m.name + '</span><b>' + vals.join(' &middot; ') + '</b></div>');
-      });
-    }
-    return lines.join('');
+  /* "Luminous" polygon fill: a radial fade from the series colour to
+     transparent, mimicking the pre-comparison radar. The dashed benchmark
+     uses the same fade so it stays a quiet backdrop. */
+  function areaFill(color, alpha) {
+    return {
+      type: 'radial',
+      x: 0.5, y: 0.5, r: 0.6,
+      colorStops: [
+        { offset: 0, color: hexToRgba(color, alpha) },
+        { offset: 1, color: 'rgba(255,255,255,0)' }
+      ]
+    };
   }
 
   function seriesData(p) {
     return active.map(function (key) {
       var s = byKey[key];
       var st = styleFor(key);
+      var dim = st.dash ? 0.12 : 0.32;
       return {
         name: s.label,
         value: s.values,
@@ -664,7 +640,7 @@ window.__EC_THEME = (function () {
           shadowBlur: 10,
           shadowColor: hexToRgba(st.color, 0.0)
         },
-        areaStyle: { color: st.fill },
+        areaStyle: { color: areaFill(st.color, dim) },
         emphasis: {
           lineStyle: { width: st.dash ? 2.5 : 4 },
           itemStyle: { borderWidth: 2, shadowBlur: 14, shadowColor: 'rgba(0,0,0,0.4)' },
@@ -678,11 +654,8 @@ window.__EC_THEME = (function () {
     var p = window.__EC_THEME.get();
     var indicators = raw.metrics.map(function (m) { return { name: m.name, max: m.max }; });
     return {
-      tooltip: window.__EC_THEME.tooltip({
-        trigger: 'item',
-        confine: true,
-        formatter: tooltipFormatter
-      }),
+      /* Values now live in the comparison cards beside the chart. */
+      tooltip: { show: false },
       radar: {
         indicator: indicators,
         shape: 'polygon',
@@ -727,7 +700,7 @@ window.__EC_THEME = (function () {
   function getActive() { return active.slice(); }
   function isActive(key) { return active.indexOf(key) !== -1; }
   function getSeries() {
-    return raw.series.map(function (s) { return { key: s.key, kind: s.kind, label: s.label }; });
+    return raw.series.map(function (s) { return { key: s.key, kind: s.kind, label: s.label, values: (s.values || []).slice() }; });
   }
 
   render();
