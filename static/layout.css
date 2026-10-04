@@ -1860,30 +1860,76 @@ button {
   color: #2ec866;
 }
 
-/* HackerRank hex badges (profile HackerRank tab): tier colors mirror
-   hackerrank.com — bronze 1-2 stars, silver 3-4, gold 5-6. */
+/* HackerRank hex badges (profile HackerRank tab): tier colors + gradients
+   mirror hackerrank.com — bronze 1-2 stars, silver 3-4, gold 5-6.
+   Max 3 per row; extras wrap. Border via an outer frame sharing the
+   same clip-path (clip-path clips real borders, so the frame fakes it). */
 .hr-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 12px;
   margin: 6px 0 4px;
 }
 .hr-badge {
-  width: 112px;
+  flex: 0 1 calc(33.333% - 8px);
+  min-width: 0;
   text-align: center;
 }
+.hr-badge-frame {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  padding: 3px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
 .hr-badge-hex {
-  width: 112px;
-  height: 104px;
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  min-height: 178px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 16px;
+  gap: 5px;
+  padding: 14px 12px;
   color: #2d3e50;
-  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+.hr-t0 .hr-badge-frame {
+  background: #9aa5ab;
+}
+.hr-t0 .hr-badge-hex {
+  background: linear-gradient(180deg, #e8edf0, #c3ccd1);
+}
+.hr-t12 .hr-badge-frame {
+  background: #a85f38;
+}
+.hr-t12 .hr-badge-hex {
+  background: linear-gradient(180deg, #f9bc9a, #e78e63);
+}
+.hr-t34 .hr-badge-frame {
+  background: #7d8f99;
+}
+.hr-t34 .hr-badge-hex {
+  background: linear-gradient(180deg, #e9eff2, #b9c6cd);
+}
+.hr-t56 .hr-badge-frame {
+  background: #b8860b;
+}
+.hr-t56 .hr-badge-hex {
+  background: linear-gradient(180deg, #ffdd55, #f0b400);
+}
+.hr-badge-logo svg {
+  width: 30px;
+  height: 30px;
+}
+.hr-badge-logo,
+.hr-badge-logo-num {
+  font-weight: 800;
+  line-height: 1;
+  color: #2d3e50;
+}
+.hr-badge-logo {
+  font-size: 25px;
+}
+.hr-badge-logo-num {
+  font-size: 30px;
 }
 .hr-badge-label {
   font-size: 12.5px;
@@ -1891,14 +1937,14 @@ button {
   line-height: 1.15;
 }
 .hr-badge-stars {
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 2px;
 }
-.hr-badge-meta {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 6px;
-  line-height: 1.45;
+.hr-badge-stat {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f2d3d;
+  line-height: 1.35;
 }
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list
