@@ -302,3 +302,24 @@ pre-existing `BUG-119`/`BUG-120`/`BUG-121` in `Bug Tracker.md`.
 
 - **Sign-up showed the generic failure banner for an already-registered (Google-created) college address** - `BUG-131` (fixed: `POST /signup` now redirects duplicates to `?error=3` with an "already has an account - sign in instead" banner in `signup.html`; whitelist `error=2` and validation `error=1` unchanged).
 - **Manually-added HackerRank/LinkedIn kept resetting after sync, and fleet pages never showed roster profile links** - `BUG-132` (fixed: sync carries profile links forward across light/heavy/error legs + `views.fleet_view`/`account_view` backfill them from the latest roster via new `db.latest_roster_records()`; live proof: fleet row for 1272261921 now renders `1272261921_s` / `idkhorrid`).
+---
+
+## README overhaul (2026-10-05)
+
+- [x] **`README.md` rewritten end-to-end** — centered hero (logo = `static/Favicon.png`), badge row, anchor nav, per-feature sections, short architecture + links, screenshot placeholder, Get Started with PowerShell `<details>`, verified env-var table, per-platform Installation table, Status / Contributing / License. Zero emoji; typographic `—`/`·` only.
+- [x] **`scripts/verify_readme.py` added** — checks case-sensitive local paths, nav anchors, uniform table columns, even code fences, no emoji/non-ASCII outside an allowlist, no width+height on one `<img>`, no raw `&` in HTML attributes, no `#gh-*-mode-only`/`<picture>`/`<script>`, local `<img>` alts, and fetches all 19 badge URLs asserting aria-label + logo presence. Green: `.\.venv\Scripts\python.exe scripts\verify_readme.py`.
+- [x] **All 19 badge URLs fetched before commit** — dropped `logo=` for slugs simple-icons lacks (`uvicorn`, `microsoftexcel` for openpyxl); control-probed with a bogus slug to make the "no `<image>` element" test reliable.
+- [x] **Stale claims removed after code verification** — old README promised *ten* pages incl. **History** and **Issues** (neither exists: `PAGES` in `app/main.py` has 8, no history/issues templates) and an upload → **Run Analysis** flow (no upload route exists in `app/main.py`; `gsad_roster_v1` is read but never written). Replaced with the real flow: signup → onboarding approval → cron/Actions/login sync → fleet-backed pages. Reference-workbook format (Verification) kept as the only upload left (csv/xlsx/xls verified in `app/crosscheck.py`).
+- [x] **Env table written from code, not from old docs** — `rg`/grep over `os.environ` reads + `app/env.py`; requiredness proven by `import app.main` under `___APP_UNDER_PYTEST___=1` with every credential var deleted (boots clean). `CRON_SECRET` marked required-for-automation (403 path in the four cron handlers), `AUTH_SECRET` optional-with-warning, `ALLOWED_OAUTH_DOMAINS` default `mitwpu.edu.in` confirmed at `app/auth.py:216`.
+- [x] **Badges honest to repo state** — no `LICENSE` file and no GitHub license → static "All rights reserved" badge + honest License section; no releases/tags → `last commit` badge instead of a release badge; CI badge = CodeQL workflow (fetched: "CodeQL - passing"); Status section discloses the red suite baseline (`BUG-125` → `Red Suite Fix.md`) instead of claiming green.
+
+Decisions / rejected alternatives:
+
+- **Icon system skipped** (no `lucide-react`/`@heroicons` — this is a Python repo with no JS icon dependency, and the SVG-generation step was explicitly declined) → headings are plain text; `verify_readme.py` asserts no icon `<img>` sneaks in later.
+- **`<picture>` / `#gh-light-mode-only` rejected** — renders both themes' images / keys off OS theme, not GitHub's site theme; single dual-safe markup only.
+- **Screenshots: commented placeholder, no dummy images** — repo has zero app screenshots (only `documentation/image/BugTracker/*.png`, which is a bug artifact); placeholder comment in `## Preview` documents wide-shot vs table rules for whoever adds `docs/screenshots/`.
+- **Roster-format table replaced by reference-workbook table** — kept `EXCEL_COLUMNS`/`REQUIRED_EXCEL_COLUMNS` untouched; README now documents the columns `app/crosscheck.py` actually canonicalises.
+
+Discovered while auditing (needs a product/code decision, NOT fixed here):
+
+- **Suspected cron method mismatch** — `vercel.json` schedules `crons[0].path = /sync/accounts` but Vercel Cron issues **GET**, while `app/main.py:1389` exposes `@app.post("/sync/accounts")` only (GET → 405; `/sync/weekly` is already an `api_route` accepting both). Nightly sync may silently never fire — mitigated in practice by self-sync-on-login and the 6-hourly Heavy Sync Action. Verify on the Vercel cron logs before touching code.

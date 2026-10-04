@@ -1,244 +1,299 @@
-# GitHub Student Analytics Dashboard
+<p align="center">
+  <img src="./static/Favicon.png" width="120" alt="Student Analytics logo">
+</p>
 
-Upload a class roster, validate every student's GitHub account, pull their public repos and stats, and explore interactive dashboards — all from one Excel (or CSV) file. Built with FastAPI + Jinja2 + HTMX + Plotly and deployed on Vercel.
+<h1 align="center">Student Analytics Platform</h1>
 
-**Live demo:** https://student-analytics-iota.vercel.app
+<p align="center">
+  Sign up with a college address, get approved, and watch your class's GitHub activity<br>
+  sync itself into eight role-based dashboards — no spreadsheet surgery.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/last-commit/Horrid-12/Student-Analytics" alt="last commit: today">
+  <img src="https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey" alt="license: All rights reserved">
+  <img src="https://github.com/Horrid-12/Student-Analytics/actions/workflows/codeql.yml/badge.svg" alt="CodeQL: passing">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="platform: Windows | macOS | Linux">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white" alt="Python: 3.11+">
+  <img src="https://img.shields.io/badge/Vercel-Hosting%20platform-000000?logo=vercel&amp;logoColor=white" alt="Vercel: Hosting platform">
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#tech-stack">Tech stack</a> ·
+  <a href="#preview">Preview</a> ·
+  <a href="#get-started">Get Started</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#status">Status</a> ·
+  <a href="#contributing">Contributing</a> ·
+  <a href="#license">License</a>
+</p>
+
+**Live deployment:** https://student-analytics-iota.vercel.app
 
 ---
 
-## What it does
+## Features
 
-Upload your roster, click **Run Analysis**, and get ten pages:
+### Authentication and roles
 
-| Page | What it shows |
+- Email/password sign-up restricted to college addresses, plus **Continue with Google** when OAuth credentials are configured; GitHub and LinkedIn sign-in are wired for linking a profile to an existing session.
+- Three roles — **student / faculty / admin** — enforced by a route-level auth gate, not by hiding UI. Sessions are HMAC-signed cookies.
+- Domain allowlist lives in `ALLOWED_OAUTH_DOMAINS` (default `mitwpu.edu.in`) and is re-checked server-side on every signup and OAuth callback.
+
+### Onboarding and registrar review
+
+- Students submit PRN, degree, and division from the **Onboarding** page; faculty/admin approve, reject, or remove entries from a pending ledger.
+- Approval promotes the student's linked GitHub handle into their account identity — that handle is what every later sync reads.
+
+### Self-updating GitHub data
+
+- Nightly Vercel cron against `/sync/accounts`, a Sunday `/sync/weekly` announcement run, and a GitHub Actions **Heavy Sync** every 6 hours (deep commits/PRs/team repos, one student at a time, resumable and rate-limit aware).
+- Students also self-sync on login, and admins can force a fleet refresh from `/debug/force_sync_all`.
+- Rate-limit aware: GitHub token rotation (`GITHUB_TOKEN` + extra `GITHUB_TOKEN_*` vars), waits for the published reset epoch, and surfaces friendly errors instead of tracebacks.
+
+### Eight dashboards, one sidebar
+
+- **Overview** headline metrics, **Students** profile cards, **Repositories** browser, **Leaderboards**, **Verification**, **Support**, **Settings**, **Onboarding** — plus a personal `/me` panel behind the avatar.
+- Pages render from the synced account fleet — no upload required — and the Students, Repositories, and Verification tables export CSV or XLSX.
+- Repos and followers are also reported per year of account age (`Repos_Per_Account_Year`, `Followers_Per_Account_Year`) so newer accounts are not punished.
+
+### Leaderboards with moderation
+
+- Compare recent activity, public repo counts, stars, and language mix across a filtered cohort (division, batch, semester, time window).
+- Faculty/admin can blacklist students or hide repositories from a board; the moderation state persists for the whole fleet.
+
+### Verification cross-check
+
+- Admins upload a reference workbook (`.xlsx` / `.xls` / `.csv`); each analyzed student resolves to **Verified / Mismatch / Missing / Unreferenced** with clickable profile links and per-status export.
+
+### Support tickets
+
+- Students raise tickets with optional image attachments (validated by magic bytes, not just the file extension); staff reply and move them through Open → In Progress → Follow up → Resolved.
+
+### Notifications
+
+- Server-sent events bell at `/api/notifications/stream` — students see their own issue alerts, staff see ticket alerts, every role gets the Sunday top-committer announcement, each with a deep link.
+
+### HackerRank insights
+
+- Lazy profile tab backed by a vendored, unauthenticated HackerRank client with a 1-hour TTL cache: tier-colored hex skill badges, stars, solved counts, last-active, and a paginated solved-questions list.
+
+### Storage that fits the host
+
+- `DATABASE_URL` → Neon Postgres (schema idempotently initialised at startup); no `DATABASE_URL` → the bundled SQLite files, so local dev needs zero setup.
+- GitHub responses cached for 1 h in Upstash Redis when configured, in-process otherwise.
+
+---
+
+## Architecture
+
+Server-rendered, deliberately thin: FastAPI routes in `app/main.py` handle HTTP, page payload builders live in `app/views.py`, and everything that talks to the internet or does math stays in `app/services.py` + `app/sync.py`. Jinja2 templates render HTML; HTMX drives partials and streaming; Plotly charts are built server-side.
+
+```
+sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
+      → account snapshots (Postgres or SQLite) → views.py payloads → 8 pages
+```
+
+- Migration rationale and stack trade-offs: [`documentation/Bridge.md`](./documentation/Bridge.md)
+- Feature inventory: [`documentation/Features List.md`](./documentation/Features%20List.md)
+- Roadmap and bug log: [`documentation/Taskflow.md`](./documentation/Taskflow.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
+
+```
+app/            FastAPI application
+  main.py         routes, auth gate, cron endpoints
+  services.py     GitHub API + aggregation (ported, logic frozen)
+  sync.py         snapshot compute + fleet sweep
+  views.py        page payload builders
+  charts.py       Plotly helpers
+  auth.py         sessions, roles, domain gate
+  db.py           Postgres query layer (SQLite fallback)
+  templates/      Jinja2 pages + HTMX partials
+static/         CSS, JS, logo (Favicon.png)
+tests/          pytest suite (two-mode parity harness)
+scripts/        perf_loop.py, verify_readme.py
+documentation/  Taskflow, Bug Tracker, Features List, Bridge
+vercel.json     ASGI entry + cron schedule
+```
+
+---
+
+## Tech stack
+
+| Layer | Stack |
 |---|---|
-| **Overview** | Big-picture metrics — total students, valid/invalid accounts, language breakdown, key charts |
-| **Onboarding** | Students link their GitHub/LinkedIn profiles and submit PRN, degree, and division for registrar review |
-| **Students** | Searchable table of every validated student with profile cards, GitHub username, followers, repo counts, and account age |
-| **Repositories** | Every repo found across all students, as cards or a table, with language tags |
-| **Leaderboards** | Compare recent activity, public repo counts, follower counts, and language usage across students |
-| **History** | Past analysis runs — timestamps, status, counts, and outcome trends |
-| **Issues** | Follow-up queue: invalid, missing, or malformed submissions, with clickable profile links and an editable workflow |
-| **Verification** | Cross-check analyzed students against an uploaded reference workbook (Verified / Mismatch / Missing / Unreferenced) |
-| **Support** | Ticket system — students raise help requests; faculty/admin triage them with replies and statuses |
-| **Settings** | Account card, theme, and storage-health for signed-in users |
+| Language | ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white) |
+| Web framework | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white) ![Uvicorn](https://img.shields.io/badge/Uvicorn-009688) |
+| Templating | ![Jinja](https://img.shields.io/badge/Jinja-276DC6?logo=jinja&logoColor=white) |
+| Interactivity | ![HTMX](https://img.shields.io/badge/HTMX-336791?logo=htmx&logoColor=white) |
+| Charts | ![Plotly](https://img.shields.io/badge/Plotly-3F4F75?logo=plotly&logoColor=white) |
+| Data | ![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white) ![openpyxl](https://img.shields.io/badge/openpyxl-217346) |
+| OAuth | ![Authlib](https://img.shields.io/badge/Authlib-OAuth%20clients-009688) |
+| Cache | ![Upstash](https://img.shields.io/badge/Upstash-000000?logo=upstash&logoColor=white) |
+| Database | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white) |
+| CI | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white) |
+| Tests | ![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white) |
+| Hosting | ![Vercel](https://img.shields.io/badge/Vercel-Hosting%20platform-000000?logo=vercel&logoColor=white) |
 
-Clicking your sidebar avatar opens **My Profile** — your own student panel (same component as the Students-tab popup).
-
-### Key features
-
-- **Multi-format upload** — works with `.xlsx`, `.xls`, and `.csv` files
-- **Smart header matching** — tolerates messy column names from different export tools
-- **Username-change tracking** — detects when a student's live GitHub login differs from what they submitted
-- **Account-age normalization** — repos and followers are shown per year of account age for fair comparisons
-- **Academic year / semester labels** — timestamps are automatically normalized into semesters (July-start calendar)
-- **Full public-repo pagination** — fetches all repos, not just the first 100
-- **Batched, concurrent analysis** — students are processed in server-side batches so progress is tracked and the GitHub API is not oversubscribed
-- **Rate-limit handling** — uses a GitHub token when available; shows friendly errors when quota runs out
-- **Authentication & access control** — email/password plus Google, GitHub, and LinkedIn sign-in with college-domain validation, role-based pages (student / faculty / admin), and HMAC-signed session cookies; GitHub/LinkedIn also work as profile-linking for an existing session
-- **Onboarding & registrar review** — students submit PRN/degree/division (pending → approved/rejected ledger); approval promotes their linked GitHub handle into the account identity
-- **Account snapshots & daily sync** — approved accounts sync GitHub data on a schedule (Vercel cron hits `POST /sync/accounts`), so pages render without re-uploading rosters
-- **Notification bells** — students see their own issue alerts, staff see support-ticket alerts, each with a Fix deep-link; every Sunday a cron posts the week's top committer announcement to all roles
-- **HackerRank tab (lazy, no token)** — `app/hackerrank_client/` (vendored from the standalone `Hackerrank-Data-Scraper` repo: unofficial HackerRank REST, in-memory TTL 1h) backs `GET /api/hackerrank/{username}` (`404` unknown user / `502` upstream). The Students profile HackerRank tab loads on open and shows tier-colored hex skill badges (stars, solved count, progress to next star), a last-active box, and a `Solved questions` dropdown with dates; long repo/question lists reveal 10 rows at a time via `Show more`
-- **Postgres-backed storage (optional)** — with `DATABASE_URL` set, storage runs on Neon Postgres; otherwise it falls back to the bundled SQLite files, so local dev/tests work with zero setup
+Badges render the technologies actually pinned in `requirements.txt`; `logo=` is omitted where simple-icons has no matching slug (`uvicorn`, `openpyxl`).
 
 ---
 
-## Who is this for
+## Preview
 
-- **Course coordinators** reviewing which students have active GitHub accounts
-- **Faculty** auditing submissions and identifying students who need follow-up
-- **Teaching assistants** checking repo activity and language choices across a batch
+<!--
+  SCREENSHOTS PLACEHOLDER — no screenshots exist in this repo yet.
+
+  Drop PNG/WEBP captures into docs/screenshots/ using the FEATURE they show as
+  the filename prefix (e.g. docs/screenshots/overview-fleet.png), then replace
+  this comment with markup of this shape:
+
+  WIDE SHOTS (landscape, center under the feature heading):
+    <a href="./docs/screenshots/overview-fleet.png">
+      <img src="./docs/screenshots/overview-fleet.png" width="760"
+           alt="Overview page showing fleet totals, language mix and activity charts">
+    </a>
+    <sub align="center">Overview — fleet totals after the nightly sync</sub>
+
+  SQUARE / PORTRAIT SHOTS: group into a markdown table, one uniform height= per
+  row, each cell wrapping an anchor to the full-size file, caption in the header.
+
+  Rules learned the hard way: never set width AND height on the same <img>;
+  never use #gh-light-mode-only / #gh-dark-mode-only fragments (GitHub renders
+  both); never inline <svg> (GitHub strips it); match paths case-sensitively.
+-->
+
+*No screenshots yet — add captures under `docs/screenshots/` following the comment above.*
 
 ---
 
-## Quick start (live deployment)
+## Get Started
 
-The fastest way to use the dashboard — no setup required:
-
-1. Go to **https://student-analytics-iota.vercel.app**
-2. Upload your student roster (`.xlsx`, `.xls`, or `.csv`)
-3. Click **Run Analysis**
-4. Explore the ten dashboard pages
-
----
-
-## Local setup (for developers)
-
-### Prerequisites
-
-- **Python 3.11+** — check with `python --version`
-
-### 1. Clone and enter the repo
+### 1. Clone
 
 ```bash
 git clone https://github.com/Horrid-12/Student-Analytics.git
 cd Student-Analytics
 ```
 
-### 2. Create a virtual environment and install dependencies
-
-```powershell
-# Windows (PowerShell)
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+### 2. Install
 
 ```bash
-# macOS / Linux
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-You know it worked when your prompt starts with `(.venv)`.
-
-### 3. Add secrets — one file (strongly recommended)
-
-Without a GitHub token, the API allows only **60 requests/hour** — a full roster (~735 students × several calls each) blows straight through it, so the analysis would die partway. With a free token you get **5,000/hour**. Google/GitHub/LinkedIn sign-in buttons likewise need their OAuth credentials.
-
-Put everything in **`.env.local`** (gitignored, never committed) — the app auto-loads it on startup, and it is also the `vercel env pull` target, so local and Vercel stay in sync:
-
-```bash
-# .env.local — paste real values here
-GITHUB_TOKEN="ghp_pasteYourTokenHere"
-GOOGLE_CLIENT_ID="..."
-GOOGLE_CLIENT_SECRET="..."
-GITHUB_OAUTH_CLIENT_ID="..."
-GITHUB_OAUTH_CLIENT_SECRET="..."
-LINKEDIN_CLIENT_ID="..."
-LINKEDIN_CLIENT_SECRET="..."
-AUTH_SECRET="a-long-random-string"
-ALLOWED_OAUTH_DOMAINS="mitwpu.edu.in"
-DATABASE_URL="postgresql://... (optional, Neon)"
-```
-
-1. GitHub API token: https://github.com/settings/tokens — generate a new **classic** token, no extra permissions needed (public data only) → `GITHUB_TOKEN`
-2. Google sign-in: Google Cloud console → OAuth client → `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, with redirect URIs registered for `http://localhost:8001/auth/google/callback` plus your Vercel domain's `/auth/google/callback`
-3. `AUTH_SECRET` signs the session cookies — any long random string; without it the app falls back to an insecure dev secret with a warning
-
-The legacy `.streamlit/secrets.toml` still works as a fallback for local development, but `.env.local` wins and is the file the team provisions (shell environment variables win over both).
-
-### 3b. Set up Postgres (optional)
-
-Accounts, run history, and audit logs can be stored in Neon Postgres. Set `DATABASE_URL` in your environment (pull the connstring into `.env.local`), then create the tables once:
+<details>
+<summary>Windows (PowerShell)</summary>
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.init_db             # create all tables (idempotent)
-.\.venv\Scripts\python.exe -m app.seed_users admin@col.edu "secret" admin   # seed a faculty/admin account
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Without `DATABASE_URL`, everything transparently falls back to the bundled SQLite files (`analytics_history.db`, `users.db`).
+</details>
 
-### 4. Run the app
+### 3. Configure secrets — one file
+
+Everything goes in **`.env.local`** (gitignored, auto-loaded at startup by `app/env.py`, and the file `vercel env pull` writes — shell environment variables always win over it). There is no `.env.example`; the variables below are exactly what the code reads.
+
+**Verified:** `import app.main` succeeds with an empty environment and no `.env.local` — nothing here is required for the server to start. The *Required* column says what degrades.
+
+| Variable | Required | What it controls |
+|---|---|---|
+| `GITHUB_TOKEN` | Recommended | 5,000 GitHub requests/hour instead of 60; without it the nightly sync rate-limits on any real fleet. Extra `GITHUB_TOKEN_*` vars are picked up as rotation tokens. |
+| `AUTH_SECRET` | Recommended | HMAC key for session cookies; absent → server warns and derives a per-process secret, so logins drop on every restart. |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Optional | Shows **Continue with Google**; both absent → button hidden, email/password still works. |
+| `GITHUB_OAUTH_CLIENT_ID` + `GITHUB_OAUTH_CLIENT_SECRET` | Optional | GitHub sign-in used to link a profile to an existing session. |
+| `LINKEDIN_CLIENT_ID` + `LINKEDIN_CLIENT_SECRET` | Optional | LinkedIn profile linking. |
+| `ALLOWED_OAUTH_DOMAINS` | Optional (default `mitwpu.edu.in`) | College-domain allowlist for signup and OAuth, comma- or space-separated. |
+| `OAUTH_REDIRECT_BASE_URL` | Optional (defaults to the request origin) | Canonical origin for OAuth callbacks — set it to the deployed origin in production. |
+| `CRON_SECRET` | Required for automation | Authorizes `POST /sync/accounts`, `/sync/weekly`, `POST /api/sync/student/{email}`, and `GET /api/users/approved` when no admin session is present; absent → 403 for Vercel Cron and the GitHub Action. |
+| `DATABASE_URL` | Optional (aliases `POSTGRES_URL`, `TEST_DATABASE_URL`) | Neon Postgres storage; absent → bundled SQLite files (`analytics_history.db`, `users.db`, …). |
+| `DATABASE_URL_UNPOOLED` / `UNPOOLED` | Optional | Direct (non-pooled) connection used for schema DDL. |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Optional | Cross-instance GitHub response cache; absent → in-process cache. |
+| `ADMIN_EMAILS`, `FACULTY_EMAILS`, `ADMIN_PASSWORD_HASH`, `ADMIN_NAME` | Optional | Staff roles for password logins without a pre-seeded database row. |
+| `SYNC_TTL_SECONDS` | Optional (default `3600`) | Snapshot freshness window — younger snapshots are skipped during a sweep. |
+| `APP_URL` | GitHub Actions secret | Base URL the Heavy Sync workflow calls; not read by the app itself. |
+| `TEST_DATABASE_URL` | Test only | Enables `tests/test_db_layer.py`. |
+
+Minimal `.env.local` to get real data flowing:
 
 ```bash
-# Windows (PowerShell)
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001 --reload
+GITHUB_TOKEN="ghp_pasteYourTokenHere"
+AUTH_SECRET="a-long-random-string"
+ALLOWED_OAUTH_DOMAINS="your-college.edu"
+CRON_SECRET="another-long-random-string"
 ```
 
+> A free classic token from https://github.com/settings/tokens with no extra scopes is enough — only public data is read.
+
+### 4. Run
+
 ```bash
-# macOS / Linux
 uvicorn app.main:app --port 8001 --reload
 ```
 
-Opens at **http://localhost:8001** (Path `/`). `--reload` restarts the server on every file save while you develop.
+<details>
+<summary>Windows (PowerShell)</summary>
 
----
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001 --reload
+```
 
-## Using the app (daily workflow)
+Or just `.\run.bat` (macOS/Linux: `./run.sh`) — both pick a usable interpreter, pick port **8001**, and open the browser.
 
-1. Upload the roster using the upload bar (`.xlsx`, `.xls`, or `.csv`)
-2. Click **Run Analysis** and wait — a full roster takes several minutes (each student is validated, then their repos and PR/issue activity are fetched)
-3. Explore the pages via the sidebar
-4. Export results as CSV or XLSX from any table page
+</details>
 
-> **Tip:** export your roster from Google Forms (or any tool) with the columns below — student-data workbooks are gitignored (`*.xlsx`), so keep your own copy outside the repo.
+Open **http://localhost:8001**.
 
----
+### 5. Daily workflow
 
-## Roster format
+1. Create an account with a college address (or sign in with Google).
+2. Submit the onboarding form (PRN, degree, division).
+3. A faculty/admin account approves it — bootstrap staff once with:
+   ```powershell
+   .\.venv\Scripts\python.exe -m app.seed_users admin@your-college.edu "secret" admin
+   ```
+4. Data arrives on its own: nightly cron, the 6-hourly Heavy Sync Action, and self-sync on login. Admins can force `/debug/force_sync_all`.
+5. Explore the sidebar pages; export any table to CSV/XLSX.
 
-The roster must contain these columns (exact or close-enough spelling):
+### Optional: Postgres
 
-| Required column | Notes |
+```powershell
+.\.venv\Scripts\python.exe -m app.init_db             # create tables (idempotent)
+.\.venv\Scripts\python.exe -m app.seed_users admin@col.edu "secret" admin
+```
+
+Without `DATABASE_URL` everything transparently falls back to SQLite — skip this section for local dev.
+
+### Reference workbook format (Verification page)
+
+Header matching tolerates messy exports, but the canonical columns are:
+
+| Column | Notes |
 |---|---|
-| `Timestamp` | Google Form export timestamp |
+| `Email address` | Matches against signed-up accounts |
+| `Student Name` | Display name |
 | `PRN No` | Student PRN / roll number |
-| `Student Name` | Full name |
-| `Division` | Class division |
-| `Batch` | Batch number |
-| `Actual GitHub Account Link:` | Full GitHub profile URL (e.g. `https://github.com/octocat`) |
+| `Actual Github Account Link` | Full GitHub profile URL (e.g. `https://github.com/octocat`) |
 
-The three legacy "Repository N Link" columns are tolerated if present but **not used** — repos are always fetched live from the GitHub API. The optional `Email address`, `LinkedIn Profile Link`, and `HackerRank Profile Link` columns feed account matching and profile cards when present.
+A missing GitHub column is allowed — those students resolve to *Unreferenced* with a warning instead of a failure.
 
 ---
 
-## Project structure
+## Installation
 
-```
-├── app/                      # FastAPI application (all server code)
-│   ├── main.py               # Routes: pages, upload, batch/progress, auth
-│   ├── services.py           # Ported analytics: Excel parsing, GitHub API, aggregation
-│   ├── github_client.py      # httpx transport + Upstash/Memory cache + retry/backoff
-│   ├── hackerrank_client/    # vendored HackerRank fetcher (client + service + schemas + TTL cache, no auth)
-│   ├── batch.py              # Concurrent per-student analysis
-│   ├── views.py              # Page payload builders
-│   ├── charts.py             # Plotly chart helpers
-│   ├── auth.py               # Login/session, OAuth, role-based access (RBAC)
-│   ├── google_oauth.py       # Google OAuth flow
-│   ├── github_oauth.py       # GitHub OAuth flow
-│   ├── linkedin_oauth.py     # LinkedIn OAuth flow
-│   ├── accounts.py           # Per-account snapshot store (SQLite leg)
-│   ├── sync.py               # Snapshot compute + fleet sweep engine
-│   ├── support.py            # Support-ticket store
-│   ├── crosscheck.py         # Verification reference-sheet parser + status tagging
-│   ├── env.py                # .env.local auto-loader (stdlib, no python-dotenv)
-│   ├── clear_local_data.py   # Local DB cleanup (history/users/support/accounts)
-│   ├── db.py                 # Postgres query layer (Neon)
-│   ├── database.py           # psycopg3 pool from DATABASE_URL
-│   ├── schema.sql            # Idempotent Postgres DDL
-│   ├── init_db.py            # `python -m app.init_db` — create tables
-│   ├── seed_users.py         # `python -m app.seed_users EMAIL PASSWORD ROLE [NAME]`
-│   ├── storage.py            # Run-history / audit-log persistence
-│   ├── ui_helpers.py         # Shared UI helpers
-│   └── templates/            # Jinja2 pages + HTMX partials (pages/, partials/, macros/)
-├── static/                   # CSS / JS assets (layout.css, style.css, theme.css)
-├── tests/                    # pytest suite (services parity + transport + pages + accounts)
-├── documentation/            # Taskflow.md, Bug Tracker.md, Features List.md, ANALYSIS.md, Bridge.md
-├── vercel.json               # Vercel runtime config (builds/routes + daily sync cron)
-├── requirements.txt          # Pinned FastAPI stack dependencies
-├── requirements-dev.txt      # Dev/test dependencies
-├── pytest.ini                # pytest configuration
-├── SECURITY.md               # Security policy
-├── run.bat / run.sh          # Convenience launchers (uvicorn on port 8001)
-├── services.py               # Frozen legacy reference for the parity suite
-├── storage.py                # Frozen legacy reference for the parity suite
-├── ui_helpers.py             # Frozen legacy reference for the parity suite
-└── .env.local                # All secrets (never committed; `vercel env pull` target)
-```
+| Platform | Prerequisites | Install | Run |
+|---|---|---|---|
+| Windows (PowerShell) | Python 3.11+ on PATH | `python -m venv .venv` then `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` | `.\run.bat` |
+| macOS | Python 3.11+ (`brew install python`) | `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt` | `./run.sh` |
+| Linux | Python 3.11+ via your package manager | `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt` | `./run.sh` |
 
-**Rule of thumb:** if it talks to the internet or does math, it belongs in `app/services.py`; if it draws something on screen or handles requests, it belongs in the app/templates layer (and pure logic lives in `views.py`/`charts.py`). The root-level `services.py`, `storage.py`, and `ui_helpers.py` are frozen snapshots of the original Streamlit app, kept only as references for the two-mode test suite — don't add new features there.
-
----
-
-## Testing
-
-Tests run against both the frozen legacy `services.py` and the ported `app/services.py` (the alias activated via `MODULE_UNDER_TEST`). Run from the repo root:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests\ -q                                    # all tests
-$env:MODULE_UNDER_TEST="app.services"; .\.venv\Scripts\python.exe -m pytest tests\ -q; Remove-Item Env:\MODULE_UNDER_TEST  # same suite vs the port
-.\.venv\Scripts\python.exe -m pytest tests\test_github_client.py -q               # transport/cache only (no network)
-.\.venv\Scripts\python.exe -m pytest tests\test_hackerrank.py -q                 # HackerRank endpoint (mocked, no network) + tab UI check
-.\.venv\Scripts\python.exe -m pytest tests\test_pages_36.py -q                    # all analytics pages render/export/workflow (upload + 2 batches, tmp DB)
-```
-
-To also run the Postgres integration path (requires `TEST_DATABASE_URL` pointing at a real database):
-
-```powershell
-$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_db_layer.py -q; Remove-Item Env:\TEST_DATABASE_URL
-```
+Every platform serves the same thing: `uvicorn app.main:app --port 8001`. Prefer manual control? Use the raw uvicorn command from **Get Started → 4. Run**.
 
 ---
 
@@ -247,35 +302,78 @@ $env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest 
 | Symptom | Fix |
 |---|---|
 | `ModuleNotFoundError: No module named 'pandas'` | Activate the venv first, then `pip install -r requirements.txt` |
-| `Missing required columns: ...` on upload | Wrong file — check the roster format table above; the three "Repository N Link" columns are optional |
-| "GitHub API rate limit reached" | Set up a token (step 3 above), or wait for the reset time shown in the error |
-| "Continue with Google" button missing | The OAuth credentials aren't loaded — paste `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` into `.env.local` and restart |
-| Works locally but not on Vercel | Push the same values to the project (`vercel env`) — secret vars download as empty stubs, so `vercel env pull` alone never restores them |
+| "GitHub API rate limit reached" | Set `GITHUB_TOKEN` in `.env.local` and restart, or wait for the reset time shown in the error |
+| "Continue with Google" button missing | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are absent — add them to `.env.local` and restart |
+| Cron or Heavy Sync returns 403 | `CRON_SECRET` is unset or differs between Vercel env and the GitHub Actions secret |
+| Pages show a placeholder screen | Approve at least one onboarding submission and let a sync run (or hit `/debug/force_sync_all` as admin) |
+| Works locally but not on Vercel | Push the same values as Vercel project env vars — secret values download as empty stubs, so `vercel env pull` alone never restores them |
 | Port 8001 already in use | `uvicorn app.main:app --port 8002` |
-| App breaks after pulling changes | Run `pip install -r requirements.txt` again — dependencies may have changed |
-| Local pages show "placeholder" until an analysis runs | Upload a roster and complete a **Run Analysis** first — most pages populate after a completed run |
+| App breaks after pulling changes | Re-run `pip install -r requirements.txt` — dependencies may have changed |
+| Reference upload warns "No GitHub account column" | Add an account link column to the sheet — see the format table above |
+
+---
+
+## Testing
+
+Run from the repo root. The suite exercises both the frozen legacy `services.py` and the ported `app/services.py`:
+
+```powershell
+# All tests vs the frozen legacy module
+.\.venv\Scripts\python.exe -m pytest tests\ -q
+
+# Same suite vs the port
+$env:MODULE_UNDER_TEST="app.services"; .\.venv\Scripts\python.exe -m pytest tests\ -q; Remove-Item Env:\MODULE_UNDER_TEST
+
+# Focused runs
+.\.venv\Scripts\python.exe -m pytest tests\test_github_client.py -q   # transport/cache, no network
+.\.venv\Scripts\python.exe -m pytest tests\test_pages_36.py -q        # every page renders/exports
+
+# Postgres path (skipped unless set)
+$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_db_layer.py -q; Remove-Item Env:\TEST_DATABASE_URL
+```
+
+README self-check (paths, badges, markdown hygiene):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_readme.py
+```
 
 ---
 
 ## Deploying (maintainers)
 
-This app runs free on [Vercel](https://vercel.com) using the Python runtime:
+The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel.json` points `builds`/`routes` at `app/main.py` directly (no Mangum wrapper):
 
-1. Push to the `main` branch — a linked Vercel project auto-deploys on every push
-2. In the project's **Environment Variables**, add `GITHUB_TOKEN = "..."` (same format as above)
-3. Set `OAUTH_REDIRECT_BASE_URL` to the canonical deployment origin, without a trailing path (for example, `https://student-analytics-git-backend-horrid-12s-projects.vercel.app`)
-4. Register the origin from step 3 with these provider callbacks: `.../auth/google/callback` and `.../auth/github/callback`
-5. Optional — add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for cross-instance caching/persistence
-6. Optional — add `DATABASE_URL` (Neon Postgres connection string) for Postgres-backed storage; run `python -m app.init_db` once after first deploy to create tables
-7. The account sync runs on its own: `vercel.json` schedules `POST /sync/accounts` nightly via cron — set `CRON_SECRET` and keep the same value in the project's env so the endpoint can tell the scheduler apart from random traffic
+1. Push to `main`; the linked Vercel project deploys on every push.
+2. Set project env vars: at minimum `GITHUB_TOKEN`, `AUTH_SECRET`, `CRON_SECRET`, `ALLOWED_OAUTH_DOMAINS`, and `OAUTH_REDIRECT_BASE_URL` (the canonical deployment origin, no trailing path).
+3. Register `…/auth/google/callback` and `…/auth/github/callback` on that origin with each OAuth provider.
+4. Optional: `DATABASE_URL` (then run `python -m app.init_db` once), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`, and the Google/GitHub/LinkedIn client pairs.
+5. Cron is already wired: `vercel.json` schedules `/sync/accounts` nightly and `/sync/weekly` on Sundays — they 403 until `CRON_SECRET` matches.
+6. For the **Heavy Sync** GitHub Action, add repository secrets `APP_URL` (production origin) and `CRON_SECRET` (same value as Vercel).
 
-OAuth client secrets can be read from the gitignored `.env.local` during local development (`.streamlit/secrets.toml` still works as a fallback), but Vercel must receive client IDs and secrets as project environment variables. `vercel.json` wires the `app/main.py` ASGI app (`builds` + `routes`) plus the sync cron — no Mangum needed.
+---
+
+## Status
+
+| Area | State |
+|---|---|
+| Production | Live at https://student-analytics-iota.vercel.app |
+| CI | CodeQL on push/PR to `main` plus a weekly run; Dependabot weekly for pip and GitHub Actions |
+| Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync every 6 h |
+| Test suite | Present but currently red — the baseline is tracked as `BUG-125` with a cluster-by-cluster plan in [`documentation/Red Suite Fix.md`](./documentation/Red%20Suite%20Fix.md) |
 
 ---
 
 ## Contributing
 
-1. Open `documentation/Taskflow.md`, pick an unchecked item, and tell the team you're on it
-2. Work on a branch, not straight on `main`
-3. After every change: update `documentation/Taskflow.md`, log any bug you fixed in `documentation/Bug Tracker.md`
-4. Never commit student data files, tokens, or `secrets.toml`
+1. Open [`documentation/Taskflow.md`](./documentation/Taskflow.md), pick an unchecked item, and claim it.
+2. Work on a branch, not straight on `main`.
+3. After every change: update `documentation/Taskflow.md`, and log any fixed bug in [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md).
+4. Never commit student data files, tokens, or `.streamlit/secrets.toml` — rosters (`*.xlsx`) and env files are gitignored on purpose.
+5. Report security issues per [`SECURITY.md`](./SECURITY.md) — not through public issues.
+
+---
+
+## License
+
+No license file is published yet — **all rights reserved** by the authors. If you want to use or fork this beyond the terms your institution grants, open an issue to request a license.
