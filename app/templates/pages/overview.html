@@ -84,6 +84,113 @@
     .trend-header .activity-tabs {
       align-self: flex-end;
     }
+    .radar-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .radar-controls {
+      align-self: flex-end;
+    }
+  }
+
+  /* Class Metrics Radar: multi-series comparison header + cohort legend. */
+  .radar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .radar-header .panel-title {
+    margin-bottom: 0;
+  }
+  .radar-controls {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .radar-cohort-select {
+    min-width: 210px;
+    max-width: 280px;
+    font-size: 12px;
+  }
+  .radar-hint {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    background: #1e2638;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  .radar-hint.show {
+    opacity: 1;
+  }
+  .radar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    min-height: 0;
+  }
+  .radar-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px 4px 10px;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .radar-pill-muted {
+    border-style: dashed;
+    opacity: 0.9;
+  }
+  .radar-pill .radar-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .radar-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+  }
+  .radar-x:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+  }
+  @media (max-width: 720px) {
+    .radar-cohort-select {
+      min-width: 0;
+      max-width: 100%;
+    }
   }
 
 </style>
@@ -184,7 +291,21 @@
 </script>
 
 <section class="panel">
-  <div class="panel-title">Class Metrics Radar</div>
+  <div class="radar-header">
+    <div class="panel-title">Class Metrics Radar</div>
+    <div class="radar-controls">
+      <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a cohort">
+        <option value="" selected disabled>+ Compare cohort</option>
+        {% for s in payload.radar_data.series %}
+        {% if s.kind in ('current', 'cohort') %}
+        <option value="{{ s.key }}">{{ s.label }}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+      <div id="radar-hint" class="radar-hint">Maximum 3 cohorts can be compared at once.</div>
+    </div>
+  </div>
+  <div id="radar-legend" class="radar-legend"></div>
   <div class="radar-grid">
     <div>
       {{ ec.radar('metrics-radar', payload.radar_data) }}
@@ -201,6 +322,73 @@
     </div>
   </div>
 </section>
+<script>
+  (function () {
+    // Class Metrics Radar: cohort comparison picker + interactive pill legend.
+    function byId(id) { return document.getElementById(id); }
+    var select = byId('radar-cohort-select');
+    var legendEl = byId('radar-legend');
+    var hintEl = byId('radar-hint');
+    if (!select || !legendEl || !hintEl) return;
+    var bridge = null;
+    var hintTimer = null;
+
+    function showHint() {
+      hintEl.classList.add('show');
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(function () { hintEl.classList.remove('show'); }, 2600);
+    }
+
+    function updateLegend() {
+      if (!bridge) return;
+      var active = bridge.getActive();
+      var byKey = {};
+      bridge.getSeries().forEach(function (s) { byKey[s.key] = s; });
+      var html = '';
+      active.forEach(function (key) {
+        var s = byKey[key];
+        if (!s) return;
+        var muted = s.kind === 'overall' ? ' radar-pill-muted' : '';
+        html +=
+          '<span class="radar-pill' + muted + '">' +
+            '<span class="radar-dot" style="background:' + bridge.colorFor(key) + '"></span>' +
+            '<span>' + s.label + '</span>' +
+            '<button type="button" class="radar-x" data-key="' + key + '" aria-label="Remove ' + s.label + '">&times;</button>' +
+          '</span>';
+      });
+      legendEl.innerHTML = html;
+    }
+
+    // Pill ✕ buttons remove the cohort from the comparison.
+    document.addEventListener('click', function (event) {
+      if (!bridge) return;
+      var x = event.target.closest ? event.target.closest('.radar-x') : null;
+      if (!x) return;
+      bridge.removeSeries(x.getAttribute('data-key'));
+      updateLegend();
+    });
+
+    // Adding a cohort is capped at 3 active series (benchmark included).
+    select.addEventListener('change', function () {
+      if (!bridge) return;
+      var key = select.value;
+      select.selectedIndex = 0;
+      if (!key || !bridge.isActive) return;
+      if (bridge.isActive(key)) return;
+      if (bridge.getActive().length >= 3) { showHint(); return; }
+      bridge.addSeries(key);
+      updateLegend();
+    });
+
+    // Link once the radar macro registers its bridge (rendered just above).
+    var tries = 0;
+    (function link() {
+      var b = window.__chartBridge && window.__chartBridge['metrics-radar'];
+      if (b) { bridge = b; updateLegend(); return; }
+      if (tries++ < 200) setTimeout(link, 60);
+    })();
+  })();
+</script>
 
 <section class="panel">
   <div class="trend-header">

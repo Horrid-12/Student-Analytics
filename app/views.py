@@ -579,9 +579,74 @@ def _known_languages(series) -> "pd.Series":
     return langs
 
 
+#: Fixed Class Metrics Radar axis order. NEVER reordered — the axes stay put
+#: across every cohort so comparers keep their spatial muscle memory.
+RADAR_METRIC_NAMES = (
+    "Avg Repos",
+    "Pull Requests",
+    "Collaboration Rate",
+    "Quality Score",
+    "Active Contributor Rate",
+)
+
+
+def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> list:
+    """Return the 5 Class Metrics Radar values in fixed axis order:
+    [Avg Repos, Pull Requests, Collaboration Rate, Quality Score,
+    Active Contributor Rate].
+
+    Every radar series (Overall Average, the current filtered view, and each
+    selectable cohort) is measured with these exact same formulas so shapes are
+    directly comparable. Avg Repos only averages students who actually own or
+    contribute repos; the three percentage metrics use every student in the
+    cohort as their denominator.
+    """
+    students = students if students is not None else pd.DataFrame()
+
+    def _pos(frame, column) -> "pd.Series":
+        if frame is None or frame.empty or column not in frame.columns:
+            return pd.Series(False)
+        try:
+            return pd.to_numeric(frame[column], errors="coerce").fillna(0) > 0
+        except Exception:
+            return pd.Series(False, index=frame.index)
+
+    total = len(students)
+
+    avg_repos = 0.0
+    if not students.empty:
+        repos_col = "Combined_Repos" if "Combined_Repos" in students.columns else "Repository_Count"
+        haves = students[_pos(students, repos_col)]
+        if not haves.empty:
+            avg_repos = float(pd.to_numeric(haves[repos_col], errors="coerce").fillna(0).mean())
+
+    total_prs = 0.0
+    if not students.empty and "Pull_Requests" in students.columns:
+        total_prs = float(pd.to_numeric(students["Pull_Requests"], errors="coerce").fillna(0).sum())
+
+    collaborators = int(_pos(students, "Contributed_Repos_Count").sum())
+    active_contributors = int((_pos(students, "Owned_Commits_90d") | _pos(students, "Team_Commits_90d")).sum())
+
+    quality = 0.0
+    if score_repos is not None and not score_repos.empty and "Repository_Quality_Score" in score_repos.columns:
+        quality = float(score_repos["Repository_Quality_Score"].mean())
+
+    pct = lambda n: (100.0 * n / total) if total else 0.0
+    return [
+        round(avg_repos, 2),
+        round(total_prs, 2),
+        round(pct(collaborators), 2),
+        round(quality, 2),
+        round(pct(active_contributors), 2),
+    ]
+
+
 def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
+    # Unfiltered copy: the "Overall Average" benchmark and every selectable
+    # cohort in the Class Metrics Radar are measured against the whole roster.
+    _all_students = students.copy() if students is not None else students
     # Same filters as the Students page: text search + Division/Batch/Semester.
     try:
         students = filter_text(
@@ -622,7 +687,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # contributed, scored identically) as the Repositories page, restricted to
     # the filtered cohort, so the radar card and the repositories list always
     # agree.
-    _score_repos = _merged_repos_frame(view)
+    # Unfiltered merged repo frame: the Overall Average radar benchmark and the
+    # per-cohort series sample from this, while the filtered _score_repos below
+    # still drives the "Average Quality Score" card + Repositories page.
+    _all_score_repos = _merged_repos_frame(view)
+    _score_repos = _all_score_repos
     try:
         if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
             _score_repos = _score_repos[_score_repos["Username"].astype(str).isin(_cohort)].copy()
@@ -754,48 +823,72 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
-    # Radar: key class metrics (normalised per-axis for balanced shape)
+    # ── Class Metrics Radar: multi-cohort comparison ────────────────────────
+    # Card strings keep their existing formulas (no visual change to the two
+    # side cards); the radar itself becomes a comparison canvas: Overall
+    # Average (whole-roster benchmark) default-on, plus selectable cohorts.
     _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
-    # Average repos per student that actually owns/contributes repos — a
-    # roster full of not-yet-synced students otherwise drags the mean toward 0.
     _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
-    _total_prs = float(prs)
-    _total_students = len(students) if students is not None else 0
 
-    def _pos_mask(frame, col) -> "pd.Series":
-        """Boolean per-student mask for "column value > 0" (absent/NaN-safe)."""
-        if col not in frame.columns:
-            return pd.Series(False, index=frame.index)
-        return pd.to_numeric(frame[col], errors="coerce").fillna(0) > 0
+    # Cohort picker options: distinct (Batch × Division) combos in the roster.
+    _cohort_rows = []
+    if _all_students is not None and not _all_students.empty and {"Batch", "Division"}.issubset(_all_students.columns):
+        try:
+            _grouped = _all_students.groupby(["Batch", "Division"], dropna=False).size().reset_index(name="_n")
+        except Exception:
+            _grouped = pd.DataFrame()
+        for _, _row in _grouped.iterrows():
+            _batch = str(_row["Batch"]) if pd.notna(_row["Batch"]) else "Unknown"
+            _div = str(_row["Division"]) if pd.notna(_row["Division"]) else "Unknown"
+            _cohort_rows.append({"key": f"{_batch}|{_div}", "label": f"{_batch} · {_div}", "batch": _batch, "div": _div})
+    _cohort_rows.sort(key=lambda c: (c["batch"].lower(), c["div"].lower()))
 
-    # Active Contributor Rate: % of students with ≥1 owned OR team commit in
-    # the last 90 days — reuses the leaderboards' 90-day commit window.
-    # Collaboration Rate: % of students who pushed to a teammate's repo.
-    if not students.empty:
-        _active_contributors_90d = int(
-            (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d")).sum()
-        )
-        _collaborators = int(_pos_mask(students, "Contributed_Repos_Count").sum())
-    else:
-        _active_contributors_90d = 0
-        _collaborators = 0
-    _share = lambda n: (100.0 * n / _total_students) if _total_students else 0.0
+    _radar_series = []
+    _radar_active = []
+    # 1. Current (page-filtered) view — the sky accent the class already knew.
+    if students is not None and not students.empty:
+        _current_label = "Current View"
+        if division != "All" or batch != "All" or semester != "All":
+            _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
+            _current_label += " · " + " · ".join(_bits)
+        else:
+            _current_label += " · Whole roster"
+        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
+        _radar_active.append("current")
+    # 2. Overall Average benchmark (whole roster, unfiltered).
+    _radar_series.append({"key": "overall", "kind": "overall", "label": "Overall Average", "values": _radar_metric_values(_all_students, _all_score_repos)})
+    _radar_active.append("overall")
+    # 3. Every selectable cohort, measured with the same formulas.
+    for _c in _cohort_rows:
+        try:
+            _c_students = apply_value_filter(_all_students, "Batch", _c["batch"])
+            _c_students = apply_value_filter(_c_students, "Division", _c["div"])
+            _c_users = _cohort_usernames(_c_students)
+            _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+            _radar_series.append({"key": _c["key"], "kind": "cohort", "label": _c["label"], "values": _radar_metric_values(_c_students, _c_score)})
+        except Exception:
+            continue
 
-    def _radar_max(val, floor=10):
-        """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
-        return max(round(val * 1.5, 1), floor)
+    # Axis normalization: percentage axes are exact 0–100; count axes scale to
+    # 1.5× the largest value seen across all series (with a readable floor).
+    def _series_max(axis_idx: int, floor: float) -> float:
+        _vals = [float(s["values"][axis_idx]) for s in _radar_series if len(s["values"]) > axis_idx]
+        _max = max([0.0] + _vals) * 1.5
+        return round(max(_max, floor), 1)
 
     radar_data = {
         "metrics": [
-            {"name": "Avg Repos",               "value": round(_avg_repos, 1),         "max": _radar_max(_avg_repos, 5)},
-            {"name": "Active Contributor Rate", "value": round(_share(_active_contributors_90d), 1), "max": 100, "unit": "%"},
-            {"name": "Quality Score",           "value": round(_avg_quality, 1),       "max": 100},
-            {"name": "Collaboration Rate",      "value": round(_share(_collaborators), 1),          "max": 100, "unit": "%"},
-            {"name": "Pull Requests",           "value": round(_total_prs, 0),         "max": _radar_max(_total_prs, 10)},
-        ]
+            {"name": RADAR_METRIC_NAMES[0], "max": _series_max(0, 5), "unit": ""},
+            {"name": RADAR_METRIC_NAMES[1], "max": _series_max(1, 10), "unit": ""},
+            {"name": RADAR_METRIC_NAMES[2], "max": 100, "unit": "%"},
+            {"name": RADAR_METRIC_NAMES[3], "max": 100, "unit": ""},
+            {"name": RADAR_METRIC_NAMES[4], "max": 100, "unit": "%"},
+        ],
+        "series": _radar_series,
+        "active": _radar_active,
     }
 
     return {

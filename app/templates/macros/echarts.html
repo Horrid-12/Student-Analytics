@@ -552,12 +552,20 @@ window.__EC_THEME = (function () {
 
 
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   CHART 4 — RADAR  (Multi-Metric Overview)
-   data: { metrics: [ { name: "Avg Repos", value: 5.2, max: 50 }, ... ] }
+   CHART 4 — RADAR  (Multi-Series Class Metrics Comparison)
 
-   Normalization method: each metric is scaled 0–100 using its own max value.
-   max is the larger of (actual value × 1.5) or a sensible floor to prevent
-   the radar from collapsing when values are tiny.
+   data: {
+     metrics: [ { name: "Avg Repos", max: 10, unit: "" }, ... ],  // FIXED axes
+     series:  [ { key, kind, label, values: [ ... ] }, ... ],
+     active:  [ "current", "overall", ... ]                        // default-on
+   }
+
+   Styling: kind == 'overall' (the institutional benchmark) renders as a muted,
+   dashed slate baseline (fill 0.12). Every other series follows activation
+   order — 1st = Sky (#38bdf8, fill 0.25), 2nd = Violet (#a855f7, fill 0.2).
+   Axis order is NEVER rearranged. Points illuminate on hover and the tooltip
+   shows every visible series' value on the hovered axis, side by side. The
+   page-level cohort picker drives addSeries/removeSeries through __chartBridge.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro radar(id, data) %}
 {% if data %}
@@ -565,27 +573,115 @@ window.__EC_THEME = (function () {
 <div id="{{ id }}" class="echart-box" style="height:320px;"></div>
 <script>
 (function () {
+  'use strict';
   var el = document.getElementById('{{ id }}');
   var raw = {{ data | tojson }};
   var chart = echarts.init(el);
 
+  var BENCH_KEY = 'overall';
+  var ACCENTS = ['#38bdf8', '#a855f7', '#f59e0b'];
+  var SLATE = '#94a3b8';
+
+  var byKey = {};
+  raw.series.forEach(function (s) { byKey[s.key] = s; });
+  var active = (raw.active || []).filter(function (k) { return byKey[k]; });
+
+  function hexToRgba(hex, alpha) {
+    hex = hex.replace('#', '');
+    var r = parseInt(hex.substring(0, 2), 16);
+    var g = parseInt(hex.substring(2, 4), 16);
+    var b = parseInt(hex.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  /* Accent order follows activation position among the non-benchmark series. */
+  function styleFor(key) {
+    if (key === BENCH_KEY) {
+      return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.12)', symbol: 4 };
+    }
+    var non = active.filter(function (k) { return k !== BENCH_KEY; });
+    var pos = non.indexOf(key);
+    if (pos < 0) pos = 0;
+    var color = ACCENTS[pos % ACCENTS.length];
+    return { color: color, dash: false, fill: hexToRgba(color, pos === 0 ? 0.25 : 0.2), symbol: 6 };
+  }
+  function colorFor(key) { return styleFor(key).color; }
+
+  function fmt(val, metric) {
+    var n = (typeof val === 'number' && !isNaN(val)) ? val : 0;
+    var s = n.toFixed(1);
+    if (metric && metric.unit === '%') s += '%';
+    return s;
+  }
+
+  function tooltipFormatter(params) {
+    if (!params) return '';
+    var idx = (typeof params.valueIndex === 'number') ? params.valueIndex : -1;
+    var lines = [];
+    if (idx >= 0 && raw.metrics[idx]) {
+      /* Hovered axis × every visible series, side by side. */
+      lines.push('<b>' + raw.metrics[idx].name + '</b>');
+      active.forEach(function (key) {
+        var s = byKey[key];
+        var st = styleFor(key);
+        var v = (s.values && typeof s.values[idx] === 'number') ? s.values[idx] : 0;
+        lines.push(
+          '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">' +
+          '<span style="width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;background:' + st.color + ';"></span>' +
+          '<span style="opacity:0.85;">' + s.label + '</span>' +
+          '<b style="margin-left:auto;">' + fmt(v, raw.metrics[idx]) + '</b></div>'
+        );
+      });
+    } else {
+      /* Fallback: hovered series × all axes. */
+      lines.push('<b>' + params.name + '</b>');
+      raw.metrics.forEach(function (m, i) {
+        var vals = active.map(function (key) {
+          var s = byKey[key];
+          return s.label + ' ' + fmt((s.values && typeof s.values[i] === 'number') ? s.values[i] : 0, m);
+        });
+        lines.push('<div style="margin-top:4px;display:flex;justify-content:space-between;gap:14px;">' +
+          '<span style="opacity:0.7;">' + m.name + '</span><b>' + vals.join(' &middot; ') + '</b></div>');
+      });
+    }
+    return lines.join('');
+  }
+
+  function seriesData(p) {
+    return active.map(function (key) {
+      var s = byKey[key];
+      var st = styleFor(key);
+      return {
+        name: s.label,
+        value: s.values,
+        symbol: 'circle',
+        symbolSize: st.symbol,
+        lineStyle: { color: st.color, width: st.dash ? 1.5 : 2.5, type: st.dash ? 'dashed' : 'solid' },
+        itemStyle: {
+          color: st.color,
+          borderColor: p.card,
+          borderWidth: 1.5,
+          shadowBlur: 10,
+          shadowColor: hexToRgba(st.color, 0.0)
+        },
+        areaStyle: { color: st.fill },
+        emphasis: {
+          lineStyle: { width: st.dash ? 2.5 : 4 },
+          itemStyle: { borderWidth: 2, shadowBlur: 14, shadowColor: 'rgba(0,0,0,0.4)' },
+          areaStyle: { opacity: 0.6 }
+        }
+      };
+    });
+  }
+
   function opts() {
     var p = window.__EC_THEME.get();
-    var indicators = raw.metrics.map(function (m) {
-      return { name: m.name, max: m.max };
-    });
-    var values = raw.metrics.map(function (m) { return m.value; });
-
+    var indicators = raw.metrics.map(function (m) { return { name: m.name, max: m.max }; });
     return {
       tooltip: window.__EC_THEME.tooltip({
         trigger: 'item',
-        formatter: function (info) {
-          var html = '<b>' + (info.name || 'Metrics') + '</b><br/>';
-          raw.metrics.forEach(function (m, i) {
-            html += m.name + ': <b>' + m.value + '</b>' + (m.unit || '') + '<br/>';
-          });
-          return html;
-        }
+        confine: true,
+        formatter: tooltipFormatter
       }),
       radar: {
         indicator: indicators,
@@ -608,49 +704,41 @@ window.__EC_THEME = (function () {
       },
       series: [{
         type: 'radar',
-        data: [{
-          value: values,
-          name: 'Class Metrics',
-          symbol: 'circle',
-          symbolSize: 7,
-          lineStyle: {
-            color: p.accent,
-            width: 2.5
-          },
-          itemStyle: {
-            color: p.accent,
-            borderColor: p.card,
-            borderWidth: 2
-          },
-          areaStyle: {
-            color: (function () {
-              /* Convert hex #RRGGBB to rgba string for gradient. */
-              var hex = p.accent.replace('#', '');
-              var r = parseInt(hex.substring(0, 2), 16);
-              var g = parseInt(hex.substring(2, 4), 16);
-              var b = parseInt(hex.substring(4, 6), 16);
-              return {
-                type: 'radial',
-                x: 0.5, y: 0.5, r: 0.6,
-                colorStops: [
-                  { offset: 0, color: 'rgba(' + r + ',' + g + ',' + b + ',0.35)' },
-                  { offset: 1, color: 'transparent' }
-                ]
-              };
-            })()
-          },
-          emphasis: {
-            lineStyle: { width: 3.5 },
-            areaStyle: { opacity: 0.55 }
-          }
-        }],
+        data: seriesData(p),
         animationDuration: 800,
         animationEasing: 'cubicOut'
       }]
     };
   }
 
-  chart.setOption(opts());
+  function render() { chart.setOption(opts(), { notMerge: true }); }
+
+  function addSeries(key) {
+    if (!byKey[key] || active.indexOf(key) !== -1) return;
+    active.push(key);
+    render();
+  }
+  function removeSeries(key) {
+    var i = active.indexOf(key);
+    if (i === -1) return;
+    active.splice(i, 1);
+    render();
+  }
+  function getActive() { return active.slice(); }
+  function isActive(key) { return active.indexOf(key) !== -1; }
+  function getSeries() {
+    return raw.series.map(function (s) { return { key: s.key, kind: s.kind, label: s.label }; });
+  }
+
+  render();
+
+  /* Page-level bridge so the Overview cohort picker can add/remove series. */
+  window.__chartBridge = window.__chartBridge || {};
+  window.__chartBridge['{{ id }}'] = {
+    chart: chart, render: render, addSeries: addSeries, removeSeries: removeSeries,
+    getActive: getActive, isActive: isActive, getSeries: getSeries, colorFor: colorFor
+  };
+
   window.__EC_THEME.register(chart, opts);
   window.addEventListener('resize', function () { chart.resize(); });
 })();
