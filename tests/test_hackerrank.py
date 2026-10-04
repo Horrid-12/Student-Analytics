@@ -112,6 +112,10 @@ def test_profile_tab_shows_skills_progress_recent():
     assert "hr-badge-frame" in html
     assert "hr-section-title" in html
     assert "hr-active-box" in html
+    assert "hr-more-btn" in html
+    assert "batchDropdownList" in html
+    # Solved dropdown renders before the Badges section.
+    assert html.index("Solved questions") < html.index("hr-section-title\">Badges")
     assert "HackerRank &middot;" not in html
     assert "7.508 6.268" not in html  # old X-shaped icon path is gone
     assert 'id="profile-panel-hackerrank"' in html

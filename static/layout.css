@@ -1136,6 +1136,9 @@ button {
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
+.profile-repo[hidden] {
+  display: none;
+}
 .repo-meta-row {
   display: flex;
   align-items: baseline;
@@ -1977,6 +1980,25 @@ button {
   font-size: 13px;
   color: var(--muted);
   white-space: nowrap;
+}
+/* Batch reveal button at the end of long dropdown lists. */
+.hr-more-btn {
+  display: block;
+  width: 100%;
+  margin: 8px 0 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.hr-more-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list

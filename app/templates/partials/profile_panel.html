@@ -197,6 +197,32 @@
         if (next) { next.focus(); selectTab(next); }
       });
     });
+    // Dropdown batching: show the first 10 rows, reveal 10 more per click.
+    // Used by the server-rendered GitHub repositories list and the
+    // HackerRank solved-questions list alike.
+    function batchDropdownList(body, batch) {
+      if (!body || body.getAttribute('data-batched') === '1') return;
+      body.setAttribute('data-batched', '1');
+      var rows = Array.prototype.slice.call(body.querySelectorAll(':scope > .profile-repo'));
+      if (rows.length <= batch) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hr-more-btn';
+      btn.addEventListener('click', function () {
+        var hidden = rows.filter(function (r) { return r.hidden; }).slice(0, batch);
+        hidden.forEach(function (r) { r.hidden = false; });
+        var left = rows.filter(function (r) { return r.hidden; }).length;
+        if (!left) { btn.remove(); return; }
+        btn.textContent = 'Show more (' + left + ' remaining)';
+      });
+      rows.slice(batch).forEach(function (r) { r.hidden = true; });
+      body.appendChild(btn);
+      btn.textContent = 'Show more (' + (rows.length - batch) + ' remaining)';
+    }
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#profile-panel-github .repo-dropdown-body'),
+      function (body) { batchDropdownList(body, 10); }
+    );
     // HackerRank tab: one GET /api/hackerrank/{user} per profile view
     // (server-cached 1h). Shows per-skill badges + progress to next star,
     // last active date, and recently solved problems. 404/502 fall back to
@@ -239,6 +265,21 @@
       var heat = Array.isArray(data.heatmap) ? data.heatmap : [];
       var recent = Array.isArray(data.recent) ? data.recent : [];
       var html = '';
+      if (recent.length) {
+        html += '<details class="repo-dropdown"><summary class="repo-dropdown-btn"><span>Solved questions (' + recent.length + ')</span>'
+          + '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+          + '</summary><div class="repo-dropdown-body">'
+          + recent.map(function (r) {
+            var href = r.url ? (String(r.url).charAt(0) === '/' ? 'https://www.hackerrank.com' + r.url : r.url) : '';
+            var nameHtml = href
+              ? '<a class="repo-name" href="' + escHR(href) + '" target="_blank" rel="noopener">' + escHR(r.name) + '</a>'
+              : '<span class="repo-name">' + escHR(r.name) + '</span>';
+            return '<div class="profile-repo"><div class="hr-solve-row">' + nameHtml
+              + '<span class="hr-solve-date">' + escHR(r.date || '') + '</span></div></div>';
+          }).join('') + '</div></details>';
+      } else {
+        html += '<p class="tab-empty">No solved questions found.</p>';
+      }
       if (badges.length) {
         html += '<div class="hr-section-title">Badges</div><div class="hr-badges">'
           + badges.map(function (b) {
@@ -271,23 +312,10 @@
       if (lastActive) {
         html += '<div class="hr-active-box">Last active ' + escHR(lastActive) + ' · ' + activeDays.length + ' active days.</div>';
       }
-      if (recent.length) {
-        html += '<details class="repo-dropdown"><summary class="repo-dropdown-btn"><span>Solved questions (' + recent.length + ')</span>'
-          + '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
-          + '</summary><div class="repo-dropdown-body">'
-          + recent.map(function (r) {
-            var href = r.url ? (String(r.url).charAt(0) === '/' ? 'https://www.hackerrank.com' + r.url : r.url) : '';
-            var nameHtml = href
-              ? '<a class="repo-name" href="' + escHR(href) + '" target="_blank" rel="noopener">' + escHR(r.name) + '</a>'
-              : '<span class="repo-name">' + escHR(r.name) + '</span>';
-            return '<div class="profile-repo"><div class="hr-solve-row">' + nameHtml
-              + '<span class="hr-solve-date">' + escHR(r.date || '') + '</span></div></div>';
-          }).join('') + '</div></details>';
-      } else {
-        html += '<p class="tab-empty">No solved questions found.</p>';
-      }
       box.innerHTML = html;
       box.hidden = false;
+      var hrBody = box.querySelector('.repo-dropdown-body');
+      if (hrBody) batchDropdownList(hrBody, 10);
     }
     function loadHR(panel) {
       var root = panel.querySelector('[data-hr-username]');
