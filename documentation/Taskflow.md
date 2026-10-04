@@ -301,3 +301,4 @@ pre-existing `BUG-119`/`BUG-120`/`BUG-121` in `Bug Tracker.md`.
 - [ ] After each cluster: full suite, failure-id set must shrink by exactly that cluster; record the fix in `Bug Tracker.md` with ✅ + proof.
 
 - **Sign-up showed the generic failure banner for an already-registered (Google-created) college address** - `BUG-131` (fixed: `POST /signup` now redirects duplicates to `?error=3` with an "already has an account - sign in instead" banner in `signup.html`; whitelist `error=2` and validation `error=1` unchanged).
+- **Manually-added HackerRank/LinkedIn kept resetting after sync, and fleet pages never showed roster profile links** - `BUG-132` (fixed: sync carries profile links forward across light/heavy/error legs + `views.fleet_view`/`account_view` backfill them from the latest roster via new `db.latest_roster_records()`; live proof: fleet row for 1272261921 now renders `1272261921_s` / `idkhorrid`).

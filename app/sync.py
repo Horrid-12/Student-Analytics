@@ -182,6 +182,44 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
     }
 
 
+#: Snapshot fields a GitHub sync can never recompute — they come from the
+#: roster form (or a manual DB edit), so a sync must carry them forward.
+_PROFILE_LINK_COLS = (
+    "LinkedIn_Username",
+    "LinkedIn_URL",
+    "HackerRank_Username",
+    "HackerRank_URL",
+)
+
+
+def _previous_profile_links(email: str) -> dict:
+    """LinkedIn/HackerRank fields of the stored snapshot ({} when absent)."""
+    try:
+        previous = accounts.get_snapshot(email) or {}
+    except Exception:
+        previous = {}
+    prev_student = previous.get("student") or {}
+    return {
+        column: prev_student.get(column)
+        for column in _PROFILE_LINK_COLS
+        if str(prev_student.get(column) or "").strip()
+    }
+
+
+def _carry_forward_profile_links(email: str, student: dict) -> dict:
+    """Keep LinkedIn/HackerRank handles across syncs (BUG-132).
+
+    ``_student_row`` / ``batch.analyze_records`` rebuild the snapshot from the
+    GitHub payload alone and blank these roster-form fields, so every sync
+    silently reset values that came from the uploaded roster or a manual
+    database edit. Only blank fields are filled from the previous snapshot;
+    GitHub-derived metrics are never touched."""
+    for column, value in _previous_profile_links(email).items():
+        if not str(student.get(column) or "").strip():
+            student[column] = value
+    return student
+
+
 def _academic_year_for(value) -> str:
     """July-June academic-year label from an onboarding timestamp.
 
@@ -307,12 +345,18 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
     now = time.strftime(_SYNC_TIME_FORMAT)
     if err:
         accounts.init_db()
+        # Status=error hides the snapshot from both views (they render the
+        # zeroed fallback row), but the profile links must outlive a failed
+        # run — otherwise one rate-limited sync wipes values the next
+        # successful sync's carry-forward (BUG-132) would have restored.
+        kept = _previous_profile_links(email)
         accounts.save_snapshot(
-            email, username=username, status="error", student={}, repos=[],
+            email, username=username, status="error", student=kept, repos=[],
             synced_at=now, error=err, team_repos=[],
         )
         return False, err, err
     accounts.init_db()
+    student = _carry_forward_profile_links(email, student)
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
         repos=repos, team_repos=team_repos, synced_at=now, error="",
@@ -396,6 +440,7 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         my_repos = [r for r in repo_rows if str(r.get("Username")).lower() == username.lower()]
         my_team = [r for r in team_rows if str(r.get("Username")).lower() == username.lower()]
         
+        student = _carry_forward_profile_links(email, student)
         accounts.init_db()
         saved = accounts.save_snapshot(
             email,
