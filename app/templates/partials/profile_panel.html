@@ -121,11 +121,12 @@
               <div class="activity-stat activity-stat-period">
                 {% if p.activity_windows %}
                 <div class="activity-number" data-activity-number>{{ p.activity_windows['90d'] }}</div>
-                <div class="activity-label">Contributions in selected period</div>
-                <div class="activity-tabs" role="group" aria-label="Contribution period">
-                  <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['30d'] }}" aria-pressed="false">30D</button>
-                  <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['90d'] }}" aria-pressed="true">90D</button>
-                  <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['all'] }}" aria-pressed="false">All</button>
+                <div class="activity-label">Contributions in
+                  <span class="activity-tabs" role="group" aria-label="Contribution period">
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['30d'] }}" aria-pressed="false">30D</button>
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['90d'] }}" aria-pressed="true">90D</button>
+                    <button type="button" class="activity-tab" data-activity-value="{{ p.activity_windows['all'] }}" aria-pressed="false">All</button>
+                  </span>
                 </div>
                 {% else %}
                 <div class="activity-number">{{ p.contributions_30d }}</div>

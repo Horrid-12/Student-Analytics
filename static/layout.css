@@ -1361,13 +1361,13 @@ button {
   border-color: var(--blue-active-border);
 }
 .activity-stat-period .activity-tabs {
-  position: absolute;
-  top: 5px;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: stretch;
+  position: static;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
 }
 .activity-stat-period .activity-tab {
   padding: 3px 6px;
@@ -1754,15 +1754,16 @@ button {
 }
 .activity-stat-period {
   position: relative;
-  padding-right: 58px;
   min-height: 56px;
 }
 .activity-stat-period .activity-tabs {
-  position: absolute;
-  top: 5px;
-  right: 0;
-  flex-direction: column;
-  align-items: stretch;
+  position: static;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
 }
 .activity-stat:last-child {
   border-bottom: none;

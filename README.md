@@ -39,7 +39,7 @@ Clicking your sidebar avatar opens **My Profile** — your own student panel (sa
 - **Onboarding & registrar review** — students submit PRN/degree/division (pending → approved/rejected ledger); approval promotes their linked GitHub handle into the account identity
 - **Account snapshots & daily sync** — approved accounts sync GitHub data on a schedule (Vercel cron hits `POST /sync/accounts`), so pages render without re-uploading rosters
 - **Notification bells** — students see their own issue alerts, staff see support-ticket alerts, each with a Fix deep-link; every Sunday a cron posts the week's top committer announcement to all roles
-- **HackerRank backend ready (tab is a clean slate)** — `app/hackerrank_client/` (vendored from the standalone `Hackerrank-Data-Scraper` repo: unofficial HackerRank REST, no token, in-memory TTL 1h) backs `GET /api/hackerrank/{username}` (`404` unknown user / `502` upstream); the Students profile HackerRank tab is currently an empty `hr-profile` div awaiting the next UI build
+- **HackerRank tab (lazy, no token)** — `app/hackerrank_client/` (vendored from the standalone `Hackerrank-Data-Scraper` repo: unofficial HackerRank REST, in-memory TTL 1h) backs `GET /api/hackerrank/{username}` (`404` unknown user / `502` upstream). The Students profile HackerRank tab loads on open and shows tier-colored hex skill badges (stars, solved count, progress to next star), a last-active box, and a `Solved questions` dropdown with dates; long repo/question lists reveal 10 rows at a time via `Show more`
 - **Postgres-backed storage (optional)** — with `DATABASE_URL` set, storage runs on Neon Postgres; otherwise it falls back to the bundled SQLite files, so local dev/tests work with zero setup
 
 ---
@@ -230,7 +230,7 @@ Tests run against both the frozen legacy `services.py` and the ported `app/servi
 .\.venv\Scripts\python.exe -m pytest tests\ -q                                    # all tests
 $env:MODULE_UNDER_TEST="app.services"; .\.venv\Scripts\python.exe -m pytest tests\ -q; Remove-Item Env:\MODULE_UNDER_TEST  # same suite vs the port
 .\.venv\Scripts\python.exe -m pytest tests\test_github_client.py -q               # transport/cache only (no network)
-.\.venv\Scripts\python.exe -m pytest tests\test_hackerrank.py -q                 # HackerRank endpoint (mocked, no network) + clean-slate tab check
+.\.venv\Scripts\python.exe -m pytest tests\test_hackerrank.py -q                 # HackerRank endpoint (mocked, no network) + tab UI check
 .\.venv\Scripts\python.exe -m pytest tests\test_pages_36.py -q                    # all analytics pages render/export/workflow (upload + 2 batches, tmp DB)
 ```
 
