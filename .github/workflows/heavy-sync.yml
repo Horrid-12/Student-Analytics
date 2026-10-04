@@ -14,6 +14,11 @@ on:
   schedule:
     - cron: '0 */6 * * *'   # every 6 hours
   workflow_dispatch:          # manual trigger from Actions tab
+    inputs:
+      start_at:
+        description: 'Resume from (number from the log, e.g. 362)'
+        required: false
+        default: '1'
 
 jobs:
   sync:
@@ -45,7 +50,13 @@ jobs:
           FAILED=0
           SKIPPED=0
 
-          for i in $(seq 0 $(( TOTAL - 1 ))); do
+          START_INPUT="${{ github.event.inputs.start_at }}"
+          START_AT=$((${START_INPUT:-1} - 1))
+          
+          if [ $START_AT -lt 0 ]; then START_AT=0; fi
+          if [ $START_AT -ge $TOTAL ]; then START_AT=$((TOTAL - 1)); fi
+
+          for i in $(seq $START_AT $(( TOTAL - 1 ))); do
             EMAIL=$(echo "$USERS" | jq -r ".[$i].email")
             NAME=$(echo "$USERS" | jq -r ".[$i].name // .[$i].email")
             ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$EMAIL', safe=''))")
@@ -55,10 +66,10 @@ jobs:
             HTTP_CODE=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
               -X POST \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-              "${{ secrets.APP_URL }}/api/sync/student/$ENCODED")
+              "${{ secrets.APP_URL }}/api/sync/student/$ENCODED" || echo "000")
 
             if [ "$HTTP_CODE" = "200" ]; then
-              DETAIL=$(jq -r '.detail // "ok"' /tmp/sync_response.json)
+              DETAIL=$(jq -r '.detail // "ok"' /tmp/sync_response.json 2>/dev/null || echo "ok")
               echo "  ✓ $DETAIL"
               SUCCESS=$((SUCCESS + 1))
             elif [ "$HTTP_CODE" = "429" ]; then
@@ -66,7 +77,7 @@ jobs:
               SKIPPED=$((TOTAL - i))
               break
             else
-              DETAIL=$(jq -r '.detail // "unknown error"' /tmp/sync_response.json)
+              DETAIL=$(jq -r '.detail // "unknown error"' /tmp/sync_response.json 2>/dev/null || echo "unknown error")
               echo "  ✗ HTTP $HTTP_CODE: $DETAIL"
               FAILED=$((FAILED + 1))
             fi

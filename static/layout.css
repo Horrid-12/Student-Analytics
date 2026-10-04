@@ -9,6 +9,12 @@ body {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
+  /* Attachment stays `fixed` on purpose (BUG-127). The texture is 1254x1254;
+     with `scroll` the body's positioning area is the whole document, so
+     `cover` scales it up ~7x on a long page and the fibers go soft. `fixed`
+     anchors it to the viewport at ~1.5x, which is the sharpness the design
+     was drawn at. (Phase 2 briefly switched these to `scroll` for paint
+     cost - the blur it caused is not worth it.) */
   background-attachment: fixed;
 }
 

@@ -2,6 +2,9 @@
 {% import "macros/echarts.html" as ec %}
 {% block title %}Overview — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
+{# Overview is the only page with charts, so it carries the charting runtime
+   (moved here from base.html - Lag Fix phase 2). #}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <style>
   .filter-bar {
     align-items: flex-end;

@@ -47,6 +47,40 @@ logger = logging.getLogger(__name__)
 
 # ── schema bootstrap ──────────────────────────────────────────────────────────
 
+def _schema_sql_path() -> str:
+    import os
+
+    return os.path.join(os.path.dirname(__file__), "schema.sql")
+
+
+def _schema_file_hash() -> str:
+    """SHA-256 of ``schema.sql`` — the marker for "is this DDL up to date?"."""
+    import hashlib
+
+    with open(_schema_sql_path(), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _applied_schema_hash() -> Optional[str]:
+    """Hash written by the last successful ``init_schema()``, or None.
+
+    None means "must run the DDL": first boot, marker table not created yet,
+    database unreachable, or the file changed since the last run.
+    """
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            row = c.execute("SELECT to_regclass('public.schema_meta') AS t").fetchone()
+            if not row or row["t"] is None:
+                return None
+            row = c.execute("SELECT schema_hash FROM schema_meta WHERE id = 1").fetchone()
+            return row["schema_hash"] if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.debug("schema marker unavailable: %s", exc)
+        return None
+
+
 def init_schema() -> bool:
     """Run the idempotent ``schema.sql`` DDL. Returns True on success.
 
@@ -54,15 +88,23 @@ def init_schema() -> bool:
     scoped operations like ``CREATE INDEX`` inside multi-statement DDL
     are safest outside PgBouncer transaction pooling. Statements are
     executed one at a time (psycopg3 rejects multi-statement strings).
-    """
-    import os
 
-    sql_path = os.path.join(os.path.dirname(__file__), "schema.sql")
+    **Fast path**: the whole DDL block is skipped when ``schema.sql`` is
+    byte-identical to the copy recorded in ``schema_meta`` (written after the
+    last successful run). A warm run measured 25-55 s over the remote pooler —
+    it was the single largest cold-start delay in the app (Lag Fix phase 3).
+    Any edit to ``schema.sql`` changes the hash, so new statements still apply
+    on the next boot; a half-applied run never records a hash.
+    """
     try:
+        want = _schema_file_hash()
+        if _applied_schema_hash() == want:
+            logger.info("schema.sql unchanged (%s) - skipping DDL", want[:12])
+            return True
         with database.admin_conn() as c:
             if c is None:
                 return False
-            with open(sql_path, "r", encoding="utf-8") as f:
+            with open(_schema_sql_path(), "r", encoding="utf-8") as f:
                 lines = f.readlines()
             # Strip SQL comment-only lines (contain ';' that confuse naive split)
             clean = [l for l in lines if not l.strip().startswith("--")]
@@ -70,6 +112,13 @@ def init_schema() -> bool:
             statements = [s.strip() for s in script.split(";") if s.strip()]
             for stmt in statements:
                 c.execute(stmt)
+            c.execute(
+                "INSERT INTO schema_meta (id, schema_hash) VALUES (1, %s) "
+                "ON CONFLICT (id) DO UPDATE SET schema_hash = EXCLUDED.schema_hash, "
+                "applied_at = now()",
+                (want,),
+            )
+        logger.info("schema.sql applied (%s)", want[:12])
         return True
     except (psycopg.errors.DatabaseError, OSError, FileNotFoundError) as exc:
         logger.warning("Postgres schema init failed: %s", exc)
@@ -80,7 +129,7 @@ def schema_healthy() -> bool:
     """Quick probe: open + execute a harmless SELECT + rollback. Returns True
     if Postgres is reachable and the schema is present."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return False
             with c.cursor() as cur:
@@ -155,7 +204,7 @@ def get_roster_records(roster_id: str) -> Optional[list[dict]]:
     """Return the full student-record dicts for a roster (list-of-dict with
     the original column names). Returns None when unavailable or missing."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -173,7 +222,7 @@ def get_roster_records(roster_id: str) -> Optional[list[dict]]:
 
 def roster_exists(roster_id: str) -> bool:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return False
             cur = c.execute("SELECT 1 FROM rosters WHERE id = %s", (roster_id,))
@@ -571,7 +620,7 @@ def mark_run_rate_limited(roster_id: str) -> None:
 
 def get_run_summary(roster_id: str) -> Optional[dict]:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             return _run_summary_row(c, roster_id)
@@ -603,7 +652,7 @@ def clear_roster(roster_id: str) -> None:
 def get_dashboard_data(roster_id: str) -> list[dict]:
     """Return all analysis_results rows for a roster as a list-of-dict."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             try:
@@ -677,7 +726,7 @@ def get_dashboard_data(roster_id: str) -> list[dict]:
 
 def get_repositories_data(roster_id: str) -> list[dict]:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             try:
@@ -719,7 +768,7 @@ def get_repositories_data(roster_id: str) -> list[dict]:
 def get_team_repos_data(roster_id: str) -> list[dict]:
     """Return all team-contributed repo rows for a roster (empty on old DBs)."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             try:
@@ -750,7 +799,7 @@ def get_team_repos_data(roster_id: str) -> list[dict]:
 
 def get_issues_data(roster_id: str) -> list[dict]:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -770,7 +819,7 @@ def get_issues_data(roster_id: str) -> list[dict]:
 def get_blacklist(roster_id: str) -> dict:
     """Return the leaderboard blacklist ({student_id: [boards]})."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return {}
             cur = c.execute(
@@ -811,7 +860,7 @@ def put_blacklist(roster_id: str, state: dict) -> None:
 def get_hidden_repos(roster_id: str) -> dict:
     """Return the hidden repositories ({student_id: [repo keys]})."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return {}
             cur = c.execute(
@@ -934,7 +983,7 @@ def list_support_tickets(limit: int = 200) -> list[dict]:
     except (TypeError, ValueError):
         limit = 200
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -955,7 +1004,7 @@ def list_support_tickets_for(email: str, limit: int = 200) -> list[dict]:
     except (TypeError, ValueError):
         limit = 200
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -976,7 +1025,7 @@ def get_support_ticket(ticket_id) -> Optional[dict]:
     except (TypeError, ValueError):
         return None
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -1109,7 +1158,7 @@ def get_support_attachment(ticket_id, slot: str = "admin") -> Optional[dict]:
     except (TypeError, ValueError):
         return None
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -1204,7 +1253,7 @@ def log_event(event_type: str, detail: str = "") -> bool:
 
 def load_audit_events(limit: int = 200) -> pd.DataFrame:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return pd.DataFrame()
             cur = c.execute(
@@ -1222,7 +1271,7 @@ def load_audit_events(limit: int = 200) -> pd.DataFrame:
 
 def get_user_by_email(email: str) -> Optional[dict]:
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -1380,7 +1429,7 @@ def get_prn_owner(prn: str, statuses=("pending", "approved"), exclude_email: str
         return None
     exclude_email = (exclude_email or "").strip().lower()
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -1450,7 +1499,7 @@ def set_github_username(email: str, github_username: str) -> bool:
 def get_onboarding_users() -> list[dict]:
     """All accounts that ever submitted onboarding, newest-first (Postgres leg)."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -1472,7 +1521,7 @@ def get_onboarding_users() -> list[dict]:
 def get_approved_users() -> list[dict]:
     """Accounts with an approved onboarding submission — the sync fleet."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -1596,7 +1645,7 @@ def get_account_snapshot(email: str) -> Optional[dict]:
     """One account's snapshot dict (student/repos/team_repos parsed), or None."""
     email = (email or "").strip().lower()
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             try:
@@ -1622,7 +1671,7 @@ def get_account_snapshot(email: str) -> Optional[dict]:
 def list_account_snapshots() -> list[dict]:
     """Every account snapshot, newest-first (Postgres leg)."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             try:
@@ -1689,7 +1738,7 @@ def get_reference_sheet() -> Optional[dict]:
     """The active reference sheet dict ``{filename, uploaded_at, rows}``, or
     None when none has been uploaded yet (Postgres leg)."""
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return None
             cur = c.execute(
@@ -1897,7 +1946,7 @@ def list_notifications(user_id: str, limit: int = 50) -> list[dict]:
     except (TypeError, ValueError):
         limit = 50
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return []
             cur = c.execute(
@@ -1976,7 +2025,7 @@ def count_unread_notifications(user_id: str) -> int:
     if not user_id:
         return 0
     try:
-        with database.conn() as c:
+        with database.read_conn() as c:
             if c is None:
                 return 0
             cur = c.execute(

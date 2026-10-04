@@ -1,0 +1,29 @@
+{# One batch of repository rows (table view) - twin of `repo_cards.html`.
+
+Context: `rows` (list of repo card dicts).
+#}
+{% for repo in rows %}
+<tr>
+  <td>
+    <div class="fl-cell-repo">
+      <a class="repo-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
+      <div class="fl-cell-owner">
+        {% if repo.avatar_url %}
+        <img class="table-avatar" src="{{ repo.avatar_url|avatar }}" loading="lazy" decoding="async" alt="">
+        {% else %}
+        <span class="avatar-fallback">{{ (repo.owner_name or '?')[0:1] }}</span>
+        {% endif %}
+        <span>{{ repo.owner_name or 'Unknown student' }}</span>
+        {% if repo.owner_username %}<span class="fl-cell-handle">@{{ repo.owner_username }}</span>{% endif %}
+      </div>
+    </div>
+  </td>
+  <td>{{ repo.lang or '&mdash;' }}</td>
+  <td>{% if repo.div or repo.batch %}{{ repo.dept_table }}{% else %}&mdash;{% endif %}</td>
+  <td class="fl-num">{{ repo.stars }}</td>
+  <td class="fl-num">{{ repo.forks }}</td>
+  <td>{% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}</td>
+  <td>{{ repo.status or '&mdash;' }}</td>
+  <td>{{ repo.updated or '&mdash;' }}</td>
+</tr>
+{% endfor %}

@@ -325,6 +325,13 @@ CREATE INDEX IF NOT EXISTS idx_team_repos_user         ON roster_team_repos (use
 CREATE INDEX IF NOT EXISTS idx_roster_issues_roster    ON roster_issues (roster_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_timestamp ON analysis_runs (run_timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type);
+-- Lag Fix phase 1: the hot read paths compare lower(...), so a plain btree on
+-- the raw column is never used. Function indexes match those predicates
+-- exactly (lower() is IMMUTABLE). users.onboarding_status is a plain column
+-- predicate ('approved' / 'none' / = ANY(...)).
+CREATE INDEX IF NOT EXISTS idx_notifications_user_lower   ON notifications (lower(user_id));
+CREATE INDEX IF NOT EXISTS idx_support_tickets_creator_lower ON support_tickets (lower(created_by));
+CREATE INDEX IF NOT EXISTS idx_users_onboarding          ON users (onboarding_status);
 
 -- Backfill columns for GitHub/LinkedIn OAuth (Phase 4.7 extension).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username TEXT NOT NULL DEFAULT '';
@@ -400,4 +407,15 @@ ALTER TABLE leaderboard_hidden_repos DROP CONSTRAINT IF EXISTS leaderboard_hidde
 ALTER TABLE workflow_state ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
 ALTER TABLE leaderboard_blacklist ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
 ALTER TABLE leaderboard_hidden_repos ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+
+-- 16. Schema marker (Lag Fix phase 3).
+--     SHA-256 of this file, written by db.init_schema() after a successful
+--     run so warm startups can skip the whole DDL block (a full run over the
+--     remote pooler costs 25-55 s on every cold start). Editing schema.sql
+--     changes the hash and forces a re-run on the next boot.
+CREATE TABLE IF NOT EXISTS schema_meta (
+    id          SMALLINT PRIMARY KEY,
+    schema_hash TEXT NOT NULL,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
