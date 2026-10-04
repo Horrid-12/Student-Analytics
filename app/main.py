@@ -2668,4 +2668,3 @@ async def custom_404_handler(request: Request, exc: Exception):
         detail = getattr(exc, "detail", "Not Found")
         return JSONResponse(status_code=404, content={"detail": detail})
     return _not_found_response(request)
-
