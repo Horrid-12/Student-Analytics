@@ -822,7 +822,12 @@ def signup_page(request: Request, error: int = 0):
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
-        {"page_name": "signup", "show_error_banner": bool(error == 1), "show_domain_banner": bool(error == 2)},
+        {
+            "page_name": "signup",
+            "show_error_banner": bool(error == 1),
+            "show_domain_banner": bool(error == 2),
+            "show_exists_banner": bool(error == 3),
+        },
     )
 
 
@@ -841,6 +846,10 @@ async def signup_submit(
     # Phase 4.7.2: signup is restricted to college addresses.
     if not auth.domain_allowed_email(email):
         return RedirectResponse("/signup?error=2", status_code=302)
+    # Already-registered addresses (e.g. created via Google sign-in) get their
+    # own banner — the generic "check your details" one sends users in circles.
+    if auth.get_user(email) is not None:
+        return RedirectResponse("/signup?error=3", status_code=302)
     user = auth.create_user(email, password, role="student", name=name)
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)

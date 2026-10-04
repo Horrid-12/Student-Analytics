@@ -11,6 +11,9 @@
   {% if show_domain_banner %}
   <div class="banner-error">Only college email addresses can create an account.</div>
   {% endif %}
+  {% if show_exists_banner %}
+  <div class="banner-error">This email already has an account — <a href="/login">sign in</a> instead. If you signed up with Google, use "Continue with Google" on the sign-in page.</div>
+  {% endif %}
 
   <form method="post" action="/signup">
     <div class="form-group">

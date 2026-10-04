@@ -254,6 +254,96 @@ class TestSyncOne:
         assert snap["status"] == "error"
         assert snap["error"] == "not_found"
 
+    def test_profile_links_survive_resync(self):
+        """BUG-132: LinkedIn/HackerRank handles come from the roster form (or a
+        manual DB edit), never from GitHub - a re-sync must not blank them.
+
+        Uses a plain user_row so the test stays independent of the onboarding
+        fixture (BUG-126 blocks ``seeded_account`` on this branch)."""
+        row = {"email": "alice@college.edu", "github_username": "alice-dev", "prn": "1011121314"}
+        sync.sync_one(row, force=True)
+        snap = accounts.get_snapshot("alice@college.edu")
+        snap["student"].update(
+            {
+                "HackerRank_Username": "alice_hr",
+                "HackerRank_URL": "https://www.hackerrank.com/profile/alice_hr",
+                "LinkedIn_Username": "alice-li",
+                "LinkedIn_URL": "https://www.linkedin.com/in/alice-li",
+            }
+        )
+        assert accounts.save_snapshot(
+            "alice@college.edu", username=snap["username"], status="ok",
+            student=snap["student"], repos=snap["repos"], synced_at=snap["synced_at"],
+        )
+        sync.sync_one(row, force=True)
+        student = accounts.get_snapshot("alice@college.edu")["student"]
+        assert student["HackerRank_Username"] == "alice_hr"
+        assert student["LinkedIn_Username"] == "alice-li"
+
+    def test_profile_links_survive_failed_sync(self, monkeypatch):
+        """BUG-132: a rate-limited/errored sync stores student={} - the
+        profile links must survive the error leg too, or the next successful
+        carry-forward has nothing to restore."""
+        row = {"email": "bob@college.edu", "github_username": "alice-dev", "prn": "1011121315"}
+        accounts.save_snapshot(
+            "bob@college.edu", username="alice-dev", status="ok",
+            student={"HackerRank_Username": "bob_hr", "HackerRank_URL": "https://www.hackerrank.com/profile/bob_hr"},
+            repos=[], synced_at="2026-10-01 10:00:00 UTC",
+        )
+
+        def fake_404(url, token, timeout=None):
+            return 404, {}, None
+
+        monkeypatch.setattr(psvc, "_cached_get_json", fake_404)
+        ok, code, _ = sync.sync_one(row, force=True)
+        assert not ok and code == "not_found"
+        snap = accounts.get_snapshot("bob@college.edu")
+        assert snap["status"] == "error"
+        assert snap["student"]["HackerRank_Username"] == "bob_hr"
+
+
+class TestSyncHeavyOne:
+    def test_profile_links_survive_heavy_sync(self, monkeypatch):
+        """BUG-132: the 6-hourly heavy sync rebuilds the snapshot from GitHub
+        only - it must carry the previous LinkedIn/HackerRank values forward.
+        Uses a plain user_row (approval fixture is blocked by BUG-126)."""
+        row = {"email": "alice@college.edu", "github_username": "alice-dev", "prn": "1011121314", "name": "Alice"}
+        accounts.save_snapshot(
+            "alice@college.edu", username="alice-dev", status="ok",
+            student={
+                "Student_ID": "1011121314", "GitHub_Username": "alice-dev",
+                "HackerRank_Username": "alice_hr",
+                "HackerRank_URL": "https://www.hackerrank.com/profile/alice_hr",
+                "LinkedIn_Username": "alice-li",
+                "LinkedIn_URL": "https://www.linkedin.com/in/alice-li",
+            },
+            repos=[], synced_at="2026-10-01 10:00:00 UTC",
+        )
+
+        def fake_analyze(records, token=None):
+            # batch.analyze_records output for a record with NO profile links:
+            # the prepared row blanks the LinkedIn/HackerRank columns.
+            student = dict(records[0])
+            student.update(
+                {
+                    "Roster_Email": "alice@college.edu",
+                    "HackerRank_Username": None, "HackerRank_URL": None,
+                    "LinkedIn_Username": None, "LinkedIn_URL": None,
+                    "Repository_Count": 2,
+                }
+            )
+            return {"students": [student], "repos": [], "team_repos": []}
+
+        from app import batch as app_batch
+        monkeypatch.setattr(app_batch, "analyze_records", fake_analyze)
+        ok, code, _ = sync.sync_heavy_one(row)
+        assert ok and code == "saved", code
+        student = accounts.get_snapshot("alice@college.edu")["student"]
+        assert student["HackerRank_Username"] == "alice_hr"
+        assert student["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
+        assert student["LinkedIn_Username"] == "alice-li"
+
+
 
 class TestSyncAll:
     def test_full_sweep(self):

@@ -337,6 +337,23 @@ def _enrich_students_with_records(
     return result
 
 
+def _backfill_profile_links(students: pd.DataFrame) -> pd.DataFrame:
+    """Backfill LinkedIn/HackerRank handles + URLs from the latest uploaded
+    roster (BUG-132).
+
+    These fields come from the roster form, never from GitHub — snapshots are
+    rebuilt GitHub-only on every sync and blank them, so fleet and own-profile
+    pages must re-derive them at render time, exactly like the roster analysis
+    view does via ``_enrich_students_with_records``. No roster uploaded (or the
+    SQLite fallback where rosters are cache-only) → frame unchanged."""
+    try:
+        from app import db
+
+        return _enrich_students_with_records(students, db.latest_roster_records())
+    except Exception:
+        return students
+
+
 def analysis_view(roster_store, roster_id: str):
     """Reconstruct the analysis result shape from stored roster + state.
 
@@ -411,6 +428,7 @@ def account_view(email: str):
         if column not in students.columns:
             students[column] = None
     students = students[columns]
+    students = _backfill_profile_links(students)
     repos = pd.DataFrame(snapshot.get("repos") or [])
     for column in REPO_COLS:
         if column not in repos.columns:
@@ -520,6 +538,10 @@ def fleet_view():
         if column not in students.columns:
             students[column] = None
     students = students[columns]
+
+    # Profile links (LinkedIn/HackerRank) come from the roster form, never
+    # from GitHub — every sync rebuilds the snapshot blank (BUG-132).
+    students = _backfill_profile_links(students)
 
     repos = pd.DataFrame(repo_rows)
     for column in REPO_COLS:

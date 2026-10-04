@@ -231,6 +231,42 @@ def roster_exists(roster_id: str) -> bool:
         return False
 
 
+def latest_roster_records() -> Optional[list[dict]]:
+    """Records of the most recently uploaded roster, projected to the profile
+    link fields ``views._enrich_students_with_records`` reads (Student_ID +
+    LinkedIn/HackerRank handles + URLs).
+
+    Fleet pages need this because those handles come from the roster form, not
+    from GitHub — snapshots are GitHub-only, so without the backfill every sync
+    shows them blank (BUG-132). Returns None when unavailable: no roster
+    uploaded yet, or the SQLite fallback where rosters are cache-only. One
+    round trip; callers memoise (``view_cache`` caches the fleet build)."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT jsonb_build_object("
+                "'Student_ID', s.raw_json->>'Student_ID', "
+                "'LinkedIn_Username', s.raw_json->>'LinkedIn_Username', "
+                "'LinkedIn_URL', s.raw_json->>'LinkedIn_URL', "
+                "'HackerRank_Username', s.raw_json->>'HackerRank_Username', "
+                "'HackerRank_URL', s.raw_json->>'HackerRank_URL'"
+                ") AS record "
+                "FROM students s "
+                "WHERE s.roster_id = "
+                "(SELECT id FROM rosters ORDER BY uploaded_at DESC LIMIT 1) "
+                "ORDER BY s.id"
+            )
+            rows = cur.fetchall()
+            if not rows:
+                return None
+            return [r["record"] for r in rows]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("latest_roster_records failed: %s", exc)
+        return None
+
+
 # ── run summary (live analysis progress) ──────────────────────────────────────
 
 def _run_summary_row(c, roster_id: str) -> Optional[dict]:

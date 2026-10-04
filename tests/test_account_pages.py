@@ -337,6 +337,52 @@ class TestFleetPages:
             assert r.status_code == 200, path
             assert self.PLACEHOLDER_FRAGMENT in r.text, path
 
+    def test_fleet_backfills_profile_links_from_roster_records(self, monkeypatch):
+        """BUG-132: LinkedIn/HackerRank live in the roster form data, not in
+        the GitHub snapshot — fleet pages must backfill them at render time.
+
+        Seeds the snapshot + approved account directly so the test stays
+        independent of the onboarding fixture (BUG-126 blocks seeded_account)."""
+        from app import auth as app_auth, db as app_db, views
+
+        accounts.save_snapshot(
+            "alice@college.edu", username="alice-dev", status="ok",
+            student={
+                "Student_ID": "1011121314", "Student Name": "Alice Example",
+                "GitHub_Username": "alice-dev", "Roster_Email": "alice@college.edu",
+                # GitHub-only snapshot: no profile links at all (the BUG-132 state).
+                "HackerRank_Username": "", "HackerRank_URL": "",
+                "LinkedIn_Username": "", "LinkedIn_URL": "",
+            },
+            repos=[], synced_at="2026-10-04 10:00:00 UTC",
+        )
+        monkeypatch.setattr(
+            app_auth,
+            "get_approved_accounts",
+            lambda: [{"email": "alice@college.edu", "github_username": "alice-dev",
+                      "prn": "1011121314", "name": "Alice Example"}],
+        )
+        monkeypatch.setattr(
+            app_db,
+            "latest_roster_records",
+            lambda: [
+                {
+                    "Student_ID": "1011121314",
+                    "HackerRank_Username": "alice_hr",
+                    "HackerRank_URL": "https://www.hackerrank.com/profile/alice_hr",
+                    "LinkedIn_Username": "alice-li",
+                    "LinkedIn_URL": "https://www.linkedin.com/in/alice-li",
+                }
+            ],
+        )
+        view = views.fleet_view()
+        rows = view["students"]
+        me = rows[rows["Student_ID"].astype(str) == "1011121314"]
+        assert not me.empty
+        assert me.iloc[0]["HackerRank_Username"] == "alice_hr"
+        assert me.iloc[0]["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
+        assert me.iloc[0]["LinkedIn_Username"] == "alice-li"
+
     def test_student_redirected_from_verification(self):
         client, _ = self._fleet()
         assert self._get(client, "/verification").status_code == 303  # 5.5: Verification is faculty/admin-only again
