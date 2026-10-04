@@ -235,22 +235,26 @@ CREATE TABLE IF NOT EXISTS roster_issues (
 );
 
 -- 8. Workflow state (editable issue follow-up state; JSONB mirrors the RosterStore dict).
+-- NOTE: roster_id is TEXT (not UUID FK) so the roster-less fleet/account views
+-- can share the single 'fleet' key alongside real roster UUIDs.
 CREATE TABLE IF NOT EXISTS workflow_state (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- 8b. Leaderboard blacklist ({student_id: [boards]} — students excluded from
 --     specific leaderboards by an admin; mirrors the RosterStore dict).
+-- NOTE: TEXT key (not UUID FK) — fleet mode stores under 'fleet'.
 CREATE TABLE IF NOT EXISTS leaderboard_blacklist (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- 8c. Hidden leaderboard repositories ({student_id: [repo keys]} — single
 --     repositories excluded from every leaderboard by an admin).
+-- NOTE: TEXT key (not UUID FK) — fleet mode stores under 'fleet'.
 CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
@@ -385,28 +389,15 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
 
--- Weekly top-student announcements carry no ticket: the FK only constrains
--- non-null refs, so allow NULL ticket refs (announcements insert NULL).
-ALTER TABLE notifications ALTER COLUMN ticket_id DROP NOT NULL;
-
--- 15. Weekly top-student tracking (announcement producer state; the
--- announcements themselves reuse the notifications table).
-CREATE TABLE IF NOT EXISTS weekly_commits (
-    week_id       TEXT NOT NULL,
-    email         TEXT NOT NULL,
-    username      TEXT NOT NULL DEFAULT '',
-    commits       INTEGER NOT NULL DEFAULT 0,
-    repos_checked INTEGER NOT NULL DEFAULT 0,
-    status        TEXT NOT NULL DEFAULT '',
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (week_id, email)
-);
-CREATE TABLE IF NOT EXISTS weekly_runs (
-    week_id      TEXT NOT NULL PRIMARY KEY,
-    label        TEXT NOT NULL DEFAULT '',
-    status       TEXT NOT NULL DEFAULT '',
-    top_json     TEXT NOT NULL DEFAULT '{}',
-    published_at TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- 15. Fleet-mode fix: blacklist/hidden/workflow keys are TEXT ('fleet' + roster
+--     UUIDs), not UUID FKs. Fresh tables above are already TEXT; these migrate
+--     live DBs created before the fix (UUID PK + REFERENCES rosters FK rejected
+--     the 'fleet' key with "invalid input syntax for type uuid" so every
+--     fleet-mode POST returned ok but the next GET read back {}).
+ALTER TABLE workflow_state DROP CONSTRAINT IF EXISTS workflow_state_roster_id_fkey;
+ALTER TABLE leaderboard_blacklist DROP CONSTRAINT IF EXISTS leaderboard_blacklist_roster_id_fkey;
+ALTER TABLE leaderboard_hidden_repos DROP CONSTRAINT IF EXISTS leaderboard_hidden_repos_roster_id_fkey;
+ALTER TABLE workflow_state ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+ALTER TABLE leaderboard_blacklist ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+ALTER TABLE leaderboard_hidden_repos ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
 
