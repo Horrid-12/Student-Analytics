@@ -176,34 +176,11 @@
 
   {# ── Grid View: one card per repository ── #}
   <div class="repo-grid" id="repo-grid-view"{% if view_mode == 'table' %} style="display:none;"{% endif %}>
-    {% for repo in payload.rows %}
-    <article class="repo-card-v2"{% if loop.index > payload.initial_visible %} hidden{% endif %}>
-      <div class="rc-header">
-        <a class="rc-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
-        {% if repo.owner_username %}<span class="rc-handle">@{{ repo.owner_username }}</span>{% endif %}
-      </div>
-      <div class="fl-owner">
-        {% if repo.avatar_url %}
-        <img class="table-avatar" src="{{ repo.avatar_url }}" alt="">
-        {% else %}
-        <span class="avatar-fallback">{{ (repo.owner_name or '?')[0:1] }}</span>
-        {% endif %}
-        <span class="fl-owner-name">{{ repo.owner_name or 'Unknown student' }}</span>
-      </div>
-      {% if repo.description %}<p class="rc-desc">{{ repo.description }}</p>{% endif %}
-      <div class="rc-footer">
-        {% if repo.lang %}<span class="rc-lang"><span class="rc-lang-dot"></span>{{ repo.lang }}</span>{% endif %}
-        {% if repo.div or repo.batch %}<span class="fl-dept">{{ repo.dept_card }}</span>{% endif %}
-        <span class="rc-stat">★ {{ repo.stars }}</span>
-        <span class="rc-stat">⑂ {{ repo.forks }}</span>
-        <span class="rc-score">Score {% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}</span>
-        {% if repo.status %}<span class="rc-status">{{ repo.status }}</span>{% endif %}
-        {% if repo.updated %}<span class="rc-stat">{{ repo.updated }}</span>{% endif %}
-      </div>
-    </article>
-    {% else %}
+    {% set rows = payload.page_rows %}
+    {% include "partials/repo_cards.html" with context %}
+    {% if payload.total == 0 %}
     <p class="table-empty" style="grid-column:1/-1;">No repositories match the current filters.</p>
-    {% endfor %}
+    {% endif %}
   </div>
 
   {# ── Table View: one row per repository ── #}
@@ -213,33 +190,11 @@
         <th>Repository</th><th>Language</th><th>Division / Batch</th><th>Stars</th><th>Forks</th><th>Score</th><th>Status</th><th>Updated</th>
       </tr></thead>
       <tbody>
-        {% for repo in payload.rows %}
-        <tr{% if loop.index > payload.initial_visible %} hidden{% endif %}>
-          <td>
-            <div class="fl-cell-repo">
-              <a class="repo-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
-              <div class="fl-cell-owner">
-                {% if repo.avatar_url %}
-                <img class="table-avatar" src="{{ repo.avatar_url }}" alt="">
-                {% else %}
-                <span class="avatar-fallback">{{ (repo.owner_name or '?')[0:1] }}</span>
-                {% endif %}
-                <span>{{ repo.owner_name or 'Unknown student' }}</span>
-                {% if repo.owner_username %}<span class="fl-cell-handle">@{{ repo.owner_username }}</span>{% endif %}
-              </div>
-            </div>
-          </td>
-          <td>{{ repo.lang or '&mdash;' }}</td>
-          <td>{% if repo.div or repo.batch %}{{ repo.dept_table }}{% else %}&mdash;{% endif %}</td>
-          <td class="fl-num">{{ repo.stars }}</td>
-          <td class="fl-num">{{ repo.forks }}</td>
-          <td>{% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}</td>
-          <td>{{ repo.status or '&mdash;' }}</td>
-          <td>{{ repo.updated or '&mdash;' }}</td>
-        </tr>
-        {% else %}
+        {% set rows = payload.page_rows %}
+        {% include "partials/repo_rows.html" with context %}
+        {% if payload.total == 0 %}
         <tr><td class="table-empty" colspan="8">No repositories match the current filters.</td></tr>
-        {% endfor %}
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -393,46 +348,54 @@
   var shownEl = document.getElementById('shown-count');
   var shown = {{ payload.showing }};
   var sentinel = document.getElementById('scroll-sentinel');
+  var grid = document.getElementById('repo-grid-view');
+  var tbody = document.querySelector('#repo-table-view tbody');
 
-  function currentView() {
-    var v = document.querySelector('input[name="view"]');
-    return v && v.value === 'table' ? 'table' : 'grid';
+  function loaded() {
+    return tbody ? tbody.querySelectorAll('tr:not(.table-empty)').length : 0;
   }
 
-  function viewHidden() {
-    var primarySel = currentView() === 'table'
-      ? '#repo-table-view tbody tr[hidden]'
-      : '#repo-grid-view .repo-card-v2[hidden]';
-    var secondarySel = currentView() === 'table'
-      ? '#repo-grid-view .repo-card-v2[hidden]'
-      : '#repo-table-view tbody tr[hidden]';
-    return {
-      primary: Array.prototype.slice.call(document.querySelectorAll(primarySel)),
-      secondary: Array.prototype.slice.call(document.querySelectorAll(secondarySel))
-    };
-  }
-
-  var initial = viewHidden().primary;
-  if (!sentinel || initial.length === 0) {
+  if (!sentinel || !grid || !tbody || shown >= total) {
     if (sentinel) sentinel.hidden = true;
     return;
   }
+
+  // Server-side batches (Lag Fix phase 2). The first page is rendered above
+  // and every later batch arrives as two <template> fragments - one per view -
+  // so the grid and the table stay in lockstep without shipping every row
+  // up front. One selector sweep per batch instead of two per reveal tick.
+  var busy = false;
   var observer = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
-      if (!entry.isIntersecting) return;
-      var lists = viewHidden();
-      var primary = lists.primary;
-      var secondary = lists.secondary;
-      for (var i = 0; i < batchSize && primary.length; i++) {
-        primary.shift().hidden = false;
-        if (secondary.length) secondary.shift().hidden = false;
-      }
-      shown = total - primary.length;
-      if (shownEl) shownEl.textContent = String(shown);
-      if (primary.length === 0) {
-        observer.disconnect();
-        sentinel.hidden = true;
-      }
+      if (!entry.isIntersecting || busy) return;
+      busy = true;
+      var params = new URLSearchParams(window.location.search);
+      params.delete('rows');
+      params.set('offset', String(loaded()));
+      params.set('limit', String(batchSize));
+      fetch('/repositories/rows?' + params.toString(), { headers: { 'Accept': 'text/html' }, redirect: 'manual' })
+        .then(function (res) { return res.ok ? res.text() : ''; })
+        .then(function (html) {
+          if (html) {
+            var wrap = document.createElement('div');
+            wrap.innerHTML = html;
+            Array.prototype.forEach.call(wrap.querySelectorAll('template[data-for]'), function (tpl) {
+              if (tpl.getAttribute('data-for') === 'grid') {
+                grid.appendChild(tpl.content.cloneNode(true));
+              } else {
+                tbody.appendChild(tpl.content.cloneNode(true));
+              }
+            });
+          }
+          shown = Math.min(loaded(), total);
+          if (shownEl) shownEl.textContent = String(shown);
+          busy = false;
+          if (!html || shown >= total) {
+            observer.disconnect();
+            sentinel.hidden = true;
+          }
+        })
+        .catch(function () { busy = false; });
     });
   }, { rootMargin: '400px' });
   observer.observe(sentinel);

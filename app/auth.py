@@ -33,7 +33,7 @@ import tomllib
 from contextlib import closing
 from pathlib import Path
 
-from app import database, db
+from app import database, db, view_cache
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +492,10 @@ def upsert_linkedin_user(email: str, name: str, linkedin_sub: str, role: str = "
 def link_github_username(email: str, github_username: str) -> bool:
     email = (email or "").strip().lower()
     if database.db_configured():
-        return db.link_github_username(email, github_username)
+        linked = db.link_github_username(email, github_username)
+        if linked:
+            view_cache.invalidate()  # fleet rows carry GitHub_Username
+        return linked
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -505,16 +508,19 @@ def link_github_username(email: str, github_username: str) -> bool:
 
 def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
     email = (email or "").strip().lower()
-    if database.db_configured():
-        return db.link_linkedin_sub(email, linkedin_sub)
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                conn.execute("UPDATE users SET linkedin_sub = ? WHERE email = ?", (linkedin_sub, email))
-        return True
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.link_linkedin_sub(email, linkedin_sub)
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    conn.execute("UPDATE users SET linkedin_sub = ? WHERE email = ?", (linkedin_sub, email))
+            return True
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        _drop_user(email)
 
 
 def new_oauth_state() -> str:
@@ -594,39 +600,55 @@ def verify_login(email: str, password: str) -> dict | None:
     return user
 
 
+def _drop_user(email: str) -> None:
+    """Evict the memoised users row for one email (Lag Fix phase 1).
+
+    ``_base_context`` memoises ``get_user`` for the request cycle; writers
+    call this so the next render refetches instead of showing a stale
+    identity/role for the whole TTL. Targeted on purpose — clearing the whole
+    view cache here would discard the expensive fleet builder too."""
+    view_cache.invalidate(f"user:{(email or '').strip().lower()}")
+
+
 def set_user_password(email: str, password: str) -> bool:
     """Reset an account's password. Returns True on success."""
-    if database.db_configured():
-        return db.set_user_password(email, hash_password(password))
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                conn.execute(
-                    "UPDATE users SET password_hash = ? WHERE email = ?",
-                    (hash_password(password), (email or "").strip().lower()),
-                )
-        return True
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.set_user_password(email, hash_password(password))
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    conn.execute(
+                        "UPDATE users SET password_hash = ? WHERE email = ?",
+                        (hash_password(password), (email or "").strip().lower()),
+                    )
+            return True
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        _drop_user(email)
 
 
 def set_user_role(email: str, role: str) -> bool:
     """Used by the admin/teacher bootstrap seed. Returns True on success."""
     if role not in ROLES:
         return False
-    if database.db_configured():
-        return db.set_user_role(email, role)
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                conn.execute(
-                    "UPDATE users SET role = ? WHERE email = ?", (role, (email or "").strip().lower())
-                )
-        return True
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.set_user_role(email, role)
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    conn.execute(
+                        "UPDATE users SET role = ? WHERE email = ?", (role, (email or "").strip().lower())
+                    )
+            return True
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        _drop_user(email)
 
 
 def _clean_avatar(url: str) -> str:
@@ -649,21 +671,24 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
     if not email:
         return False
     avatar = _clean_avatar(avatar)
-    if database.db_configured():
-        return db.save_linked_profile(email, source, handle, avatar)
-    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
-    avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                cur = conn.execute(
-                    f"UPDATE users SET {handle_col} = ?, {avatar_col} = ? WHERE email = ?",
-                    (handle, avatar, email),
-                )
-                return (cur.rowcount or 0) > 0
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.save_linked_profile(email, source, handle, avatar)
+        handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+        avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        f"UPDATE users SET {handle_col} = ?, {avatar_col} = ? WHERE email = ?",
+                        (handle, avatar, email),
+                    )
+                    return (cur.rowcount or 0) > 0
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        _drop_user(email)
 
 
 def confirm_profile_source(email: str, source: str) -> bool:
@@ -681,7 +706,10 @@ def confirm_profile_source(email: str, source: str) -> bool:
     if not (user.get(handle_col) or "").strip():
         return False
     if database.db_configured():
-        return db.confirm_profile_source(email, source)
+        try:
+            return db.confirm_profile_source(email, source)
+        finally:
+            _drop_user(email)
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -689,9 +717,11 @@ def confirm_profile_source(email: str, source: str) -> bool:
                 cur = conn.execute(
                     "UPDATE users SET profile_source = ? WHERE email = ?", (source, email)
                 )
-                return (cur.rowcount or 0) > 0
+                ok = (cur.rowcount or 0) > 0
     except (sqlite3.Error, OSError):
-        return False
+        ok = False
+    _drop_user(email)
+    return ok
 
 
 def valid_degree_branch(value: str) -> bool:
@@ -813,28 +843,34 @@ def db_set_onboarding(
         return False
     if status not in ONBOARDING_STATUSES:
         status = "none"
-    if database.db_configured():
-        return db.set_onboarding(
-            email, prn=prn, degree_branch=degree_branch, division=division,
-            main_batch=main_batch, practical_batch=practical_batch, semester=semester,
-            status=status, submitted_at=submitted_at,
-            github_verified_at=github_verified_at,
-        )
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                cur = conn.execute(
-                    "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
-                    "main_batch = ?, practical_batch = ?, semester = ?, "
-                    "onboarding_status = ?, onboarding_submitted_at = ?, "
-                    "github_verified_at = ? WHERE email = ?",
-                    (prn, degree_branch, division, main_batch, practical_batch, semester,
-                     status, submitted_at, github_verified_at, email),
-                )
-                return (cur.rowcount or 0) > 0
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.set_onboarding(
+                email, prn=prn, degree_branch=degree_branch, division=division,
+                main_batch=main_batch, practical_batch=practical_batch, semester=semester,
+                status=status, submitted_at=submitted_at,
+                github_verified_at=github_verified_at,
+            )
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
+                        "main_batch = ?, practical_batch = ?, semester = ?, "
+                        "onboarding_status = ?, onboarding_submitted_at = ?, "
+                        "github_verified_at = ? WHERE email = ?",
+                        (prn, degree_branch, division, main_batch, practical_batch, semester,
+                         status, submitted_at, github_verified_at, email),
+                    )
+                    return (cur.rowcount or 0) > 0
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        # Onboarding fields are rendered into every fleet row, so the whole
+        # memo goes (the user row too — the sidebar shows name/role/prn).
+        _drop_user(email)
+        view_cache.invalidate()
 
 
 def get_onboarding_users() -> list[dict]:
@@ -930,6 +966,9 @@ def set_onboarding_status(email: str, status: str, promote_github: bool = False)
         submitted_at=user.get("onboarding_submitted_at", ""),
         github_verified_at=github_verified_at,
     )
+    if ok:
+        # Approved/rejected accounts enter or leave the fleet membership.
+        view_cache.invalidate()
     return (True, "") if ok else (False, "storage_unavailable")
 
 
@@ -939,19 +978,24 @@ def db_set_github_handle(email: str, github_username: str) -> bool:
     github_username = (github_username or "").strip()
     if not email or not github_username:
         return False
-    if database.db_configured():
-        return db.set_github_username(email, github_username)
     try:
-        with closing(_connect()) as conn:
-            with conn:
-                _ensure_schema(conn)
-                cur = conn.execute(
-                    "UPDATE users SET github_username = ? WHERE email = ?",
-                    (github_username, email),
-                )
-                return (cur.rowcount or 0) > 0
-    except (sqlite3.Error, OSError):
-        return False
+        if database.db_configured():
+            return db.set_github_username(email, github_username)
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        "UPDATE users SET github_username = ? WHERE email = ?",
+                        (github_username, email),
+                    )
+                    return (cur.rowcount or 0) > 0
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        # Fleet rows carry GitHub_Username, so both memos go.
+        _drop_user(email)
+        view_cache.invalidate()
 
 
 def delete_user(email: str) -> tuple[bool, str]:
@@ -971,6 +1015,8 @@ def delete_user(email: str) -> tuple[bool, str]:
         return False, "protected_role"
     if database.db_configured():
         ok = db.delete_user_by_email(email)
+        if ok:
+            view_cache.invalidate()
         return (True, "") if ok else (False, "storage_unavailable")
     try:
         with closing(_connect()) as conn:

@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap');
+/* Font loading moved to base.html: a CSS @import is a serialized blocking
+   request (style.css must download before the font CSS is even requested).
+   <link> + preconnect lets the font CSS start in parallel (Lag Fix). */
 
 
 /* Fix Streamlit's native header background causing the white band in Dark mode */

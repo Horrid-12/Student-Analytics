@@ -130,6 +130,31 @@ def build_default_cache():
     return MemoryCache()
 
 
+def load_all_tokens() -> list[str]:
+    """Load all available GitHub tokens from env vars (GITHUB_TOKEN, GITHUB_TOKEN_2, etc)."""
+    tokens = []
+    t = os.environ.get("GITHUB_TOKEN", "").strip()
+    if t: tokens.append(t)
+    
+    for k in sorted(os.environ.keys()):
+        if k.startswith("GITHUB_TOKEN_") and os.environ[k].strip():
+            tokens.append(os.environ[k].strip())
+            
+    if tokens:
+        return list(dict.fromkeys(tokens))
+        
+    # fallback to secrets.toml
+    secrets_path = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
+    try:
+        import tomllib
+        with secrets_path.open("rb") as handle:
+            data = tomllib.load(handle)
+        t2 = str(data.get("GITHUB_TOKEN", "")).strip()
+        if t2: return [t2]
+    except Exception:
+        pass
+    return []
+
 def load_token() -> str | None:
     """Resolve the GitHub token: ``GITHUB_TOKEN`` env var first, then the
     top-level ``GITHUB_TOKEN`` key in ``.streamlit/secrets.toml`` (mirrors the
