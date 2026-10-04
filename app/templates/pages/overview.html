@@ -41,30 +41,61 @@
     white-space: nowrap;
   }
 
-  /* Class Metrics Radar: the two side cards fill the right rail beside the radar. */
+  /* Class Metrics Radar: bigger canvas (7fr) + an always-symmetric card grid
+     in the right rail. Cards are driven by the compared cohorts: 0 or 1 class
+     compared → a single column of two tall cards filling the rail; 2+ → two
+     columns with one row per compared class. Every row is a [Avg Repos |
+     Avg Quality] pair, so the grid stays even for ANY number of comparisons.
+     Columns are 7 : 5 so the cards stay wide enough to never truncate the
+     cohort name or metric title. */
   .radar-grid {
     align-items: stretch;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   }
   .radar-grid .system-grid {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
     gap: 12px;
-    min-height: 320px;
+    height: 400px;
+  }
+  .radar-grid .system-grid[data-layout="stack"] {
+    grid-template-columns: minmax(0, 1fr);
   }
   .radar-grid .system-item {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 8px;
-    padding: 16px 18px;
+    gap: 6px;
+    padding: 14px 18px;
     border-radius: 16px;
     background: var(--card);
-    min-height: 146px;
+    min-height: 0;
+    overflow: hidden;
   }
-  .radar-grid .system-label {
+  .radar-grid .cmp-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .radar-grid .cmp-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .radar-grid .cmp-class {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .radar-grid .cmp-metric {
     color: var(--muted);
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
   }
   .radar-grid .system-value {
     color: var(--text);
@@ -72,10 +103,19 @@
     line-height: 1;
     font-weight: 800;
   }
+  /* Compress the big number as more classes are compared so every row stays
+     legible and the grid keeps its even, symmetric proportions. */
+  .radar-grid .system-grid[data-density="two"] .system-value { font-size: 40px; }
+  .radar-grid .system-grid[data-density="three"] .system-value { font-size: 34px; }
+  .radar-grid .system-grid[data-density="many"] .system-value { font-size: 28px; }
+  .radar-grid .system-grid[data-density="many"] .cmp-metric { font-size: 11px; }
   @media (max-width: 1100px) {
+    .radar-grid {
+      grid-template-columns: 1fr;
+    }
     .radar-grid .system-grid {
-      grid-template-rows: auto auto;
-      min-height: 0;
+      height: auto;
+      grid-auto-rows: auto;
     }
     .trend-header {
       flex-direction: column;
@@ -83,6 +123,119 @@
     }
     .trend-header .activity-tabs {
       align-self: flex-end;
+    }
+    .radar-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .radar-controls {
+      align-self: flex-end;
+    }
+  }
+
+  /* Class Metrics Radar: multi-series comparison header + cohort legend. */
+  .radar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .radar-header .panel-title {
+    margin-bottom: 0;
+  }
+  .radar-caption {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .radar-controls {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .radar-cohort-select {
+    min-width: 210px;
+    max-width: 280px;
+    font-size: 12px;
+  }
+  .radar-hint {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    background: #1e2638;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  .radar-hint.show {
+    opacity: 1;
+  }
+  .radar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    min-height: 0;
+  }
+  .radar-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px 4px 10px;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .radar-pill-muted {
+    border-style: dashed;
+    opacity: 0.9;
+  }
+  .radar-pill .radar-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .radar-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+  }
+  .radar-x:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+  }
+  @media (max-width: 720px) {
+    .radar-cohort-select {
+      min-width: 0;
+      max-width: 100%;
     }
   }
 
@@ -184,23 +337,161 @@
 </script>
 
 <section class="panel">
-  <div class="panel-title">Class Metrics Radar</div>
+  <div class="radar-header">
+    <div class="panel-title">Class Metrics Radar</div>
+    <div class="radar-controls">
+      <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a class">
+        <option value="" selected disabled>+ Compare class…</option>
+        {% if payload.radar_data.has_current %}
+        <option value="current">{{ payload.radar_data.current_label }}</option>
+        {% endif %}
+        <option value="overall">All students (whole roster)</option>
+        {% for g in payload.radar_data.cohort_groups %}
+        <optgroup label="{{ g.label }}">
+          {% for item in g.options %}
+          <option value="{{ item.key }}">{{ item.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+      <div id="radar-hint" class="radar-hint">Maximum 4 classes can be compared at the same time.</div>
+    </div>
+  </div>
+  <p class="radar-caption">Dashed line = average of all students. The cards to the right follow whatever classes you compare. Pick a batch + division above to overlay it.</p>
+  <div id="radar-legend" class="radar-legend"></div>
   <div class="radar-grid">
     <div>
       {{ ec.radar('metrics-radar', payload.radar_data) }}
     </div>
-    <div class="system-grid">
-      <div class="system-item">
-        <div class="system-label">Average Repositories</div>
-        <div class="system-value">{{ payload.avg_repos }}</div>
-      </div>
-      <div class="system-item">
-        <div class="system-label">Average Quality Score</div>
-        <div class="system-value">{{ payload.avg_quality }}</div>
-      </div>
-    </div>
+    <div class="system-grid" id="radar-compare-cards" aria-live="polite"></div>
   </div>
 </section>
+<script>
+  (function () {
+    // Class Metrics Radar: cohort comparison picker + interactive pill legend.
+    function byId(id) { return document.getElementById(id); }
+    var select = byId('radar-cohort-select');
+    var legendEl = byId('radar-legend');
+    var hintEl = byId('radar-hint');
+    var cardsEl = byId('radar-compare-cards');
+    if (!select || !legendEl || !hintEl || !cardsEl) return;
+    var bridge = null;
+    var hintTimer = null;
+    var kindOf = {};
+    // How many compared classes the radar + card grid allow.
+    var MAX_CMP = 4;
+
+    function showHint() {
+      hintEl.classList.add('show');
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(function () { hintEl.classList.remove('show'); }, 2600);
+    }
+
+    function refreshSeries() {
+      kindOf = {};
+      bridge.getSeries().forEach(function (s) { kindOf[s.key] = s.kind; });
+    }
+
+    function comparedCount() {
+      return bridge.getActive().filter(function (key) { return kindOf[key] === 'cohort'; }).length;
+    }
+
+    function fmtNum(v) {
+      return (typeof v === 'number' && !isNaN(v)) ? v.toFixed(1) : '0.0';
+    }
+
+    function cardHtml(metric, className, value, key, color) {
+      return '<div class="system-item cmp-card" data-key="' + key + '">' +
+        '<div class="cmp-head">' +
+          '<span class="cmp-dot" style="background:' + color + '"></span>' +
+          '<span class="cmp-class">' + className + '</span>' +
+        '</div>' +
+        '<span class="cmp-metric">' + metric + '</span>' +
+        '<span class="system-value">' + value + '</span>' +
+      '</div>';
+    }
+
+    /* Side cards: one [Avg Repos | Avg Quality] pair per compared class. No
+       class compared → the 'All students' whole-roster pair. 2+ compared →
+       a two-column grid, one even row per class — symmetric for any count.
+       Each pair carries a dot in the series' chart color so professors can
+       match the cards to the polygons instantly. */
+    function cardColor(key) {
+      try { return bridge.colorFor(key); } catch (e) { return '#94a3b8'; }
+    }
+
+    function renderCards() {
+      if (!bridge) return;
+      var byKey = {};
+      bridge.getSeries().forEach(function (s) { byKey[s.key] = s; });
+      var active = bridge.getActive();
+      var compared = active.filter(function (key) { return kindOf[key] === 'cohort'; });
+      var datasets = compared.length ? compared.slice(0, MAX_CMP) : ['overall'];
+      var html = '';
+      datasets.forEach(function (key) {
+        var s = byKey[key];
+        if (!s || !s.values) return;
+        var cls = s.label || 'All students';
+        var col = cardColor(key);
+        html += cardHtml('Avg Repositories', cls, fmtNum(s.values[0]), key, col);
+        html += cardHtml('Avg Quality Score', cls, fmtNum(s.values[3]), key, col);
+      });
+      cardsEl.setAttribute('data-layout', compared.length <= 1 ? 'stack' : 'grid');
+      cardsEl.setAttribute('data-density', compared.length === 2 ? 'two' : (compared.length === 3 ? 'three' : (compared.length >= 4 ? 'many' : 'one')));
+      cardsEl.innerHTML = html;
+    }
+
+    function updateLegend() {
+      if (!bridge) return;
+      var active = bridge.getActive();
+      var byKey = {};
+      bridge.getSeries().forEach(function (s) { byKey[s.key] = s; });
+      var html = '';
+      active.forEach(function (key) {
+        var s = byKey[key];
+        if (!s) return;
+        var muted = s.kind === 'overall' ? ' radar-pill-muted' : '';
+        html +=
+          '<span class="radar-pill' + muted + '">' +
+            '<span class="radar-dot" style="background:' + bridge.colorFor(key) + '"></span>' +
+            '<span>' + s.label + '</span>' +
+            '<button type="button" class="radar-x" data-key="' + key + '" aria-label="Remove ' + s.label + '">&times;</button>' +
+          '</span>';
+      });
+      legendEl.innerHTML = html;
+      renderCards();
+    }
+
+    // Pill ✕ buttons remove the cohort from the comparison.
+    document.addEventListener('click', function (event) {
+      if (!bridge) return;
+      var x = event.target.closest ? event.target.closest('.radar-x') : null;
+      if (!x) return;
+      bridge.removeSeries(x.getAttribute('data-key'));
+      updateLegend();
+    });
+
+    // Comparing is capped at MAX_CMP classes so the radar + cards stay readable.
+    select.addEventListener('change', function () {
+      if (!bridge) return;
+      var key = select.value;
+      select.selectedIndex = 0;
+      if (!key || !bridge.isActive) return;
+      if (bridge.isActive(key)) return;
+      if (kindOf[key] === 'cohort' && comparedCount() >= MAX_CMP) { showHint(); return; }
+      bridge.addSeries(key);
+      updateLegend();
+    });
+
+    // Link once the radar macro registers its bridge (rendered just above).
+    var tries = 0;
+    (function link() {
+      var b = window.__chartBridge && window.__chartBridge['metrics-radar'];
+      if (b) { bridge = b; refreshSeries(); updateLegend(); return; }
+      if (tries++ < 200) setTimeout(link, 60);
+    })();
+  })();
+</script>
 
 <section class="panel">
   <div class="trend-header">

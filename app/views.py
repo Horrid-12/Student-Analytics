@@ -579,9 +579,98 @@ def _known_languages(series) -> "pd.Series":
     return langs
 
 
+#: Fixed Class Metrics Radar axis order. NEVER reordered — the axes stay put
+#: across every cohort so comparers keep their spatial muscle memory.
+RADAR_METRIC_NAMES = (
+    "Avg Repos",
+    "Pull Requests",
+    "Collaboration Rate",
+    "Quality Score",
+    "Active Contributor Rate",
+)
+
+
+def _clean_batch_text(value) -> str:
+    """Roster Batch value for display: '2026.0' -> '2026', blank/missing -> ''."""
+    s = str(value).strip() if pd.notna(value) else ""
+    if not s:
+        return ""
+    s = re.sub(r"\.0+$", "", s).strip()
+    return "" if s.lower() in {"nan", "none", "n/a", "na", "unknown", "unassigned"} else s
+
+
+def _clean_division_text(value) -> str:
+    """Roster Division value for display: 'Div A'/'Division 1' -> 'A'/'1'."""
+    s = str(value).strip() if pd.notna(value) else ""
+    s = re.sub(r"^(?:div\.?\s+|division\s+)", "", s, flags=re.IGNORECASE).strip()
+    if not s:
+        return ""
+    return "" if s.lower() in {"nan", "none", "n/a", "na", "unknown", "unassigned"} else s
+
+
+def _batch_year_key(batch_label: str):
+    """Leading integer in a batch label, for numeric rather than text sorting."""
+    m = re.search(r"\d+", batch_label)
+    return int(m.group(0)) if m else None
+
+
+def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> list:
+    """Return the 5 Class Metrics Radar values in fixed axis order:
+    [Avg Repos, Pull Requests, Collaboration Rate, Quality Score,
+    Active Contributor Rate].
+
+    Every radar series (Overall Average, the current filtered view, and each
+    selectable cohort) is measured with these exact same formulas so shapes are
+    directly comparable. Avg Repos only averages students who actually own or
+    contribute repos; the three percentage metrics use every student in the
+    cohort as their denominator.
+    """
+    students = students if students is not None else pd.DataFrame()
+
+    def _pos(frame, column) -> "pd.Series":
+        if frame is None or frame.empty or column not in frame.columns:
+            return pd.Series(False)
+        try:
+            return pd.to_numeric(frame[column], errors="coerce").fillna(0) > 0
+        except Exception:
+            return pd.Series(False, index=frame.index)
+
+    total = len(students)
+
+    avg_repos = 0.0
+    if not students.empty:
+        repos_col = "Combined_Repos" if "Combined_Repos" in students.columns else "Repository_Count"
+        haves = students[_pos(students, repos_col)]
+        if not haves.empty:
+            avg_repos = float(pd.to_numeric(haves[repos_col], errors="coerce").fillna(0).mean())
+
+    total_prs = 0.0
+    if not students.empty and "Pull_Requests" in students.columns:
+        total_prs = float(pd.to_numeric(students["Pull_Requests"], errors="coerce").fillna(0).sum())
+
+    collaborators = int(_pos(students, "Contributed_Repos_Count").sum())
+    active_contributors = int((_pos(students, "Owned_Commits_90d") | _pos(students, "Team_Commits_90d")).sum())
+
+    quality = 0.0
+    if score_repos is not None and not score_repos.empty and "Repository_Quality_Score" in score_repos.columns:
+        quality = float(score_repos["Repository_Quality_Score"].mean())
+
+    pct = lambda n: (100.0 * n / total) if total else 0.0
+    return [
+        round(avg_repos, 2),
+        round(total_prs, 2),
+        round(pct(collaborators), 2),
+        round(quality, 2),
+        round(pct(active_contributors), 2),
+    ]
+
+
 def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
+    # Unfiltered copy: the "Overall Average" benchmark and every selectable
+    # cohort in the Class Metrics Radar are measured against the whole roster.
+    _all_students = students.copy() if students is not None else students
     # Same filters as the Students page: text search + Division/Batch/Semester.
     try:
         students = filter_text(
@@ -622,7 +711,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # contributed, scored identically) as the Repositories page, restricted to
     # the filtered cohort, so the radar card and the repositories list always
     # agree.
-    _score_repos = _merged_repos_frame(view)
+    # Unfiltered merged repo frame: the Overall Average radar benchmark and the
+    # per-cohort series sample from this, while the filtered _score_repos below
+    # still drives the "Average Quality Score" card + Repositories page.
+    _all_score_repos = _merged_repos_frame(view)
+    _score_repos = _all_score_repos
     try:
         if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
             _score_repos = _score_repos[_score_repos["Username"].astype(str).isin(_cohort)].copy()
@@ -754,48 +847,108 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
-    # Radar: key class metrics (normalised per-axis for balanced shape)
+    # ── Class Metrics Radar: multi-cohort comparison ────────────────────────
+    # Card strings keep their existing formulas (no visual change to the two
+    # side cards); the radar itself becomes a comparison canvas: Overall
+    # Average (whole-roster benchmark) default-on, plus selectable cohorts.
     _repos_col = "Combined_Repos" if not students.empty and "Combined_Repos" in students.columns else "Repository_Count"
-    # Average repos per student that actually owns/contributes repos — a
-    # roster full of not-yet-synced students otherwise drags the mean toward 0.
     _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
-    _total_prs = float(prs)
-    _total_students = len(students) if students is not None else 0
 
-    def _pos_mask(frame, col) -> "pd.Series":
-        """Boolean per-student mask for "column value > 0" (absent/NaN-safe)."""
-        if col not in frame.columns:
-            return pd.Series(False, index=frame.index)
-        return pd.to_numeric(frame[col], errors="coerce").fillna(0) > 0
+    # Cohort picker options: distinct (Batch × Division) combos in the roster.
+    # Labels are user-friendly ("Batch 2026" groups + "Division A" items) and the
+    # groups sort by batch YEAR numerically, so mixed/messy roster values still
+    # read in a sensible top-to-bottom order.
+    _cohort_rows = []
+    if _all_students is not None and not _all_students.empty and {"Batch", "Division"}.issubset(_all_students.columns):
+        try:
+            _grouped = _all_students.groupby(["Batch", "Division"], dropna=False).size().reset_index(name="_n")
+        except Exception:
+            _grouped = pd.DataFrame()
+        for _, _row in _grouped.iterrows():
+            _batch_raw = str(_row["Batch"]) if pd.notna(_row["Batch"]) else "nan"
+            _div_raw = str(_row["Division"]) if pd.notna(_row["Division"]) else "nan"
+            _batch = _clean_batch_text(_row["Batch"])
+            _div = _clean_division_text(_row["Division"])
+            _group = f"Batch {_batch}" if _batch else "No batch"
+            _name = f"Division {_div}" if _div else "Division not listed"
+            try:
+                _slice = _all_students[(_all_students["Batch"].astype(str) == _batch_raw) & (_all_students["Division"].astype(str) == _div_raw)]
+                _users = _cohort_usernames(_slice)
+            except Exception:
+                _slice = pd.DataFrame()
+                _users = set()
+            _cohort_rows.append({
+                "key": f"{_batch_raw or '?'}|{_div_raw or '?'}",
+                "group": _group,
+                "name": _name,
+                "label": f"{_group} · {_name}",
+                "batch": _batch,
+                "div": _div,
+                "students": _slice,
+                "users": _users,
+            })
+    _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, c["name"].lower()))
 
-    # Active Contributor Rate: % of students with ≥1 owned OR team commit in
-    # the last 90 days — reuses the leaderboards' 90-day commit window.
-    # Collaboration Rate: % of students who pushed to a teammate's repo.
-    if not students.empty:
-        _active_contributors_90d = int(
-            (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d")).sum()
-        )
-        _collaborators = int(_pos_mask(students, "Contributed_Repos_Count").sum())
-    else:
-        _active_contributors_90d = 0
-        _collaborators = 0
-    _share = lambda n: (100.0 * n / _total_students) if _total_students else 0.0
+    _radar_series = []
+    _radar_active = []
+    _has_current = False
+    _current_label = ""
+    _filtered = division != "All" or batch != "All" or semester != "All"
+    if students is not None and not students.empty:
+        # 1. "Your class": the student set the page filters are showing.
+        _current_label = "Your class"
+        if _filtered:
+            _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
+            _current_label += " · " + " · ".join(_bits)
+        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
+        _radar_active.append("current")
+        _has_current = True
+    # 2. "All students": the whole-roster baseline. Only auto-shown when it adds
+    #    information (a filtered view exists); otherwise it would draw an
+    #    identical shape on top of "Your class".
+    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_all_students, _all_score_repos)})
+    if (not _has_current) or _filtered:
+        _radar_active.append("overall")
+    # 3. Every selectable cohort, measured with the same formulas.
+    for _c in _cohort_rows:
+        try:
+            _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c["users"])].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+            _radar_series.append({"key": _c["key"], "kind": "cohort", "group": _c["group"], "name": _c["name"], "label": _c["label"], "values": _radar_metric_values(_c["students"], _c_score)})
+        except Exception:
+            continue
 
-    def _radar_max(val, floor=10):
-        """Scale axis max to 1.5× the value (or a floor) so the polygon is readable."""
-        return max(round(val * 1.5, 1), floor)
+    # Dropdown groups for the picker (one <optgroup> per batch).
+    _cohort_groups = []
+    _last_group = None
+    for _c in _cohort_rows:
+        if _c["group"] != _last_group:
+            _cohort_groups.append({"label": _c["group"], "options": []})
+            _last_group = _c["group"]
+        _cohort_groups[-1]["options"].append({"key": _c["key"], "name": _c["name"]})
+
+    # Axis normalization: percentage axes are exact 0–100; count axes scale to
+    # 1.5× the largest value seen across all series (with a readable floor).
+    def _series_max(axis_idx: int, floor: float) -> float:
+        _vals = [float(s["values"][axis_idx]) for s in _radar_series if len(s["values"]) > axis_idx]
+        _max = max([0.0] + _vals) * 1.5
+        return round(max(_max, floor), 1)
 
     radar_data = {
         "metrics": [
-            {"name": "Avg Repos",               "value": round(_avg_repos, 1),         "max": _radar_max(_avg_repos, 5)},
-            {"name": "Active Contributor Rate", "value": round(_share(_active_contributors_90d), 1), "max": 100, "unit": "%"},
-            {"name": "Quality Score",           "value": round(_avg_quality, 1),       "max": 100},
-            {"name": "Collaboration Rate",      "value": round(_share(_collaborators), 1),          "max": 100, "unit": "%"},
-            {"name": "Pull Requests",           "value": round(_total_prs, 0),         "max": _radar_max(_total_prs, 10)},
-        ]
+            {"name": RADAR_METRIC_NAMES[0], "max": _series_max(0, 5), "unit": ""},
+            {"name": RADAR_METRIC_NAMES[1], "max": _series_max(1, 10), "unit": ""},
+            {"name": RADAR_METRIC_NAMES[2], "max": 100, "unit": "%"},
+            {"name": RADAR_METRIC_NAMES[3], "max": 100, "unit": ""},
+            {"name": RADAR_METRIC_NAMES[4], "max": 100, "unit": "%"},
+        ],
+        "series": _radar_series,
+        "active": _radar_active,
+        "cohort_groups": _cohort_groups,
+        "has_current": _has_current,
+        "current_label": _current_label,
     }
 
     return {
@@ -1553,11 +1706,12 @@ def _merge_student_fields(repos: pd.DataFrame, students) -> pd.DataFrame:
     frame = repos
     if frame.empty or students is None or students.empty:
         return frame
-    keys = ("GitHub_Username", "Avatar_URL", "Student Name", "Division", "Batch", "Semester")
+    wanted = [k for k in ("GitHub_Username", "Avatar_URL", "Student Name", "Division", "Batch", "Semester", "Student_ID") if k in students.columns]
+    # Need at least the join key + one identity field; otherwise nothing to attach.
+    if len(wanted) < 2 or "GitHub_Username" not in wanted:
+        return frame
     try:
-        if not all(k in students.columns for k in keys):
-            return frame
-        st = students[list(keys)].copy()
+        st = students[wanted].copy()
     except (KeyError, TypeError, ValueError, AttributeError):
         return frame
     try:
@@ -1665,9 +1819,52 @@ def _repo_card(row) -> dict:
         "avatar_url": _repo_clean(row.get("Avatar_URL")),
         "div": tokens[0],
         "batch": tokens[1],
+        "semester": _repo_clean(row.get("Semester")),
         "dept_table": _dept_label(tokens, " / "),
         "dept_card": _dept_label(tokens, " "),
     }
+
+
+def _repo_days_since_update(value) -> int | None:
+    """Days between 'now' and the repo's last-update stamp; None when the
+    date is missing or unparseable."""
+    text = _repo_clean(str(value))
+    if not text:
+        return None
+    try:
+        ts = pd.to_datetime(text, utc=True, errors="coerce")
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(ts):
+        return None
+    try:
+        return int((pd.Timestamp.now(tz="UTC") - ts).days)
+    except TypeError:
+        return None
+
+
+def _repo_recency_bucket(value) -> str:
+    """Professor-facing maintenance window for the Repositories quick chips:
+    'active' → pushed within the last 30 days; 'quiet' → 31–180 days; 'stale'
+    → untouched for over 180 days (or with no usable date)."""
+    days = _repo_days_since_update(value)
+    if days is None:
+        return "stale"
+    if days <= 30:
+        return "active"
+    if days <= 180:
+        return "quiet"
+    return "stale"
+
+
+#: Recency quick-chip options: (key, label). Labels stay student/professor
+#: friendly; the windows map to the buckets computed in _repo_recency_bucket.
+REPO_RECENCY_OPTIONS = (
+    ("all", "All"),
+    ("active", "Active"),
+    ("quiet", "Not updated 30d"),
+    ("stale", "Archived"),
+)
 
 
 REPO_SORTS = [
@@ -1775,16 +1972,32 @@ def _merged_repos_frame(view) -> pd.DataFrame:
     return repos
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top", recency="all") -> dict:
     repos = _merged_repos_frame(view)
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))
-    filtered = filter_text(repos, query, ["Username", "Repository", "Language"])
+    # Text search spans GitHub handles, repo/language names AND the student
+    # identity columns the merge attached — so professors can look a student
+    # up by real name or PRN without opening their profile.
+    filtered = filter_text(repos, query, ["Username", "Repository", "Language", "Student Name", "Student_ID"])
     filtered = apply_value_filter(filtered, "Language", language)
     filtered = apply_value_filter(filtered, "Division", division)
     filtered = apply_value_filter(filtered, "Batch", batch)
     filtered = apply_value_filter(filtered, "Semester", semester)
+    # Recency chips (E): counts reflect the current scope — every other filter
+    # applied, but not this one — so each pill shows how many repos would fall
+    # in that window right now.
+    recency_key = recency if recency in {key for key, _ in REPO_RECENCY_OPTIONS[1:]} else "all"
+    recency_counts = {"all": len(filtered)}
+    if not filtered.empty and "Updated" in filtered.columns:
+        buckets = filtered["Updated"].map(_repo_recency_bucket)
+    else:
+        buckets = pd.Series("stale", index=filtered.index)
+    for key, _ in REPO_RECENCY_OPTIONS[1:]:
+        recency_counts[key] = int((buckets == key).sum())
+    if recency_key != "all":
+        filtered = filtered[buckets == recency_key]
     if not filtered.empty:
         filtered = filtered.copy()
         filtered["Repository URL"] = filtered["Repository_URL"]
@@ -1813,11 +2026,59 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "rows": repo_rows,
         "sort": sort if sort in {s for s, _ in REPO_SORTS} else "top",
         "sorts": REPO_SORTS,
+        "recency": recency_key,
+        "recency_options": [(key, label, recency_counts.get(key, 0)) for key, label in REPO_RECENCY_OPTIONS],
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
+        "export_query": repositories_export_query(
+            view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
+        ),
     }
+
+
+def repositories_export_query(roster_id="", q="", division="All", batch="All", semester="All", sort="top", recency="all") -> str:
+    """Filter-preserving query string for /repositories/export, mirroring the
+    students page's export links (CSV/Excel toggled via format)."""
+    pairs = []
+    if roster_id:
+        pairs.append(("roster", roster_id))
+    pairs.append(("format", "csv"))
+    for key, value in (("q", q), ("division", division), ("batch", batch), ("semester", semester), ("sort", sort), ("recency", recency)):
+        if value not in (None, "", "All", "all"):
+            pairs.append((key, str(value)))
+    from urllib.parse import urlencode
+
+    return urlencode(pairs)
+
+
+def repository_export_df(payload: dict) -> pd.DataFrame:
+    """The visible (filtered + sorted) repository list as a spreadsheet frame,
+    with professor-friendly headers. Same rows/order the page shows."""
+    columns = [
+        "repository", "owner_name", "owner_username", "div", "batch", "semester",
+        "lang", "stars", "forks", "score", "status", "updated", "url", "description",
+    ]
+    headers = {
+        "repository": "Repository",
+        "owner_name": "Owner Name",
+        "owner_username": "Owner Username",
+        "div": "Division",
+        "batch": "Batch",
+        "semester": "Semester",
+        "lang": "Language",
+        "stars": "Stars",
+        "forks": "Forks",
+        "score": "Score",
+        "status": "Status",
+        "updated": "Last Updated",
+        "url": "URL",
+        "description": "Description",
+    }
+    rows = payload.get("rows") or []
+    df = pd.DataFrame([{c: row.get(c) for c in columns} for row in rows], columns=columns).rename(columns=headers)
+    return df
 
 
 # ---------------------------------------------------------------------------
