@@ -14,6 +14,11 @@ on:
   schedule:
     - cron: '0 */6 * * *'   # every 6 hours
   workflow_dispatch:          # manual trigger from Actions tab
+    inputs:
+      start_at:
+        description: 'Resume from (number from the log, e.g. 362)'
+        required: false
+        default: '1'
 
 jobs:
   sync:
@@ -45,7 +50,13 @@ jobs:
           FAILED=0
           SKIPPED=0
 
-          for i in $(seq 0 $(( TOTAL - 1 ))); do
+          START_INPUT="${{ github.event.inputs.start_at }}"
+          START_AT=$((${START_INPUT:-1} - 1))
+          
+          if [ $START_AT -lt 0 ]; then START_AT=0; fi
+          if [ $START_AT -ge $TOTAL ]; then START_AT=$((TOTAL - 1)); fi
+
+          for i in $(seq $START_AT $(( TOTAL - 1 ))); do
             EMAIL=$(echo "$USERS" | jq -r ".[$i].email")
             NAME=$(echo "$USERS" | jq -r ".[$i].name // .[$i].email")
             ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$EMAIL', safe=''))")
