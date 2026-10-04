@@ -145,7 +145,15 @@
         </div>
       </div>
       <div id="profile-panel-hackerrank" role="tabpanel" aria-labelledby="profile-tab-hackerrank" hidden>
-        <p class="tab-empty">HackerRank details coming soon.</p>
+        {% if p.hackerrank_username %}
+        <div class="hr-profile" data-hr-username="{{ p.hackerrank_username }}" data-hr-state="idle">
+          <div class="panel-minor-title">HackerRank &middot; <a href="{{ p.hackerrank_url }}" target="_blank" rel="noopener">{{ p.hackerrank_username }}</a></div>
+          <p class="tab-empty" data-hr-status>Loading live details&hellip;</p>
+          <div data-hr-content hidden></div>
+        </div>
+        {% else %}
+        <p class="tab-empty">No HackerRank profile linked.</p>
+        {% endif %}
       </div>
       <div id="profile-panel-linkedin" role="tabpanel" aria-labelledby="profile-tab-linkedin" hidden>
         <p class="tab-empty">LinkedIn details coming soon.</p>
@@ -176,7 +184,13 @@
       });
     }
     tabs.forEach(function (tab, index) {
-      tab.addEventListener('click', function () { selectTab(tab); });
+      tab.addEventListener('click', function () {
+        selectTab(tab);
+        if (tab.getAttribute('aria-controls') === 'profile-panel-hackerrank') {
+          var panel = document.getElementById('profile-panel-hackerrank');
+          if (panel) loadHR(panel);
+        }
+      });
       tab.addEventListener('keydown', function (event) {
         var next = null;
         if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
@@ -184,6 +198,72 @@
         if (next) { next.focus(); selectTab(next); }
       });
     });
+    // Lazy HackerRank details: one GET /api/hackerrank/{user} per profile view,
+    // server-cached 1h. Link-only fallback on 404/502 (never fake zeros).
+    function escHR(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+      });
+    }
+    function renderHR(panel, data) {
+      var box = panel.querySelector('[data-hr-content]');
+      if (!box) return;
+      var badges = Array.isArray(data.badges) ? data.badges : [];
+      var contests = Array.isArray(data.contests) ? data.contests : [];
+      var heat = Array.isArray(data.heatmap) ? data.heatmap : [];
+      var html = '<div class="activity-stats">'
+        + '<div class="activity-stat"><div class="activity-number">' + escHR(data.practice_score) + '</div><div class="activity-label">Practice score</div></div>'
+        + '<div class="activity-stat"><div class="activity-number">' + escHR(data.total_solved) + '</div><div class="activity-label">Solved (est.)</div></div>'
+        + '<div class="activity-stat"><div class="activity-number">' + badges.length + '</div><div class="activity-label">Badges</div></div>'
+        + '</div>';
+      if (badges.length) {
+        html += '<div class="panel-minor-title">Badges</div><div class="lang-bars">'
+          + badges.slice(0, 12).map(function (b) {
+            return '<div class="lang-row"><span class="lang-name" title="' + escHR(b.track) + '">' + escHR(b.track) + '</span>'
+              + '<span class="lang-track"><span class="lang-fill" style="width:' + Math.min(100, (Number(b.stars) || 0) / 6 * 100) + '%"></span></span>'
+              + '<span class="lang-count">' + escHR(b.stars) + '★' + (b.solved ? ' · ' + escHR(b.solved) : '') + '</span></div>';
+          }).join('') + '</div>';
+      } else {
+        html += '<p class="tab-empty">No badges yet.</p>';
+      }
+      if (contests.length) {
+        html += '<div class="panel-minor-title">Contests (' + contests.length + ')</div><div class="repo-dropdown-body">'
+          + contests.slice(0, 8).map(function (c) { return '<div class="profile-repo"><span class="repo-name">' + escHR(c.name) + '</span></div>'; }).join('')
+          + '</div>';
+      }
+      if (heat.length) {
+        var active = heat.filter(function (d) { return Number(d.count) > 0; }).length;
+        html += '<p class="tab-empty">' + active + ' active days in history.</p>';
+      }
+      box.innerHTML = html;
+      box.hidden = false;
+    }
+    function loadHR(panel) {
+      var root = panel.querySelector('[data-hr-username]');
+      if (!root || root.getAttribute('data-hr-state') !== 'idle') return;
+      root.setAttribute('data-hr-state', 'loading');
+      var status = root.querySelector('[data-hr-status]');
+      var username = root.getAttribute('data-hr-username') || '';
+      fetch('/api/hackerrank/' + encodeURIComponent(username), {headers: {'Accept': 'application/json'}})
+        .then(function (resp) {
+          if (resp.status === 404) throw new Error('not_found');
+          if (!resp.ok) throw new Error('upstream');
+          return resp.json();
+        })
+        .then(function (data) {
+          root.setAttribute('data-hr-state', 'done');
+          if (status) status.hidden = true;
+          renderHR(panel, data);
+        })
+        .catch(function (err) {
+          root.setAttribute('data-hr-state', 'error');
+          if (status) {
+            status.textContent = err && err.message === 'not_found'
+              ? 'HackerRank user not found — check the linked username.'
+              : 'Live details unavailable right now — open the profile link instead.';
+          }
+        });
+    }
     // Contribution-period switcher (profile Activity stat): swaps the big
     // number between the pre-rendered 30D / 90D / All values.
     document.addEventListener('click', function (event) {

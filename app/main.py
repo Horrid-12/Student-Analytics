@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
 from app.env import load_dotenv_local
 
 # Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
@@ -1641,6 +1641,48 @@ async def api_notifications_stream(request: Request):
     )
 
 
+# ── HackerRank lazy profile API (vendored hackerrank_client) ────────────────
+_HACKERRANK_CACHE = hackerrank_client.TTLCache()
+
+
+@app.get("/api/hackerrank/{username}")
+async def api_hackerrank_profile(username: str, request: Request):
+    """Lazy HackerRank details for the profile modal HackerRank tab.
+
+    Uses the vendored unofficial-REST client (no auth, TTL 3600). Auth required
+    like the notifications API; unknown handle -> 404, upstream failure -> 502
+    so the tab can fall back to link-only instead of showing zeros.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    handle = (username or "").strip().lstrip("@").strip("/").split("/")[0]
+    if not handle or len(handle) > 64:
+        raise HTTPException(status_code=400, detail="Invalid HackerRank username")
+    api = hackerrank_client.HackerRankAPI(cache=_HACKERRANK_CACHE)
+    try:
+        profile, heatmap = await asyncio.gather(
+            hackerrank_client.get_full_profile(handle, api),
+            hackerrank_client.get_heatmap(handle, api),
+        )
+    except hackerrank_client.UserNotFound:
+        raise HTTPException(status_code=404, detail="HackerRank user not found")
+    except hackerrank_client.UpstreamError as exc:
+        raise HTTPException(status_code=502, detail="HackerRank upstream error")
+    except Exception:
+        logger.exception("HackerRank fetch failed for %s", handle)
+        raise HTTPException(status_code=502, detail="HackerRank upstream error")
+    finally:
+        try:
+            await api.close()
+        except Exception:
+            pass
+    data = profile.to_dict()
+    data["heatmap"] = [d.to_dict() for d in (heatmap or [])]
+    data["profile_url"] = services.hackerrank_profile_url(data.get("username") or handle)
+    return JSONResponse(content=data)
+
+
 @app.get("/students", response_class=HTMLResponse)
 def students_page(
     request: Request,
@@ -2626,4 +2668,3 @@ async def custom_404_handler(request: Request, exc: Exception):
         detail = getattr(exc, "detail", "Not Found")
         return JSONResponse(status_code=404, content={"detail": detail})
     return _not_found_response(request)
-
