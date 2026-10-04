@@ -660,7 +660,10 @@ window.__EC_THEME = (function () {
         indicator: indicators,
         shape: 'polygon',
         radius: '78%',
-        center: ['50%', '52%'],
+        /* Slight left bias so the polygon hugs the left of its container and
+           the comparison cards beside it get the remaining room. The radius is
+           unchanged, and the indicator labels stay inside the panel padding. */
+        center: ['44%', '52%'],
         axisName: {
           color: p.textSoft,
           fontSize: 12,
