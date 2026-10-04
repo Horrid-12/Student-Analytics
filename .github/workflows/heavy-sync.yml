@@ -56,7 +56,13 @@ jobs:
           if [ $START_AT -lt 0 ]; then START_AT=0; fi
           if [ $START_AT -ge $TOTAL ]; then START_AT=$((TOTAL - 1)); fi
 
-          for i in $(seq $START_AT $(( TOTAL - 1 ))); do
+          i=$START_AT
+          RATE_WAITS=0
+          MAX_RATE_WAITS=2
+          MAX_TOTAL_WAIT=5400   # 90 min of sleeping max, keeps us under the 150-min job timeout
+          TOTAL_WAITED=0
+
+          while [ $i -lt $TOTAL ]; do
             EMAIL=$(echo "$USERS" | jq -r ".[$i].email")
             NAME=$(echo "$USERS" | jq -r ".[$i].name // .[$i].email")
             ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$EMAIL', safe=''))")
@@ -72,14 +78,39 @@ jobs:
               DETAIL=$(jq -r '.detail // "ok"' /tmp/sync_response.json 2>/dev/null || echo "ok")
               echo "  ✓ $DETAIL"
               SUCCESS=$((SUCCESS + 1))
+              i=$((i + 1))
             elif [ "$HTTP_CODE" = "429" ]; then
-              echo "  ⚠ Rate limited — stopping early"
-              SKIPPED=$((TOTAL - i))
-              break
+              if [ "$RATE_WAITS" -ge "$MAX_RATE_WAITS" ]; then
+                echo "  ⚠ Rate limited again after waiting — stopping early"
+                SKIPPED=$((TOTAL - i))
+                break
+              fi
+              RATE_WAITS=$((RATE_WAITS + 1))
+              # Sleep until GitHub's reset epoch (from the response) + 15s buffer.
+              # Fall back to a full hour when the epoch is missing.
+              RESET_AT=$(grep -o 'reset_at=[0-9]*' /tmp/sync_response.json | head -1 | cut -d= -f2 || echo "")
+              NOW=$(date +%s)
+              if [ -n "$RESET_AT" ] && [ "$RESET_AT" -gt "$NOW" ]; then
+                WAIT=$((RESET_AT - NOW + 15))
+              else
+                WAIT=3600
+              fi
+              if [ "$WAIT" -gt $((MAX_TOTAL_WAIT - TOTAL_WAITED)) ]; then
+                WAIT=$((MAX_TOTAL_WAIT - TOTAL_WAITED))
+              fi
+              if [ "$WAIT" -le 0 ]; then
+                echo "  ⚠ Rate limited and wait budget exhausted — stopping early"
+                SKIPPED=$((TOTAL - i))
+                break
+              fi
+              TOTAL_WAITED=$((TOTAL_WAITED + WAIT))
+              echo "  ⚠ Rate limited — waiting ${WAIT}s for reset, then retrying (wait $RATE_WAITS/$MAX_RATE_WAITS)"
+              sleep "$WAIT"
             else
               DETAIL=$(jq -r '.detail // "unknown error"' /tmp/sync_response.json 2>/dev/null || echo "unknown error")
               echo "  ✗ HTTP $HTTP_CODE: $DETAIL"
               FAILED=$((FAILED + 1))
+              i=$((i + 1))
             fi
 
             # 1s pause between students to be gentle on rate limits

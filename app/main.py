@@ -1476,12 +1476,14 @@ async def sync_single_student(email: str, request: Request):
         tokens = [None]
         
     ok, code, detail = False, "api_error", "No tokens found"
-    
+
     for token in tokens:
         ok, code, detail = await asyncio.to_thread(sync.sync_heavy_one, target_user, token)
-        if code != "rate_limited":
-            break  # Success or a non-rate-limit error, we can stop trying tokens.
-    
+        if ok or code in ("no_handle", "not_found", "storage"):
+            break  # Success, or a failure no other token can fix.
+        # Otherwise (rate_limited / api_error / dead token) try the next token
+        # so one bad token can never block the rotation.
+
     if ok:
         return JSONResponse(content={"status": "ok", "detail": detail})
     elif code == "rate_limited":
