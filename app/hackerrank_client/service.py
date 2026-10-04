@@ -10,7 +10,7 @@ import asyncio
 from typing import Any
 
 from .client import HackerRankAPI, UserNotFound
-from .schemas import Badge, ContestEntry, HackerRankProfile, HeatmapDay
+from .schemas import Badge, ContestEntry, HackerRankProfile, HeatmapDay, RecentSolve
 
 
 def _num(value: Any, default: float = 0.0) -> float:
@@ -33,11 +33,18 @@ def decode_badges(models: Any) -> list[Badge]:
         ).strip()
         if not track:
             continue
+        try:
+            progress = float(m.get("progress_to_next_star") or 0.0)
+        except (TypeError, ValueError):
+            progress = 0.0
+        progress = min(max(progress, 0.0), 1.0)
         badges.append(
             Badge(
                 track=track,
                 stars=int(_num(m.get("stars"), 0)),
                 solved=int(_num(m.get("solved"), 0)),
+                progress=progress,
+                total_challenges=int(_num(m.get("total_challenges"), 0)),
             )
         )
     return badges
@@ -101,6 +108,30 @@ def decode_heatmap(submissions: Any) -> list[HeatmapDay]:
     return days
 
 
+def decode_recent(models: Any) -> list[RecentSolve]:
+    """Newest-first recent solves. Skips bad entries, never raises."""
+    if not isinstance(models, list):
+        return []
+    out: list[RecentSolve] = []
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        name = str(m.get("name") or "").strip()
+        if not name:
+            continue
+        created = str(m.get("created_at") or "")
+        out.append(
+            RecentSolve(
+                name=name,
+                slug=str(m.get("ch_slug") or ""),
+                date=created[:10],
+                url=str(m.get("url") or ""),
+            )
+        )
+    out.sort(key=lambda r: (r.date, r.name), reverse=True)
+    return out
+
+
 def decode_profile_model(model: Any, fallback_username: str) -> tuple[str, str]:
     """Return (username, display name), falling back safely."""
     if not isinstance(model, dict):
@@ -141,14 +172,14 @@ async def get_full_profile(
                 api.fetch_submissions(handle),
             )
         )
-        # Recent challenges are fetched lazily for future use; failures must
+        # Recent challenges feed the "recently solved" list; failures must
         # never break the profile (tolerated inside the client already).
         try:
-            await api.fetch_recent(handle, limit=100)
+            recent_models = await api.fetch_recent(handle, limit=100)
         except UserNotFound:
             raise
         except Exception:
-            pass
+            recent_models = []
 
         real_username, display_name = decode_profile_model(profile_model, handle)
         badges = decode_badges(badge_models)
@@ -160,6 +191,7 @@ async def get_full_profile(
             practice_score=practice_score,
             total_solved=decode_total_solved(badges),
             contests=decode_contests(contests_payload),
+            recent=decode_recent(recent_models),
         )
     finally:
         if close_after:

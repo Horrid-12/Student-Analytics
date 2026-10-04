@@ -1136,6 +1136,9 @@ button {
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
+.profile-repo[hidden] {
+  display: none;
+}
 .repo-meta-row {
   display: flex;
   align-items: baseline;
@@ -1358,13 +1361,13 @@ button {
   border-color: var(--blue-active-border);
 }
 .activity-stat-period .activity-tabs {
-  position: absolute;
-  top: 5px;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: stretch;
+  position: static;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
 }
 .activity-stat-period .activity-tab {
   padding: 3px 6px;
@@ -1675,8 +1678,8 @@ button {
   border: none;
   border-bottom: 2px solid var(--border);
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 800;
   font-family: inherit;
   cursor: pointer;
 }
@@ -1751,15 +1754,16 @@ button {
 }
 .activity-stat-period {
   position: relative;
-  padding-right: 58px;
   min-height: 56px;
 }
 .activity-stat-period .activity-tabs {
-  position: absolute;
-  top: 5px;
-  right: 0;
-  flex-direction: column;
-  align-items: stretch;
+  position: static;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
 }
 .activity-stat:last-child {
   border-bottom: none;
@@ -1858,6 +1862,144 @@ button {
 .profile-icon-hackerrank:hover {
   border-color: #2ec866;
   color: #2ec866;
+}
+
+/* HackerRank hex badges (profile HackerRank tab): tier colors + gradients
+   mirror hackerrank.com — bronze 1-2 stars, silver 3-4, gold 5-6.
+   Max 3 per row; extras wrap. Border via an outer frame sharing the
+   same clip-path (clip-path clips real borders, so the frame fakes it). */
+.hr-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 6px 0 4px;
+}
+.hr-badge {
+  flex: 0 1 calc(33.333% - 8px);
+  min-width: 0;
+  text-align: center;
+}
+.hr-badge-frame {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  padding: 3px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+.hr-badge-hex {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  min-height: 178px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 14px 12px;
+  color: #2d3e50;
+}
+.hr-t0 .hr-badge-frame {
+  background: #9aa5ab;
+}
+.hr-t0 .hr-badge-hex {
+  background: linear-gradient(180deg, #e8edf0, #c3ccd1);
+}
+.hr-t12 .hr-badge-frame {
+  background: #a85f38;
+}
+.hr-t12 .hr-badge-hex {
+  background: linear-gradient(180deg, #f9bc9a, #e78e63);
+}
+.hr-t34 .hr-badge-frame {
+  background: #7d8f99;
+}
+.hr-t34 .hr-badge-hex {
+  background: linear-gradient(180deg, #e9eff2, #b9c6cd);
+}
+.hr-t56 .hr-badge-frame {
+  background: #b8860b;
+}
+.hr-t56 .hr-badge-hex {
+  background: linear-gradient(180deg, #ffdd55, #f0b400);
+}
+.hr-badge-logo svg {
+  width: 30px;
+  height: 30px;
+}
+.hr-badge-logo,
+.hr-badge-logo-num {
+  font-weight: 800;
+  line-height: 1;
+  color: #2d3e50;
+}
+.hr-badge-logo {
+  font-size: 25px;
+}
+.hr-badge-logo-num {
+  font-size: 30px;
+}
+.hr-badge-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.hr-badge-stars {
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+.hr-badge-stat {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2d3d;
+  line-height: 1.35;
+}
+/* HackerRank tab section headings match the profile username text. */
+.hr-section-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 14px 0 8px 12px;
+}
+/* Last-active line: bold text inside a little box. */
+.hr-active-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+  padding: 8px 14px;
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+/* Solved-question rows: name left, date right. */
+.hr-solve-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.hr-solve-date {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* Batch reveal button at the end of long dropdown lists. */
+.hr-more-btn {
+  display: block;
+  width: 100%;
+  margin: 8px 0 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.hr-more-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list

@@ -2,7 +2,7 @@
 
 from .cache import CACHE_TTL_SECONDS, TTLCache
 from .client import HackerRankAPI, HackerRankError, UpstreamError, UserNotFound
-from .schemas import Badge, ContestEntry, HackerRankProfile, HeatmapDay
+from .schemas import Badge, ContestEntry, HackerRankProfile, HeatmapDay, RecentSolve
 from .service import get_badges, get_contests, get_full_profile, get_heatmap
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "ContestEntry",
     "HackerRankProfile",
     "HeatmapDay",
+    "RecentSolve",
     "get_badges",
     "get_contests",
     "get_full_profile",
