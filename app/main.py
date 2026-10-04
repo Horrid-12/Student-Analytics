@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views, weekly
+from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views, view_cache, weekly
 from app.env import load_dotenv_local
 
 # Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
@@ -93,6 +93,34 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["pluralize"] = lambda n: "" if int(n or 0) == 1 else "s"
 
 
+@app.middleware("http")
+async def static_cache_control(request: Request, call_next):
+    """Cache static assets for a day (this Starlette's StaticFiles has no
+    ``headers=`` argument). Every asset URL carries a ``?v=`` buster, so the
+    CSS and the body texture stop re-downloading on repeat visits
+    (Lag Fix phase 2; mirrored by the /static rule in vercel.json)."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") and "cache-control" not in response.headers:
+        response.headers["cache-control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    return response
+
+
+def _avatar_filter(url, size: int = 64):
+    """Avatar src with GitHub's resize param (the table renders at ~28 CSS px).
+
+    Only GitHub CDN avatars honour ``?s=``; anything else passes through
+    untouched so LinkedIn/custom hosts keep working. Sizing turns a ~15 KB
+    default download into ~2 KB for the 460-1400 avatar-heavy rows."""
+    raw = (url or "").strip()
+    if not raw or "avatars.githubusercontent.com" not in raw:
+        return raw
+    sep = "&" if "?" in raw else "?"
+    return f"{raw}{sep}s={size}"
+
+
+templates.env.filters["avatar"] = _avatar_filter
+
+
 def _ticket_when(value: str) -> dict:
     """Split a ticket timestamp into ``{"date", "time"}`` for stacked
     display (``24 Sep 2026`` over ``11:55``). Timezone-aware values are
@@ -115,7 +143,19 @@ templates.env.filters["ticket_when"] = _ticket_when
 
 def _analysis_view(roster_id: str):
     """Page-render helper: read from Postgres first (if configured), fall back
-    to the in-memory RosterStore cache. Returns the same dict shape either way."""
+    to the in-memory RosterStore cache. Returns the same dict shape either way.
+
+    Memoised (Lag Fix): the Postgres leg issues six queries and rebuilds every
+    DataFrame on each call — seconds of round trips per navigation. The memo
+    stores the fetched rows for ``view_cache.TTL`` and is dropped by the sync
+    and onboarding writers. SQLite mode skips the memo so tests and local
+    fallback keep byte-identical per-request behaviour."""
+    if not database.db_configured():
+        return _analysis_view_uncached(roster_id)
+    return view_cache.get(f"analysis:{roster_id}", lambda: _analysis_view_uncached(roster_id))
+
+
+def _analysis_view_uncached(roster_id: str):
     if database.db_configured():
         view = db.get_analysis_view_data(roster_id)
         if view is not None:
@@ -133,8 +173,12 @@ def _account_view(request: Request, roster: str = ""):
     user = getattr(request.state, "user", None)
     if not user or user.get("role") != "student":
         return None
+    email = user.get("email", "")
     try:
-        return views.account_view(user.get("email", ""))
+        if not database.db_configured():
+            return views.account_view(email)
+        # Memoised like the fleet view — one snapshot query per render otherwise.
+        return view_cache.get(f"account:{email.strip().lower()}", lambda: views.account_view(email))
     except Exception:
         logger.exception("Unable to load account view for %s", (user or {}).get("email"))
         return None
@@ -144,11 +188,17 @@ def _fleet_view(request: Request, roster: str = ""):
     """Roster-less college-wide fallback (Phase 5.2): no roster attached, build
     the view from every approved account's synced snapshot so students AND
     faculty/admin see live data without uploading a workbook. Returns None when
-    the fleet has no synced accounts yet."""
+    the fleet has no synced accounts yet.
+
+    Memoised (Lag Fix): the fleet build is one bulk snapshot read plus the
+    approved-account read — seconds per navigation against the remote pooler,
+    ~15 ms to rebuild frames from the memoised rows."""
     if roster:
         return None
     try:
-        return views.fleet_view()
+        if not database.db_configured():
+            return views.fleet_view()
+        return view_cache.get("fleet", views.fleet_view)
     except Exception:
         logger.exception("Unable to load the account-fleet view")
         return None
@@ -167,6 +217,18 @@ def _bl_roster(roster_id: str) -> str:
     return (roster_id or "").strip() or FLEET_BLACKLIST_KEY
 
 
+def _memo(key: str, loader):
+    """Shared 30s memo for the small per-request lookups.
+
+    Every one of these is a separate Neon round trip (~250 ms each) and every
+    page needs all of them, so an unmemoised page pays 3-4 of them before it
+    can render (Lag Fix phase 1). Only active when Postgres is configured —
+    the SQLite/test path stays byte-exact and uncached."""
+    if not database.db_configured():
+        return loader()
+    return view_cache.get(key, loader)
+
+
 def _blacklist_state(roster_id: str) -> dict:
     """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache.
 
@@ -177,23 +239,25 @@ def _blacklist_state(roster_id: str) -> dict:
     """
     key = _bl_roster(roster_id)
     if database.db_configured():
-        try:
-            state = db.get_blacklist(key)
-        except Exception:
-            state = {}
-        if isinstance(state, dict) and state:
-            return state
-        try:
-            cached = roster_store.get_blacklist(key)
-        except Exception:
-            cached = {}
-        if isinstance(cached, dict) and cached:
+        def _load_blacklist() -> dict:
             try:
-                db.put_blacklist(key, cached)
+                state = db.get_blacklist(key)
             except Exception:
-                pass
-            return cached
-        return state if isinstance(state, dict) else {}
+                state = {}
+            if isinstance(state, dict) and state:
+                return state
+            try:
+                cached = roster_store.get_blacklist(key)
+            except Exception:
+                cached = {}
+            if isinstance(cached, dict) and cached:
+                try:
+                    db.put_blacklist(key, cached)
+                except Exception:
+                    pass
+                return cached
+            return state if isinstance(state, dict) else {}
+        return _memo(f"bl:{key}", _load_blacklist)
     return roster_store.get_blacklist(key)
 
 
@@ -201,23 +265,25 @@ def _hidden_repos_state(roster_id: str) -> dict:
     """Hidden repositories: prefer Postgres; fall back to RosterStore cache."""
     key = _bl_roster(roster_id)
     if database.db_configured():
-        try:
-            state = db.get_hidden_repos(key)
-        except Exception:
-            state = {}
-        if isinstance(state, dict) and state:
-            return state
-        try:
-            cached = roster_store.get_hidden_repos(key)
-        except Exception:
-            cached = {}
-        if isinstance(cached, dict) and cached:
+        def _load_hidden() -> dict:
             try:
-                db.put_hidden_repos(key, cached)
+                state = db.get_hidden_repos(key)
             except Exception:
-                pass
-            return cached
-        return state if isinstance(state, dict) else {}
+                state = {}
+            if isinstance(state, dict) and state:
+                return state
+            try:
+                cached = roster_store.get_hidden_repos(key)
+            except Exception:
+                cached = {}
+            if isinstance(cached, dict) and cached:
+                try:
+                    db.put_hidden_repos(key, cached)
+                except Exception:
+                    pass
+                return cached
+            return state if isinstance(state, dict) else {}
+        return _memo(f"hidden:{key}", _load_hidden)
     return roster_store.get_hidden_repos(key)
 
 
@@ -573,16 +639,23 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     # GitHub/LinkedIn fetch. One get_user lookup per page render; fail-safe
     # to the pill so auth never breaks rendering.
     sidebar_avatar_url = ""
+    user_row = None
     if user:
+        email = (user.get("email") or "").strip().lower()
         try:
-            row = auth.get_user(user.get("email", ""))
+            # Memoised: every page renders this row (sidebar + settings identity)
+            # and each fetch is a full Neon round trip (Lag Fix).
+            user_row = _memo(f"user:{email}", lambda: auth.get_user(email))
             if (role or "") == "student":
-                identity = auth.github_sidebar_identity(row)
+                identity = auth.github_sidebar_identity(user_row)
             else:
-                identity = auth.linked_identity(row)
+                identity = auth.linked_identity(user_row)
             sidebar_avatar_url = identity.get("avatar", "")
         except Exception:
             sidebar_avatar_url = ""
+    # Exposed for handlers that need the same row (e.g. /settings) instead of
+    # paying a second round trip.
+    request.state.user_row = user_row
     return {
         "topbar_date": topbar_date(),
         "nav": nav(active=page_name, role=role, roster_id=roster_id),
@@ -1059,17 +1132,20 @@ async def force_sync_all_users(request: Request):
     return JSONResponse(content={"status": "done", "results": results})
 
 
-def _bell_context(request: Request, view=None, roster: str = "") -> dict:
+def _bell_context(request: Request, view=None, roster: str = "", tickets: list[dict] | None = None) -> dict:
     """Topbar bell data for the shared partial. Staff get support-ticket
     alerts (needs no view, so the bell works even before any roster loads).
     Students get support-ticket notifications (follow-ups/resolutions) when
     present. Returns the notifications/notif_count/notif_empty template keys
-    — notif_empty None renders no bell at all."""
+    — notif_empty None renders no bell at all.
+
+    ``tickets`` lets a caller that already loaded them (``_support_context``)
+    pass the rows through instead of paying for a second identical query."""
     user = getattr(request.state, "user", None) or {}
     role = user.get("role")
     if role == "student":
         email = (user.get("email") or "").strip()
-        support_notifs = _list_notifications(email) if email else []
+        support_notifs = _memo(f"bell:notifs:{email}", lambda: _list_notifications(email)) if email else []
         unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
         if not support_notifs:
             return {"notifications": [], "notif_count": 0, "notif_empty": "No notifications - all clear."}
@@ -1096,7 +1172,12 @@ def _bell_context(request: Request, view=None, roster: str = "") -> dict:
         }
     if role in _STAFF_ROLES:
         try:
-            rows = _support_tickets(user.get("email", ""), role)
+            if tickets is not None:
+                rows = tickets
+            else:
+                # Staff all see the same rows, so one shared key lets any
+                # ticket write invalidate every staff bell at once.
+                rows = _memo(_STAFF_BELL_KEY, lambda: _support_tickets(user.get("email", ""), role))
         except Exception:
             rows = []
         try:
@@ -1423,7 +1504,9 @@ async def api_list_notifications(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     email = (user.get("email") or "").strip()
-    notifs = _list_notifications(email)
+    # Blocking psycopg reads run off the event loop — one slow query here
+    # used to stall every other request (Lag Fix).
+    notifs = await asyncio.to_thread(_list_notifications, email)
     formatted = []
     unread_count = 0
     for n in notifs:
@@ -1457,8 +1540,8 @@ async def api_mark_notification_read(request: Request, notification_id: int):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     email = (user.get("email") or "").strip()
-    ok = _mark_notification_as_read(notification_id, user_id=email)
-    unread = _count_unread_notifications(email)
+    ok = await asyncio.to_thread(_mark_notification_as_read, notification_id, email)
+    unread = await asyncio.to_thread(_count_unread_notifications, email)
     return JSONResponse(content={"ok": ok, "id": notification_id, "unread_count": unread, "unreadCount": unread})
 
 
@@ -1468,8 +1551,15 @@ async def api_mark_all_notifications_read(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     email = (user.get("email") or "").strip()
-    marked = _mark_all_notifications_as_read(email)
+    marked = await asyncio.to_thread(_mark_all_notifications_as_read, email)
     return JSONResponse(content={"ok": True, "marked": marked, "unread_count": 0, "unreadCount": 0})
+
+
+#: Open SSE notification streams per user email. A tab holds its stream for
+#: the whole session, so without a cap N tabs/per reloads N concurrent streams
+#: and each one polls the database every tick (Lag Fix phase 1).
+_SSE_STREAMS: dict[str, int] = {}
+_SSE_MAX_STREAMS_PER_USER = 3
 
 
 @app.get("/api/notifications/stream")
@@ -1478,37 +1568,57 @@ async def api_notifications_stream(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     email = (user.get("email") or "").strip()
+    open_streams = _SSE_STREAMS.get(email, 0)
+    if open_streams >= _SSE_MAX_STREAMS_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many open notification streams for this account",
+        )
+    _SSE_STREAMS[email] = open_streams + 1
 
     async def event_generator():
-        last_count = -1
-        yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
-        for _ in range(30):
-            if await request.is_disconnected():
-                break
-            unread = _count_unread_notifications(email)
-            if unread != last_count:
-                last_count = unread
-                notifs = _list_notifications(email, limit=10)
-                formatted = [
-                    {
-                        "id": n.get("id"),
-                        "userId": n.get("user_id"),
-                        "ticketId": n.get("ticket_id"),
-                        "type": n.get("type"),
-                        "title": n.get("title"),
-                        "message": n.get("message"),
-                        "isRead": bool(n.get("is_read")),
-                        "createdAt": n.get("created_at"),
-                        "time": views.friendly_timestamp(n.get("created_at") or ""),
-                        "fixUrl": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
-                    }
-                    for n in notifs
-                ]
-                payload = json.dumps({"unreadCount": unread, "notifications": formatted})
-                yield f"event: notification\ndata: {payload}\n\n"
+        try:
+            last_count = -1
+            yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
+            for _ in range(30):
+                if await request.is_disconnected():
+                    break
+                # Reads go through a worker thread: a psycopg call here used to
+                # block the whole event loop (all pages froze while a tab was open).
+                unread = await asyncio.to_thread(_count_unread_notifications, email)
+                if unread != last_count:
+                    last_count = unread
+                    notifs = await asyncio.to_thread(_list_notifications, email, 10)
+                    formatted = [
+                        {
+                            "id": n.get("id"),
+                            "userId": n.get("user_id"),
+                            "ticketId": n.get("ticket_id"),
+                            "type": n.get("type"),
+                            "title": n.get("title"),
+                            "message": n.get("message"),
+                            "isRead": bool(n.get("is_read")),
+                            "createdAt": n.get("created_at"),
+                            "time": views.friendly_timestamp(n.get("created_at") or ""),
+                            "fixUrl": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+                        }
+                        for n in notifs
+                    ]
+                    payload = json.dumps({"unreadCount": unread, "notifications": formatted})
+                    yield f"event: notification\ndata: {payload}\n\n"
+                else:
+                    yield ": ping\n\n"
+                # 10s tick (was 2s): keeps the stream under proxy idle timeouts via
+                # the ping above while cutting per-tab DB polling 5x (Lag Fix).
+                await asyncio.sleep(10)
+        finally:
+            # Runs on normal completion, client disconnect (GeneratorExit) and
+            # cancellation — the slot must always go back to the user.
+            left = _SSE_STREAMS.get(email, 1) - 1
+            if left > 0:
+                _SSE_STREAMS[email] = left
             else:
-                yield ": ping\n\n"
-            await asyncio.sleep(2)
+                _SSE_STREAMS.pop(email, None)
 
     return StreamingResponse(
         event_generator(),
@@ -1556,6 +1666,50 @@ def students_page(
             "semester": semester,
         },
     )
+
+
+@app.get("/students/rows", response_class=HTMLResponse)
+def students_rows(
+    request: Request,
+    roster: str = "",
+    q: str = "",
+    division: str = "All",
+    batch: str = "All",
+    year: str = "All",
+    semester: str = "All",
+    offset: int = 0,
+    limit: int = 30,
+):
+    """One batch of student rows for the infinite-scroll table.
+
+    `/students` renders the first page server-side; this serves the rest as a
+    bare `<tr>` partial. The table used to ship every row (hidden) and reveal
+    it client-side, so both the document and the response grew with the fleet
+    (Lag Fix phase 2). Same filters as the page, so the batch always matches
+    what the user is looking at."""
+    ctx = _base_context(request, "Students", roster)
+    view, response = _guard_page(request, ctx, "Students", roster)
+    if response is not None:
+        return HTMLResponse("")
+    payload = views.students_payload(view, q, division, batch, year, semester)
+    total = int(payload.get("total") or 0)
+    if not total:
+        return HTMLResponse("")
+    start = max(0, min(int(offset or 0), total))
+    count = max(1, min(int(limit or views.STUDENT_BATCH_SIZE), 100))
+    rows = payload["display"].iloc[start : start + count]
+    if rows.empty:
+        return HTMLResponse("")
+    html = templates.get_template("partials/student_rows.html").render(
+        rows=rows,
+        roster_id=roster,
+        q=q,
+        division=division,
+        batch=batch,
+        semester=semester,
+        page_size=payload["page_size"],
+    )
+    return HTMLResponse(html)
 
 
 @app.get("/me", response_class=HTMLResponse)
@@ -1635,6 +1789,52 @@ def repositories_page(
     )
 
 
+@app.get("/repositories/rows", response_class=HTMLResponse)
+def repositories_rows(
+    request: Request,
+    roster: str = "",
+    q: str = "",
+    language: str = "All",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+    sort: str = "top",
+    recency: str = "all",
+    offset: int = 0,
+    limit: int = 30,
+):
+    """One batch of repository cards + rows for the infinite-scroll list.
+
+    `/repositories` renders the first batch into both views; this serves the
+    rest as two `<template>` fragments (grid and table render the same rows,
+    so both are returned together and the view toggle stays in sync). The page
+    used to ship every repository twice - once per view, hidden - which is why
+    it was the heaviest page in the app (Lag Fix phase 2)."""
+    ctx = _base_context(request, "Repositories", roster)
+    view, response = _guard_page(request, ctx, "Repositories", roster)
+    if response is not None:
+        return HTMLResponse("")
+    if sort not in ("top", "recent", "name", "stars"):
+        sort = "top"
+    payload = views.repositories_payload(
+        view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort, recency
+    )
+    total = int(payload.get("total") or 0)
+    if not total:
+        return HTMLResponse("")
+    start = max(0, min(int(offset or 0), total))
+    count = max(1, min(int(limit or views.STUDENT_BATCH_SIZE), 100))
+    batch_rows = payload["rows"][start : start + count]
+    if not batch_rows:
+        return HTMLResponse("")
+    cards = templates.get_template("partials/repo_cards.html").render(rows=batch_rows)
+    rows_html = templates.get_template("partials/repo_rows.html").render(rows=batch_rows)
+    return HTMLResponse(
+        f'<template data-for="grid">{cards}</template>'
+        f'<template data-for="table">{rows_html}</template>'
+    )
+
+
 @app.get("/repositories/export")
 def repositories_export(
     request: Request,
@@ -1670,10 +1870,14 @@ def leaderboards_page(
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
+    # Fetched once: the payload and the template both need them, and each
+    # lookup is a network round trip (Lag Fix — was 2 calls x 2 consumers).
+    blacklist = _blacklist_state(roster)
+    hidden_repos = _hidden_repos_state(roster)
     payload = views.leaderboards_payload(
         view, division, batch, semester, active_window, commits_window,
-        blacklist=_blacklist_state(roster),
-        hidden_repos=_hidden_repos_state(roster),
+        blacklist=blacklist,
+        hidden_repos=hidden_repos,
     )
     # Same profile popup as the Students tab: opened from a leaderboard name,
     # closed back to this exact leaderboard view.
@@ -1689,7 +1893,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 
@@ -1715,7 +1919,9 @@ async def leaderboards_blacklist_save(request: Request, roster: str = ""):
         raise HTTPException(status_code=400, detail="Unknown leaderboard")
     if action not in ("blacklist", "whitelist"):
         raise HTTPException(status_code=400, detail="Action must be blacklist or whitelist")
-    state = _blacklist_state(roster)
+    # Copy: _blacklist_state may hand back the memoised dict, and this handler
+    # mutates it in place before the write lands.
+    state = dict(_blacklist_state(roster))
     boards = [b for b in (state.get(student_id) or []) if b in views.LEADERBOARD_BOARD_KEYS]
     if action == "blacklist" and board not in boards:
         boards.append(board)
@@ -1728,6 +1934,7 @@ async def leaderboards_blacklist_save(request: Request, roster: str = ""):
     roster_store.put_blacklist(roster, state)
     if database.db_configured():
         db.put_blacklist(roster, state)
+    view_cache.invalidate()
     return {"status": "ok", "blacklisted": boards}
 
 
@@ -1753,7 +1960,7 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
         raise HTTPException(status_code=400, detail="Missing repo")
     if action not in ("hide", "unhide"):
         raise HTTPException(status_code=400, detail="Action must be hide or unhide")
-    state = _hidden_repos_state(roster)
+    state = dict(_hidden_repos_state(roster))
     hidden = list(dict.fromkeys(str(key).strip() for key in (state.get(student_id) or []) if str(key).strip()))
     if action == "hide" and repo not in hidden:
         hidden.append(repo)
@@ -1766,6 +1973,7 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
     roster_store.put_hidden_repos(roster, state)
     if database.db_configured():
         db.put_hidden_repos(roster, state)
+    view_cache.invalidate()
     return {"status": "ok", "hidden": hidden}
 
 
@@ -1882,6 +2090,19 @@ def _support_tickets(email: str, role: str, status: str = "All", limit: int = 50
     return support.order_tickets(rows)
 
 
+def _drop_bell(*keys: str) -> None:
+    """Evict only the bell memos the caller changed.
+
+    Clearing the whole view cache here would throw away the fleet/analysis
+    builders too and cost a rebuild on the next page view."""
+    for key in keys:
+        view_cache.invalidate(key)
+
+
+#: Shared key for the staff bell (every staff member sees the same rows).
+_STAFF_BELL_KEY = "bell:tickets:staff"
+
+
 def _create_support_ticket(
     email: str, name: str, subject: str, category: str, message: str
 ) -> dict | None:
@@ -1890,21 +2111,30 @@ def _create_support_ticket(
     category = (category or "").strip() or "General"
     if not email or not subject or not message:
         return None
-    if database.db_configured():
-        return db.create_support_ticket(email, name, subject, category, message)
-    return support.create_ticket(email, name, subject, category, message)
+    try:
+        if database.db_configured():
+            return db.create_support_ticket(email, name, subject, category, message)
+        return support.create_ticket(email, name, subject, category, message)
+    finally:
+        _drop_bell(_STAFF_BELL_KEY, f"bell:notifs:{email}")
 
 
 def _update_support_ticket(ticket_id: int, status: str, admin_reply: str) -> bool:
-    if database.db_configured():
-        return db.update_support_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
-    return support.update_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+    try:
+        if database.db_configured():
+            return db.update_support_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+        return support.update_ticket(ticket_id, status=status, admin_reply=admin_reply or "")
+    finally:
+        _drop_bell(_STAFF_BELL_KEY)
 
 
 def _reply_support_ticket(ticket_id: int, student_reply: str) -> bool:
-    if database.db_configured():
-        return db.reply_support_ticket(ticket_id, student_reply=student_reply or "")
-    return support.reply_ticket(ticket_id, student_reply)
+    try:
+        if database.db_configured():
+            return db.reply_support_ticket(ticket_id, student_reply=student_reply or "")
+        return support.reply_ticket(ticket_id, student_reply)
+    finally:
+        _drop_bell(_STAFF_BELL_KEY)
 
 
 async def _read_upload(attachment: UploadFile | None) -> tuple[str, bytes]:
@@ -1928,9 +2158,12 @@ async def _read_upload(attachment: UploadFile | None) -> tuple[str, bytes]:
 def _save_attachment(ticket_id: int, filename: str, data: bytes, slot: str = "admin") -> bool:
     if not filename or not data:
         return False
-    if database.db_configured():
-        return db.set_support_attachment(ticket_id, filename, data, slot=slot)
-    return support.set_attachment(ticket_id, filename, data, slot=slot)
+    try:
+        if database.db_configured():
+            return db.set_support_attachment(ticket_id, filename, data, slot=slot)
+        return support.set_attachment(ticket_id, filename, data, slot=slot)
+    finally:
+        _drop_bell(_STAFF_BELL_KEY)
 
 
 def _get_support_ticket(ticket_id) -> dict | None:
@@ -1946,15 +2179,21 @@ def _get_support_attachment(ticket_id: int, slot: str = "admin") -> dict | None:
 
 
 def _clear_student_reply(ticket_id: int) -> bool:
-    if database.db_configured():
-        return db.clear_student_reply(ticket_id)
-    return support.clear_student_reply(ticket_id)
+    try:
+        if database.db_configured():
+            return db.clear_student_reply(ticket_id)
+        return support.clear_student_reply(ticket_id)
+    finally:
+        _drop_bell(_STAFF_BELL_KEY)
 
 
 def _submit_followup_question(ticket_id: int, question: str) -> bool:
-    if database.db_configured():
-        return db.submit_followup_question(ticket_id, question or "")
-    return support.submit_followup_question(ticket_id, question)
+    try:
+        if database.db_configured():
+            return db.submit_followup_question(ticket_id, question or "")
+        return support.submit_followup_question(ticket_id, question)
+    finally:
+        _drop_bell(_STAFF_BELL_KEY)
 
 
 def _ticket_is_resolved(ticket: dict | None) -> bool:
@@ -1962,9 +2201,12 @@ def _ticket_is_resolved(ticket: dict | None) -> bool:
 
 
 def _create_notification(user_id: str, ticket_id: int, type: str, title: str, message: str) -> dict | None:
-    if database.db_configured():
-        return db.create_notification(user_id, ticket_id, type, title, message)
-    return support.create_notification(user_id, ticket_id, type, title, message)
+    try:
+        if database.db_configured():
+            return db.create_notification(user_id, ticket_id, type, title, message)
+        return support.create_notification(user_id, ticket_id, type, title, message)
+    finally:
+        _drop_bell(f"bell:notifs:{user_id}")
 
 
 def _list_notifications(user_id: str, limit: int = 50) -> list[dict]:
@@ -1974,15 +2216,21 @@ def _list_notifications(user_id: str, limit: int = 50) -> list[dict]:
 
 
 def _mark_notification_as_read(notification_id: int, user_id: str = "") -> bool:
-    if database.db_configured():
-        return db.mark_notification_as_read(notification_id, user_id=user_id)
-    return support.mark_notification_as_read(notification_id, user_id=user_id)
+    try:
+        if database.db_configured():
+            return db.mark_notification_as_read(notification_id, user_id=user_id)
+        return support.mark_notification_as_read(notification_id, user_id=user_id)
+    finally:
+        _drop_bell(f"bell:notifs:{user_id}")
 
 
 def _mark_all_notifications_as_read(user_id: str) -> int:
-    if database.db_configured():
-        return db.mark_all_notifications_as_read(user_id)
-    return support.mark_all_notifications_as_read(user_id)
+    try:
+        if database.db_configured():
+            return db.mark_all_notifications_as_read(user_id)
+        return support.mark_all_notifications_as_read(user_id)
+    finally:
+        _drop_bell(f"bell:notifs:{user_id}")
 
 
 def _count_unread_notifications(user_id: str) -> int:
@@ -2030,16 +2278,24 @@ def _support_context(request: Request, user: dict | None, status: str = "All", e
     email = (user or {}).get("email", "")
     ctx = _base_context(request, "Support")
     status = status if status in ("All", *support.TICKET_STATUSES) else "All"
+    # One fetch: the page filters it by status while the bell wants the whole
+    # list, so the rows are loaded once and shared (Lag Fix — was 2 queries).
+    all_tickets = _support_tickets(email, role)
+    visible = (
+        [row for row in all_tickets if row.get("status") == status]
+        if status in support.TICKET_STATUSES
+        else all_tickets
+    )
     return {
         **ctx,
-        "tickets": _support_tickets(email, role, status),
+        "tickets": visible,
         "is_staff": role in _STAFF_ROLES,
         "status": status,
         "statuses": ["All", *support.TICKET_STATUSES],
         "categories": list(support.TICKET_CATEGORIES),
         "error": error,
         "draft": draft or {},
-        **_bell_context(request),
+        **_bell_context(request, tickets=all_tickets),
     }
 
 
@@ -2299,7 +2555,10 @@ def settings_page(request: Request, linked: str = ""):
     except Exception:
         storage_ok = False
     user = getattr(request.state, "user", None) or {}
-    row = auth.get_user(user.get("email", "")) if user else None
+    # _base_context already fetched this row for the sidebar — reuse it.
+    row = getattr(request.state, "user_row", None)
+    if row is None and user:
+        row = auth.get_user(user.get("email", ""))
     identity = auth.linked_identity(row)
     link_profile = {
         "github": {

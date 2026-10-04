@@ -226,3 +226,54 @@ Github-website-/
 > and the auth requirement above. Execution = **Phase 3**; this section remains as the decision record.
 
 > **2026-09-29 (Security Hardening & Cloudflare Security):** Audited the codebase for security vulnerabilities. Dependabot and CodeQL alerts were clear. Executed 5 security fixes from the Security Hardening Plan (disabled FastAPI auto-docs, random fallback secret in auth.py, secure=True cookie adaptation for TestClient, sanitized debug endpoint output, rewrote SECURITY.md). Added 5 HTTP security headers to vercel.json. Generated a manual Cloudflare Dashboard Checklist artifact for the user. Tests were run and confirmed no new failures were introduced.
+
+---
+
+## Phase 7 - Lag Fix (performance) - IN PROGRESS
+
+Plan + measurements: `Lag Fix.md` (repo root). Tracked as `BUG-124` in `Bug Tracker.md`.
+
+### Phase 0 - Measure (done)
+
+- [x] `scripts/perf_loop.py` harness (session cookie, 8 pages, median/min/max TTFB, page weight, exit 1 over 1500 ms).
+- [x] Baseline: 5 of 8 pages timed out at 120 s (`/`, `/students`, `/repositories`, `/leaderboards`, `/verification`); `/support` 2883 ms; `/settings` 2615 ms.
+- [ ] Production (Vercel + Neon) `curl` baseline still open - needs a deploy.
+
+### Phase 1 - Server query path (done)
+
+- [x] `views.fleet_view` N+1 killed: 469 snapshot queries -> one bulk `accounts.list_snapshots()` join (358 s -> 2.7 s).
+- [x] `app/view_cache.py` memo, TTL 120 s, invalidation from snapshot/onboarding/link/profile/password/blacklist/hidden/ticket/notification writers.
+- [x] `database.read_conn()` autocommit reads (1 round trip instead of 3) applied to 24 read helpers in `app/db.py`; writers unchanged on `conn()`.
+- [x] `_memo()` for the per-render lookups (user row, blacklist, hidden repos, bell); `_base_context` exposes `request.state.user_row` for `/settings`.
+- [x] Duplicate queries removed: `/leaderboards` blacklist+hidden (x4 -> x1), `/settings` user row (x2 -> x1), `/support` ticket list (x2 -> x1).
+- [x] SSE bell: `asyncio.to_thread` for both reads, tick 2 s -> 10 s with `: ping` keep-alive.
+- [x] Per-user cap on concurrent SSE streams (`_SSE_MAX_STREAMS_PER_USER = 3`, slot released in the generator `finally`).
+- [x] Indexes in `app/schema.sql`: `notifications (lower(user_id))`, `support_tickets (lower(created_by))` (function indexes - the predicates compare `lower(...)`), `users (onboarding_status)`.
+- [x] Dead Plotly figure builds removed from `overview_payload` (`app/views.py` - `charts.py` now has zero Python consumers; kept for reference).
+
+**Result:** `perf_loop.py --runs 3` GREEN - overview 198 / students 73 / repositories 154 / leaderboards 82 / verification 585 / support 318 / settings 649 / me 14 ms (first uncached `/` = 7086 ms).
+
+### Phase 2 - Frontend payload (done)
+
+- [x] `base.html` drops Plotly (orphaned) + htmx (unused); ECharts `<script>` moved into the overview page head only - 5.6 MB of render-blocking JS gone from every route (`tests/test_pages_36.py` assertion updated: `echarts` present, `plotly`/`htmx` absent).
+- [x] Server-side pagination: `students_payload`/`repositories_payload` add `page_rows` (first batch only), `GET /students/rows` + `GET /repositories/rows` serve later batches as HTML partials (`partials/student_rows.html`, `partials/repo_cards.html`, `partials/repo_rows.html`); repositories returns both views in `<template data-for=...>` so grid/table stay in sync. Students 636 KB / 462 imgs -> **52 KB / 30 imgs**; Repositories 1251 KB / 1458 imgs -> **65 KB / 60 imgs**.
+- [x] `loading="lazy" decoding="async"` + `|avatar` Jinja filter (GitHub CDN `?s=64`); repositories reveal fetches one batch instead of two O(rows) selector sweeps per tick; `/static` `Cache-Control` (middleware + `vercel.json` - `StaticFiles(headers=)` unsupported in this Starlette); de-`fixed` body texture; font `@import` -> `preconnect` + `<link>`.
+
+**Result:** `perf_loop.py --runs 3` GREEN - overview 171 / students 39 / repositories 97 / leaderboards 67 / verification 554 / support 300 / settings 520 / me 23 ms (`after_phase2.json`).
+
+**Cold start fixed:** `db.init_schema()` now skips the DDL block when `schema.sql` is unchanged (SHA-256 marker in the new `schema_meta` table); uvicorn ready in ~8 s instead of 25-55 s.
+
+### Phase 3 - Verify (in progress)
+
+- [x] Re-run `perf_loop.py` after Phase 2 - GREEN, all 8 pages under 600 ms median.
+- [x] Full pytest (legacy mode): 72 failed / 444 passed / 11 skipped - **failure set identical to the merge baseline, 0 new** (`BUG-125` untouched).
+- [x] **`main` merged into `Backend`** (`961e5ac`) - conflicts resolved in `base.html` (favicon kept, Lag Fix script cuts kept), `schema.sql` (fleet-key migration + `schema_meta` marker both kept) and `main.py` (union imports; blacklist/hidden fallback wrapped in the memo; `/repositories/rows` and `/repositories/export` kept as separate endpoints, rows honours `recency`). Post-merge: `perf_loop --runs 3` GREEN (overview 850 / students 50 / repositories 520 / ... / me 5 ms, page weight unchanged), 73 failed / 480 passed - the extra failure is the known flaky `TestRaiseAndList::test_earliest_ticket_shown_first` (green in isolation), `test_weekly.py` green. First startup after the merge re-ran the DDL once (schema.sql hash changed) then went back to the fast path.
+- [ ] Production timings after deploy (same 8 URLs) - needs a deploy.
+- [ ] Browser DevTools pass (DOM nodes, transferred bytes, scroll FPS on `/repositories`).
+- [ ] Port mode (`MODULE_UNDER_TEST=app.services`) re-run.
+
+### Newly discovered issues
+
+- ~~**`db.init_schema()` blocks startup for ~25-35 s**~~ - fixed this phase (SHA-256 `schema_meta` marker, fast path skips the DDL).
+- **`views.overview_payload()` costs ~690 ms** for 469 rows - the next biggest single server cost after the fleet build.
+- **Test suite is red on the merge commit** - `BUG-125` (72 pre-existing failures, unchanged by this phase).

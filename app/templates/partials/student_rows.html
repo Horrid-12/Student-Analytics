@@ -1,0 +1,43 @@
+{# One batch of student rows.
+
+Rendered twice with the same markup: inline on first paint (students.html,
+`rows` = the first page) and by GET /students/rows for every batch after that.
+Keeping a single source means the infinite-scroll rows can never drift from
+the server-rendered ones (Lag Fix phase 2 - the table used to ship every row
+hidden and reveal them client-side, so the page grew with the fleet).
+
+Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
+`semester`, `page_size`.
+#}
+{% for row in rows.to_dict('records') %}
+{% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
+<tr class="student-row" data-student-id="{{ row.Student_ID }}">
+  <td>
+    <div class="student-cell">
+      <a class="avatar-link student-open-link" href="{{ open_url }}" aria-label="View profile of {{ row['Student Name'] }}">{% if row.Avatar_URL %}<img class="table-avatar" src="{{ row.Avatar_URL|avatar }}" loading="lazy" decoding="async" alt="">{% else %}<span class="avatar-fallback">{{ (row['Student Name'] or '')[0:1] }}</span>{% endif %}</a>
+      <a class="student-name-link student-open-link" href="{{ open_url }}">{{ row['Student Name'] }}</a>
+    </div>
+  </td>
+  <td>
+    <a class="student-open-link" href="{{ open_url }}">{{ row.Student_ID }}</a>
+  </td>
+  <td>{{ row.Division }}</td>
+  <td>{{ row.Batch }}</td>
+  <td>{{ row.Semester }}</td>
+  <td>
+    {% if row.GitHub_Username %}
+      <a class="handle" href="{{ row.Profile_URL }}" target="_blank" rel="noopener" title="{{ row.GitHub_Username }}">{{ row.GitHub_Username }}</a>
+    {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
+  </td>
+  <td>
+    {% if row.LinkedIn_Username %}
+      <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
+    {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
+  </td>
+  <td>
+    {% if row.HackerRank_Username %}
+      <a class="handle" href="{{ row.HackerRank_URL }}" target="_blank" rel="noopener" title="{{ row.HackerRank_Username }}">{{ row.HackerRank_Username }}</a>
+    {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
+  </td>
+</tr>
+{% endfor %}

@@ -211,3 +211,39 @@ def conn() -> Iterator[Optional[dict]]:
         return
     with p.connection(timeout=15) as c:
         yield c
+
+
+@contextmanager
+def read_conn() -> Iterator[Optional[dict]]:
+    """Pooled connection in **autocommit** mode, for single-statement reads.
+
+    ``conn()`` wraps every statement in BEGIN … COMMIT. Against the remote
+    Neon pooler each of those is a full network round trip, so a page render
+    that issues a handful of reads spends seconds on transaction bookkeeping
+    alone (measured: ~1.0–1.3 s per ``conn()`` block vs ~0.26 s for the
+    statement itself — see ``Lag Fix.md``).
+
+    Autocommit collapses a read to one round trip. The connection is returned
+    to the pool in its original mode, so writers that go through ``conn()``
+    keep their transactional semantics untouched.
+    """
+    p = _pool_or_none()
+    if p is None:
+        yield None
+        return
+    with p.connection(timeout=15) as c:
+        original = c.autocommit
+        try:
+            if not original:
+                try:
+                    c.autocommit = True
+                except Exception:  # transaction already open on this checkout
+                    c.rollback()
+                    c.autocommit = True
+            yield c
+        finally:
+            try:
+                if c.autocommit != original:
+                    c.autocommit = original
+            except Exception:
+                pass
