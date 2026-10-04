@@ -1462,8 +1462,16 @@ async def sync_single_student(email: str, request: Request):
     if not target_user or target_user.get("onboarding_status") != "approved":
         return JSONResponse(status_code=404, content={"detail": "Approved user not found"})
 
-    token = github_client.load_token()
-    ok, code, detail = await asyncio.to_thread(sync.sync_heavy_one, target_user, token)
+    tokens = github_client.load_all_tokens()
+    if not tokens:
+        tokens = [None]
+        
+    ok, code, detail = False, "api_error", "No tokens found"
+    
+    for token in tokens:
+        ok, code, detail = await asyncio.to_thread(sync.sync_heavy_one, target_user, token)
+        if code != "rate_limited":
+            break  # Success or a non-rate-limit error, we can stop trying tokens.
     
     if ok:
         return JSONResponse(content={"status": "ok", "detail": detail})
