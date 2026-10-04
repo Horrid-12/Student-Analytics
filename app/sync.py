@@ -456,7 +456,10 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
             return False, "storage", "failed to save snapshot"
         return True, "saved", "Heavy snapshot saved successfully"
     except services.RateLimitError as e:
-        return False, "rate_limited", str(e)
+        detail = str(e)
+        if getattr(e, "reset_epoch", None):
+            detail = f"{detail} (reset_at={e.reset_epoch})"
+        return False, "rate_limited", detail
     except Exception as e:
         return False, "api_error", str(e)
 
