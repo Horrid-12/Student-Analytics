@@ -110,6 +110,8 @@ def test_profile_tab_shows_skills_progress_recent():
     assert "to next star" in html
     assert "hr-badge-hex" in html
     assert "hr-badge-frame" in html
+    assert "hr-section-title" in html
+    assert "hr-active-box" in html
     assert "HackerRank &middot;" not in html
     assert "7.508 6.268" not in html  # old X-shaped icon path is gone
     assert 'id="profile-panel-hackerrank"' in html

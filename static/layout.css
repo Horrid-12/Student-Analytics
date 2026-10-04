@@ -1675,8 +1675,8 @@ button {
   border: none;
   border-bottom: 2px solid var(--border);
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 800;
   font-family: inherit;
   cursor: pointer;
 }
@@ -1937,14 +1937,33 @@ button {
   line-height: 1.15;
 }
 .hr-badge-stars {
-  font-size: 10.5px;
+  font-size: 14px;
   letter-spacing: 2px;
 }
 .hr-badge-stat {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: #1f2d3d;
   line-height: 1.35;
+}
+/* HackerRank tab section headings match the profile username text. */
+.hr-section-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 14px 0 8px 12px;
+}
+/* Last-active line: bold text inside a little box. */
+.hr-active-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+  padding: 8px 14px;
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
 }
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list

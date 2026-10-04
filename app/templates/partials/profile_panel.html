@@ -240,7 +240,7 @@
       var recent = Array.isArray(data.recent) ? data.recent : [];
       var html = '';
       if (badges.length) {
-        html += '<div class="panel-minor-title">Badges</div><div class="hr-badges">'
+        html += '<div class="hr-section-title">Badges</div><div class="hr-badges">'
           + badges.map(function (b) {
             var stars = Math.min(6, Math.max(0, Number(b.stars) || 0));
             var solved = Number(b.solved) || 0;
@@ -269,7 +269,7 @@
       var lastActive = '';
       activeDays.forEach(function (d) { if (d.date && d.date > lastActive) lastActive = d.date; });
       if (lastActive) {
-        html += '<p class="tab-empty">Last active ' + escHR(lastActive) + ' · ' + activeDays.length + ' active days.</p>';
+        html += '<div class="hr-active-box">Last active ' + escHR(lastActive) + ' · ' + activeDays.length + ' active days.</div>';
       }
       if (recent.length) {
         html += '<div class="panel-minor-title">Recently solved (' + recent.length + ')</div><div class="repo-dropdown-body">'
