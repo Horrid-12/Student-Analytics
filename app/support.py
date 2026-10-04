@@ -190,6 +190,29 @@ CREATE TABLE IF NOT EXISTS notifications (
 )
 """
 
+# Weekly top-student producer state (announcements themselves reuse the
+# notifications table with ticket_id 0 — SQLite enforces no ticket FK).
+_WEEKLY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS weekly_commits (
+    week_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    username TEXT NOT NULL DEFAULT '',
+    commits INTEGER NOT NULL DEFAULT 0,
+    repos_checked INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (week_id, email)
+);
+CREATE TABLE IF NOT EXISTS weekly_runs (
+    week_id TEXT NOT NULL PRIMARY KEY,
+    label TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',
+    top_json TEXT NOT NULL DEFAULT '{}',
+    published_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+"""
+
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Create the table and add newer columns to pre-existing databases.
@@ -200,6 +223,19 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     try:
         conn.execute(_SCHEMA)
         conn.execute(_NOTIF_SCHEMA)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS weekly_commits ("
+            "week_id TEXT NOT NULL, email TEXT NOT NULL, username TEXT NOT NULL DEFAULT '', "
+            "commits INTEGER NOT NULL DEFAULT 0, repos_checked INTEGER NOT NULL DEFAULT 0, "
+            "status TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '', "
+            "PRIMARY KEY (week_id, email))"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS weekly_runs ("
+            "week_id TEXT NOT NULL PRIMARY KEY, label TEXT NOT NULL DEFAULT '', "
+            "status TEXT NOT NULL DEFAULT '', top_json TEXT NOT NULL DEFAULT '{}', "
+            "published_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT '')"
+        )
         for statement in _ATTACHMENT_MIGRATION:
             try:
                 conn.execute(statement)
@@ -684,3 +720,112 @@ def count_unread_notifications(user_id: str) -> int:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("count_unread_notifications failed: %s", exc)
         return 0
+
+
+def save_weekly_commits(week_id: str, rows: list[dict]) -> int:
+    """Upsert per-user weekly commit counts. Returns rows saved; 0 on bad
+    input or storage failure. Never raises."""
+    week_id = (week_id or "").strip()
+    if not week_id or not isinstance(rows, list):
+        return 0
+    now = _now()
+    saved = 0
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    email = str(row.get("email") or "").strip().lower()
+                    if not email:
+                        continue
+                    try:
+                        commits = max(0, int(row.get("commits") or 0))
+                        checked = max(0, int(row.get("repos_checked") or 0))
+                    except (TypeError, ValueError):
+                        continue
+                    conn.execute(
+                        "INSERT INTO weekly_commits (week_id, email, username, commits, "
+                        "repos_checked, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT (week_id, email) DO UPDATE SET username = excluded.username, "
+                        "commits = excluded.commits, repos_checked = excluded.repos_checked, "
+                        "status = excluded.status, updated_at = excluded.updated_at",
+                        (
+                            week_id,
+                            email,
+                            str(row.get("username") or ""),
+                            commits,
+                            checked,
+                            str(row.get("status") or "ok"),
+                            now,
+                        ),
+                    )
+                    saved += 1
+        return saved
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("save_weekly_commits failed: %s", exc)
+        return 0
+
+
+def get_weekly_commits(week_id: str) -> list[dict]:
+    """All per-user counts recorded for a week; [] on bad input/failure."""
+    week_id = (week_id or "").strip()
+    if not week_id:
+        return []
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            cur = conn.execute(
+                "SELECT week_id, email, username, commits, repos_checked, status, updated_at "
+                "FROM weekly_commits WHERE week_id = ? ORDER BY email ASC",
+                (week_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("get_weekly_commits failed: %s", exc)
+        return []
+
+
+def get_weekly_run(week_id: str) -> dict | None:
+    """One week's run record (for idempotent publish); None when absent."""
+    week_id = (week_id or "").strip()
+    if not week_id:
+        return None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            cur = conn.execute(
+                "SELECT week_id, label, status, top_json, published_at, created_at "
+                "FROM weekly_runs WHERE week_id = ?",
+                (week_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("get_weekly_run failed: %s", exc)
+        return None
+
+
+def save_weekly_run(week_id: str, label: str, status: str, top_json: str) -> bool:
+    """Upsert one week's run record. Returns True on success. Never raises."""
+    week_id = (week_id or "").strip()
+    if not week_id or status not in ("complete", "partial"):
+        return False
+    now = _now()
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                conn.execute(
+                    "INSERT INTO weekly_runs (week_id, label, status, top_json, published_at, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (week_id) DO UPDATE SET label = excluded.label, "
+                    "status = excluded.status, top_json = excluded.top_json, "
+                    "published_at = excluded.published_at",
+                    (week_id, label or "", status, top_json or "{}", now if status == "complete" else "", now),
+                )
+        return True
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("save_weekly_run failed: %s", exc)
+        return False

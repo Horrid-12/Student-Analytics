@@ -38,7 +38,7 @@ Clicking your sidebar avatar opens **My Profile** — your own student panel (sa
 - **Authentication & access control** — email/password plus Google, GitHub, and LinkedIn sign-in with college-domain validation, role-based pages (student / faculty / admin), and HMAC-signed session cookies; GitHub/LinkedIn also work as profile-linking for an existing session
 - **Onboarding & registrar review** — students submit PRN/degree/division (pending → approved/rejected ledger); approval promotes their linked GitHub handle into the account identity
 - **Account snapshots & daily sync** — approved accounts sync GitHub data on a schedule (Vercel cron hits `POST /sync/accounts`), so pages render without re-uploading rosters
-- **Notification bells** — students see their own issue alerts, staff see support-ticket alerts, each with a Fix deep-link
+- **Notification bells** — students see their own issue alerts, staff see support-ticket alerts, each with a Fix deep-link; every Sunday a cron posts the week's top committer announcement to all roles
 - **Postgres-backed storage (optional)** — with `DATABASE_URL` set, storage runs on Neon Postgres; otherwise it falls back to the bundled SQLite files, so local dev/tests work with zero setup
 
 ---

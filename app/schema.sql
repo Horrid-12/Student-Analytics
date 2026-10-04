@@ -235,22 +235,26 @@ CREATE TABLE IF NOT EXISTS roster_issues (
 );
 
 -- 8. Workflow state (editable issue follow-up state; JSONB mirrors the RosterStore dict).
+-- NOTE: roster_id is TEXT (not UUID FK) so the roster-less fleet/account views
+-- can share the single 'fleet' key alongside real roster UUIDs.
 CREATE TABLE IF NOT EXISTS workflow_state (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- 8b. Leaderboard blacklist ({student_id: [boards]} — students excluded from
 --     specific leaderboards by an admin; mirrors the RosterStore dict).
+-- NOTE: TEXT key (not UUID FK) — fleet mode stores under 'fleet'.
 CREATE TABLE IF NOT EXISTS leaderboard_blacklist (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- 8c. Hidden leaderboard repositories ({student_id: [repo keys]} — single
 --     repositories excluded from every leaderboard by an admin).
+-- NOTE: TEXT key (not UUID FK) — fleet mode stores under 'fleet'.
 CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
-    roster_id   UUID PRIMARY KEY REFERENCES rosters(id) ON DELETE CASCADE,
+    roster_id   TEXT PRIMARY KEY,
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
@@ -392,7 +396,19 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
 
--- 15. Schema marker (Lag Fix phase 3).
+-- 15. Fleet-mode fix: blacklist/hidden/workflow keys are TEXT ('fleet' + roster
+--     UUIDs), not UUID FKs. Fresh tables above are already TEXT; these migrate
+--     live DBs created before the fix (UUID PK + REFERENCES rosters FK rejected
+--     the 'fleet' key with "invalid input syntax for type uuid" so every
+--     fleet-mode POST returned ok but the next GET read back {}).
+ALTER TABLE workflow_state DROP CONSTRAINT IF EXISTS workflow_state_roster_id_fkey;
+ALTER TABLE leaderboard_blacklist DROP CONSTRAINT IF EXISTS leaderboard_blacklist_roster_id_fkey;
+ALTER TABLE leaderboard_hidden_repos DROP CONSTRAINT IF EXISTS leaderboard_hidden_repos_roster_id_fkey;
+ALTER TABLE workflow_state ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+ALTER TABLE leaderboard_blacklist ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+ALTER TABLE leaderboard_hidden_repos ALTER COLUMN roster_id TYPE TEXT USING roster_id::text;
+
+-- 16. Schema marker (Lag Fix phase 3).
 --     SHA-256 of this file, written by db.init_schema() after a successful
 --     run so warm startups can skip the whole DDL block (a full run over the
 --     remote pooler costs 25-55 s on every cold start). Editing schema.sql

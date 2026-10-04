@@ -58,7 +58,7 @@ at once and scrolls (CSS). #} {% if notif_empty %}
             class="notif-fix"
             href="{{ n.fix_url }}"
             data-notif-id="{{ n.id or '' }}"
-            >Fix</a
+            >{{ n.link_label or 'Fix' }}</a
           >
         </div>
       </div>

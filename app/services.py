@@ -622,6 +622,56 @@ def get_repo_author_commits(
     return commits, True
 
 
+def count_author_commits_since(
+    full_name: str, username: str, since_iso: str, token: str | None
+) -> tuple[int, bool]:
+    """Count commits by ``username`` in ``owner/repo`` on/after ``since_iso``.
+
+    Same commits-API listing as :func:`get_repo_author_commits`, but paging
+    stops at the first commit older than the cutoff (listings are
+    newest-first), so a 7-day window usually costs a single page. Returns
+    ``(count, ok)`` — ``ok`` False means the count is unusable (caller should
+    retry later, never rank on it). Never raises for parse issues; transport
+    rate-limits propagate as :class:`RateLimitError` like everywhere else.
+    """
+    try:
+        cutoff = pd.to_datetime(since_iso, utc=True)
+        if cutoff is None or pd.isna(cutoff):
+            return 0, False
+    except Exception:
+        return 0, False
+    count = 0
+    page = 1
+    while True:
+        status_code, response_headers, payload = _cached_get_json(
+            f"{GITHUB_API_BASE}/repos/{full_name}/commits?author={username}&per_page={COMMITS_PER_PAGE}&page={page}",
+            token,
+            timeout=15,
+        )
+        check_rate_limit_parts(status_code, response_headers)
+        if status_code != 200 or not isinstance(payload, list):
+            return 0, False
+        if not payload:
+            break
+        for commit in payload:
+            try:
+                moment = pd.to_datetime(_commit_date(commit), utc=True, errors="coerce")
+            except Exception:
+                continue
+            if moment is None or pd.isna(moment):
+                continue
+            if moment < cutoff:
+                return count, True
+            count += 1
+        if len(payload) < COMMITS_PER_PAGE:
+            break
+        if page >= COMMITS_MAX_PAGES:
+            break
+        page += 1
+        time.sleep(0.05)
+    return count, True
+
+
 def _commit_date(commit: dict) -> str:
     try:
         return str(((commit.get("commit") or {}).get("author") or {}).get("date") or "")

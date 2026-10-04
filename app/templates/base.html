@@ -20,6 +20,9 @@
 <link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}?v=4">
+<link rel="icon" href="{{ url_for('static', path='/favicon.ico') }}" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" href="{{ url_for('static', path='/Favicon.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', path='/Favicon.png') }}">
 {# Charting JS is per-page now: only Overview renders charts. htmx (no hx-*
    attributes anywhere) and Plotly (only the orphaned macros/charts.html
    referenced it) were 5.6 MB of render-blocking downloads on every route. #}

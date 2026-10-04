@@ -15,12 +15,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views, view_cache
+from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, services, storage, support, sync, views, view_cache, weekly
 from app.env import load_dotenv_local
 
 # Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
@@ -230,10 +230,34 @@ def _memo(key: str, loader):
 
 
 def _blacklist_state(roster_id: str) -> dict:
-    """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache."""
+    """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache.
+
+    The cache fallback matters: pre-migration Postgres tables reject the
+    ``fleet`` key (UUID FK), and a cold/unreachable DB must never silently
+    wipe an admin's blacklist. When Postgres has the state it wins; when it
+    is empty but the cache has data, the cache wins and Postgres is repaired.
+    """
     key = _bl_roster(roster_id)
     if database.db_configured():
-        return _memo(f"bl:{key}", lambda: db.get_blacklist(key))
+        def _load_blacklist() -> dict:
+            try:
+                state = db.get_blacklist(key)
+            except Exception:
+                state = {}
+            if isinstance(state, dict) and state:
+                return state
+            try:
+                cached = roster_store.get_blacklist(key)
+            except Exception:
+                cached = {}
+            if isinstance(cached, dict) and cached:
+                try:
+                    db.put_blacklist(key, cached)
+                except Exception:
+                    pass
+                return cached
+            return state if isinstance(state, dict) else {}
+        return _memo(f"bl:{key}", _load_blacklist)
     return roster_store.get_blacklist(key)
 
 
@@ -241,7 +265,25 @@ def _hidden_repos_state(roster_id: str) -> dict:
     """Hidden repositories: prefer Postgres; fall back to RosterStore cache."""
     key = _bl_roster(roster_id)
     if database.db_configured():
-        return _memo(f"hidden:{key}", lambda: db.get_hidden_repos(key))
+        def _load_hidden() -> dict:
+            try:
+                state = db.get_hidden_repos(key)
+            except Exception:
+                state = {}
+            if isinstance(state, dict) and state:
+                return state
+            try:
+                cached = roster_store.get_hidden_repos(key)
+            except Exception:
+                cached = {}
+            if isinstance(cached, dict) and cached:
+                try:
+                    db.put_hidden_repos(key, cached)
+                except Exception:
+                    pass
+                return cached
+            return state if isinstance(state, dict) else {}
+        return _memo(f"hidden:{key}", _load_hidden)
     return roster_store.get_hidden_repos(key)
 
 
@@ -703,6 +745,12 @@ def topbar_date() -> str:
     return datetime.now(IST).strftime("%A, %d %B %Y")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browser-automatic icon request (already public in _PUBLIC_PREFIXES)."""
+    return FileResponse(BASE_DIR.parent / "static" / "favicon.ico", media_type="image/x-icon")
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy_page(request: Request):
     # Public by design (pre-login consent reads it from /login). Full base
@@ -1107,7 +1155,10 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "issue": n.get("title") or "Support Update",
                 "sub": n.get("message") or "",
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
-                "fix_url": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+                "fix_url": "/leaderboards"
+                if n.get("type") == "WEEKLY_TOP_STUDENT"
+                else (n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}"),
+                "link_label": "View" if n.get("type") == "WEEKLY_TOP_STUDENT" else "Fix",
                 "is_unread": not n.get("is_read"),
                 "type": n.get("type"),
                 "ticket_id": n.get("ticket_id"),
@@ -1129,18 +1180,42 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 rows = _memo(_STAFF_BELL_KEY, lambda: _support_tickets(user.get("email", ""), role))
         except Exception:
             rows = []
-        notifications = [
+        try:
+            own_notifs = _list_notifications((user.get("email") or "").strip()) or []
+        except Exception:
+            own_notifs = []
+        announcements = [
+            {
+                "id": n.get("id"),
+                "issue": n.get("title") or "Weekly update",
+                "sub": n.get("message") or "",
+                "time": views.friendly_timestamp(n.get("created_at") or ""),
+                "fix_url": "/leaderboards",
+                "link_label": "View",
+                "is_unread": not n.get("is_read"),
+                "type": n.get("type"),
+                "ticket_id": n.get("ticket_id"),
+            }
+            for n in own_notifs
+            if n.get("type") == "WEEKLY_TOP_STUDENT"
+        ]
+        notifications = announcements + [
             {
                 "issue": alert["subject"],
                 "sub": f"{alert['student']} • {alert['status']}" if alert["student"] else alert["status"],
                 "time": views.friendly_timestamp(alert["updated_at"]),
                 "fix_url": alert["fix_url"],
+                "link_label": "Fix",
+                "is_unread": True,
+                "type": "TICKET_ALERT",
+                "ticket_id": None,
             }
             for alert in support.staff_alerts(rows)
         ]
+        unread = sum(1 for n in announcements if n["is_unread"]) + len(notifications) - len(announcements)
         return {
             "notifications": notifications,
-            "notif_count": len(notifications),
+            "notif_count": unread,
             "notif_empty": "No ticket updates — all quiet.",
         }
     return {"notifications": [], "notif_count": 0, "notif_empty": None}
@@ -1333,6 +1408,38 @@ async def sync_accounts(request: Request, force: bool = False):
     return JSONResponse(content=summary)
 
 
+@app.api_route("/sync/weekly", methods=["GET", "POST"])
+async def sync_weekly(request: Request):
+    """Weekly top-student announcement run (Sunday cron -> bell, every role).
+
+    GET exists for Vercel Cron (which issues GET with Bearer CRON_SECRET);
+    POST serves manual admin/faculty triggers. Same authorization as
+    /sync/accounts: session role or the shared secret. The run itself is
+    idempotent and budget-guarded (see app/weekly.py).
+    """
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        configured_secret = os.environ.get("CRON_SECRET") or ""
+        if configured_secret:
+            supplied = request.headers.get("x-cron-secret") or ""
+            if not hmac.compare_digest(supplied, configured_secret):
+                bearer = request.headers.get("authorization") or ""
+                if bearer.lower().startswith("bearer "):
+                    supplied = bearer[7:]
+            authorized = hmac.compare_digest(supplied, configured_secret)
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    token = github_client.load_token()
+    summary = await asyncio.to_thread(weekly.run_weekly, token)
+    _db_log_event(
+        "weekly_run",
+        f"week={summary.get('week_id')}; status={summary.get('status')}; "
+        f"published={summary.get('published')}; top={summary.get('top', {}).get('kind')}",
+    )
+    return JSONResponse(content=summary)
+
+
 @app.post("/api/sync/student/{email}")
 async def sync_single_student(email: str, request: Request):
     """Client-orchestrated heavy sync for a single student.
@@ -1416,7 +1523,8 @@ async def api_list_notifications(request: Request):
             "isRead": is_read,
             "createdAt": n.get("created_at") or n.get("createdAt"),
             "time": views.friendly_timestamp(n.get("created_at") or ""),
-            "fixUrl": n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}",
+            "fixUrl": n.get("fix_url")
+            or ("/leaderboards" if n.get("type") == "WEEKLY_TOP_STUDENT" else f"/support#ticket-detail-{n.get('ticket_id')}"),
         })
     return JSONResponse(content={
         "notifications": formatted,
@@ -1653,6 +1761,7 @@ def repositories_page(
     batch: str = "All",
     semester: str = "All",
     sort: str = "top",
+    recency: str = "all",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -1672,11 +1781,11 @@ def repositories_page(
         view = "grid"
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
-    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort)
+    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort, recency)
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort, "recency": recency},
     )
 
 
@@ -1690,6 +1799,7 @@ def repositories_rows(
     batch: str = "All",
     semester: str = "All",
     sort: str = "top",
+    recency: str = "all",
     offset: int = 0,
     limit: int = 30,
 ):
@@ -1707,7 +1817,7 @@ def repositories_rows(
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
     payload = views.repositories_payload(
-        view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort
+        view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort, recency
     )
     total = int(payload.get("total") or 0)
     if not total:
@@ -1723,6 +1833,26 @@ def repositories_rows(
         f'<template data-for="grid">{cards}</template>'
         f'<template data-for="table">{rows_html}</template>'
     )
+
+
+@app.get("/repositories/export")
+def repositories_export(
+    request: Request,
+    roster: str = "",
+    format: str = "csv",
+    q: str = "",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+    sort: str = "top",
+    recency: str = "all",
+):
+    view, response = _guard_page(request, {}, "Repositories", roster)
+    if response is not None:
+        raise HTTPException(status_code=404, detail="No completed analysis to export")
+    payload = views.repositories_payload(view, q, "All", 30, division, batch, semester, sort, recency)
+    df = views.repository_export_df(payload)
+    return _export_response(df, format, "repositories")
 
 
 @app.get("/leaderboards", response_class=HTMLResponse)

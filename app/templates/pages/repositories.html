@@ -14,6 +14,63 @@
   .fl-owner-name { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fl-dept { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--muted); background: var(--icon-bg); border: 1px solid var(--icon-border); padding: 1px 9px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
 
+  /* ── quick recency chips (Active / Not updated 30d / Archived) ─────── */
+  .repo-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 16px; }
+  .repo-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--icon-border);
+    background: var(--subtle-bg);
+    color: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .repo-chip:hover { border-color: var(--blue-hover-border); color: var(--text); background: var(--hover-bg); }
+  .repo-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .repo-chip.is-active { background: var(--blue-active-bg); color: var(--blue); border-color: var(--blue-active-border); }
+  .repo-chip.is-active .chip-count { color: inherit; }
+  .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .chip-dot-active { background: var(--badge-green-color); }
+  .chip-dot-quiet { background: var(--badge-amber-color); }
+  .chip-dot-stale { background: var(--badge-red-color); }
+  .chip-count { margin-left: 2px; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.75; }
+
+  /* ── header controls: Export dropdown + view switcher ──────────────── */
+  .repo-header-controls { display: flex; align-items: center; gap: 8px; }
+  .export-dropdown { position: relative; }
+  .export-dropdown summary { list-style: none; cursor: pointer; }
+  .export-dropdown summary::-webkit-details-marker { display: none; }
+  .export-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 36px var(--shadow);
+    z-index: 60;
+  }
+  .export-menu a {
+    padding: 8px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .export-menu a:hover { background: var(--hover-bg); }
+
   /* ── flat list: table ──────────────────────────────────────────────── */
   .fl-cell-repo { min-width: 0; }
   .fl-cell-owner { display: flex; align-items: center; gap: 7px; margin-top: 5px; min-width: 0; }
@@ -41,9 +98,10 @@
 <form class="filter-bar" method="get" id="repo-filter-form">
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="view" value="{{ view_mode }}">
+  <input type="hidden" name="recency" value="{{ payload.recency }}">
   <div class="filter-field search-box-row">
     <label class="filter-label" for="repo-search">Search</label>
-    <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repositories, owners or languages&hellip;">
+    <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repos, owners, languages, students or PRN&hellip;">
   </div>
   <div class="filter-field">
     <label class="filter-label" for="repo-division">Division</label>
@@ -82,10 +140,27 @@
   <span class="filter-count" role="status" aria-live="polite"><span id="shown-count">{{ payload.showing }}</span> of {{ payload.total }} shown</span>
 </form>
 
+<div class="repo-chips" id="repo-chips" role="group" aria-label="Filter by last update">
+  {% for key, label, count in payload.recency_options %}
+  <button type="button" class="repo-chip{% if payload.recency == key %} is-active{% endif %}" data-recency="{{ key }}"
+          {% if key == 'active' %}title="Updated within the last 30 days"{% elif key == 'quiet' %}title="Last update 31 to 180 days ago"{% elif key == 'stale' %}title="No update for over 180 days — possibly archived"{% endif %}>
+    {% if key != 'all' %}<span class="chip-dot chip-dot-{{ key }}"></span>{% endif %}{{ label }}<span class="chip-count">{{ count }}</span>
+  </button>
+  {% endfor %}
+</div>
+
 <section class="panel">
   {# ── View Switcher ── #}
   <div class="repo-panel-header">
     <div class="panel-title" style="margin-bottom:0;">Repositories</div>
+    <div class="repo-header-controls">
+      <details class="export-dropdown" aria-label="Export">
+        <summary class="btn" aria-haspopup="menu">Export &#9662;</summary>
+        <div class="export-menu" role="menu">
+          <a role="menuitem" href="/repositories/export?{{ payload.export_query }}">CSV</a>
+          <a role="menuitem" href="/repositories/export?{{ payload.export_query.replace('format=csv', 'format=xlsx') }}">Excel</a>
+        </div>
+      </details>
     <div class="view-switcher" id="view-switcher">
       <button class="vs-btn{% if view_mode == 'grid' %} vs-active{% endif %}" data-view="grid" type="button" aria-label="Grid View">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -95,6 +170,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
         Table
       </button>
+    </div>
     </div>
   </div>
 
@@ -143,6 +219,8 @@
   var btns = Array.prototype.slice.call(document.querySelectorAll('.vs-btn'));
   var grid = document.getElementById('repo-grid-view');
   var table = document.getElementById('repo-table-view');
+  var recencyInput = form.querySelector('input[name="recency"]');
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.repo-chip'));
 
   function isValidView(v) { return v === 'grid' || v === 'table'; }
 
@@ -214,6 +292,10 @@
     batchSel.value = 'All';
     semSel.value = 'All';
     sortSel.value = 'top';
+    recencyInput.value = 'all';
+    chips.forEach(function (chip) {
+      chip.classList.toggle('is-active', chip.dataset.recency === 'all');
+    });
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         division: 'All',
@@ -223,6 +305,29 @@
         view: isValidView(p.view) ? p.view : 'grid'
       }));
     } catch (e) { /* private mode — ignore */ }
+  });
+
+  // Recency chips (Active / Not updated 30d / Archived): one click stages the
+  // value in the hidden input and submits — same staged-filter model as Apply.
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      recencyInput.value = chip.dataset.recency;
+      form.submit();
+    });
+  });
+
+  // Close the export menu on outside click / Escape.
+  document.addEventListener('click', function (event) {
+    document.querySelectorAll('details.export-dropdown[open]').forEach(function (menu) {
+      if (!menu.contains(event.target)) menu.removeAttribute('open');
+    });
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      document.querySelectorAll('details.export-dropdown[open]').forEach(function (menu) {
+        menu.removeAttribute('open');
+      });
+    }
   });
 
   var saved = readPrefs();

@@ -552,46 +552,118 @@ window.__EC_THEME = (function () {
 
 
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   CHART 4 — RADAR  (Multi-Metric Overview)
-   data: { metrics: [ { name: "Avg Repos", value: 5.2, max: 50 }, ... ] }
+   CHART 4 — RADAR  (Multi-Series Class Metrics Comparison)
 
-   Normalization method: each metric is scaled 0–100 using its own max value.
-   max is the larger of (actual value × 1.5) or a sensible floor to prevent
-   the radar from collapsing when values are tiny.
+   data: {
+     metrics: [ { name: "Avg Repos", max: 10, unit: "" }, ... ],  // FIXED axes
+     series:  [ { key, kind, label, values: [ ... ] }, ... ],
+     active:  [ "current", "overall", ... ]                        // default-on
+   }
+
+   Styling: kind == 'overall' (the institutional benchmark) renders as a muted,
+   dashed slate baseline (fill 0.12). Every other series follows activation
+   order — 1st = Sky (#38bdf8, fill 0.25), 2nd = Violet (#a855f7, fill 0.2).
+   Axis order is NEVER rearranged. Points illuminate on hover; the tooltip is
+   disabled because per-series values are shown in the comparison cards beside
+   the chart. The page-level cohort picker drives addSeries/removeSeries through
+   __chartBridge, and getSeries() exposes each series' values for those cards.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro radar(id, data) %}
 {% if data %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:320px;"></div>
+<div id="{{ id }}" class="echart-box" style="height:400px;"></div>
 <script>
 (function () {
+  'use strict';
   var el = document.getElementById('{{ id }}');
   var raw = {{ data | tojson }};
   var chart = echarts.init(el);
 
+  var BENCH_KEY = 'overall';
+  var ACCENTS = ['#38bdf8', '#a855f7', '#f59e0b'];
+  var SLATE = '#94a3b8';
+
+  var byKey = {};
+  raw.series.forEach(function (s) { byKey[s.key] = s; });
+  var active = (raw.active || []).filter(function (k) { return byKey[k]; });
+
+  function hexToRgba(hex, alpha) {
+    hex = hex.replace('#', '');
+    var r = parseInt(hex.substring(0, 2), 16);
+    var g = parseInt(hex.substring(2, 4), 16);
+    var b = parseInt(hex.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  /* Accent order follows activation position among the non-benchmark series. */
+  function styleFor(key) {
+    if (key === BENCH_KEY) {
+      return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.14)', symbol: 4 };
+    }
+    var non = active.filter(function (k) { return k !== BENCH_KEY; });
+    var pos = non.indexOf(key);
+    if (pos < 0) pos = 0;
+    var color = ACCENTS[pos % ACCENTS.length];
+    return { color: color, dash: false, fill: hexToRgba(color, pos === 0 ? 0.25 : 0.2), symbol: 6 };
+  }
+  function colorFor(key) { return styleFor(key).color; }
+
+  /* "Luminous" polygon fill: a radial fade from the series colour to
+     transparent, mimicking the pre-comparison radar. The dashed benchmark
+     uses the same fade so it stays a quiet backdrop. */
+  function areaFill(color, alpha) {
+    return {
+      type: 'radial',
+      x: 0.5, y: 0.5, r: 0.6,
+      colorStops: [
+        { offset: 0, color: hexToRgba(color, alpha) },
+        { offset: 1, color: 'rgba(255,255,255,0)' }
+      ]
+    };
+  }
+
+  function seriesData(p) {
+    return active.map(function (key) {
+      var s = byKey[key];
+      var st = styleFor(key);
+      var dim = st.dash ? 0.12 : 0.32;
+      return {
+        name: s.label,
+        value: s.values,
+        symbol: 'circle',
+        symbolSize: st.symbol,
+        lineStyle: { color: st.color, width: st.dash ? 2 : 2.5, type: st.dash ? 'dashed' : 'solid' },
+        itemStyle: {
+          color: st.color,
+          borderColor: p.card,
+          borderWidth: 1.5,
+          shadowBlur: 10,
+          shadowColor: hexToRgba(st.color, 0.0)
+        },
+        areaStyle: { color: areaFill(st.color, dim) },
+        emphasis: {
+          lineStyle: { width: st.dash ? 2.5 : 4 },
+          itemStyle: { borderWidth: 2, shadowBlur: 14, shadowColor: 'rgba(0,0,0,0.4)' },
+          areaStyle: { opacity: 0.6 }
+        }
+      };
+    });
+  }
+
   function opts() {
     var p = window.__EC_THEME.get();
-    var indicators = raw.metrics.map(function (m) {
-      return { name: m.name, max: m.max };
-    });
-    var values = raw.metrics.map(function (m) { return m.value; });
-
+    var indicators = raw.metrics.map(function (m) { return { name: m.name, max: m.max }; });
     return {
-      tooltip: window.__EC_THEME.tooltip({
-        trigger: 'item',
-        formatter: function (info) {
-          var html = '<b>' + (info.name || 'Metrics') + '</b><br/>';
-          raw.metrics.forEach(function (m, i) {
-            html += m.name + ': <b>' + m.value + '</b>' + (m.unit || '') + '<br/>';
-          });
-          return html;
-        }
-      }),
+      /* Values now live in the comparison cards beside the chart. */
+      tooltip: { show: false },
       radar: {
         indicator: indicators,
         shape: 'polygon',
         radius: '78%',
-        center: ['50%', '52%'],
+        /* Slight left bias so the polygon hugs the left of its container and
+           the comparison cards beside it get the remaining room. The radius is
+           unchanged, and the indicator labels stay inside the panel padding. */
+        center: ['44%', '52%'],
         axisName: {
           color: p.textSoft,
           fontSize: 12,
@@ -608,49 +680,41 @@ window.__EC_THEME = (function () {
       },
       series: [{
         type: 'radar',
-        data: [{
-          value: values,
-          name: 'Class Metrics',
-          symbol: 'circle',
-          symbolSize: 7,
-          lineStyle: {
-            color: p.accent,
-            width: 2.5
-          },
-          itemStyle: {
-            color: p.accent,
-            borderColor: p.card,
-            borderWidth: 2
-          },
-          areaStyle: {
-            color: (function () {
-              /* Convert hex #RRGGBB to rgba string for gradient. */
-              var hex = p.accent.replace('#', '');
-              var r = parseInt(hex.substring(0, 2), 16);
-              var g = parseInt(hex.substring(2, 4), 16);
-              var b = parseInt(hex.substring(4, 6), 16);
-              return {
-                type: 'radial',
-                x: 0.5, y: 0.5, r: 0.6,
-                colorStops: [
-                  { offset: 0, color: 'rgba(' + r + ',' + g + ',' + b + ',0.35)' },
-                  { offset: 1, color: 'transparent' }
-                ]
-              };
-            })()
-          },
-          emphasis: {
-            lineStyle: { width: 3.5 },
-            areaStyle: { opacity: 0.55 }
-          }
-        }],
+        data: seriesData(p),
         animationDuration: 800,
         animationEasing: 'cubicOut'
       }]
     };
   }
 
-  chart.setOption(opts());
+  function render() { chart.setOption(opts(), { notMerge: true }); }
+
+  function addSeries(key) {
+    if (!byKey[key] || active.indexOf(key) !== -1) return;
+    active.push(key);
+    render();
+  }
+  function removeSeries(key) {
+    var i = active.indexOf(key);
+    if (i === -1) return;
+    active.splice(i, 1);
+    render();
+  }
+  function getActive() { return active.slice(); }
+  function isActive(key) { return active.indexOf(key) !== -1; }
+  function getSeries() {
+    return raw.series.map(function (s) { return { key: s.key, kind: s.kind, label: s.label, values: (s.values || []).slice() }; });
+  }
+
+  render();
+
+  /* Page-level bridge so the Overview cohort picker can add/remove series. */
+  window.__chartBridge = window.__chartBridge || {};
+  window.__chartBridge['{{ id }}'] = {
+    chart: chart, render: render, addSeries: addSeries, removeSeries: removeSeries,
+    getActive: getActive, isActive: isActive, getSeries: getSeries, colorFor: colorFor
+  };
+
   window.__EC_THEME.register(chart, opts);
   window.addEventListener('resize', function () { chart.resize(); });
 })();
@@ -794,13 +858,16 @@ window.__EC_THEME = (function () {
   var current = { weeks: raw.weeks || [], series: raw.series || [] };
 
   function render(view) {
+    var next;
     if (view === 'monthly' && raw.months && raw.monthly_series) {
-      current = { weeks: raw.months, series: raw.monthly_series };
+      next = { weeks: raw.months, series: raw.monthly_series };
     } else if (view === 'semester' && raw.semesters && raw.semester_series) {
-      current = { weeks: raw.semesters, series: raw.semester_series };
+      next = { weeks: raw.semesters, series: raw.semester_series };
     } else {
-      current = { weeks: raw.weeks || [], series: raw.series || [] };
+      next = { weeks: raw.weeks || [], series: raw.series || [] };
     }
+    if (!next.weeks.length || !next.series.length) { return; }
+    current = next;
     chart.setOption(build(current.weeks, current.series));
   }
 
