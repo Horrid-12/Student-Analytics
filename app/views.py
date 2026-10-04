@@ -452,11 +452,23 @@ def fleet_view():
         approved = auth.get_approved_accounts()
     except Exception:
         return None
+    # One bulk read instead of one query per approved account: the old loop ran
+    # ``accounts.get_snapshot(email)`` for every account (~469 round trips at
+    # ~0.8 s each against the remote pooler = ~6 min per page render), which is
+    # why fleet pages took minutes and worsened as the fleet grew. Same rows,
+    # same fallback semantics — only the fetch shape changed.
+    try:
+        snapshots = accounts.list_snapshots()
+    except Exception:
+        snapshots = []
+    snapshots_by_email: dict[str, dict] = {}
+    for snap in snapshots:
+        key = str((snap or {}).get("email") or "").strip().lower()
+        if key:
+            snapshots_by_email[key] = snap
     for user_row in approved:
-        try:
-            snapshot = accounts.get_snapshot((user_row or {}).get("email", ""))
-        except Exception:
-            snapshot = None
+        email = str((user_row or {}).get("email") or "").strip().lower()
+        snapshot = snapshots_by_email.get(email) if email else None
         if snapshot is None or snapshot.get("status") != "ok":
             student = {
                 "Student_ID": user_row.get("prn") or user_row.get("email"),
@@ -669,7 +681,6 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         {"Status": "Invalid", "Count": int(invalid_residual)},
         {"Status": "Missing", "Count": int(missing)},
     ]
-    donut_fig = _donut(*_donut_args(account_status))
 
     if not repos.empty and "Language" in repos.columns:
         language_counts = _known_languages(repos["Language"]).value_counts().head(10).reset_index()
@@ -819,10 +830,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "active_windows": active_windows,
         "avg_quality": f"{_score_repos['Repository_Quality_Score'].mean():.1f}" if _score_repos is not None and not _score_repos.empty else "0.0",
         "account_status": account_status,
-        "donut_fig": donut_fig,
-        "language_fig": _build_language_fig(language_counts),
         "weekly_trend_data": weekly_trend_data,
-        "heatmap_fig": _build_heatmap_fig(heatmap_rows),
         # ECharts advanced chart data
         "treemap_data": treemap_data,
         "bubble_data": bubble_data,
@@ -832,13 +840,6 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "status": run_outcome(state),
         "valid_users": valid,
     }
-
-
-def _donut_args(rows):
-    return [row["Status"] for row in rows], [row["Count"] for row in rows]
-
-
-
 
 def _weekly_activity_trend(
     repos: pd.DataFrame,
@@ -969,42 +970,6 @@ def _weekly_activity_trend(
         "semesters": semesters,
         "semester_series": semester_series,
     }
-
-
-def _build_language_fig(language_counts: pd.DataFrame):
-    from app import charts
-
-    if language_counts.empty:
-        return None
-    return charts.bar(
-        list(language_counts["Language"]), list(language_counts["Repositories"]), title=None
-    )
-
-
-
-
-def _build_heatmap_fig(heatmap_rows: pd.DataFrame):
-    from app import charts
-
-    if heatmap_rows.empty:
-        return None
-    batches = sorted(heatmap_rows["Batch"].astype(str).unique())
-    divisions = sorted(heatmap_rows["Division"].astype(str).unique())
-    value_col = "Combined_Repos" if "Combined_Repos" in heatmap_rows.columns else "Repository_Count"
-    pivot = heatmap_rows.pivot_table(
-        index="Division", columns="Batch", values=value_col, aggfunc="sum", fill_value=0
-    )
-    z = [[int(pivot.loc[div].get(b, 0)) for b in batches] for div in divisions]
-    return charts.heatmap(batches, divisions, z)
-
-
-from app.charts import ACCENT, SUCCESS, WARNING
-
-
-def _donut(labels, values):
-    from app import charts
-
-    return charts.donut(labels, values, colors=[SUCCESS, ACCENT, WARNING])
 
 
 # ---------------------------------------------------------------------------
@@ -1158,12 +1123,21 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         if not match.empty:
             profile = students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
 
+    # Server-side pagination (Lag Fix phase 2): `display` stays the full
+    # filtered frame (exports, filters, profile popup and the payload tests all
+    # need it) while `page_rows` is the bounded slice actually rendered into
+    # HTML. Further batches come from GET /students/rows instead of being
+    # shipped hidden and revealed client-side.
+    page_rows = display.head(page_size) if total else display
+
     return {
         "total": total,
         "showing": min(page_size, total),
         "initial_visible": page_size,
         "batch_size": STUDENT_BATCH_SIZE,
         "page_size": page_size,
+        "page_rows": page_rows,
+        "rendered": int(min(page_size, total)),
         "row_options": options,
         "display": display,
         "available_cols": available_cols,
@@ -1791,6 +1765,10 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "initial_visible": initial_visible,
         "batch_size": STUDENT_BATCH_SIZE,
         "rows": repo_rows,
+        # Server-side pagination (Lag Fix phase 2): only the first batch is
+        # rendered into HTML; `rows` stays complete for exports and for
+        # GET /repositories/rows to slice.
+        "page_rows": repo_rows[:initial_visible],
         "sort": sort if sort in {s for s, _ in REPO_SORTS} else "top",
         "sorts": REPO_SORTS,
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],

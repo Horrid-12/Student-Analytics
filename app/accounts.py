@@ -17,7 +17,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from app import database, db
+from app import database, db, view_cache
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +102,16 @@ def save_snapshot(
     if not email:
         return False
     if database.db_configured():
-        return db.save_account_snapshot(
+        stored = db.save_account_snapshot(
             email, username=username, status=status, student=student,
             repos=repos, synced_at=synced_at, error=error,
             team_repos=team_repos,
         )
+        if stored:
+            # Fleet/account pages are memoised for TTL seconds — drop the memo
+            # so a finished sync shows up on the very next page view.
+            view_cache.invalidate()
+        return stored
     try:
         with closing(_connect()) as conn:
             with conn:
@@ -260,7 +265,10 @@ def clear_snapshot(email: str) -> bool:
     if not email:
         return False
     if database.db_configured():
-        return db.clear_account_snapshot(email)
+        removed = db.clear_account_snapshot(email)
+        if removed:
+            view_cache.invalidate()
+        return removed
     try:
         with closing(_connect()) as conn:
             conn.execute(_SCHEMA)

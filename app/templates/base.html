@@ -12,12 +12,17 @@
     } catch (e) { /* private mode — keep the default */ }
   })();
 </script>
+{# Fonts: preconnect + <link> instead of a CSS @import inside style.css,
+   which serialized the fetch behind the stylesheet (Lag Fix phase 2). #}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}?v=4">
-<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+{# Charting JS is per-page now: only Overview renders charts. htmx (no hx-*
+   attributes anywhere) and Plotly (only the orphaned macros/charts.html
+   referenced it) were 5.6 MB of render-blocking downloads on every route. #}
 {% block head %}{% endblock %}
 </head>
 <body>

@@ -316,7 +316,13 @@ class TestPageRenderingWithData:
         assert "Account Validation Status" not in body
         assert "Analysis Pipeline" not in body
         assert "Run Log" not in body
-        assert "plotly" in body or "Plotly.react" in body
+        # Lag Fix phase 2: the charting runtime is per-page now. Overview is
+        # the only page that renders charts (ECharts); the previously global
+        # htmx (unused - no hx-* attributes) and Plotly (orphaned macro) are
+        # gone from every route.
+        assert "echarts" in body
+        assert "plotly" not in body.lower()
+        assert "htmx" not in body.lower()
 
     def test_overview_filters_match_students_page(self, tmp_path):
         roster_id = self._setup(tmp_path)

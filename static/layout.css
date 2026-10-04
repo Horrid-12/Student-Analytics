@@ -9,7 +9,7 @@ body {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: fixed;
+  background-attachment: scroll;
 }
 
 a {
@@ -46,7 +46,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: fixed;
+  background-attachment: scroll;
   z-index: 10;
 }
 
@@ -306,7 +306,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: fixed;
+  background-attachment: scroll;
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04);
@@ -332,7 +332,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: fixed;
+  background-attachment: scroll;
   font-size: 14px;
   padding: 16px 20px;
   margin-bottom: 18px;
@@ -653,7 +653,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: fixed;
+  background-attachment: scroll;
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04);

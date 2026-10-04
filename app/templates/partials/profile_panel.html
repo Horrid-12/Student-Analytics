@@ -4,7 +4,7 @@
       <div class="profile-panel">
         <div class="profile-header">
           <div class="profile-avatar-wrap">
-            {% if p.avatar %}<img src="{{ p.avatar }}" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
+            {% if p.avatar %}<img src="{{ p.avatar|avatar }}" loading="lazy" decoding="async" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
           </div>
           <div>
             <div class="profile-name-row">

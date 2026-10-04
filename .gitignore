@@ -21,3 +21,4 @@ all_templates.txt
 .env*
 
 invalid_accounts.md
+proposed_email_fixes.md
