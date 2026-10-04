@@ -1706,11 +1706,12 @@ def _merge_student_fields(repos: pd.DataFrame, students) -> pd.DataFrame:
     frame = repos
     if frame.empty or students is None or students.empty:
         return frame
-    keys = ("GitHub_Username", "Avatar_URL", "Student Name", "Division", "Batch", "Semester")
+    wanted = [k for k in ("GitHub_Username", "Avatar_URL", "Student Name", "Division", "Batch", "Semester", "Student_ID") if k in students.columns]
+    # Need at least the join key + one identity field; otherwise nothing to attach.
+    if len(wanted) < 2 or "GitHub_Username" not in wanted:
+        return frame
     try:
-        if not all(k in students.columns for k in keys):
-            return frame
-        st = students[list(keys)].copy()
+        st = students[wanted].copy()
     except (KeyError, TypeError, ValueError, AttributeError):
         return frame
     try:
@@ -1818,9 +1819,52 @@ def _repo_card(row) -> dict:
         "avatar_url": _repo_clean(row.get("Avatar_URL")),
         "div": tokens[0],
         "batch": tokens[1],
+        "semester": _repo_clean(row.get("Semester")),
         "dept_table": _dept_label(tokens, " / "),
         "dept_card": _dept_label(tokens, " "),
     }
+
+
+def _repo_days_since_update(value) -> int | None:
+    """Days between 'now' and the repo's last-update stamp; None when the
+    date is missing or unparseable."""
+    text = _repo_clean(str(value))
+    if not text:
+        return None
+    try:
+        ts = pd.to_datetime(text, utc=True, errors="coerce")
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(ts):
+        return None
+    try:
+        return int((pd.Timestamp.now(tz="UTC") - ts).days)
+    except TypeError:
+        return None
+
+
+def _repo_recency_bucket(value) -> str:
+    """Professor-facing maintenance window for the Repositories quick chips:
+    'active' → pushed within the last 30 days; 'quiet' → 31–180 days; 'stale'
+    → untouched for over 180 days (or with no usable date)."""
+    days = _repo_days_since_update(value)
+    if days is None:
+        return "stale"
+    if days <= 30:
+        return "active"
+    if days <= 180:
+        return "quiet"
+    return "stale"
+
+
+#: Recency quick-chip options: (key, label). Labels stay student/professor
+#: friendly; the windows map to the buckets computed in _repo_recency_bucket.
+REPO_RECENCY_OPTIONS = (
+    ("all", "All"),
+    ("active", "Active"),
+    ("quiet", "Not updated 30d"),
+    ("stale", "Archived"),
+)
 
 
 REPO_SORTS = [
@@ -1928,16 +1972,32 @@ def _merged_repos_frame(view) -> pd.DataFrame:
     return repos
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top") -> dict:
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top", recency="all") -> dict:
     repos = _merged_repos_frame(view)
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))
-    filtered = filter_text(repos, query, ["Username", "Repository", "Language"])
+    # Text search spans GitHub handles, repo/language names AND the student
+    # identity columns the merge attached — so professors can look a student
+    # up by real name or PRN without opening their profile.
+    filtered = filter_text(repos, query, ["Username", "Repository", "Language", "Student Name", "Student_ID"])
     filtered = apply_value_filter(filtered, "Language", language)
     filtered = apply_value_filter(filtered, "Division", division)
     filtered = apply_value_filter(filtered, "Batch", batch)
     filtered = apply_value_filter(filtered, "Semester", semester)
+    # Recency chips (E): counts reflect the current scope — every other filter
+    # applied, but not this one — so each pill shows how many repos would fall
+    # in that window right now.
+    recency_key = recency if recency in {key for key, _ in REPO_RECENCY_OPTIONS[1:]} else "all"
+    recency_counts = {"all": len(filtered)}
+    if not filtered.empty and "Updated" in filtered.columns:
+        buckets = filtered["Updated"].map(_repo_recency_bucket)
+    else:
+        buckets = pd.Series("stale", index=filtered.index)
+    for key, _ in REPO_RECENCY_OPTIONS[1:]:
+        recency_counts[key] = int((buckets == key).sum())
+    if recency_key != "all":
+        filtered = filtered[buckets == recency_key]
     if not filtered.empty:
         filtered = filtered.copy()
         filtered["Repository URL"] = filtered["Repository_URL"]
@@ -1966,11 +2026,59 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "rows": repo_rows,
         "sort": sort if sort in {s for s, _ in REPO_SORTS} else "top",
         "sorts": REPO_SORTS,
+        "recency": recency_key,
+        "recency_options": [(key, label, recency_counts.get(key, 0)) for key, label in REPO_RECENCY_OPTIONS],
         "languages": dist_options(repos["Language"].dropna().astype(str).unique().tolist()) if not repos.empty else ["All"],
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
+        "export_query": repositories_export_query(
+            view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
+        ),
     }
+
+
+def repositories_export_query(roster_id="", q="", division="All", batch="All", semester="All", sort="top", recency="all") -> str:
+    """Filter-preserving query string for /repositories/export, mirroring the
+    students page's export links (CSV/Excel toggled via format)."""
+    pairs = []
+    if roster_id:
+        pairs.append(("roster", roster_id))
+    pairs.append(("format", "csv"))
+    for key, value in (("q", q), ("division", division), ("batch", batch), ("semester", semester), ("sort", sort), ("recency", recency)):
+        if value not in (None, "", "All", "all"):
+            pairs.append((key, str(value)))
+    from urllib.parse import urlencode
+
+    return urlencode(pairs)
+
+
+def repository_export_df(payload: dict) -> pd.DataFrame:
+    """The visible (filtered + sorted) repository list as a spreadsheet frame,
+    with professor-friendly headers. Same rows/order the page shows."""
+    columns = [
+        "repository", "owner_name", "owner_username", "div", "batch", "semester",
+        "lang", "stars", "forks", "score", "status", "updated", "url", "description",
+    ]
+    headers = {
+        "repository": "Repository",
+        "owner_name": "Owner Name",
+        "owner_username": "Owner Username",
+        "div": "Division",
+        "batch": "Batch",
+        "semester": "Semester",
+        "lang": "Language",
+        "stars": "Stars",
+        "forks": "Forks",
+        "score": "Score",
+        "status": "Status",
+        "updated": "Last Updated",
+        "url": "URL",
+        "description": "Description",
+    }
+    rows = payload.get("rows") or []
+    df = pd.DataFrame([{c: row.get(c) for c in columns} for row in rows], columns=columns).rename(columns=headers)
+    return df
 
 
 # ---------------------------------------------------------------------------

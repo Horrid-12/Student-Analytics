@@ -1569,6 +1569,7 @@ def repositories_page(
     batch: str = "All",
     semester: str = "All",
     sort: str = "top",
+    recency: str = "all",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -1588,12 +1589,32 @@ def repositories_page(
         view = "grid"
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
-    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort)
+    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort, recency)
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort, "recency": recency},
     )
+
+
+@app.get("/repositories/export")
+def repositories_export(
+    request: Request,
+    roster: str = "",
+    format: str = "csv",
+    q: str = "",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+    sort: str = "top",
+    recency: str = "all",
+):
+    view, response = _guard_page(request, {}, "Repositories", roster)
+    if response is not None:
+        raise HTTPException(status_code=404, detail="No completed analysis to export")
+    payload = views.repositories_payload(view, q, "All", 30, division, batch, semester, sort, recency)
+    df = views.repository_export_df(payload)
+    return _export_response(df, format, "repositories")
 
 
 @app.get("/leaderboards", response_class=HTMLResponse)
