@@ -198,8 +198,10 @@
         if (next) { next.focus(); selectTab(next); }
       });
     });
-    // Lazy HackerRank details: one GET /api/hackerrank/{user} per profile view,
-    // server-cached 1h. Link-only fallback on 404/502 (never fake zeros).
+    // HackerRank tab: one GET /api/hackerrank/{user} per profile view
+    // (server-cached 1h). Shows per-skill badges + progress to next star,
+    // last active date, and recently solved problems. 404/502 fall back to
+    // the profile link instead of fake zeros.
     function escHR(value) {
       return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
@@ -209,31 +211,42 @@
       var box = panel.querySelector('[data-hr-content]');
       if (!box) return;
       var badges = Array.isArray(data.badges) ? data.badges : [];
-      var contests = Array.isArray(data.contests) ? data.contests : [];
       var heat = Array.isArray(data.heatmap) ? data.heatmap : [];
-      var html = '<div class="activity-stats">'
-        + '<div class="activity-stat"><div class="activity-number">' + escHR(data.practice_score) + '</div><div class="activity-label">Practice score</div></div>'
-        + '<div class="activity-stat"><div class="activity-number">' + escHR(data.total_solved) + '</div><div class="activity-label">Solved (est.)</div></div>'
-        + '<div class="activity-stat"><div class="activity-number">' + badges.length + '</div><div class="activity-label">Badges</div></div>'
-        + '</div>';
+      var recent = Array.isArray(data.recent) ? data.recent : [];
+      var html = '';
       if (badges.length) {
-        html += '<div class="panel-minor-title">Badges</div><div class="lang-bars">'
-          + badges.slice(0, 12).map(function (b) {
+        html += '<div class="panel-minor-title">Skills (' + badges.length + ')</div><div class="lang-bars">'
+          + badges.map(function (b) {
+            var stars = Number(b.stars) || 0;
+            var solved = Number(b.solved) || 0;
+            var total = Number(b.total_challenges) || 0;
+            var prog = Math.min(100, Math.max(0, Math.round((Number(b.progress) || 0) * 100)));
+            var progLabel = prog >= 100 ? 'Maxed' : prog + '% to next star';
+            var solvedLabel = total > 0 ? solved + ' of ' + total + ' solved' : solved + ' solved';
             return '<div class="lang-row"><span class="lang-name" title="' + escHR(b.track) + '">' + escHR(b.track) + '</span>'
-              + '<span class="lang-track"><span class="lang-fill" style="width:' + Math.min(100, (Number(b.stars) || 0) / 6 * 100) + '%"></span></span>'
-              + '<span class="lang-count">' + escHR(b.stars) + '★' + (b.solved ? ' · ' + escHR(b.solved) : '') + '</span></div>';
+              + '<span class="lang-track" title="' + escHR(progLabel) + '"><span class="lang-fill" style="width:' + prog + '%"></span></span>'
+              + '<span class="lang-count">' + stars + '★ · ' + escHR(solvedLabel) + '</span></div>';
           }).join('') + '</div>';
       } else {
-        html += '<p class="tab-empty">No badges yet.</p>';
+        html += '<p class="tab-empty">No skill badges yet.</p>';
       }
-      if (contests.length) {
-        html += '<div class="panel-minor-title">Contests (' + contests.length + ')</div><div class="repo-dropdown-body">'
-          + contests.slice(0, 8).map(function (c) { return '<div class="profile-repo"><span class="repo-name">' + escHR(c.name) + '</span></div>'; }).join('')
-          + '</div>';
+      var activeDays = heat.filter(function (d) { return Number(d.count) > 0; });
+      var lastActive = '';
+      activeDays.forEach(function (d) { if (d.date && d.date > lastActive) lastActive = d.date; });
+      if (lastActive) {
+        html += '<p class="tab-empty">Last active ' + escHR(lastActive) + ' · ' + activeDays.length + ' active days.</p>';
       }
-      if (heat.length) {
-        var active = heat.filter(function (d) { return Number(d.count) > 0; }).length;
-        html += '<p class="tab-empty">' + active + ' active days in history.</p>';
+      if (recent.length) {
+        html += '<div class="panel-minor-title">Recently solved (' + recent.length + ')</div><div class="repo-dropdown-body">'
+          + recent.slice(0, 10).map(function (r) {
+            var href = r.url ? (String(r.url).charAt(0) === '/' ? 'https://www.hackerrank.com' + r.url : r.url) : '';
+            var label = escHR(r.name) + (r.date ? ' · ' + escHR(r.date) : '');
+            return href
+              ? '<div class="profile-repo"><a class="repo-name" href="' + escHR(href) + '" target="_blank" rel="noopener">' + label + '</a></div>'
+              : '<div class="profile-repo"><span class="repo-name">' + label + '</span></div>';
+          }).join('') + '</div>';
+      } else {
+        html += '<p class="tab-empty">No recent solves found.</p>';
       }
       box.innerHTML = html;
       box.hidden = false;

@@ -15,6 +15,8 @@ class Badge:
     track: str
     stars: int
     solved: int = 0
+    progress: float = 0.0
+    total_challenges: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -39,6 +41,17 @@ class HeatmapDay:
 
 
 @dataclass
+class RecentSolve:
+    name: str
+    slug: str = ""
+    date: str = ""
+    url: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class HackerRankProfile:
     """The one clean profile shape the website shows."""
 
@@ -48,6 +61,7 @@ class HackerRankProfile:
     practice_score: int = 0
     total_solved: int = 0
     contests: list[ContestEntry] = field(default_factory=list)
+    recent: list[RecentSolve] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -57,4 +71,5 @@ class HackerRankProfile:
             "practice_score": self.practice_score,
             "total_solved": self.total_solved,
             "contests": [c.to_dict() for c in self.contests],
+            "recent": [r.to_dict() for r in self.recent],
         }
