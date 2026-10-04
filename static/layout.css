@@ -9,7 +9,13 @@ body {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: scroll;
+  /* Attachment stays `fixed` on purpose (BUG-127). The texture is 1254x1254;
+     with `scroll` the body's positioning area is the whole document, so
+     `cover` scales it up ~7x on a long page and the fibers go soft. `fixed`
+     anchors it to the viewport at ~1.5x, which is the sharpness the design
+     was drawn at. (Phase 2 briefly switched these to `scroll` for paint
+     cost - the blur it caused is not worth it.) */
+  background-attachment: fixed;
 }
 
 a {
@@ -46,7 +52,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: scroll;
+  background-attachment: fixed;
   z-index: 10;
 }
 
@@ -306,7 +312,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: scroll;
+  background-attachment: fixed;
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04);
@@ -332,7 +338,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: scroll;
+  background-attachment: fixed;
   font-size: 14px;
   padding: 16px 20px;
   margin-bottom: 18px;
@@ -653,7 +659,7 @@ button {
     url("/static/paper-fiber-texture.png");
   background-position: center;
   background-size: cover;
-  background-attachment: scroll;
+  background-attachment: fixed;
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04);

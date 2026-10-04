@@ -22,3 +22,4 @@ all_templates.txt
 
 invalid_accounts.md
 proposed_email_fixes.md
+sync_fixed_users.py

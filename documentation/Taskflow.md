@@ -276,4 +276,25 @@ Plan + measurements: `Lag Fix.md` (repo root). Tracked as `BUG-124` in `Bug Trac
 
 - ~~**`db.init_schema()` blocks startup for ~25-35 s**~~ - fixed this phase (SHA-256 `schema_meta` marker, fast path skips the DDL).
 - **`views.overview_payload()` costs ~690 ms** for 469 rows - the next biggest single server cost after the fleet build.
-- **Test suite is red on the merge commit** - `BUG-125` (72 pre-existing failures, unchanged by this phase).
+- **Test suite is red on the merge commit** - `BUG-125` (72 pre-existing failures, unchanged by this phase). Cluster shortlist + fix plan: **`Red Suite Fix.md`** (9 root causes).
+- **Background texture went blurry** after the Phase-2 `background-attachment: fixed` -> `scroll` change - `BUG-127` (fixed: reverted all five, `?v=4` -> `?v=5`).
+- **Division contract split** (`"1"` vs `"Division 1"`) - `BUG-126`, root cause of 39 of the 72 red tests.
+- **Students get HTTP 200 on `/students`** - `BUG-128`, needs a product decision before the fix.
+- **No empty-state placeholder on `/overview`** - `BUG-129`; **bell always visible for students** - `BUG-130`.
+
+## Phase 8 - Red suite fix (planned)
+
+Plan: `Red Suite Fix.md` (repo root). 73 failures = 9 root causes, tracked as
+`BUG-125` (the suite) plus `BUG-126`, `BUG-128`, `BUG-129`, `BUG-130` and the
+pre-existing `BUG-119`/`BUG-120`/`BUG-121` in `Bug Tracker.md`.
+
+- [ ] 1. Division contract normalisation - unblocks 39 tests (`BUG-126`).
+- [ ] 2. Quality-score inputs restored (decide code-vs-test authority first) - unblocks 20 (`BUG-120`).
+- [ ] 3. `/students` RBAC decision + fix - unblocks 1 (`BUG-128`).
+- [ ] 4. `/overview` empty state - unblocks 1 (`BUG-129`).
+- [ ] 5. Student bell suppression - unblocks 4 (`BUG-130`).
+- [ ] 6. `TestVercelEntrypoint` removal or `api/index.py` restore - unblocks 5 (`BUG-121`).
+- [ ] 7. `Primary_Language` tie-break parity - unblocks 1.
+- [ ] 8. Theme-token cleanup in `layout.css` - unblocks 1.
+- [ ] 9. Flaky `test_earliest_ticket_shown_first` de-flake - unblocks 1.
+- [ ] After each cluster: full suite, failure-id set must shrink by exactly that cluster; record the fix in `Bug Tracker.md` with ✅ + proof.
