@@ -267,6 +267,7 @@ Plan + measurements: `Lag Fix.md` (repo root). Tracked as `BUG-124` in `Bug Trac
 
 - [x] Re-run `perf_loop.py` after Phase 2 - GREEN, all 8 pages under 600 ms median.
 - [x] Full pytest (legacy mode): 72 failed / 444 passed / 11 skipped - **failure set identical to the merge baseline, 0 new** (`BUG-125` untouched).
+- [x] **`main` merged into `Backend`** (`961e5ac`) - conflicts resolved in `base.html` (favicon kept, Lag Fix script cuts kept), `schema.sql` (fleet-key migration + `schema_meta` marker both kept) and `main.py` (union imports; blacklist/hidden fallback wrapped in the memo; `/repositories/rows` and `/repositories/export` kept as separate endpoints, rows honours `recency`). Post-merge: `perf_loop --runs 3` GREEN (overview 850 / students 50 / repositories 520 / ... / me 5 ms, page weight unchanged), 73 failed / 480 passed - the extra failure is the known flaky `TestRaiseAndList::test_earliest_ticket_shown_first` (green in isolation), `test_weekly.py` green. First startup after the merge re-ran the DDL once (schema.sql hash changed) then went back to the fast path.
 - [ ] Production timings after deploy (same 8 URLs) - needs a deploy.
 - [ ] Browser DevTools pass (DOM nodes, transferred bytes, scroll FPS on `/repositories`).
 - [ ] Port mode (`MODULE_UNDER_TEST=app.services`) re-run.
