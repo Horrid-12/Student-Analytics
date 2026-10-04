@@ -268,6 +268,7 @@ Plan + measurements: `Lag Fix.md` (repo root). Tracked as `BUG-124` in `Bug Trac
 - [x] Re-run `perf_loop.py` after Phase 2 - GREEN, all 8 pages under 600 ms median.
 - [x] Full pytest (legacy mode): 72 failed / 444 passed / 11 skipped - **failure set identical to the merge baseline, 0 new** (`BUG-125` untouched).
 - [x] **`main` merged into `Backend`** (`961e5ac`) - conflicts resolved in `base.html` (favicon kept, Lag Fix script cuts kept), `schema.sql` (fleet-key migration + `schema_meta` marker both kept) and `main.py` (union imports; blacklist/hidden fallback wrapped in the memo; `/repositories/rows` and `/repositories/export` kept as separate endpoints, rows honours `recency`). Post-merge: `perf_loop --runs 3` GREEN (overview 850 / students 50 / repositories 520 / ... / me 5 ms, page weight unchanged), 73 failed / 480 passed - the extra failure is the known flaky `TestRaiseAndList::test_earliest_ticket_shown_first` (green in isolation), `test_weekly.py` green. First startup after the merge re-ran the DDL once (schema.sql hash changed) then went back to the fast path.
+- [x] **main synced into Backend again** (fast-forward to cec0ca4, 2026-10-04) - brought the Hackerrank client, Overview UI overhaul and 	est_hackerrank.py into Backend before the BUG-131 signup fix.
 - [ ] Production timings after deploy (same 8 URLs) - needs a deploy.
 - [ ] Browser DevTools pass (DOM nodes, transferred bytes, scroll FPS on `/repositories`).
 - [ ] Port mode (`MODULE_UNDER_TEST=app.services`) re-run.
@@ -298,3 +299,5 @@ pre-existing `BUG-119`/`BUG-120`/`BUG-121` in `Bug Tracker.md`.
 - [ ] 8. Theme-token cleanup in `layout.css` - unblocks 1.
 - [ ] 9. Flaky `test_earliest_ticket_shown_first` de-flake - unblocks 1.
 - [ ] After each cluster: full suite, failure-id set must shrink by exactly that cluster; record the fix in `Bug Tracker.md` with ✅ + proof.
+
+- **Sign-up showed the generic failure banner for an already-registered (Google-created) college address** - `BUG-131` (fixed: `POST /signup` now redirects duplicates to `?error=3` with an "already has an account - sign in instead" banner in `signup.html`; whitelist `error=2` and validation `error=1` unchanged).

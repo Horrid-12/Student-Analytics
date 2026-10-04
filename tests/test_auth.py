@@ -60,7 +60,17 @@ class TestSignup:
     def test_duplicate_email_rejected(self, client):
         signup(client, email="dup@college.edu")
         r = signup(client, email="dup@college.edu")
-        assert "error=1" in str(r.url)
+        assert "error=3" in str(r.url)  # dedicated "already registered" banner
+        assert "already has an account" in r.text
+
+    def test_duplicate_google_account_gets_exists_banner(self, client):
+        """A Google-created (passwordless) account must not fall through to the
+        generic failure banner — the user needs to know to sign in instead."""
+        auth.upsert_google_user("gstu@college.edu", "G Student", google_sub="google-sub-1")
+        r = signup(client, email="gstu@college.edu")
+        assert "error=3" in str(r.url)
+        assert "already has an account" in r.text
+        assert auth.get_user("gstu@college.edu")["password_hash"] in (None, "")  # untouched
 
     def test_password_mismatch_rejected(self, client):
         r = client.post(
