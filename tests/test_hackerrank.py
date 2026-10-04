@@ -92,13 +92,16 @@ def test_hackerrank_bad_username():
     assert res.status_code == 400
 
 
-def test_profile_tab_is_lazy_not_coming_soon():
+def test_profile_tab_is_clean_slate():
     from pathlib import Path
 
     html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "partials" / "profile_panel.html").read_text(encoding="utf-8")
     assert "HackerRank details coming soon" not in html
-    assert "/api/hackerrank/" in html
-    assert "data-hr-username" in html
+    assert "Practice score" not in html
+    assert "Solved (est.)" not in html
+    assert "/api/hackerrank/" not in html
+    assert "data-hr-username" not in html
+    assert 'id="profile-panel-hackerrank"' in html
 
 
 def test_vendored_decoders():
