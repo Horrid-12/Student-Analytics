@@ -1467,6 +1467,8 @@ async def sync_single_student(email: str, request: Request):
     
     if ok:
         return JSONResponse(content={"status": "ok", "detail": detail})
+    elif code == "rate_limited":
+        return JSONResponse(status_code=429, content={"status": "error", "code": code, "detail": detail})
     else:
         return JSONResponse(status_code=400, content={"status": "error", "code": code, "detail": detail})
 
