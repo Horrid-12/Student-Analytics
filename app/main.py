@@ -168,10 +168,32 @@ def _bl_roster(roster_id: str) -> str:
 
 
 def _blacklist_state(roster_id: str) -> dict:
-    """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache."""
+    """Leaderboard blacklist: prefer Postgres; fall back to RosterStore cache.
+
+    The cache fallback matters: pre-migration Postgres tables reject the
+    ``fleet`` key (UUID FK), and a cold/unreachable DB must never silently
+    wipe an admin's blacklist. When Postgres has the state it wins; when it
+    is empty but the cache has data, the cache wins and Postgres is repaired.
+    """
     key = _bl_roster(roster_id)
     if database.db_configured():
-        return db.get_blacklist(key)
+        try:
+            state = db.get_blacklist(key)
+        except Exception:
+            state = {}
+        if isinstance(state, dict) and state:
+            return state
+        try:
+            cached = roster_store.get_blacklist(key)
+        except Exception:
+            cached = {}
+        if isinstance(cached, dict) and cached:
+            try:
+                db.put_blacklist(key, cached)
+            except Exception:
+                pass
+            return cached
+        return state if isinstance(state, dict) else {}
     return roster_store.get_blacklist(key)
 
 
@@ -179,7 +201,23 @@ def _hidden_repos_state(roster_id: str) -> dict:
     """Hidden repositories: prefer Postgres; fall back to RosterStore cache."""
     key = _bl_roster(roster_id)
     if database.db_configured():
-        return db.get_hidden_repos(key)
+        try:
+            state = db.get_hidden_repos(key)
+        except Exception:
+            state = {}
+        if isinstance(state, dict) and state:
+            return state
+        try:
+            cached = roster_store.get_hidden_repos(key)
+        except Exception:
+            cached = {}
+        if isinstance(cached, dict) and cached:
+            try:
+                db.put_hidden_repos(key, cached)
+            except Exception:
+                pass
+            return cached
+        return state if isinstance(state, dict) else {}
     return roster_store.get_hidden_repos(key)
 
 

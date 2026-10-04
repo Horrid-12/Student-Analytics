@@ -580,10 +580,19 @@ def get_run_summary(roster_id: str) -> Optional[dict]:
 
 
 def clear_roster(roster_id: str) -> None:
-    """Drop a roster and all its children (cascade deletes via FK)."""
+    """Drop a roster and all its children (cascade deletes via FK).
+
+    Blacklist/hidden/workflow tables are TEXT-keyed (fleet-compatible, no FK)
+    so they are deleted explicitly alongside the roster cascade.
+    """
     try:
         with database.conn() as c:
             if c is not None:
+                for _table in ("leaderboard_blacklist", "leaderboard_hidden_repos", "workflow_state"):
+                    try:
+                        c.execute(f"DELETE FROM {_table} WHERE roster_id = %s", (roster_id,))
+                    except Exception:
+                        pass
                 c.execute("DELETE FROM rosters WHERE id = %s", (roster_id,))
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("clear_roster failed: %s", exc)
@@ -770,8 +779,19 @@ def get_blacklist(roster_id: str) -> dict:
             )
             row = cur.fetchone()
             state = row["state"] if row else {}
-            return state if isinstance(state, dict) else {}
-    except (psycopg.errors.DatabaseError, OSError):
+            if isinstance(state, dict):
+                return state
+            # psycopg may hand back a JSON string on older rows/drivers.
+            if isinstance(state, str):
+                try:
+                    import json as _json
+
+                    parsed = _json.loads(state)
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+    except Exception:
         return {}
 
 
@@ -784,7 +804,7 @@ def put_blacklist(roster_id: str, state: dict) -> None:
                     "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
                     (roster_id, Jsonb(state)),
                 )
-    except (psycopg.errors.DatabaseError, OSError) as exc:
+    except Exception as exc:
         logger.warning("put_blacklist failed: %s", exc)
 
 
@@ -800,8 +820,18 @@ def get_hidden_repos(roster_id: str) -> dict:
             )
             row = cur.fetchone()
             state = row["state"] if row else {}
-            return state if isinstance(state, dict) else {}
-    except (psycopg.errors.DatabaseError, OSError):
+            if isinstance(state, dict):
+                return state
+            if isinstance(state, str):
+                try:
+                    import json as _json
+
+                    parsed = _json.loads(state)
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+    except Exception:
         return {}
 
 
@@ -814,7 +844,7 @@ def put_hidden_repos(roster_id: str, state: dict) -> None:
                     "ON CONFLICT (roster_id) DO UPDATE SET state = EXCLUDED.state",
                     (roster_id, Jsonb(state)),
                 )
-    except (psycopg.errors.DatabaseError, OSError) as exc:
+    except Exception as exc:
         logger.warning("put_hidden_repos failed: %s", exc)
 
 
