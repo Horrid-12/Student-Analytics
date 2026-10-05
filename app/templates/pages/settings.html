@@ -8,86 +8,187 @@
       <div class="topbar-title">Settings</div>
       <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
         <span>{{ topbar_date }}</span><span>&bull;</span>
-        <span>Platform preferences &amp; storage state</span>
+        <span>Platform preferences &amp; account configuration</span>
       </div>
     </div>
     <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-<span class="badge-purple">{{ auth_role }}</span>
-</div>
+      <span class="badge-purple">{{ auth_role }}</span>
+    </div>
   </div>
 </div>
 
-<section class="panel">
-  <div class="panel-title">Appearance</div>
-  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-    <span style="font-size:13px; margin-right:4px;">Theme</span>
-    <button class="btn btn-primary" type="button" data-theme-btn="dark" aria-pressed="true">Dark</button>
-    <button class="btn" type="button" data-theme-btn="light" aria-pressed="false">Light</button>
-  </div>
-</section>
+<div class="profile-tabs" role="tablist">
+  <div class="profile-tab" role="tab" aria-selected="true" data-tab-btn="accounts">Accounts</div>
+  <div class="profile-tab" role="tab" aria-selected="false" data-tab-btn="general">General</div>
+  <div class="profile-tab" role="tab" aria-selected="false" data-tab-btn="data">Data</div>
+  <div class="profile-tab" role="tab" aria-selected="false" data-tab-btn="security">Security</div>
+</div>
 
-<section class="panel">
-  <div class="panel-title">Storage</div>
-  {% if storage_ok %}
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-      <span class="badge-green">Writable</span>
-      <span style="font-size:13px; color:var(--muted, #94a3b8);">Local SQLite — accounts and audit events record here.</span>
-    </div>
-  {% else %}
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-      <span class="badge-red">Unavailable</span>
-      <span style="font-size:13px; color:var(--muted, #94a3b8);">Persistence is not recording on this host.</span>
-    </div>
-    <div class="auth-notice">
-      The serverless filesystem is read-only, so the local SQLite database cannot be written here.
-      Analysis itself is unaffected. Storage is durable locally (uvicorn); persistent server-side storage is on the
-      Phase 4 roadmap (Postgres).
-    </div>
-  {% endif %}
-  <div style="margin-top:12px; font-size:12px; font-family:var(--font-mono, monospace); color:var(--muted, #94a3b8);">{{ db_path }}</div>
-</section>
-
-<section class="panel">
-  <div class="panel-title">Legal</div>
-  <a class="legal-row" href="/privacy">
-    <span class="legal-text">
-      <span class="legal-title">Privacy Policy</span>
-      <span class="legal-sub">How we collect, use, and protect your data.</span>
-    </span>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-  </a>
-</section>
-
-<section class="panel">
-  <div class="panel-title">Account</div>
-<div style="display:flex; align-items:center; gap:12px;">
+<div data-tab-content="accounts">
+  <section class="panel">
+    <div class="panel-title">Profile</div>
+    <div style="display:flex; align-items:center; gap:12px;">
       <div class="user-avatar-pill" style="width:36px; height:36px;">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
       <div style="min-width:0;">
         <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_role }}</div>
         <div class="user-name">{{ auth_user }}</div>
       </div>
     </div>
-    <div style="margin-top:12px;">
-      {% if token_present %}
-      <span class="badge-blue">GitHub token configured</span>
-      {% else %}
-      <span class="badge-amber">No GitHub token — unauthenticated 60 req/hr limit applies</span>
-      {% endif %}
-    </div>
-    <div style="margin-top:12px;">
+    <div style="margin-top:16px;">
       <a class="btn" href="{{ auth_logout }}">Sign out</a>
-    </div>
-
-    <div class="auth-notice" style="margin-top:12px;">
-      {% if storage_ok %}Accounts are stored in a local SQLite users database. On serverless hosts
-      (Vercel) the write is read-only, so signups only persist on hosts with a writable filesystem —
-      Postgres migration is on the Phase 4 roadmap.{% else %}The users database cannot be written on this
-host — sign-up/login will not persist here.{% endif %}
     </div>
   </section>
 
+  <section class="panel">
+    <div class="panel-title">Connections</div>
+    {% if github_configured %}
+    <div style="margin-bottom:16px;">
+      <div style="font-size:14px; font-weight:600; margin-bottom:4px;">GitHub</div>
+      {% if link_profile.github.handle %}
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          {% if link_profile.github.avatar %}
+            <img src="{{ link_profile.github.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
+          {% endif %}
+          <span style="font-size:13px;">Linked as <strong>{{ link_profile.github.handle }}</strong></span>
+        </div>
+      {% elif linked_flag == "github" %}
+        <form action="/profile/confirm" method="POST" style="margin-top:8px;">
+          <input type="hidden" name="source" value="github">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            {% if link_profile.avatar and link_profile.source == 'github' %}
+              <img src="{{ link_profile.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
+            {% endif %}
+            <span style="font-size:13px;">Confirm link as <strong>{{ link_profile.handle if link_profile.source == 'github' else '?' }}</strong>?</span>
+          </div>
+          <button type="submit" class="btn btn-primary">Confirm GitHub Profile</button>
+        </form>
+      {% else %}
+        <div style="font-size:13px; color:var(--muted); margin-bottom:8px;">No GitHub profile linked.</div>
+        <a href="/auth/github/login" class="btn">Link GitHub</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if linkedin_configured %}
+    <div style="padding-top:16px; border-top:1px solid var(--border);">
+      <div style="font-size:14px; font-weight:600; margin-bottom:4px;">LinkedIn</div>
+      {% if link_profile.linkedin.handle %}
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          {% if link_profile.linkedin.avatar %}
+            <img src="{{ link_profile.linkedin.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
+          {% endif %}
+          <span style="font-size:13px;">Linked as <strong>{{ link_profile.linkedin.handle }}</strong></span>
+        </div>
+      {% elif linked_flag == "linkedin" %}
+        <form action="/profile/confirm" method="POST" style="margin-top:8px;">
+          <input type="hidden" name="source" value="linkedin">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            {% if link_profile.avatar and link_profile.source == 'linkedin' %}
+              <img src="{{ link_profile.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
+            {% endif %}
+            <span style="font-size:13px;">Confirm link as <strong>{{ link_profile.handle if link_profile.source == 'linkedin' else '?' }}</strong>?</span>
+          </div>
+          <button type="submit" class="btn btn-primary">Confirm LinkedIn Profile</button>
+        </form>
+      {% else %}
+        <div style="font-size:13px; color:var(--muted); margin-bottom:8px;">No LinkedIn profile linked.</div>
+        <a href="/auth/linkedin/login" class="btn">Link LinkedIn</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not github_configured and not linkedin_configured %}
+      <div style="font-size:13px; color:var(--muted);">No OAuth providers configured on the server.</div>
+    {% endif %}
+  </section>
+</div>
+
+<div data-tab-content="general" style="display:none;">
+  <section class="panel">
+    <div class="panel-title">Appearance</div>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span style="font-size:13px; margin-right:4px;">Theme</span>
+      <button class="btn btn-primary" type="button" data-theme-btn="dark" aria-pressed="true">Dark</button>
+      <button class="btn" type="button" data-theme-btn="light" aria-pressed="false">Light</button>
+    </div>
+  </section>
+</div>
+
+<div data-tab-content="data" style="display:none;">
+  <section class="panel">
+    <div class="panel-title">Storage Health</div>
+    {% if storage_ok %}
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <span class="badge-green">Healthy</span>
+        <span style="font-size:13px; color:var(--muted, #94a3b8);">Database is connected and ready.</span>
+      </div>
+    {% else %}
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <span class="badge-red">Unavailable</span>
+        <span style="font-size:13px; color:var(--muted, #94a3b8);">Persistence layer is not responding.</span>
+      </div>
+    {% endif %}
+    <div style="font-size:12px; font-family:var(--font-mono, monospace); color:var(--muted, #94a3b8);">Backend: {{ db_path }}</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">Data Actions</div>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <div style="font-size:14px; font-weight:600;">Clear API Cache</div>
+          <div style="font-size:13px; color:var(--muted);">Force the next analysis to bypass cached GitHub data.</div>
+        </div>
+        <button class="btn btn-primary" id="btn-clear-cache">Clear Cache</button>
+      </div>
+
+      <div style="height:1px; background:var(--border);"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <div style="font-size:14px; font-weight:600;">Download Local Database</div>
+          <div style="font-size:13px; color:var(--muted);">Export local SQLite users database. Not available for Postgres.</div>
+        </div>
+        <a href="/api/settings/download-db" class="btn" {% if 'Postgres' in db_path %}style="opacity:0.5; pointer-events:none;" aria-disabled="true"{% endif %}>Download SQLite</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div data-tab-content="security" style="display:none;">
+  <section class="panel">
+    <div class="panel-title">Security &amp; API</div>
+    <div style="margin-bottom:16px;">
+      <div style="font-size:14px; font-weight:600; margin-bottom:4px;">GitHub Analytics Token</div>
+      {% if token_present %}
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="badge-blue">Configured</span>
+        <span style="font-size:13px; color:var(--muted);">Platform backend has elevated rate limits.</span>
+      </div>
+      {% else %}
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="badge-amber">Unauthenticated</span>
+        <span style="font-size:13px; color:var(--muted);">Running with 60 req/hr limits. Add GITHUB_TOKEN environment variable.</span>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">Legal</div>
+    <a class="legal-row" href="/privacy">
+      <span class="legal-text">
+        <span class="legal-title">Privacy Policy</span>
+        <span class="legal-sub">How we collect, use, and protect your data.</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </a>
+  </section>
+</div>
+
 <script>
 (function () {
+  // Theme logic
   var KEY = 'gsad_theme_v1';
   function current() { return document.documentElement.dataset.theme || 'dark'; }
   function apply(theme) {
@@ -107,6 +208,61 @@ host — sign-up/login will not persist here.{% endif %}
     b.addEventListener('click', function () { apply(b.getAttribute('data-theme-btn')); });
   });
   refresh();
+
+  // Tab logic
+  var tabs = document.querySelectorAll('.profile-tab');
+  var contents = document.querySelectorAll('[data-tab-content]');
+  
+  // Set initial tab if linked_flag is present
+  var linkedFlag = "{{ linked_flag }}";
+  if (linkedFlag) {
+    switchTab('accounts');
+  }
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      switchTab(tab.getAttribute('data-tab-btn'));
+    });
+  });
+
+  function switchTab(tabId) {
+    tabs.forEach(function(t) {
+      var active = t.getAttribute('data-tab-btn') === tabId;
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    contents.forEach(function(c) {
+      c.style.display = c.getAttribute('data-tab-content') === tabId ? 'block' : 'none';
+    });
+  }
+
+  // Clear cache action
+  var btnClear = document.getElementById('btn-clear-cache');
+  if (btnClear) {
+    btnClear.addEventListener('click', function() {
+      var origText = btnClear.textContent;
+      btnClear.textContent = 'Clearing...';
+      btnClear.disabled = true;
+      fetch('/api/settings/clear-cache', { method: 'POST' })
+        .then(function(res) {
+          if (!res.ok) throw new Error('Failed');
+          return res.json();
+        })
+        .then(function() {
+          btnClear.textContent = 'Cleared!';
+          setTimeout(function() {
+            btnClear.textContent = origText;
+            btnClear.disabled = false;
+          }, 2000);
+        })
+        .catch(function() {
+          btnClear.textContent = 'Error';
+          setTimeout(function() {
+            btnClear.textContent = origText;
+            btnClear.disabled = false;
+          }, 2000);
+        });
+    });
+  }
 })();
 </script>
 {% endblock %}

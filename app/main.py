@@ -2651,6 +2651,25 @@ def settings_page(request: Request, linked: str = ""):
         },
     )
 
+@app.post("/api/settings/clear-cache")
+def api_clear_cache(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    services.clear_api_cache()
+    return JSONResponse(content={"status": "ok"})
+
+@app.get("/api/settings/download-db")
+def api_download_db(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    if database.db_configured():
+        return JSONResponse(status_code=400, content={"detail": "Postgres is configured. Export unavailable."})
+    if storage.DB_PATH.exists():
+        return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="gsad_users.db")
+    return JSONResponse(status_code=404, content={"detail": "Database not found"})
+
 
 @app.get("/{slug}", response_class=HTMLResponse)
 def placeholder_page(request: Request, slug: str):
