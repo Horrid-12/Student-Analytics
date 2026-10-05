@@ -147,6 +147,7 @@
   }
   .radar-header .panel-title {
     margin-bottom: 0;
+    flex: none;
   }
   .radar-caption {
     margin: 0 0 14px;
@@ -157,6 +158,7 @@
   .radar-controls {
     display: flex;
     align-items: center;
+    gap: 10px;
     position: relative;
   }
   .radar-cohort-select {
@@ -185,12 +187,30 @@
   .radar-hint.show {
     opacity: 1;
   }
+  /* Inline legend container: sits between the title and the compare dropdown,
+     wrapped in a card-style box matching the Avg Repos / Avg Quality cards. */
+  .radar-legend-box {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 0 rgba(20, 34, 53, 0.04);
+    gap: 8px;
+    min-height: 38px;
+    overflow-x: auto;
+  }
+  .radar-legend-box:empty {
+    display: none;
+  }
   .radar-legend {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    margin-bottom: 14px;
     min-height: 0;
   }
   .radar-pill {
@@ -234,6 +254,32 @@
   .radar-x:hover {
     background: rgba(255, 255, 255, 0.08);
     color: var(--text);
+  }
+  /* Clear Filters button — subtle ghost style matching the header. */
+  .radar-clear-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 180ms ease;
+  }
+  .radar-clear-btn:hover {
+    border-color: var(--blue-hover-border);
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+  .radar-clear-btn.visible {
+    display: inline-flex;
   }
   @media (max-width: 720px) {
     .radar-cohort-select {
@@ -291,7 +337,7 @@
 </form>
 <div id="previous-results">
 <section class="panel">
-  <div class="panel-title">Overview Metrics</div>
+  <div class="panel-title">Overview</div>
   <div class="metric-grid metric-grid-4">
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
@@ -342,7 +388,14 @@
 <section class="panel">
   <div class="radar-header">
     <div class="panel-title">Class Metrics Radar</div>
+    <div id="radar-legend-box" class="radar-legend-box">
+      <div id="radar-legend" class="radar-legend"></div>
+    </div>
     <div class="radar-controls">
+      <button type="button" id="radar-clear-btn" class="radar-clear-btn" aria-label="Clear all comparison filters">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        Clear Filters
+      </button>
       <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a class">
         <option value="" selected disabled>+ Compare class…</option>
         {% if payload.radar_data.has_current %}
@@ -361,7 +414,6 @@
     </div>
   </div>
   <p class="radar-caption">Dashed line = average of all students. The cards to the right follow whatever classes you compare. Pick a batch + division above to overlay it.</p>
-  <div id="radar-legend" class="radar-legend"></div>
   <div class="radar-grid">
     <div>
       {{ ec.radar('metrics-radar', payload.radar_data) }}
@@ -375,8 +427,10 @@
     function byId(id) { return document.getElementById(id); }
     var select = byId('radar-cohort-select');
     var legendEl = byId('radar-legend');
+    var legendBox = byId('radar-legend-box');
     var hintEl = byId('radar-hint');
     var cardsEl = byId('radar-compare-cards');
+    var clearBtn = byId('radar-clear-btn');
     if (!select || !legendEl || !hintEl || !cardsEl) return;
     var bridge = null;
     var hintTimer = null;
@@ -444,6 +498,16 @@
       cardsEl.innerHTML = html;
     }
 
+    function updateClearBtn() {
+      if (!clearBtn || !bridge) return;
+      var active = bridge.getActive();
+      if (active.length > 0) {
+        clearBtn.classList.add('visible');
+      } else {
+        clearBtn.classList.remove('visible');
+      }
+    }
+
     function updateLegend() {
       if (!bridge) return;
       var active = bridge.getActive();
@@ -462,6 +526,11 @@
           '</span>';
       });
       legendEl.innerHTML = html;
+      // Show/hide the legend box based on whether there are any pills
+      if (legendBox) {
+        legendBox.style.display = active.length > 0 ? '' : 'none';
+      }
+      updateClearBtn();
       renderCards();
     }
 
@@ -473,6 +542,16 @@
       bridge.removeSeries(x.getAttribute('data-key'));
       updateLegend();
     });
+
+    // Clear Filters button — removes all active series and resets the radar.
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (!bridge) return;
+        var active = bridge.getActive().slice();
+        active.forEach(function (key) { bridge.removeSeries(key); });
+        updateLegend();
+      });
+    }
 
     // Comparing is capped at MAX_CMP classes so the radar + cards stay readable.
     select.addEventListener('change', function () {
@@ -500,9 +579,9 @@
   <div class="trend-header">
     <div class="panel-title">Weekly Commit &amp; Activity Trend Across Batches</div>
     <div class="activity-tabs" role="group" aria-label="Trend period">
-      <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="true">Weekly</button>
+      <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="false">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
-      <button type="button" class="activity-tab" data-trend="semester" aria-pressed="false">Semester</button>
+      <button type="button" class="activity-tab" data-trend="semester" aria-pressed="true">Semester</button>
     </div>
   </div>
   <div class="two-col-grid">
