@@ -6,13 +6,6 @@
   <div class="topbar">
     <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
       <div class="topbar-title">Settings</div>
-      <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
-        <span>{{ topbar_date }}</span><span>&bull;</span>
-        <span>Platform preferences &amp; account configuration</span>
-      </div>
-    </div>
-    <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-      <span class="badge-purple">{{ auth_role }}</span>
     </div>
   </div>
 </div>
@@ -28,7 +21,11 @@
   <section class="panel">
     <div class="panel-title">Profile</div>
     <div style="display:flex; align-items:center; gap:12px;">
-      <div class="user-avatar-pill" style="width:36px; height:36px;">{{ auth_user[0] | upper if auth_user and auth_user != "Guest" else "?" }}</div>
+      {% if sidebar_avatar_url %}
+        <img src="{{ sidebar_avatar_url }}" alt="" class="user-avatar-pill" style="width:36px; height:36px; object-fit:cover;">
+      {% else %}
+        <div class="user-avatar-pill" style="width:36px; height:36px;">{{ avatar_initial }}</div>
+      {% endif %}
       <div style="min-width:0;">
         <div class="user-role-line"><span class="status-dot-active"></span>{{ auth_role }}</div>
         <div class="user-name">{{ auth_user }}</div>
@@ -70,7 +67,7 @@
     {% endif %}
 
     {% if linkedin_configured %}
-    <div style="padding-top:16px; border-top:1px solid var(--border);">
+    <div style="padding-top:16px; border-top:1px solid var(--border); margin-bottom:16px;">
       <div style="font-size:14px; font-weight:600; margin-bottom:4px;">LinkedIn</div>
       {% if link_profile.linkedin.handle %}
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
@@ -97,7 +94,16 @@
     </div>
     {% endif %}
 
-    {% if not github_configured and not linkedin_configured %}
+    {% if link_profile.hackerrank and link_profile.hackerrank.handle %}
+    <div style="padding-top:16px; border-top:1px solid var(--border);">
+      <div style="font-size:14px; font-weight:600; margin-bottom:4px;">HackerRank</div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <span style="font-size:13px;">Linked as <strong><a href="{{ link_profile.hackerrank.url }}" target="_blank" style="color:inherit; text-decoration:underline;">{{ link_profile.hackerrank.handle }}</a></strong></span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not github_configured and not linkedin_configured and not link_profile.hackerrank.handle %}
       <div style="font-size:13px; color:var(--muted);">No OAuth providers configured on the server.</div>
     {% endif %}
   </section>

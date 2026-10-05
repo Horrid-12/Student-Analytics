@@ -2623,6 +2623,29 @@ def settings_page(request: Request, linked: str = ""):
     if row is None and user:
         row = auth.get_user(user.get("email", ""))
     identity = auth.linked_identity(row)
+    
+    hackerrank_handle = ""
+    hackerrank_url = ""
+    if row and row.get("prn"):
+        prn = str(row.get("prn")).strip()
+        records = []
+        try:
+            if database.db_configured():
+                records = db.latest_roster_records() or []
+            else:
+                from app import storage
+                res = storage.get_analysis("active")
+                records = res.get("raw_json", []) if res else []
+        except Exception:
+            pass
+        for r in records:
+            if str(r.get(views.STUDENT_ID_COL, "")).strip() == prn:
+                hackerrank_handle = str(r.get("HackerRank_Username") or "").strip()
+                hackerrank_url = str(r.get("HackerRank_URL") or "").strip()
+                break
+        if hackerrank_handle and not hackerrank_url:
+            hackerrank_url = views.hackerrank_profile_url(hackerrank_handle)
+
     link_profile = {
         "github": {
             "handle": (row.get("linked_github_username") or "") if row else "",
@@ -2631,6 +2654,10 @@ def settings_page(request: Request, linked: str = ""):
         "linkedin": {
             "handle": (row.get("linked_linkedin_name") or "") if row else "",
             "avatar": (row.get("linked_linkedin_avatar") or "") if row else "",
+        },
+        "hackerrank": {
+            "handle": hackerrank_handle,
+            "url": hackerrank_url,
         },
         "source": identity.get("source", ""),
         "handle": identity.get("handle", ""),
