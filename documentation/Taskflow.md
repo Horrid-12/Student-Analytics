@@ -323,3 +323,8 @@ Decisions / rejected alternatives:
 Discovered while auditing (needs a product/code decision, NOT fixed here):
 
 - **Suspected cron method mismatch** — `vercel.json` schedules `crons[0].path = /sync/accounts` but Vercel Cron issues **GET**, while `app/main.py:1389` exposes `@app.post("/sync/accounts")` only (GET → 405; `/sync/weekly` is already an `api_route` accepting both). Nightly sync may silently never fire — mitigated in practice by self-sync-on-login and the 6-hourly Heavy Sync Action. Verify on the Vercel cron logs before touching code.
+
+### README badge palette follow-up (2026-10-05)
+
+- [x] **Badge colors now match the UI + logo instead of per-brand rainbows** - every shields badge uses `labelColor=eee9df` (the `--bg` paper cream from `static/theme.css`) + `color=be342b` (the `--red` behind every `.btn-primary`, same vermilion family as the MIT-WPU logo wordmark sampled from `static/Favicon.png`: dominant `#f44003`, secondary warm grey) with white text/logos. Header row (6 HTML imgs) and the Tech stack table (13 badges) both restyled; the CodeQL badge is GitHub-rendered and keeps its own colors (noted in the README).
+- [x] **Verified by fetch, not by eye** - all 19 badge URLs re-fetched; `scripts/verify_readme.py` now also asserts `#eee9df` and `#be342b` appear in every shields.io response (`BADGES` map keys updated to the new URLs), so a future palette drift fails the check. Rejected: brand-color badges (clashed with the paper theme), `#f44003` literal (logo hex is too vivid for small text surfaces; `--red` is the UI-tempered version of it), and restyling the CodeQL badge (GitHub does not accept color params on workflow badges).
