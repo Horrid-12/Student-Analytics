@@ -14,8 +14,8 @@
   <img src="https://img.shields.io/badge/license-All%20rights%20reserved-be342b?labelColor=eee9df" alt="license: All rights reserved">
   <img src="https://github.com/Horrid-12/Student-Analytics/actions/workflows/codeql.yml/badge.svg" alt="CodeQL: passing">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-be342b?labelColor=eee9df" alt="platform: Windows | macOS | Linux">
-  <img src="https://img.shields.io/badge/Python-3.11%2B-be342b?logo=python&amp;logoColor=white&amp;labelColor=eee9df" alt="Python: 3.11+">
-  <img src="https://img.shields.io/badge/Vercel-Hosting%20platform-be342b?logo=vercel&amp;logoColor=white&amp;labelColor=eee9df" alt="Vercel: Hosting platform">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-be342b?logo=python&amp;logoColor=142235&amp;labelColor=eee9df" alt="Python: 3.11+">
+  <img src="https://img.shields.io/badge/Vercel-Hosting%20platform-be342b?logo=vercel&amp;logoColor=142235&amp;labelColor=eee9df" alt="Vercel: Hosting platform">
 </p>
 
 <p align="center">
@@ -124,20 +124,20 @@ vercel.json     ASGI entry + cron schedule
 
 | Layer | Stack |
 |---|---|
-| Language | ![Python](https://img.shields.io/badge/Python-3.11%2B-be342b?logo=python&logoColor=white&labelColor=eee9df) |
-| Web framework | ![FastAPI](https://img.shields.io/badge/FastAPI-be342b?logo=fastapi&logoColor=white&labelColor=eee9df) ![Uvicorn](https://img.shields.io/badge/Uvicorn-be342b?labelColor=eee9df) |
-| Templating | ![Jinja](https://img.shields.io/badge/Jinja-be342b?logo=jinja&logoColor=white&labelColor=eee9df) |
-| Interactivity | ![HTMX](https://img.shields.io/badge/HTMX-be342b?logo=htmx&logoColor=white&labelColor=eee9df) |
-| Charts | ![Plotly](https://img.shields.io/badge/Plotly-be342b?logo=plotly&logoColor=white&labelColor=eee9df) |
-| Data | ![pandas](https://img.shields.io/badge/pandas-be342b?logo=pandas&logoColor=white&labelColor=eee9df) ![openpyxl](https://img.shields.io/badge/openpyxl-be342b?labelColor=eee9df) |
+| Language | ![Python](https://img.shields.io/badge/Python-3.11%2B-be342b?logo=python&logoColor=142235&labelColor=eee9df) |
+| Web framework | ![FastAPI](https://img.shields.io/badge/FastAPI-be342b?logo=fastapi&logoColor=142235&labelColor=eee9df) ![Uvicorn](https://img.shields.io/badge/Uvicorn-be342b?labelColor=eee9df) |
+| Templating | ![Jinja](https://img.shields.io/badge/Jinja-be342b?logo=jinja&logoColor=142235&labelColor=eee9df) |
+| Interactivity | ![HTMX](https://img.shields.io/badge/HTMX-be342b?logo=htmx&logoColor=142235&labelColor=eee9df) |
+| Charts | ![Plotly](https://img.shields.io/badge/Plotly-be342b?logo=plotly&logoColor=142235&labelColor=eee9df) |
+| Data | ![pandas](https://img.shields.io/badge/pandas-be342b?logo=pandas&logoColor=142235&labelColor=eee9df) ![openpyxl](https://img.shields.io/badge/openpyxl-be342b?labelColor=eee9df) |
 | OAuth | ![Authlib](https://img.shields.io/badge/Authlib-OAuth%20clients-be342b?labelColor=eee9df) |
-| Cache | ![Upstash](https://img.shields.io/badge/Upstash-be342b?logo=upstash&logoColor=white&labelColor=eee9df) |
-| Database | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-be342b?logo=postgresql&logoColor=white&labelColor=eee9df) ![SQLite](https://img.shields.io/badge/SQLite-be342b?logo=sqlite&logoColor=white&labelColor=eee9df) |
-| CI | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-be342b?logo=githubactions&logoColor=white&labelColor=eee9df) |
-| Tests | ![pytest](https://img.shields.io/badge/pytest-be342b?logo=pytest&logoColor=white&labelColor=eee9df) |
-| Hosting | ![Vercel](https://img.shields.io/badge/Vercel-Hosting%20platform-be342b?logo=vercel&logoColor=white&labelColor=eee9df) |
+| Cache | ![Upstash](https://img.shields.io/badge/Upstash-be342b?logo=upstash&logoColor=142235&labelColor=eee9df) |
+| Database | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-be342b?logo=postgresql&logoColor=142235&labelColor=eee9df) ![SQLite](https://img.shields.io/badge/SQLite-be342b?logo=sqlite&logoColor=142235&labelColor=eee9df) |
+| CI | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-be342b?logo=githubactions&logoColor=142235&labelColor=eee9df) |
+| Tests | ![pytest](https://img.shields.io/badge/pytest-be342b?logo=pytest&logoColor=142235&labelColor=eee9df) |
+| Hosting | ![Vercel](https://img.shields.io/badge/Vercel-Hosting%20platform-be342b?logo=vercel&logoColor=142235&labelColor=eee9df) |
 
-Badges carry the app palette instead of per-brand colors: label `eee9df` (the `--bg` paper cream from `static/theme.css`) and message `be342b` (the `--red` behind every `.btn-primary` — the same vermilion family as the logo's wordmark), with white text and logos. The CodeQL badge is GitHub-rendered and keeps its own colors; `logo=` is omitted where simple-icons has no slug (`uvicorn`, `openpyxl`).
+Badges carry the app palette instead of per-brand colors: label `eee9df` (the `--bg` paper cream from `static/theme.css`) and message `be342b` (the `--red` behind every `.btn-primary` — the same vermilion family as the logo's wordmark), with dark ink icons (`142235`, the `--text` color) on the cream label and white text on the red message. The CodeQL badge is GitHub-rendered and keeps its own colors; `logo=` is omitted where simple-icons has no slug (`uvicorn`, `openpyxl`).
 
 ---
 
