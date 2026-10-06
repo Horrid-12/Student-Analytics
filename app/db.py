@@ -1317,7 +1317,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester "
+                "main_batch, practical_batch, semester, hackerrank_username "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1490,6 +1490,7 @@ def set_onboarding(
     status: str = "none",
     submitted_at: str = "",
     github_verified_at: str = "",
+    hackerrank_username: str = "",
 ) -> bool:
     """Write onboarding fields for one account (Postgres leg)."""
     email = (email or "").strip().lower()
@@ -1503,9 +1504,9 @@ def set_onboarding(
                 "UPDATE users SET prn = %s, degree_branch = %s, division = %s, "
                 "main_batch = %s, practical_batch = %s, semester = %s, "
                 "onboarding_status = %s, onboarding_submitted_at = %s, "
-                "github_verified_at = %s WHERE email = %s",
+                "github_verified_at = %s, hackerrank_username = %s WHERE email = %s",
                 (prn, degree_branch, division, main_batch, practical_batch, semester,
-                 status, submitted_at, github_verified_at, email),
+                 status, submitted_at, github_verified_at, hackerrank_username, email),
             )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
@@ -1563,7 +1564,7 @@ def get_approved_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester "
+                "main_batch, practical_batch, semester, hackerrank_username "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
             return [dict(row) for row in cur.fetchall()]

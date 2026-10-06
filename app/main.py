@@ -1072,7 +1072,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             user["email"], "linkedin", claims.get("name"), claims.get("picture")
         )
         _db_log_event("linkedin_linked", user["email"])
-        response = RedirectResponse("/settings?linked=linkedin", status_code=302)
+        response = RedirectResponse("/onboarding?linked=linkedin", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -1293,6 +1293,7 @@ async def onboarding_submit(
     main_batch: str = Form(""),
     practical_batch: str = Form(""),
     semester: str = Form(""),
+    hackerrank_username: str = Form(""),
 ):
     """Student submission endpoint (Phase 4.12). Validates the form server-side,
     persists the academic identity, and moves the account to ``pending``."""
@@ -1304,6 +1305,7 @@ async def onboarding_submit(
     ok, err = auth.submit_onboarding(
         user["email"], prn, degree_branch, division,
         main_batch=main_batch, practical_batch=practical_batch, semester=semester,
+        hackerrank_username=hackerrank_username,
     )
     if ok:
         _db_log_event("onboarding_submit", user["email"])

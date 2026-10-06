@@ -580,7 +580,7 @@ def get_user(email: str) -> dict | None:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester FROM users WHERE email = ?",
+                "main_batch, practical_batch, semester, hackerrank_username FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -783,6 +783,7 @@ def submit_onboarding(
     main_batch: str = "",
     practical_batch: str = "",
     semester: str = "",
+    hackerrank_username: str = "",
 ) -> tuple[bool, str]:
     """Record a student's academic onboarding submission and move the account
     to ``pending`` for registrar review. Returns ``(ok, error_code)`` where
@@ -817,7 +818,7 @@ def submit_onboarding(
     stored = db_set_onboarding(
         email, prn=prn, degree_branch=degree_branch, division=division,
         main_batch=main_batch, practical_batch=practical_batch, semester=semester,
-        status="pending", submitted_at=now,
+        status="pending", submitted_at=now, hackerrank_username=hackerrank_username,
     )
     if not stored:
         return False, "storage_unavailable"
@@ -835,6 +836,7 @@ def db_set_onboarding(
     status: str = "none",
     submitted_at: str = "",
     github_verified_at: str = "",
+    hackerrank_username: str = "",
 ) -> bool:
     """Write onboarding fields for one account. Postgres-first, SQLite fallback.
     Returns True when the row updated."""
