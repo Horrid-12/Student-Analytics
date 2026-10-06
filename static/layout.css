@@ -2003,6 +2003,10 @@ button {
   border-color: var(--blue);
   color: var(--blue);
 }
+/* Registrar ledger action buttons: never overflow the fixed Action column. */
+.ledger-actions button {
+  white-space: nowrap;
+}
 
 /* 4.11 notification bell (student-only, sits in topbar-actions). The list
    shows at most ~5 notifications and scrolls for the rest. */

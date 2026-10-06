@@ -234,14 +234,15 @@ class TestApprovalFlow:
 
 class TestLedgerView:
     def test_ledger_lists_submissions_for_admin(self, client):
-        signup(client)
-        login(client)
-        submit(client, prn="1234567890")
+        signup(client, "1234567890.s@college.edu")
+        login(client, "1234567890.s@college.edu")
+        submit(client, prn="9876543210")
         client.get("/logout")
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert "stu1@college.edu" in body
-        assert "1234567890" in body  # PRN lives inside the Student cell now
+        assert "1234567890.s@college.edu" in body
+        assert "1234567890" in body  # email-derived PRN, bold under the name
+        assert ">9876543210<" not in body  # stored PRN column is gone (edit-modal prefill may still reference it)
         assert "/onboarding/approve" in body
         assert "/onboarding/reject" in body
         # Fixed table layout (no horizontal scroll) with the new columns.
@@ -270,13 +271,15 @@ class TestLedgerView:
         signup(client)
         login(client)
         submit(client, prn="1234567890", hackerrank="alice_hr")
-        auth.save_linked_profile("stu1@college.edu", "linkedin", "Stu Dent", "https://example.com/p.png")
+        auth.save_linked_profile("stu1@college.edu", "linkedin", "stu-dent-123", "https://example.com/p.png")
         client.get("/logout")
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "alice_hr" in body
         assert "hackerrank.com/profile/alice_hr" in body
-        assert "Stu Dent" in body  # LinkedIn display name
+        # LinkedIn: student name as link text pointing at the profile slug.
+        assert 'linkedin.com/in/stu-dent-123' in body
+        assert ">Student One</a>" in body
 
     def test_student_does_not_see_ledger(self, client):
         signup(client)
