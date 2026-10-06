@@ -380,11 +380,12 @@ def account_view(email: str):
     """Rebuild the ``analysis_view`` shape from a student's stored account
     snapshot (Phase 5.1 account-driven redesign).
 
-    Returns None when the account has no stored snapshot yet; otherwise the
-    same ``{records, state, students, repos, team_repos, issues}`` contract
-    ``analysis_view`` produces, sized to the single student — so the existing
-    page builders (overview / students / repositories / own_profile /
-    leaderboards) run unchanged against account-driven pages. Owned repos and
+    Returns None only when the account has no stored snapshot AND no user
+    row yet; otherwise a zeroed identity fallback row keeps the page on the
+    data branch (same contract ``analysis_view`` produces, sized to the
+    single student) — so the existing page builders (overview / students /
+    repositories / own_profile / leaderboards) run unchanged against
+    account-driven pages. Owned repos and
     team-contributed repos both come from the snapshot, matching the file
     upload pipeline's two frames.
     """
@@ -459,7 +460,9 @@ def fleet_view():
     Owned repos and team-contributed repos are both aggregated from the
     snapshots — the same two frames the upload pipeline produces — so
     leaderboards, profiles, repositories and overview totals match the file
-    upload system for the same GitHub accounts.
+    upload system for the same GitHub accounts. Approved accounts without an
+    ok snapshot yet contribute a zeroed identity fallback row; returns None
+    only when no approved accounts exist at all.
     """
     from app import accounts, auth
 

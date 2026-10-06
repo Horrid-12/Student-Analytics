@@ -996,7 +996,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
         # 4.11 (e): persist the fetched candidate (login + avatar) for user
-        # confirmation on Settings.
+        # confirmation on onboarding.
         auth.save_linked_profile(
             user["email"], "github", claims.get("login"), claims.get("avatar_url")
         )
@@ -1067,7 +1067,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
     if mode == "link" and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
         # 4.11 (e): persist the fetched candidate (name + picture) for user
-        # confirmation on Settings.
+        # confirmation on onboarding.
         auth.save_linked_profile(
             user["email"], "linkedin", claims.get("name"), claims.get("picture")
         )
