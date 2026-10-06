@@ -392,10 +392,6 @@
       <div id="radar-legend" class="radar-legend"></div>
     </div>
     <div class="radar-controls">
-      <button type="button" id="radar-clear-btn" class="radar-clear-btn" aria-label="Clear all comparison filters">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        Clear Filters
-      </button>
       <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a class">
         <option value="" selected disabled>+ Compare class…</option>
         {% if payload.radar_data.has_current %}
@@ -410,6 +406,10 @@
         </optgroup>
         {% endfor %}
       </select>
+      <button type="button" id="radar-clear-btn" class="radar-clear-btn" aria-label="Clear all comparison filters">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        Clear Filters
+      </button>
       <div id="radar-hint" class="radar-hint">Maximum 4 classes can be compared at the same time.</div>
     </div>
   </div>

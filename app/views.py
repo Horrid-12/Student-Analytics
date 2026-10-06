@@ -923,7 +923,12 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                 "students": _slice,
                 "users": _users,
             })
-    _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, c["name"].lower()))
+    def _div_sort_key(name: str):
+        """Extract numeric part from division name for ascending numeric sort;
+        fall back to lowercase text for non-numeric divisions."""
+        m = re.search(r'\d+', name)
+        return (0, int(m.group(0)), name.lower()) if m else (1, 0, name.lower())
+    _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, _div_sort_key(c["name"])))
 
     _radar_series = []
     _radar_active = []
@@ -939,12 +944,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
         _radar_active.append("current")
         _has_current = True
-    # 2. "All students": the whole-roster baseline. Only auto-shown when it adds
-    #    information (a filtered view exists); otherwise it would draw an
-    #    identical shape on top of "Your class".
+    # 2. "All students": the whole-roster baseline. Always pre-applied so the
+    #    radar opens with a visible shape; users can clear it via the Clear
+    #    Filters button.
     _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_all_students, _all_score_repos)})
-    if (not _has_current) or _filtered:
-        _radar_active.append("overall")
+    _radar_active.append("overall")
     # 3. Every selectable cohort, measured with the same formulas.
     for _c in _cohort_rows:
         try:
