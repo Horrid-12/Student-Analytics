@@ -419,3 +419,6 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+-- Backfill for HackerRank on onboarding.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';

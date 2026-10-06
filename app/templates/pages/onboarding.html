@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Academic Onboarding & Record Setup{% endblock %}
+
 {% block content %}
 <div class="topbar-card">
     <div class="topbar-title">Academic Onboarding & Record Setup</div>
@@ -13,6 +14,7 @@
     'invalid_main_batch': 'Please pick a valid main batch (admission cohort).',
     'invalid_practical_batch': 'Please pick a valid Python Practical batch.',
     'invalid_semester': 'Please pick a valid semester.',
+    'missing_hackerrank': 'Please provide your HackerRank username. It is required for the dashboard leaderboards.',
     'prn_taken': 'This Roll Number is already registered to another account.',
     'storage_unavailable': 'Your submission could not be saved right now. Please try again shortly.',
     'bad_status': 'That action is not allowed.',
@@ -48,10 +50,7 @@
 
 
 
-<div class="topbar-card" style="margin-bottom: 20px;">
-    <div class="topbar-title">Registrar Onboarding Ledger</div>
-    <div class="topbar-subtitle">Review pending academic submissions, promote verified GitHub identities, or reject with feedback.</div>
-</div>
+
 
 <div class="panel" style="padding: 24px; overflow-x: auto;">
     {% if onboarding_users %}
@@ -109,6 +108,7 @@
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
                         </form>
+                        <button type="button" onclick="openEditModal('{{ row.email|replace("'", "\'") }}', '{{ row.prn|replace("'", "\'") }}', '{{ row.degree_branch|replace("'", "\'") }}', '{{ row.division|replace("'", "\'") }}', '{{ row.practical_batch|replace("'", "\'") }}', '{{ row.semester|replace("'", "\'") }}', '{{ row.hackerrank_username|replace("'", "\'") }}', '{{ row.github_username|replace("'", "\'") }}')" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Edit</button>
                         <form method="post" action="/onboarding/reject" style="display: inline;">
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--muted);">Reject</button>
@@ -122,6 +122,7 @@
                     </div>
                     {% elif row.onboarding_status == 'approved' %}
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" onclick="openEditModal('{{ row.email|replace("'", "\'") }}', '{{ row.prn|replace("'", "\'") }}', '{{ row.degree_branch|replace("'", "\'") }}', '{{ row.division|replace("'", "\'") }}', '{{ row.practical_batch|replace("'", "\'") }}', '{{ row.semester|replace("'", "\'") }}', '{{ row.hackerrank_username|replace("'", "\'") }}', '{{ row.github_username|replace("'", "\'") }}')" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Edit</button>
                     <form method="post" action="/onboarding/disapprove" style="display: inline;">
                         <input type="hidden" name="email" value="{{ row.email }}">
                         <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Disapprove</button>
@@ -139,6 +140,7 @@
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
                         </form>
+                        <button type="button" onclick="openEditModal('{{ row.email|replace("'", "\'") }}', '{{ row.prn|replace("'", "\'") }}', '{{ row.degree_branch|replace("'", "\'") }}', '{{ row.division|replace("'", "\'") }}', '{{ row.practical_batch|replace("'", "\'") }}', '{{ row.semester|replace("'", "\'") }}', '{{ row.hackerrank_username|replace("'", "\'") }}', '{{ row.github_username|replace("'", "\'") }}')" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Edit</button>
                         {% if is_admin %}
                         <form method="post" action="/onboarding/remove" style="display: inline;" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
                             <input type="hidden" name="email" value="{{ row.email }}">
@@ -237,6 +239,8 @@
                         {% endfor %}
                     </select>
                 </div>
+
+
             </div>
         </div>
         </form>
@@ -270,6 +274,12 @@
             <div style="display: flex; flex-direction: column; gap: 16px;">
                 <p style="font-size: 13px; color: var(--muted); margin: 0 0 8px 0;">Linking your profiles allows verification for campus placements and repository audit logs.</p>
 
+                <div class="form-group" style="margin: 0 0 16px 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">HackerRank Username *</label>
+                    <input type="text" name="hackerrank_username" form="onboarding-form" value="{{ submission.hackerrank_username }}" placeholder="e.g. 1272261921_s" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} required />
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.</div>
+                </div>
+
                 {% if submission.linked_github_username %}
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
                     <span style="color: var(--text); font-size: 13px; font-weight: 500;">GitHub · <span style="color: var(--blue);">@{{ submission.linked_github_username }}</span></span>
@@ -295,10 +305,38 @@
                 </script>
                 {% endif %}
 
+                
+                {% if submission.linked_linkedin_name %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--card);">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        {% if submission.linked_linkedin_avatar %}
+                        <img src="{{ submission.linked_linkedin_avatar }}" style="width: 24px; height: 24px; border-radius: 12px;" />
+                        {% endif %}
+                        <span style="color: var(--text); font-size: 13px; font-weight: 500;">LinkedIn • <span style="color: var(--blue);">{{ submission.linked_linkedin_name }}</span></span>
+                    </div>
+                    {% if submission.onboarding_status == 'approved' %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #22c55e;">Verified</span>
+                    {% endif %}
+                </div>
+                {% else %}
                 <a href="/auth/linkedin" style="display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; height: 40px; border: 1px solid var(--border); background: var(--card-soft); color: var(--text); text-decoration: none; border-radius: 4px; font-weight: 500;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.25c-.96 0-1.74.77-1.74 1.73a1.74 1.74 0 0 0 1.74 1.74c.96 0 1.73-.78 1.73-1.74 0-.96-.77-1.73-1.73-1.73Z"/></svg>
                     Link LinkedIn Profile
                 </a>
+                <script>
+                // We don't necessarily need a script block for linkedin like github has if it doesn't submit the form first, 
+                // but let's add one to submit the form before linkedin OAuth just like github.
+                document.querySelector('a[href="/auth/linkedin"]').addEventListener('click', function(e) {
+                    var form = document.getElementById('onboarding-form');
+                    if (!form) return;
+                    e.preventDefault();
+                    var data = new FormData(form);
+                    fetch('/onboarding', { method: 'POST', body: data }).finally(function() {
+                        window.location.href = '/auth/linkedin';
+                    });
+                });
+                </script>
+                {% endif %}
             </div>
         </div>
 
@@ -319,5 +357,66 @@
         </div>
     </div>
 {% endif %}
+
+
+<!-- Admin Edit Modal -->
+<div id="admin-edit-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="panel" style="background: var(--bg); padding: 24px; width: 400px; max-width: 90%; border-radius: 8px;">
+        <h3 style="margin-top: 0;">Edit Student Record</h3>
+        <form id="admin-edit-form" method="post" action="/onboarding/admin_edit">
+            <input type="hidden" name="email" id="edit-email">
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>PRN</label>
+                <input type="text" name="prn" id="edit-prn" required pattern="\d{10}" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Branch</label>
+                <select name="degree_branch" id="edit-branch" style="width: 100%; height: 32px;">
+                    <option value="Core">Core</option>
+                    <option value="AI/DS">AI/DS</option>
+                    <option value="Cloud Computing">Cloud Computing</option>
+                    <option value="Cyber Security and Forensics">Cyber Security and Forensics</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Division</label>
+                <input type="text" name="division" id="edit-division" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Practical Batch</label>
+                <input type="text" name="practical_batch" id="edit-batch" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Semester</label>
+                <input type="text" name="semester" id="edit-semester" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>HackerRank Username</label>
+                <input type="text" name="hackerrank_username" id="edit-hackerrank" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label>GitHub Username</label>
+                <input type="text" name="github_username" id="edit-github" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('admin-edit-modal').style.display='none'" style="padding: 6px 12px; cursor: pointer;">Cancel</button>
+                <button type="submit" class="btn-primary" style="padding: 6px 12px; cursor: pointer;">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openEditModal(email, prn, branch, division, batch, semester, hackerrank, github) {
+    document.getElementById('edit-email').value = email || '';
+    document.getElementById('edit-prn').value = prn || '';
+    document.getElementById('edit-branch').value = branch || '';
+    document.getElementById('edit-division').value = division || '';
+    document.getElementById('edit-batch').value = batch || '';
+    document.getElementById('edit-semester').value = semester || '';
+    document.getElementById('edit-hackerrank').value = hackerrank || '';
+    document.getElementById('edit-github').value = github || '';
+    document.getElementById('admin-edit-modal').style.display = 'flex';
+}
+</script>
 
 {% endblock %}
