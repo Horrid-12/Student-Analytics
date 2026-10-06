@@ -287,6 +287,38 @@ def _hidden_repos_state(roster_id: str) -> dict:
     return roster_store.get_hidden_repos(key)
 
 
+def _hr_snapshots_state() -> dict:
+    """HackerRank snapshots: prefer Postgres; fall back to RosterStore cache.
+
+    Handles are global (not roster-scoped), so there is a single shared
+    dict. Fresh profile-view saves surface here within the short _memo TTL;
+    the save path deliberately skips view_cache.invalidate() so one profile
+    view never forces a fleet rebuild on the next page load.
+    """
+    if database.db_configured():
+        def _load_hr() -> dict:
+            try:
+                state = db.get_hackerrank_snapshots()
+            except Exception:
+                state = {}
+            if isinstance(state, dict) and state:
+                return state
+            try:
+                cached = roster_store.get_hr_snapshots()
+            except Exception:
+                cached = {}
+            if isinstance(cached, dict) and cached:
+                try:
+                    for handle, snap in cached.items():
+                        db.put_hackerrank_snapshot(handle, snap if isinstance(snap, dict) else {})
+                except Exception:
+                    pass
+                return cached
+            return state if isinstance(state, dict) else {}
+        return _memo("hr:snapshots", _load_hr)
+    return roster_store.get_hr_snapshots()
+
+
 def _db_log_event(event_type: str, detail: str = "") -> bool:
     """Audit log: prefer Postgres; fall back to SQLite."""
     if database.db_configured():
@@ -432,6 +464,28 @@ class RosterStore:
 
     def get_hidden_repos(self, roster_id: str) -> dict:
         raw = self._cache.get(f"hidden_repos:{roster_id}")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
+    def put_hr_snapshot(self, handle: str, snapshot: dict) -> None:
+        """Progressive HackerRank cache: one entry per lowercase handle."""
+        handle = (handle or "").strip().lower()
+        if not handle or not isinstance(snapshot, dict):
+            return
+        try:
+            state = self.get_hr_snapshots()
+        except Exception:
+            state = {}
+        state[handle] = snapshot
+        self._cache.set("hr_snapshots", json.dumps(state, default=str), self._ttl)
+
+    def get_hr_snapshots(self) -> dict:
+        raw = self._cache.get("hr_snapshots")
         if not raw:
             return {}
         try:
@@ -1694,6 +1748,9 @@ async def api_hackerrank_profile(username: str, request: Request):
     Uses the vendored unofficial-REST client (no auth, TTL 3600). Auth required
     like the notifications API; unknown handle -> 404, upstream failure -> 502
     so the tab can fall back to link-only instead of showing zeros.
+
+    Successful fetches also persist a progressive snapshot (practice score +
+    solved count) that the HackerRank leaderboards rank from.
     """
     user = getattr(request.state, "user", None)
     if not user:
@@ -1722,6 +1779,20 @@ async def api_hackerrank_profile(username: str, request: Request):
     data = profile.to_dict()
     data["heatmap"] = [d.to_dict() for d in (heatmap or [])]
     data["profile_url"] = services.hackerrank_profile_url(data.get("username") or handle)
+    try:
+        snapshot = {
+            "username": data.get("username") or handle,
+            "display_name": data.get("display_name") or "",
+            "practice_score": int(data.get("practice_score") or 0),
+            "total_solved": int(data.get("total_solved") or 0),
+            "badges": len(data.get("badges") or []),
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+        roster_store.put_hr_snapshot(handle.lower(), snapshot)
+        if database.db_configured():
+            db.put_hackerrank_snapshot(handle.lower(), snapshot)
+    except Exception:
+        logger.warning("HackerRank snapshot save failed for %s", handle)
     return JSONResponse(content=data)
 
 
@@ -1968,10 +2039,12 @@ def leaderboards_page(
     # lookup is a network round trip (Lag Fix — was 2 calls x 2 consumers).
     blacklist = _blacklist_state(roster)
     hidden_repos = _hidden_repos_state(roster)
+    hr_snapshots = _hr_snapshots_state()
     payload = views.leaderboards_payload(
         view, division, batch, semester, active_window, commits_window,
         blacklist=blacklist,
         hidden_repos=hidden_repos,
+        hr_snapshots=hr_snapshots,
     )
     # Same profile popup as the Students tab: opened from a leaderboard name,
     # closed back to this exact leaderboard view.

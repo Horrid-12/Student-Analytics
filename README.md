@@ -80,6 +80,7 @@
 ### HackerRank insights
 
 - Lazy profile tab backed by a vendored, unauthenticated HackerRank client with a 1-hour TTL cache: tier-colored hex skill badges, stars, solved counts, last-active, and a paginated solved-questions list.
+- Two leaderboard boards — Most Problems Solved and Top Practice Scores — rank progressively cached profile-view snapshots (Postgres `hackerrank_snapshots`, in-memory fallback); unsynced profiles show as awaiting sync, and both boards support the admin blacklist like every other board.
 
 ### Storage that fits the host
 

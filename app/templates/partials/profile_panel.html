@@ -19,7 +19,7 @@
                 </summary>
                 <div class="blacklist-menu" role="menu" aria-label="Blacklist from leaderboards" data-blacklist-menu data-roster="{{ _bl_key }}" data-student="{{ p.student_id }}">
                   <div class="blacklist-head">Leaderboards</div>
-                  {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories')] %}
+                  {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories'), ('hr_solved', 'Most Problems Solved'), ('hr_score', 'Top Practice Scores')] %}
                   <div class="bl-row{% if key in bl_boards %} is-blacklisted{% endif %}">
                     <span class="bl-label">{{ label }}</span>
                     {% if key in bl_boards %}

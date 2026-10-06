@@ -258,6 +258,15 @@ CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- 8d. HackerRank snapshots ({lowercase handle: {practice_score, total_solved,
+--     badges, display_name, synced_at}} — progressively cached from
+--     profile-view fetches; the HackerRank leaderboards rank from this).
+CREATE TABLE IF NOT EXISTS hackerrank_snapshots (
+    handle      TEXT PRIMARY KEY,
+    state       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 9. Historical analysis runs (mirrors the legacy analytics_history.db schema).
 CREATE TABLE IF NOT EXISTS analysis_runs (
     id                  SERIAL PRIMARY KEY,

@@ -223,6 +223,38 @@
     <div class="leader-empty">No repositories yet.</div>
     {% endif %}
   </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Problems Solved</div>
+    {% if payload.hr_solved_rows %}
+    {% for row in payload.hr_solved_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} solved</span>
+    </div>
+    {% endfor %}
+    {% elif payload.hr_total == 0 %}
+    <div class="leader-empty">No HackerRank profiles linked in this cohort.</div>
+    {% else %}
+    <div class="leader-empty">{{ payload.hr_total - payload.hr_synced }} profile{% if payload.hr_total - payload.hr_synced != 1 %}s{% endif %} awaiting sync &mdash; open a student profile to load HackerRank details.</div>
+    {% endif %}
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Top Practice Scores</div>
+    {% if payload.hr_score_rows %}
+    {% for row in payload.hr_score_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} points</span>
+    </div>
+    {% endfor %}
+    {% elif payload.hr_total == 0 %}
+    <div class="leader-empty">No HackerRank profiles linked in this cohort.</div>
+    {% else %}
+    <div class="leader-empty">{{ payload.hr_total - payload.hr_synced }} profile{% if payload.hr_total - payload.hr_synced != 1 %}s{% endif %} awaiting sync &mdash; open a student profile to load HackerRank details.</div>
+    {% endif %}
+  </section>
 </div>
 
 {% if profile %}
