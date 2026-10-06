@@ -219,7 +219,7 @@
     {% for row in payload.top_repos %}
     <div class="leader-row">
       <span class="leader-rank">{{ row.rank }}</span>
-      <span class="leader-title">{{ row.repo }} <span class="leader-sub">@{{ row.owner }} &middot; {{ row.language }}</span></span>
+      <span class="leader-title">{% if row.url %}<a class="leader-link" href="{{ row.url }}" target="_blank" rel="noopener">{{ row.repo }}</a>{% else %}{{ row.repo }}{% endif %} <span class="leader-sub">@{{ row.owner }} &middot; {{ row.language }}</span></span>
       <span class="leader-score">{{ row.stars }} star{% if row.stars != 1 %}s{% endif %}</span>
     </div>
     {% endfor %}

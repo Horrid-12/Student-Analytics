@@ -1588,7 +1588,8 @@ def get_onboarding_users() -> list[dict]:
                 "SELECT email, role, name, github_username, linked_github_username, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester FROM users "
+                "main_batch, practical_batch, semester, "
+                "hackerrank_username, linked_linkedin_name FROM users "
                 "WHERE onboarding_status != 'none' "
                 "ORDER BY onboarding_submitted_at DESC, email ASC"
             )
