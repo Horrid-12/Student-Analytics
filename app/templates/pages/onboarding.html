@@ -1,5 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Academic Onboarding & Record Setup{% endblock %}
+{% block title %}Academic Onboarding & Record Setup
+<!-- Admin Edit Modal -->
+<div id="admin-edit-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="panel" style="background: var(--bg); padding: 24px; width: 400px; max-width: 90%; border-radius: 8px;">
+        <h3 style="margin-top: 0;">Edit Student Record</h3>
+        <form id="admin-edit-form" method="post" action="/onboarding/admin_edit">
+            <input type="hidden" name="email" id="edit-email">
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>PRN</label>
+                <input type="text" name="prn" id="edit-prn" required pattern="\d{10}" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Branch</label>
+                <select name="degree_branch" id="edit-branch" style="width: 100%; height: 32px;">
+                    <option value="Core">Core</option>
+                    <option value="AI/DS">AI/DS</option>
+                    <option value="Cloud Computing">Cloud Computing</option>
+                    <option value="Cyber Security and Forensics">Cyber Security and Forensics</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Division</label>
+                <input type="text" name="division" id="edit-division" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Practical Batch</label>
+                <input type="text" name="practical_batch" id="edit-batch" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Semester</label>
+                <input type="text" name="semester" id="edit-semester" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>HackerRank Username</label>
+                <input type="text" name="hackerrank_username" id="edit-hackerrank" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label>GitHub Username</label>
+                <input type="text" name="github_username" id="edit-github" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('admin-edit-modal').style.display='none'" style="padding: 6px 12px; cursor: pointer;">Cancel</button>
+                <button type="submit" class="btn-primary" style="padding: 6px 12px; cursor: pointer;">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openEditModal(email, prn, branch, division, batch, semester, hackerrank, github) {
+    document.getElementById('edit-email').value = email || '';
+    document.getElementById('edit-prn').value = prn || '';
+    document.getElementById('edit-branch').value = branch || '';
+    document.getElementById('edit-division').value = division || '';
+    document.getElementById('edit-batch').value = batch || '';
+    document.getElementById('edit-semester').value = semester || '';
+    document.getElementById('edit-hackerrank').value = hackerrank || '';
+    document.getElementById('edit-github').value = github || '';
+    document.getElementById('admin-edit-modal').style.display = 'flex';
+}
+</script>
+
+{% endblock %}
 {% block content %}
 <div class="topbar-card">
     <div class="topbar-title">Academic Onboarding & Record Setup</div>
@@ -110,6 +171,7 @@
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
                         </form>
+                        <button type="button" onclick="openEditModal('{{ row.email|replace("'", "\'") }}', '{{ row.prn|replace("'", "\'") }}', '{{ row.degree_branch|replace("'", "\'") }}', '{{ row.division|replace("'", "\'") }}', '{{ row.practical_batch|replace("'", "\'") }}', '{{ row.semester|replace("'", "\'") }}', '{{ row.hackerrank_username|replace("'", "\'") }}', '{{ row.github_username|replace("'", "\'") }}')" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Edit</button>
                         <form method="post" action="/onboarding/reject" style="display: inline;">
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--muted);">Reject</button>
@@ -140,6 +202,7 @@
                             <input type="hidden" name="email" value="{{ row.email }}">
                             <button type="submit" class="btn-primary" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px;">Approve</button>
                         </form>
+                        <button type="button" onclick="openEditModal('{{ row.email|replace("'", "\'") }}', '{{ row.prn|replace("'", "\'") }}', '{{ row.degree_branch|replace("'", "\'") }}', '{{ row.division|replace("'", "\'") }}', '{{ row.practical_batch|replace("'", "\'") }}', '{{ row.semester|replace("'", "\'") }}', '{{ row.hackerrank_username|replace("'", "\'") }}', '{{ row.github_username|replace("'", "\'") }}')" style="padding: 6px 12px; height: auto; font-size: 12px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Edit</button>
                         {% if is_admin %}
                         <form method="post" action="/onboarding/remove" style="display: inline;" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
                             <input type="hidden" name="email" value="{{ row.email }}">
@@ -356,5 +419,66 @@
         </div>
     </div>
 {% endif %}
+
+
+<!-- Admin Edit Modal -->
+<div id="admin-edit-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="panel" style="background: var(--bg); padding: 24px; width: 400px; max-width: 90%; border-radius: 8px;">
+        <h3 style="margin-top: 0;">Edit Student Record</h3>
+        <form id="admin-edit-form" method="post" action="/onboarding/admin_edit">
+            <input type="hidden" name="email" id="edit-email">
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>PRN</label>
+                <input type="text" name="prn" id="edit-prn" required pattern="\d{10}" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Branch</label>
+                <select name="degree_branch" id="edit-branch" style="width: 100%; height: 32px;">
+                    <option value="Core">Core</option>
+                    <option value="AI/DS">AI/DS</option>
+                    <option value="Cloud Computing">Cloud Computing</option>
+                    <option value="Cyber Security and Forensics">Cyber Security and Forensics</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Division</label>
+                <input type="text" name="division" id="edit-division" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Practical Batch</label>
+                <input type="text" name="practical_batch" id="edit-batch" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Semester</label>
+                <input type="text" name="semester" id="edit-semester" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>HackerRank Username</label>
+                <input type="text" name="hackerrank_username" id="edit-hackerrank" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label>GitHub Username</label>
+                <input type="text" name="github_username" id="edit-github" style="width: 100%; height: 32px; padding: 0 8px;">
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('admin-edit-modal').style.display='none'" style="padding: 6px 12px; cursor: pointer;">Cancel</button>
+                <button type="submit" class="btn-primary" style="padding: 6px 12px; cursor: pointer;">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openEditModal(email, prn, branch, division, batch, semester, hackerrank, github) {
+    document.getElementById('edit-email').value = email || '';
+    document.getElementById('edit-prn').value = prn || '';
+    document.getElementById('edit-branch').value = branch || '';
+    document.getElementById('edit-division').value = division || '';
+    document.getElementById('edit-batch').value = batch || '';
+    document.getElementById('edit-semester').value = semester || '';
+    document.getElementById('edit-hackerrank').value = hackerrank || '';
+    document.getElementById('edit-github').value = github || '';
+    document.getElementById('admin-edit-modal').style.display = 'flex';
+}
+</script>
 
 {% endblock %}

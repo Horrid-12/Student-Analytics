@@ -827,6 +827,69 @@ def submit_onboarding(
         return False, "storage_unavailable"
     return True, ""
 
+def admin_edit_onboarding(
+    email: str,
+    prn: str,
+    degree_branch: str,
+    division: str,
+    main_batch: str,
+    practical_batch: str,
+    semester: str,
+    hackerrank_username: str,
+    github_username: str,
+) -> tuple[bool, str]:
+    email = (email or "").strip().lower()
+    prn = (prn or "").strip()
+    degree_branch = (degree_branch or "").strip()
+    division = (division or "").strip()
+    main_batch = (main_batch or "").strip()
+    practical_batch = (practical_batch or "").strip()
+    semester = (semester or "").strip()
+    hackerrank_username = (hackerrank_username or "").strip()
+    github_username = (github_username or "").strip()
+    
+    if not valid_prn(prn):
+        return False, "prn_format"
+    if not valid_degree_branch(degree_branch):
+        return False, "invalid_degree"
+    if not valid_division(division):
+        return False, "invalid_division"
+    if main_batch and not valid_main_batch(main_batch):
+        return False, "invalid_main_batch"
+    if not valid_practical_batch(practical_batch):
+        return False, "invalid_practical_batch"
+    if not valid_semester(semester):
+        return False, "invalid_semester"
+    
+    if prn_taken(prn, exclude_email=email):
+        return False, "prn_taken"
+        
+    user = get_user(email)
+    if not user:
+        return False, "no_user"
+        
+    ok = db_set_onboarding(
+        email,
+        prn=prn,
+        degree_branch=degree_branch,
+        division=division,
+        main_batch=main_batch,
+        practical_batch=practical_batch,
+        semester=semester,
+        status=user.get("onboarding_status", "pending"),
+        submitted_at=user.get("onboarding_submitted_at", ""),
+        github_verified_at=user.get("github_verified_at", ""),
+        hackerrank_username=hackerrank_username,
+        linked_linkedin_name=user.get("linked_linkedin_name", "")
+    )
+    if not ok:
+        return False, "storage_unavailable"
+        
+    if github_username and github_username != user.get("github_username", ""):
+        db_set_github_handle(email, github_username)
+        
+    return True, ""
+
 
 def db_set_onboarding(
     email: str,

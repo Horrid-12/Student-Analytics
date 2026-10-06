@@ -1332,6 +1332,35 @@ async def onboarding_disapprove(request: Request, email: str = Form("")):
     return await _onboarding_review(request, email, "pending", promote_github=False)
 
 
+@app.post("/onboarding/admin_edit", response_class=HTMLResponse)
+async def onboarding_admin_edit(
+    request: Request,
+    email: str = Form(""),
+    prn: str = Form(""),
+    degree_branch: str = Form(""),
+    division: str = Form(""),
+    main_batch: str = Form(""),
+    practical_batch: str = Form(""),
+    semester: str = Form(""),
+    hackerrank_username: str = Form(""),
+    github_username: str = Form(""),
+):
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        
+    ok, err = auth.admin_edit_onboarding(
+        email, prn, degree_branch, division,
+        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
+        hackerrank_username=hackerrank_username, github_username=github_username,
+    )
+    if ok:
+        auth._db_log_event("onboarding_admin_edit", f"{user['email']} edited {email}")
+        return RedirectResponse("/onboarding?action=edited&action_email=" + email, status_code=303)
+    
+    auth._db_log_event("onboarding_admin_edit_failed", f"{user['email']} editing {email}; {err}")
+    return RedirectResponse(f"/onboarding?error={err}", status_code=303)
+
 @app.post("/onboarding/remove", response_class=HTMLResponse)
 async def onboarding_remove(request: Request, email: str = Form("")):
     """Admin-only: permanently remove a student's onboarding record.
