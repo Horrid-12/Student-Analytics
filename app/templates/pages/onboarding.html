@@ -56,31 +56,31 @@
     {% if onboarding_users %}
     <table id="ledger-table" style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed;">
         <colgroup>
-            <col style="width: 19%;">
+            <col style="width: 15%;">
             <col style="width: 8%;">
             <col style="width: 6%;">
             <col style="width: 6%;">
             <col style="width: 9%;">
-            <col style="width: 11%;">
             <col style="width: 10%;">
             <col style="width: 10%;">
+            <col style="width: 9%;">
             <col style="width: 8%;">
             <col style="width: 7%;">
-            <col style="width: 6%;">
+            <col style="width: 12%;">
         </colgroup>
         <thead>
             <tr style="text-align: left; color: var(--muted); border-bottom: 1px solid var(--border);">
-                <th style="padding: 10px 8px; font-weight: 600;">Student</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Specialization</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Division</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Batch</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Semester</th>
-                <th style="padding: 10px 8px; font-weight: 600;">GitHub</th>
-                <th style="padding: 10px 8px; font-weight: 600;">HackerRank</th>
-                <th style="padding: 10px 8px; font-weight: 600;">LinkedIn</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Status</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Submitted</th>
-                <th style="padding: 10px 8px; font-weight: 600;">Action</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Student</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Branch</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Division</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Batch</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Semester</th>
+                <th style="padding: 10px 6px; font-weight: 600;">GitHub</th>
+                <th style="padding: 10px 6px; font-weight: 600;">HackerRank</th>
+                <th style="padding: 10px 6px; font-weight: 600;">LinkedIn</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Status</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Submitted</th>
+                <th style="padding: 10px 6px; font-weight: 600;">Action</th>
             </tr>
         </thead>
         <tbody>
@@ -88,14 +88,15 @@
             <tr class="ledger-row" style="border-bottom: 1px solid var(--border); color: var(--text);">
                 <td style="padding: 10px 8px; overflow-wrap: anywhere;">
                     <div style="font-weight: 600;">{{ row.name or row.email }}</div>
-                    {% if row.prn %}<div style="font-weight: 700; color: var(--text);">{{ row.prn }}</div>{% endif %}
+                    {% set email_prn = row.email | prn_from_email %}
+                    {% if email_prn %}<div style="font-weight: 700; color: var(--text);">{{ email_prn }}</div>{% endif %}
                     <div style="font-size: 13px; color: var(--muted);">{{ row.email }}</div>
                 </td>
-                <td style="padding: 10px 8px;">{{ row.degree_branch or '-' }}</td>
-                <td style="padding: 10px 8px;">{{ row.division or '-' }}</td>
-                <td style="padding: 10px 8px;">{{ row.practical_batch or '-' }}</td>
-                <td style="padding: 10px 8px;">{{ row.semester or '-' }}</td>
-                <td style="padding: 10px 8px; overflow-wrap: anywhere;">
+                <td style="padding: 10px 6px;">{{ row.degree_branch or '-' }}</td>
+                <td style="padding: 10px 6px;">{{ row.division or '-' }}</td>
+                <td style="padding: 10px 6px;">{{ row.practical_batch or '-' }}</td>
+                <td style="padding: 10px 6px;">{{ row.semester or '-' }}</td>
+                <td style="padding: 10px 6px; overflow-wrap: anywhere;">
                     {% if row.github_username %}
                     <a href="https://github.com/{{ row.github_username }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">@{{ row.github_username }}</a>
                     {% elif row.linked_github_username %}
@@ -104,21 +105,21 @@
                     <span style="color: var(--muted);">Not linked</span>
                     {% endif %}
                 </td>
-                <td style="padding: 10px 8px; overflow-wrap: anywhere;">
+                <td style="padding: 10px 6px; overflow-wrap: anywhere;">
                     {% if row.hackerrank_username %}
                     <a href="https://www.hackerrank.com/profile/{{ row.hackerrank_username }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">@{{ row.hackerrank_username }}</a>
                     {% else %}
                     <span style="color: var(--muted);">Not linked</span>
                     {% endif %}
                 </td>
-                <td style="padding: 10px 8px; overflow-wrap: anywhere;">
+                <td style="padding: 10px 6px; overflow-wrap: anywhere;">
                     {% if row.linked_linkedin_name %}
-                    <span style="color: var(--text);">{{ row.linked_linkedin_name }}</span>
+                    <a href="https://www.linkedin.com/in/{{ row.linked_linkedin_name }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">{{ row.name or 'LinkedIn' }}</a>
                     {% else %}
                     <span style="color: var(--muted);">Not linked</span>
                     {% endif %}
                 </td>
-                <td style="padding: 10px 8px;">
+                <td style="padding: 10px 6px;">
                     {% if row.onboarding_status == 'approved' %}
                     <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.25);">Approved</span>
                     {% elif row.onboarding_status == 'rejected' %}
@@ -130,8 +131,8 @@
                     <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">{{ row.github_verified_at[:10] }}</div>
                     {% endif %}
                 </td>
-                <td style="padding: 10px 8px; color: var(--muted);">{{ row.onboarding_submitted_at[:16] }}</td>
-                <td style="padding: 10px 8px;">
+                <td style="padding: 10px 6px; color: var(--muted);">{{ row.onboarding_submitted_at[:10] }}</td>
+                <td class="ledger-actions" style="padding: 10px 6px;">
                     {% if row.onboarding_status == 'pending' %}
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <form method="post" action="/onboarding/approve" style="display: inline;">

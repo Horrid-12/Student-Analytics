@@ -148,6 +148,16 @@ def _ticket_when(value: str) -> dict:
 templates.env.filters["ticket_when"] = _ticket_when
 
 
+def _prn_from_email(value: str) -> str:
+    """First 10 digits of an email — college addresses carry the PRN
+    (``1272261036.s@...`` → ``1272261036``); '' when absent."""
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    return digits[:10] if len(digits) >= 10 else ""
+
+
+templates.env.filters["prn_from_email"] = _prn_from_email
+
+
 def _analysis_view(roster_id: str):
     """Page-render helper: read from Postgres first (if configured), fall back
     to the in-memory RosterStore cache. Returns the same dict shape either way.
