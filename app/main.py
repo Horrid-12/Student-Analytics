@@ -1355,10 +1355,10 @@ async def onboarding_admin_edit(
         hackerrank_username=hackerrank_username, github_username=github_username,
     )
     if ok:
-        auth._db_log_event("onboarding_admin_edit", f"{user['email']} edited {email}")
+        _db_log_event("onboarding_admin_edit", f"{user['email']} edited {email}")
         return RedirectResponse("/onboarding?action=edited&action_email=" + email, status_code=303)
     
-    auth._db_log_event("onboarding_admin_edit_failed", f"{user['email']} editing {email}; {err}")
+    _db_log_event("onboarding_admin_edit_failed", f"{user['email']} editing {email}; {err}")
     return RedirectResponse(f"/onboarding?error={err}", status_code=303)
 
 @app.post("/onboarding/remove", response_class=HTMLResponse)
