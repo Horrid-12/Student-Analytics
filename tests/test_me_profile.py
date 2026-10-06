@@ -181,7 +181,7 @@ class TestSidebarIdentity:
             Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
         ).read_text(encoding="utf-8")
         assert source.index("user-role-line") < source.index("sidebar_name")
-        assert 'class="sidebar-name-link" href="/settings"' in source
+        assert 'class="sidebar-name-link" href="{{ profile_href }}"' in source
 
 
 class TestSidebarShortName:
@@ -206,6 +206,7 @@ class TestSidebarShortName:
         client.post("/login", data={"email": "aarav@college.edu", "password": "secret123"})
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert ">Aarav Sharma</a>" in body  # sidebar link: first + last only
+        assert 'class="sidebar-name-link" href="/me"' in body  # name opens My Profile
 
     def test_students_modal_still_renders_after_extract(self, client, monkeypatch):
         import app.main as main

@@ -38,7 +38,7 @@
       </a>
       <div class="user-details">
         <div class="user-role-line">{{ auth_status }}</div>
-        {% if sidebar_name %}<a class="sidebar-name-link" href="/settings" title="Open settings">{{ sidebar_name }}</a>{% endif %}
+        {% if sidebar_name %}<a class="sidebar-name-link" href="{{ profile_href }}" title="My profile">{{ sidebar_name }}</a>{% endif %}
       </div>
       {% if auth_logged_in %}
       <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out">
