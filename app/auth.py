@@ -810,6 +810,9 @@ def submit_onboarding(
         return False, "invalid_practical_batch"
     if not valid_semester(semester):
         return False, "invalid_semester"
+    hackerrank_username = (hackerrank_username or "").strip()
+    if not hackerrank_username:
+        return False, "missing_hackerrank"
     if prn_taken(prn, exclude_email=email):
         return False, "prn_taken"
     if not email:

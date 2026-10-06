@@ -13,6 +13,7 @@
     'invalid_main_batch': 'Please pick a valid main batch (admission cohort).',
     'invalid_practical_batch': 'Please pick a valid Python Practical batch.',
     'invalid_semester': 'Please pick a valid semester.',
+    'missing_hackerrank': 'Please provide your HackerRank username. It is required for the dashboard leaderboards.',
     'prn_taken': 'This Roll Number is already registered to another account.',
     'storage_unavailable': 'Your submission could not be saved right now. Please try again shortly.',
     'bad_status': 'That action is not allowed.',
@@ -273,8 +274,8 @@
                 <p style="font-size: 13px; color: var(--muted); margin: 0 0 8px 0;">Linking your profiles allows verification for campus placements and repository audit logs.</p>
 
                 <div class="form-group" style="margin: 0 0 16px 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">HackerRank Username (Optional)</label>
-                    <input type="text" name="hackerrank_username" form="onboarding-form" value="{{ submission.hackerrank_username }}" placeholder="e.g. 1272261921_s" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} />
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">HackerRank Username *</label>
+                    <input type="text" name="hackerrank_username" form="onboarding-form" value="{{ submission.hackerrank_username }}" placeholder="e.g. 1272261921_s" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} required />
                     <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.</div>
                 </div>
 
