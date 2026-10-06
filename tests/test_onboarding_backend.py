@@ -241,9 +241,42 @@ class TestLedgerView:
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "stu1@college.edu" in body
-        assert "1234567890" in body
+        assert "1234567890" in body  # PRN lives inside the Student cell now
         assert "/onboarding/approve" in body
         assert "/onboarding/reject" in body
+        # Fixed table layout (no horizontal scroll) with the new columns.
+        assert "table-layout: fixed" in body
+        assert ">Batch</th>" in body and ">Semester</th>" in body
+        assert ">HackerRank</th>" in body and ">LinkedIn</th>" in body
+        assert ">PRN</th>" not in body  # standalone PRN column removed
+        assert "overflow-x: auto" not in body
+        assert 'id="ledger-more-btn"' not in body  # only 1 row — no batching
+
+    def test_ledger_batches_beyond_ten_rows(self, client):
+        for i in range(12):
+            email = f"stu{i}@college.edu"
+            signup(client, email, f"Student {i}")
+            login(client, email)
+            submit(client, prn=f"12345678{i:02d}", hackerrank=f"hr_stu{i}")
+            client.get("/logout")
+        _session(client, "admin")
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert 'id="ledger-more-btn"' in body
+        assert "Show more (2 remaining)" in body
+        rows = body.count('class="ledger-row"')
+        assert rows == 12  # all rows render once, batches reveal client-side
+
+    def test_ledger_shows_hackerrank_and_linkedin(self, client):
+        signup(client)
+        login(client)
+        submit(client, prn="1234567890", hackerrank="alice_hr")
+        auth.save_linked_profile("stu1@college.edu", "linkedin", "Stu Dent", "https://example.com/p.png")
+        client.get("/logout")
+        _session(client, "admin")
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert "alice_hr" in body
+        assert "hackerrank.com/profile/alice_hr" in body
+        assert "Stu Dent" in body  # LinkedIn display name
 
     def test_student_does_not_see_ledger(self, client):
         signup(client)
