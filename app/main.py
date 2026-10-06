@@ -2633,7 +2633,6 @@ def settings_page(request: Request, linked: str = ""):
             if database.db_configured():
                 records = db.latest_roster_records() or []
             else:
-                from app import storage
                 res = storage.get_analysis("active")
                 records = res.get("raw_json", []) if res else []
         except Exception:
