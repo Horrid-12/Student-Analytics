@@ -430,13 +430,16 @@ class TestPageRenderingWithData:
         assert 'role="dialog"' in profile
         assert "student-table" in profile
         assert ".student-modal .profile-panel" in profile
-        # Profile tabs: GitHub active with the repositories dropdown, the
-        # other two panels present but hidden and empty for now.
+        # Profile tabs: GitHub + HackerRank only (LinkedIn tab removed).
+        # GitHub active with the repositories dropdown, HackerRank present
+        # but hidden until selected.
         assert 'role="tablist"' in profile
         assert 'id="profile-tab-github"' in profile
+        assert 'id="profile-tab-hackerrank"' in profile
         assert 'id="profile-panel-github"' in profile
         assert 'id="profile-panel-hackerrank"' in profile
-        assert 'id="profile-panel-linkedin"' in profile
+        assert 'profile-tab-linkedin' not in profile
+        assert 'profile-panel-linkedin' not in profile
         assert "repo-dropdown" in profile
         assert "Repositories (" in profile
         assert "py1" in profile and "js1" in profile
