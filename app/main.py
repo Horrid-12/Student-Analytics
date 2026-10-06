@@ -1294,7 +1294,6 @@ async def onboarding_submit(
     practical_batch: str = Form(""),
     semester: str = Form(""),
     hackerrank_username: str = Form(""),
-    linkedin_username: str = Form(""),
 ):
     """Student submission endpoint (Phase 4.12). Validates the form server-side,
     persists the academic identity, and moves the account to ``pending``."""
@@ -1307,7 +1306,6 @@ async def onboarding_submit(
         user["email"], prn, degree_branch, division,
         main_batch=main_batch, practical_batch=practical_batch, semester=semester,
         hackerrank_username=hackerrank_username,
-        linked_linkedin_name=linkedin_username,
     )
     if ok:
         _db_log_event("onboarding_submit", user["email"])

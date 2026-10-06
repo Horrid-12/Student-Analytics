@@ -1491,7 +1491,6 @@ def set_onboarding(
     submitted_at: str = "",
     github_verified_at: str = "",
     hackerrank_username: str = "",
-    linked_linkedin_name: str = "",
 ) -> bool:
     """Write onboarding fields for one account (Postgres leg)."""
     email = (email or "").strip().lower()
@@ -1505,10 +1504,9 @@ def set_onboarding(
                 "UPDATE users SET prn = %s, degree_branch = %s, division = %s, "
                 "main_batch = %s, practical_batch = %s, semester = %s, "
                 "onboarding_status = %s, onboarding_submitted_at = %s, "
-                "github_verified_at = %s, hackerrank_username = %s, "
-                "linked_linkedin_name = %s WHERE email = %s",
+                "github_verified_at = %s, hackerrank_username = %s WHERE email = %s",
                 (prn, degree_branch, division, main_batch, practical_batch, semester,
-                 status, submitted_at, github_verified_at, hackerrank_username, linked_linkedin_name, email),
+                 status, submitted_at, github_verified_at, hackerrank_username, email),
             )
             return (cur.rowcount or 0) > 0
     except (psycopg.errors.DatabaseError, OSError) as exc:
