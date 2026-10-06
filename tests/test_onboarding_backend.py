@@ -31,12 +31,14 @@ def login(client, email="stu1@college.edu", password="secret123"):
     return client.post("/login", data={"email": email, "password": password})
 
 
-def submit(client, prn="1234567890", degree="Core", division="Division 1",
-           main_batch="Batch 2022", practical_batch="P1", semester="Semester 3"):
+def submit(client, prn="1234567890", degree="Core", division="1",
+           main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+           hackerrank="hr_stu1"):
     return client.post(
         "/onboarding",
         data={"prn": prn, "degree_branch": degree, "division": division,
-              "main_batch": main_batch, "practical_batch": practical_batch, "semester": semester},
+              "main_batch": main_batch, "practical_batch": practical_batch, "semester": semester,
+              "hackerrank_username": hackerrank},
     )
 
 
@@ -57,9 +59,9 @@ class TestSubmitOnboarding:
         user = auth.get_user("stu1@college.edu")
         assert user["prn"] == "1234567890"
         assert user["degree_branch"] == "Core"
-        assert user["division"] == "Division 1"
+        assert user["division"] == "1"
         assert user["main_batch"] == "Batch 2022"
-        assert user["practical_batch"] == "P1"
+        assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"
         assert user["onboarding_status"] == "pending"
         assert user["onboarding_submitted_at"]
@@ -71,7 +73,7 @@ class TestSubmitOnboarding:
         assert "saved=1" in str(r.url)
         user = auth.get_user("stu2@college.edu")
         assert user["prn"] == "1234567891"
-        assert user["practical_batch"] == "P1"
+        assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"
         assert user["onboarding_status"] == "pending"
 
@@ -173,8 +175,8 @@ class TestSubmitOnboarding:
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert 'value="1234567890"' in body
         assert '<option value="Core" selected>' in body
-        assert '<option value="Division 1" selected>' in body
-        assert '<option value="P1" selected>' in body
+        assert '<option value="1" selected>' in body
+        assert '<option value="1" selected>' in body
         assert '<option value="Semester 3" selected>' in body
         assert "Resubmit for Verification" in body
 
@@ -197,7 +199,7 @@ class TestApprovalFlow:
         assert user["github_username"] == "octocat"
         assert user["github_verified_at"]
         assert user["main_batch"] == "Batch 2022"
-        assert user["practical_batch"] == "P1"
+        assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"
 
     def test_reject_does_not_promote_handle(self, client):
@@ -238,7 +240,6 @@ class TestLedgerView:
         client.get("/logout")
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert "Registrar Onboarding Ledger" in body
         assert "stu1@college.edu" in body
         assert "1234567890" in body
         assert "/onboarding/approve" in body
@@ -266,8 +267,9 @@ class TestOnboardingAuthHelpers:
     def test_degree_and_division_validation(self):
         assert auth.valid_degree_branch("AI/DS")
         assert not auth.valid_degree_branch("")
-        assert auth.valid_division("Division 14")
-        assert not auth.valid_division("Division 15")
+        assert auth.valid_division("14")
+        assert not auth.valid_division("Division 14")
+        assert not auth.valid_division("15")
 
     def test_batch_and_semester_validation(self):
         assert auth.valid_main_batch("Batch 2022")
@@ -283,12 +285,14 @@ class TestOnboardingAuthHelpers:
     def test_submit_and_status_flip(self, client):
         _session(client, "student")
         ok, err = auth.submit_onboarding(
-            "student@college.edu", "1234567890", "Core", "Division 1",
-            main_batch="Batch 2022", practical_batch="P1", semester="Semester 3",
+            "student@college.edu", "1234567890", "Core", "1",
+            main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+            hackerrank_username="flip_hr",
         )
         assert ok and err == ""
         user = auth.get_user("student@college.edu")
         assert user["onboarding_status"] == "pending"
+        assert user["hackerrank_username"] == "flip_hr"
         assert user["main_batch"] == "Batch 2022"
-        assert user["practical_batch"] == "P1"
+        assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"

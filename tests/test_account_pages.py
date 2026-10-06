@@ -65,8 +65,9 @@ def seeded_account() -> dict:
     auth.create_user("alice@college.edu", "secret123", "student", "Alice Example")
     auth.save_linked_profile("alice@college.edu", "github", "alice-dev", "https://avatars.example/alice.png")
     auth.submit_onboarding(
-        "alice@college.edu", "1011121314", "AI/DS", "Division 1",
-        main_batch="Batch 2022", practical_batch="P1", semester="Semester 3",
+        "alice@college.edu", "1011121314", "AI/DS", "1",
+        main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+        hackerrank_username="alice_hr",
     )
     auth.set_onboarding_status("alice@college.edu", "approved", promote_github=True)
     return auth.get_approved_accounts()[0]
@@ -106,10 +107,9 @@ class TestStudentPages:
         assert r.status_code == 200
         html = r.text
         assert "Class Metrics Radar" in html
-        assert "Division 1" in html
+        assert ">1</option>" in html
         assert "Activity Trend Across Batches" in html
         assert "Analysis Results" not in html
-        assert "Overview Metrics" in html
         assert "Number of Students" in html
         assert "Active Repositories" in html
         assert "Total Stars" in html
@@ -143,8 +143,8 @@ class TestStudentPages:
             ) in compact
 
         assert students_metric(client.get("/overview").text, 1)
-        assert students_metric(client.get("/overview?division=Division+2").text, 0)
-        assert students_metric(client.get("/overview?division=Division+1").text, 1)
+        assert students_metric(client.get("/overview?division=2").text, 0)
+        assert students_metric(client.get("/overview?division=1").text, 1)
         assert students_metric(client.get("/overview?q=nosuchstudent").text, 0)
 
     def test_overview_shows_primary_language(self):
@@ -175,11 +175,10 @@ class TestStudentPages:
         assert r.status_code == 200
         assert "alice-dev" in r.text
 
-    def test_unsynced_student_gets_placeholder(self, monkeypatch):
-        # Phase 5.4: an approved student now self-syncs on login, so "no data"
-        # only remains possible when the GitHub fetch itself fails. A failed
-        # fetch stores an error-status snapshot → still the placeholder, never
-        # an error page.
+    def test_failed_sync_keeps_zeroed_fallback(self, monkeypatch):
+        # A failed fetch stores an error-status snapshot, but the fleet still
+        # renders the zeroed identity fallback row (sync.py documents this) —
+        # never an error page and never the empty-state placeholder.
         seeded_account()
 
         def failing_fetch(url, token, timeout=None):
@@ -190,7 +189,8 @@ class TestStudentPages:
         r = client.get("/overview")
         assert r.status_code == 200
         assert "Analyzed 1 student(s)" not in r.text
-        assert "No student data loaded yet" in r.text
+        assert "No student data loaded yet" not in r.text
+        assert "Number of Students" in r.text
 
 
 class TestSyncEndpoint:

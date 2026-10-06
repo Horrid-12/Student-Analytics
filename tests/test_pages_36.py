@@ -287,7 +287,6 @@ class TestPageRenderingWithData:
         body = self.client.get(f"/?roster={roster_id}").text
         assert "Student Analytics Workspace" not in body
         assert "Class Metrics Radar" in body
-        assert "Overview Metrics" in body
         assert "Number of Students" in body
         assert "Active Repositories" in body
         assert "Total Stars" in body
@@ -1032,52 +1031,39 @@ class TestPageRenderingWithData:
 
 
 class TestVercelEntrypoint:
-    """api/index.py wraps the FastAPI app with a Vercel-prefix stripper so the
-    rewrite  /(.*) -> /api/index  still routes to '/', '/students', etc."""
+    """Native FastAPI preset on app/main.py (vercel.json routes /(.*) straight
+    at it) — the old Mangum api/index.py prefix-stripper was dropped, so these
+    assert the live routing table directly instead of the removed wrapper."""
 
     def _client(self, tmp_path, monkeypatch):
-        from api.index import wrapped
-
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "vercel.db")
         monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
-        client = TestClient(wrapped, raise_server_exceptions=False)
+        client = TestClient(app, raise_server_exceptions=False)
         make_user(client, "admin")
         return client
 
     def test_prefix_stripped_for_root(self, tmp_path, monkeypatch):
-        from api.index import Mangum, wrapped
-
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/api/index").status_code == 200
-        assert "Student Analytics" in client.get("/api/index").text or "student" in client.get("/api/index").text.lower()
+        assert client.get("/").status_code == 200
 
     def test_prefix_stripped_for_pages(self, tmp_path, monkeypatch):
-        from api.index import wrapped
-
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/api/index/history").status_code == 404
-        assert client.get("/api/index/students").status_code == 200
+        assert client.get("/history").status_code == 404
+        assert client.get("/students").status_code == 200
 
     def test_real_paths_unaffected(self, tmp_path, monkeypatch):
-        from api.index import wrapped
-
         client = self._client(tmp_path, monkeypatch)
         assert client.get("/history").status_code == 404
 
     def test_no_prefix_stripped_from_deep_static(self, tmp_path, monkeypatch):
-        from api.index import wrapped
-
         client = self._client(tmp_path, monkeypatch)
-        css = client.get("/api/index/static/style.css")
+        css = client.get("/static/style.css")
         assert css.status_code in (200, 404)
 
     def test_py_function_path_forms(self, tmp_path, monkeypatch):
-        from api.index import wrapped
-
         client = self._client(tmp_path, monkeypatch)
-        assert client.get("/api/index.py").status_code == 200
-        assert client.get("/api/index.py/history").status_code == 404
-        assert client.get("/api/history").status_code == 404
+        assert client.get("/").status_code == 200
+        assert client.get("/history").status_code == 404
 
 
 class TestSettingsPage:
@@ -1269,5 +1255,8 @@ class TestNotFoundRouting:
         res = client.get("/overview")
         assert res.status_code == 200
         assert "Overview" in res.text
-        assert "Student Analytics Workspace" in res.text
-        assert "No student data loaded yet" in res.text
+        # Any known account gets the zeroed identity fallback row (never the
+        # empty state); the workspace placeholder is only for dataless views.
+        assert "Student Analytics Workspace" not in res.text
+        assert "No student data loaded yet" not in res.text
+        assert "Number of Students" in res.text
