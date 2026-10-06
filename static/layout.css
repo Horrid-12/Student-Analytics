@@ -1871,11 +1871,13 @@ button {
 .hr-badges {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
   margin: 6px 0 4px;
 }
 .hr-badge {
-  flex: 0 1 calc(33.333% - 8px);
+  flex: 0 1 calc(25% - 9px);
+  max-width: 180px;
   min-width: 0;
   text-align: center;
 }
@@ -1886,13 +1888,13 @@ button {
 }
 .hr-badge-hex {
   clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
-  min-height: 178px;
+  min-height: 132px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 14px 12px;
+  gap: 3px;
+  padding: 10px 8px;
   color: #2d3e50;
 }
 .hr-t0 .hr-badge-frame {
@@ -1920,8 +1922,8 @@ button {
   background: linear-gradient(180deg, #ffdd55, #f0b400);
 }
 .hr-badge-logo svg {
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
 }
 .hr-badge-logo,
 .hr-badge-logo-num {
@@ -1930,22 +1932,22 @@ button {
   color: #2d3e50;
 }
 .hr-badge-logo {
-  font-size: 25px;
+  font-size: 20px;
 }
 .hr-badge-logo-num {
-  font-size: 30px;
+  font-size: 22px;
 }
 .hr-badge-label {
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   line-height: 1.15;
 }
 .hr-badge-stars {
-  font-size: 14px;
+  font-size: 11px;
   letter-spacing: 2px;
 }
 .hr-badge-stat {
-  font-size: 14px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #1f2d3d;
   line-height: 1.35;
@@ -2208,8 +2210,8 @@ button {
     color: var(--text);
 }
 .notif-unread {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.35);
+  background: var(--blue-active-bg);
+  border-color: var(--blue-active-border);
 }
 .notif-unread-dot {
   display: inline-block;

@@ -19,7 +19,7 @@
                 </summary>
                 <div class="blacklist-menu" role="menu" aria-label="Blacklist from leaderboards" data-blacklist-menu data-roster="{{ _bl_key }}" data-student="{{ p.student_id }}">
                   <div class="blacklist-head">Leaderboards</div>
-                  {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories')] %}
+                  {% for key, label in [('active', 'Most Active Repositories'), ('commits', 'Most Commits'), ('stars', 'Most Stars'), ('repos', 'Top Starred Repositories'), ('hr_solved', 'Most Problems Solved'), ('hr_score', 'Top Practice Scores')] %}
                   <div class="bl-row{% if key in bl_boards %} is-blacklisted{% endif %}">
                     <span class="bl-label">{{ label }}</span>
                     {% if key in bl_boards %}
@@ -57,7 +57,6 @@
       <div class="profile-tabs" role="tablist" aria-label="Profile sections">
         <button type="button" class="profile-tab" role="tab" id="profile-tab-github" aria-controls="profile-panel-github" aria-selected="true">GitHub</button>
         <button type="button" class="profile-tab" role="tab" id="profile-tab-hackerrank" aria-controls="profile-panel-hackerrank" aria-selected="false" tabindex="-1">HackerRank</button>
-        <button type="button" class="profile-tab" role="tab" id="profile-tab-linkedin" aria-controls="profile-panel-linkedin" aria-selected="false" tabindex="-1">LinkedIn</button>
       </div>
       <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
         <details class="repo-dropdown">
@@ -154,9 +153,6 @@
         {% else %}
         <p class="tab-empty">No HackerRank profile linked.</p>
         {% endif %}
-      </div>
-      <div id="profile-panel-linkedin" role="tabpanel" aria-labelledby="profile-tab-linkedin" hidden>
-        <p class="tab-empty">LinkedIn details coming soon.</p>
       </div>
 <script>
   (function () {

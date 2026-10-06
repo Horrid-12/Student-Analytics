@@ -79,7 +79,10 @@
 
 ### HackerRank insights
 
-- Lazy profile tab backed by a vendored, unauthenticated HackerRank client with a 1-hour TTL cache: tier-colored hex skill badges, stars, solved counts, last-active, and a paginated solved-questions list.
+- Lazy profile tab backed by a vendored, unauthenticated HackerRank client (fresh fetch per open, display-only): tier-colored hex skill badges, stars, solved counts, last-active, and a paginated solved-questions list.
+- Two leaderboard boards — Most Problems Solved and Top Practice Scores — rank snapshots stored in Postgres `hackerrank_snapshots` (in-memory fallback); unsynced profiles show as awaiting sync, and both boards support the admin blacklist like every other board.
+- Leaderboard data refreshes **daily at midnight (IST)** via `.github/workflows/hackerrank-sync.yml`: the GitHub Actions runner (not Vercel) pulls the stale-first queue from `GET /api/hackerrank/handles`, fetches profiles at a polite pace, and posts results to `POST /api/hackerrank/snapshot`. Profile opens never sync leaderboards — the daily run owns freshness. Needs the same `APP_URL` + `CRON_SECRET` repo secrets as `heavy-sync.yml`.
+- Manual backfill still exists: admins/faculty hit Sync HackerRank on the Leaderboards page (or `POST /sync/hackerrank`), which syncs a few of the stalest profiles per call on a light sequential path (3 requests/profile, 1s pacing, aborts at the first 429).
 
 ### Storage that fits the host
 

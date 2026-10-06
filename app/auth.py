@@ -70,6 +70,9 @@ _EXTRA_COLUMNS = (
     ("main_batch", "TEXT NOT NULL DEFAULT ''"),
     ("practical_batch", "TEXT NOT NULL DEFAULT ''"),
     ("semester", "TEXT NOT NULL DEFAULT ''"),
+    # HackerRank handle captured at onboarding (required) and shown on the
+    # Students profile HackerRank tab.
+    ("hackerrank_username", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # OAuth providers a student can fetch their picture + username from (4.11 e).
@@ -122,7 +125,7 @@ ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards
 # which is the current product decision.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Students", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
+    "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
@@ -918,6 +921,7 @@ def db_set_onboarding(
                 main_batch=main_batch, practical_batch=practical_batch, semester=semester,
                 status=status, submitted_at=submitted_at,
                 github_verified_at=github_verified_at,
+                hackerrank_username=hackerrank_username,
             )
         try:
             with closing(_connect()) as conn:
@@ -927,9 +931,9 @@ def db_set_onboarding(
                         "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
                         "main_batch = ?, practical_batch = ?, semester = ?, "
                         "onboarding_status = ?, onboarding_submitted_at = ?, "
-                        "github_verified_at = ? WHERE email = ?",
+                        "github_verified_at = ?, hackerrank_username = ? WHERE email = ?",
                         (prn, degree_branch, division, main_batch, practical_batch, semester,
-                         status, submitted_at, github_verified_at, email),
+                         status, submitted_at, github_verified_at, hackerrank_username, email),
                     )
                     return (cur.rowcount or 0) > 0
         except (sqlite3.Error, OSError):

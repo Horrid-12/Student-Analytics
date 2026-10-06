@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 from app import storage
+from app.services import extract_hackerrank_username
 from app.ui_helpers import (
     apply_value_filter,
     filter_text,
@@ -380,11 +381,12 @@ def account_view(email: str):
     """Rebuild the ``analysis_view`` shape from a student's stored account
     snapshot (Phase 5.1 account-driven redesign).
 
-    Returns None when the account has no stored snapshot yet; otherwise the
-    same ``{records, state, students, repos, team_repos, issues}`` contract
-    ``analysis_view`` produces, sized to the single student — so the existing
-    page builders (overview / students / repositories / own_profile /
-    leaderboards) run unchanged against account-driven pages. Owned repos and
+    Returns None only when the account has no stored snapshot AND no user
+    row yet; otherwise a zeroed identity fallback row keeps the page on the
+    data branch (same contract ``analysis_view`` produces, sized to the
+    single student) — so the existing page builders (overview / students /
+    repositories / own_profile / leaderboards) run unchanged against
+    account-driven pages. Owned repos and
     team-contributed repos both come from the snapshot, matching the file
     upload pipeline's two frames.
     """
@@ -459,7 +461,9 @@ def fleet_view():
     Owned repos and team-contributed repos are both aggregated from the
     snapshots — the same two frames the upload pipeline produces — so
     leaderboards, profiles, repositories and overview totals match the file
-    upload system for the same GitHub accounts.
+    upload system for the same GitHub accounts. Approved accounts without an
+    ok snapshot yet contribute a zeroed identity fallback row; returns None
+    only when no approved accounts exist at all.
     """
     from app import accounts, auth
 
@@ -2126,6 +2130,8 @@ LEADERBOARD_BOARDS = (
     ("commits", "Most Commits"),
     ("stars", "Most Stars"),
     ("repos", "Top Starred Repositories"),
+    ("hr_solved", "Most Problems Solved"),
+    ("hr_score", "Top Practice Scores"),
 )
 LEADERBOARD_BOARD_KEYS = frozenset(key for key, _ in LEADERBOARD_BOARDS)
 
@@ -2251,6 +2257,7 @@ def leaderboards_payload(
     commits_window="1m",
     blacklist=None,
     hidden_repos=None,
+    hr_snapshots=None,
 ) -> dict:
     if active_window not in WINDOW_DAYS and active_window != "all":
         active_window = "1m"
@@ -2399,6 +2406,70 @@ def leaderboards_payload(
                 )
         except Exception:
             top_repos = []
+    # 5+6. HackerRank boards (progressive cache): only students whose
+    # profile was opened at least once have snapshots. Unsynced students sit
+    # out instead of ranking as zeros; zeros from real fetches drop in
+    # _ranked like every other board.
+    snapshots = hr_snapshots if isinstance(hr_snapshots, dict) else {}
+    hr_names: dict[str, str] = {}
+    hr_ids: dict[str, str] = {}
+    solved_scores: dict[str, int] = {}
+    score_scores: dict[str, int] = {}
+    hr_linked_handles: set[str] = set()
+    hr_synced_handles: set[str] = set()
+    try:
+        has_hr_col = "HackerRank_Username" in students.columns
+    except Exception:
+        has_hr_col = False
+    if has_hr_col:
+        try:
+            hr_frame = students.dropna(subset=["HackerRank_Username"])
+        except Exception:
+            hr_frame = pd.DataFrame()
+        for _, srow in hr_frame.iterrows():
+            try:
+                raw_handle = srow.get("HackerRank_Username")
+                handle = extract_hackerrank_username(raw_handle)
+                handle = str(handle or "").strip().lower()
+            except Exception:
+                handle = ""
+            if not handle:
+                continue
+            hr_linked_handles.add(handle)
+            try:
+                name = srow.get("Student Name", "")
+                hr_names[handle] = str(name) if pd.notna(name) else "Unknown"
+                hr_ids[handle] = str(srow.get(STUDENT_ID_COL, ""))
+            except Exception:
+                continue
+            snap = snapshots.get(handle)
+            if not isinstance(snap, dict) or snap.get("invalid"):
+                continue  # tombstones never rank and never count as synced
+            hr_synced_handles.add(handle)
+            try:
+                solved = int(snap.get("total_solved") or 0)
+            except (TypeError, ValueError):
+                solved = 0
+            try:
+                score = int(snap.get("practice_score") or 0)
+            except (TypeError, ValueError):
+                score = 0
+            if solved > 0:
+                solved_scores[handle] = solved
+            if score > 0:
+                score_scores[handle] = score
+    no_hr_solved = _blacklisted_users(view, hr_ids, blacklist, "hr_solved")
+    no_hr_score = _blacklisted_users(view, hr_ids, blacklist, "hr_score")
+    hr_solved_rows = _ranked(
+        {user: score for user, score in solved_scores.items() if user not in no_hr_solved},
+        hr_names,
+        hr_ids,
+    )
+    hr_score_rows = _ranked(
+        {user: score for user, score in score_scores.items() if user not in no_hr_score},
+        hr_names,
+        hr_ids,
+    )
     return {
         "total": len(students),
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
@@ -2412,6 +2483,10 @@ def leaderboards_payload(
         "commits_ready": commits_ready,
         "star_rows": star_rows,
         "top_repos": top_repos,
+        "hr_solved_rows": hr_solved_rows,
+        "hr_score_rows": hr_score_rows,
+        "hr_synced": len(hr_synced_handles),
+        "hr_total": len(hr_linked_handles),
     }
 
 

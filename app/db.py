@@ -933,6 +933,51 @@ def put_hidden_repos(roster_id: str, state: dict) -> None:
         logger.warning("put_hidden_repos failed: %s", exc)
 
 
+def get_hackerrank_snapshots() -> dict:
+    """Return all HackerRank snapshots ({lowercase handle: {...}})."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return {}
+            rows = c.execute("SELECT handle, state FROM hackerrank_snapshots").fetchall()
+        snapshots: dict = {}
+        for row in rows:
+            try:
+                handle = row["handle"] if isinstance(row, dict) else row[0]
+                state = row["state"] if isinstance(row, dict) else row[1]
+            except (KeyError, IndexError, TypeError):
+                continue
+            if isinstance(state, str):
+                try:
+                    import json as _json
+
+                    state = _json.loads(state)
+                except Exception:
+                    continue
+            if handle and isinstance(state, dict):
+                snapshots[str(handle)] = state
+        return snapshots
+    except Exception:
+        return {}
+
+
+def put_hackerrank_snapshot(handle: str, state: dict) -> None:
+    """Upsert one HackerRank snapshot keyed by lowercase handle."""
+    handle = (handle or "").strip().lower()
+    if not handle or not isinstance(state, dict):
+        return
+    try:
+        with database.conn() as c:
+            if c is not None:
+                c.execute(
+                    "INSERT INTO hackerrank_snapshots (handle, state, updated_at) VALUES (%s, %s, now()) "
+                    "ON CONFLICT (handle) DO UPDATE SET state = EXCLUDED.state, updated_at = now()",
+                    (handle, Jsonb(state)),
+                )
+    except Exception as exc:
+        logger.warning("put_hackerrank_snapshot failed: %s", exc)
+
+
 # ── support tickets (mirrors app/support.py signatures) ───────────────────────
 
 _SUPPORT_COLUMNS = (

@@ -175,10 +175,11 @@ class TestNotificationBell:
         client.post("/login", data={"email": email, "password": "secret123"})
         return email
 
-    def test_student_overview_shows_no_bell(self, client):
+    def test_student_overview_shows_bell(self, client):
         self._login(client, "student", OWN_EMAIL)
         body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" not in body
+        assert "notif-bell" in body  # students see their own issue alerts
+        assert "all clear" in body
         assert "notif-badge" not in body
 
     def test_admin_overview_shows_staff_bell(self, client):
@@ -188,13 +189,15 @@ class TestNotificationBell:
         assert "all quiet" in body
         assert "notif-badge" not in body
 
-    def test_student_leaderboards_shows_no_bell(self, client):
+    def test_student_leaderboards_shows_bell(self, client):
         self._login(client, "student", OWN_EMAIL)
         body = client.get("/leaderboards?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" not in body
+        assert "notif-bell" in body
+        assert "notif-badge" not in body
 
-    def test_unknown_student_shows_no_bell(self, client):
+    def test_unknown_student_shows_bell(self, client):
         self._login(client, "student", "ghost@college.edu")
         body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" not in body
+        assert "notif-bell" in body
+        assert "all clear" in body
         assert "notif-badge" not in body

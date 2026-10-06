@@ -207,7 +207,7 @@ class TestOAuthCallbacksPersist:
         self._state(client)
         resp = client.get("/auth/linkedin/callback?state=s123", follow_redirects=False)
         assert resp.status_code == 302
-        assert resp.headers["location"] == "/settings?linked=linkedin"
+        assert resp.headers["location"] == "/onboarding?linked=linkedin"  # link flow lands on onboarding
         assert auth.get_user(email)["linked_linkedin_name"] == "Stu Dent"
 
     def test_bad_state_keeps_error_redirect(self, client):

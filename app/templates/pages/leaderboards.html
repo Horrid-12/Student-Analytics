@@ -103,6 +103,10 @@
       </div>
     </div>
     <div class="topbar-actions">
+      {% if auth_role in ('Admin', 'Faculty') and payload.hr_total - payload.hr_synced > 0 %}
+      <button type="button" class="btn" id="hr-sync-btn" data-roster="{{ roster_id }}">Sync HackerRank ({{ payload.hr_total - payload.hr_synced }} remaining)</button>
+      <span id="hr-sync-label" style="font-size:13px;color:var(--muted);" hidden></span>
+      {% endif %}
       {% include "partials/bell.html" %}
     </div>
   </div>
@@ -223,6 +227,38 @@
     <div class="leader-empty">No repositories yet.</div>
     {% endif %}
   </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Problems Solved</div>
+    {% if payload.hr_solved_rows %}
+    {% for row in payload.hr_solved_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} solved</span>
+    </div>
+    {% endfor %}
+    {% elif payload.hr_total == 0 %}
+    <div class="leader-empty">No HackerRank profiles linked in this cohort.</div>
+    {% else %}
+    <div class="leader-empty">{{ payload.hr_total - payload.hr_synced }} profile{% if payload.hr_total - payload.hr_synced != 1 %}s{% endif %} awaiting sync &mdash; sync runs daily at midnight, or use Sync HackerRank above.</div>
+    {% endif %}
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Top Practice Scores</div>
+    {% if payload.hr_score_rows %}
+    {% for row in payload.hr_score_rows %}
+    <div class="leader-row">
+      <span class="leader-rank">{{ row.rank }}</span>
+      <span class="leader-title"><a class="leader-link" href="/leaderboards?{{ board_qs }}&select={{ row.student_id }}">{{ row.name }}</a> <span class="leader-sub">@{{ row.username }}</span></span>
+      <span class="leader-score">{{ row.score }} points</span>
+    </div>
+    {% endfor %}
+    {% elif payload.hr_total == 0 %}
+    <div class="leader-empty">No HackerRank profiles linked in this cohort.</div>
+    {% else %}
+    <div class="leader-empty">{{ payload.hr_total - payload.hr_synced }} profile{% if payload.hr_total - payload.hr_synced != 1 %}s{% endif %} awaiting sync &mdash; sync runs daily at midnight, or use Sync HackerRank above.</div>
+    {% endif %}
+  </section>
 </div>
 
 {% if profile %}
@@ -238,4 +274,51 @@
     </div>
   </div>
 {% endif %}
+<script>
+  // HackerRank bulk sync (admin/faculty): one click walks every unsynced
+  // profile 5 at a time via POST /sync/hackerrank until `remaining` hits 0,
+  // then reloads once. Page renders never wait on it.
+  (function () {
+    var btn = document.getElementById('hr-sync-btn');
+    if (!btn) return;
+    var label = document.getElementById('hr-sync-label');
+    var running = false;
+    function poll() {
+      var roster = btn.getAttribute('data-roster') || '';
+      fetch('/sync/hackerrank?roster=' + encodeURIComponent(roster) + '&batch=5', {
+        method: 'POST',
+        headers: {'Accept': 'application/json'},
+      }).then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      }).then(function (data) {
+        var total = Number(data.total) || 0;
+        var remaining = Number(data.remaining) || 0;
+        var done = total - remaining;
+        if (label) {
+          label.hidden = false;
+          label.textContent = total
+            ? 'HackerRank sync: ' + done + '/' + total + (remaining ? '…' : ' — done, reloading…')
+            : 'Nothing to sync';
+        }
+        if (remaining > 0) {
+          setTimeout(poll, 1500);
+        } else {
+          setTimeout(function () { window.location.reload(); }, 900);
+        }
+      }).catch(function () {
+        running = false;
+        btn.disabled = false;
+        if (label) { label.hidden = false; label.textContent = 'HackerRank sync failed — try again.'; }
+      });
+    }
+    btn.addEventListener('click', function () {
+      if (running) return;
+      running = true;
+      btn.disabled = true;
+      if (label) { label.hidden = false; label.textContent = 'HackerRank sync starting…'; }
+      poll();
+    });
+  })();
+</script>
 {% endblock %}

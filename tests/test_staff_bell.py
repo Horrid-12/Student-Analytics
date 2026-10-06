@@ -129,7 +129,7 @@ class TestStaffBellWiring:
         assert "all quiet" in body
         assert "notif-badge" not in body
 
-    def test_student_gets_no_bell_on_support_page(self, tmp_path, monkeypatch):
+    def test_student_gets_bell_on_support_page(self, tmp_path, monkeypatch):
         from app import storage
 
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "history.db")
@@ -137,7 +137,8 @@ class TestStaffBellWiring:
         student = TestClient(app)
         login_as(student)
         body = student.get("/support", headers={"Accept": "text/html"}).text
-        assert "notif-bell" not in body
+        assert "notif-bell" in body
+        assert "notif-badge" not in body
 
     def test_resolved_ticket_drops_off_the_bell(self, tmp_path, monkeypatch):
         from app import storage

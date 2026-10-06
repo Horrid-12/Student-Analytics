@@ -258,6 +258,15 @@ CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- 8d. HackerRank snapshots ({lowercase handle: {practice_score, total_solved,
+--     badges, display_name, synced_at}} — progressively cached from
+--     profile-view fetches; the HackerRank leaderboards rank from this).
+CREATE TABLE IF NOT EXISTS hackerrank_snapshots (
+    handle      TEXT PRIMARY KEY,
+    state       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 9. Historical analysis runs (mirrors the legacy analytics_history.db schema).
 CREATE TABLE IF NOT EXISTS analysis_runs (
     id                  SERIAL PRIMARY KEY,
@@ -350,6 +359,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS github_verified_at TEXT NOT NULL DEFA
 ALTER TABLE users ADD COLUMN IF NOT EXISTS main_batch TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS practical_batch TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
 
 -- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
 --     One row per synced account: JSONB holds the dashboard-shaped student

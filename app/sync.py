@@ -110,7 +110,10 @@ def _primary_language(repos: list[dict]) -> str:
         counts[key] = counts.get(key, 0) + 1
     if not counts:
         return "Unknown"
-    return max(counts, key=lambda k: (counts[k], -list(counts).index(k)))
+    peak = max(counts.values())
+    # Tie-break alphabetically to match the roster pipeline (pandas mode()
+    # returns sorted values, so equal counts resolve to the smallest name).
+    return min(key for key, value in counts.items() if value == peak)
 
 
 def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) -> dict:
