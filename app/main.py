@@ -7,6 +7,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import threading
 import time
 import uuid
@@ -21,6 +22,12 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app.hackerrank_client.service import (
+    decode_badges,
+    decode_profile_model,
+    decode_scores,
+    decode_total_solved,
+)
 from app.env import load_dotenv_local
 
 # Phase 5.3: auto-load .env.local/.env (the `vercel env pull` file) so Google
@@ -1534,7 +1541,326 @@ async def sync_weekly(request: Request):
     return JSONResponse(content=summary)
 
 
-@app.post("/api/sync/student/{email}")
+#: HackerRank bulk sync (leaderboard backfill): one invocation handles a few
+#: profiles only, so neither page renders nor serverless timeouts suffer.
+HR_SYNC_BATCH_DEFAULT = 5
+HR_SYNC_BATCH_MAX = 20
+HR_SYNC_BUDGET_SECONDS = 25.0
+HR_SYNC_SLEEP_SECONDS = 1.0
+#: Snapshots fresher than this are skipped (profile views refresh them anyway).
+HR_SYNC_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _save_hr_snapshot(handle: str, snapshot: dict) -> None:
+    """Persist one HackerRank snapshot (memory + Postgres). Never raises."""
+    handle = (handle or "").strip().lower()
+    if not handle or not isinstance(snapshot, dict):
+        return
+    try:
+        roster_store.put_hr_snapshot(handle, snapshot)
+        if database.db_configured():
+            db.put_hackerrank_snapshot(handle, snapshot)
+    except Exception:
+        logger.warning("HackerRank snapshot save failed for %s", handle)
+
+
+async def _fetch_hr_snapshot_light(handle: str, api) -> dict:
+    """Snapshot-grade fetch with the minimum request footprint.
+
+    Three sequential calls (profile, scores, badges) — no concurrent burst,
+    no contest/submission/recent pagination. The full (heavy) profile stays
+    exclusive to the single-profile tab endpoint.
+
+    Only a missing profile tombstones the handle; flaky scores/badges
+    degrade to empty rather than condemning a real user.
+    """
+    profile_model = await api.fetch_profile(handle)
+    try:
+        scores = await api.fetch_scores(handle)
+    except hackerrank_client.UserNotFound:
+        scores = []
+    try:
+        badge_models = await api.fetch_badges(handle)
+    except hackerrank_client.UserNotFound:
+        badge_models = []
+    real_username, display_name = decode_profile_model(profile_model, handle)
+    badges = decode_badges(badge_models)
+    practice_score, _ = decode_scores(scores)
+    return {
+        "username": real_username,
+        "display_name": display_name,
+        "practice_score": int(practice_score),
+        "total_solved": int(decode_total_solved(badges)),
+        "badges": len(badges),
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _hr_tombstone(handle: str) -> dict:
+    return {
+        "username": handle,
+        "display_name": "",
+        "practice_score": 0,
+        "total_solved": 0,
+        "badges": 0,
+        "invalid": True,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _hr_stale_queue(handles: dict, snapshots: dict) -> list:
+    """Stale-first [(handle, sid)]: never-synced first, then oldest sync."""
+    now = time.time()
+    return sorted(
+        (
+            (handle, sid)
+            for handle, sid in handles.items()
+            if now - _hr_snapshot_epoch(snapshots.get(handle)) >= HR_SYNC_TTL_SECONDS
+        ),
+        key=lambda item: _hr_snapshot_epoch(snapshots.get(item[0])),
+    )
+
+
+def _hr_sync_handles(roster: str) -> dict | None:
+    """Ordered {lowercase handle: student_id} from the leaderboard view frame.
+
+    Same source the boards rank from (roster analysis view, else the fleet
+    view). Returns None when a requested roster has no completed analysis.
+    """
+    roster = (roster or "").strip()
+    if roster:
+        view = _analysis_view(roster)
+        if view is None or not _is_complete(view):
+            return None
+        frame = view.get("students")
+    else:
+        try:
+            view = views.fleet_view()
+        except Exception:
+            view = None
+        frame = view.get("students") if view else None
+    handles: dict[str, str] = {}
+    if frame is None or getattr(frame, "empty", True):
+        return handles
+    try:
+        has_col = "HackerRank_Username" in frame.columns
+    except Exception:
+        has_col = False
+    if not has_col:
+        return handles
+    try:
+        rows = frame.dropna(subset=["HackerRank_Username"])
+    except Exception:
+        return handles
+    for _, srow in rows.iterrows():
+        try:
+            handle = services.extract_hackerrank_username(srow.get("HackerRank_Username"))
+            handle = str(handle or "").strip().lower()
+        except Exception:
+            handle = ""
+        if not handle or handle in handles:
+            continue
+        try:
+            sid = str(srow.get(services.STUDENT_ID_COL, ""))
+        except Exception:
+            sid = ""
+        handles[handle] = sid
+    return handles
+
+
+def _hr_snapshot_epoch(snap) -> float:
+    """Epoch seconds of a snapshot's synced_at; 0 when missing/unparseable."""
+    try:
+        synced_at = (snap or {}).get("synced_at") if isinstance(snap, dict) else None
+        if not synced_at:
+            return 0.0
+        return datetime.fromisoformat(str(synced_at)).timestamp()
+    except Exception:
+        return 0.0
+
+
+@app.api_route("/sync/hackerrank", methods=["GET", "POST"])
+async def sync_hackerrank(
+    request: Request,
+    roster: str = "",
+    batch: int = HR_SYNC_BATCH_DEFAULT,
+    budget: float = HR_SYNC_BUDGET_SECONDS,
+):
+    """Backfill HackerRank snapshots a few profiles at a time.
+
+    566 profiles can't sync in one request without timing out (or hammering
+    HackerRank into throttling us), so each call processes a small batch of
+    the stalest handles and reports progress; the caller repeats until
+    ``remaining`` hits 0. Bulk fetches use the light sequential path (3
+    requests, no concurrent burst, no pagination) and stop at the first
+    rate-limit signal. Page renders never touch this path, so the site stays
+    fast. Same authorization as /sync/weekly: admin/faculty session, or
+    CRON_SECRET via ``X-Cron-Secret`` / ``Authorization: Bearer`` (GET
+    exists so Vercel Cron can drive it on plans that allow frequent crons).
+    """
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        configured_secret = os.environ.get("CRON_SECRET") or ""
+        if configured_secret:
+            supplied = request.headers.get("x-cron-secret") or ""
+            if not hmac.compare_digest(supplied, configured_secret):
+                bearer = request.headers.get("authorization") or ""
+                if bearer.lower().startswith("bearer "):
+                    supplied = bearer[7:]
+            authorized = hmac.compare_digest(supplied, configured_secret)
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    batch = max(1, min(int(batch or 0), HR_SYNC_BATCH_MAX))
+    try:
+        budget = max(1.0, min(float(budget or 0), 55.0))
+    except (TypeError, ValueError):
+        budget = HR_SYNC_BUDGET_SECONDS
+    handles = _hr_sync_handles(roster)
+    if handles is None:
+        return JSONResponse(status_code=404, content={"detail": "No completed analysis for this roster"})
+    snapshots = _hr_snapshots_state()
+    queue = _hr_stale_queue(handles, snapshots)
+    total, pending = len(handles), len(queue)
+    synced: list[str] = []
+    failed: dict[str, str] = {}
+    invalid: list[str] = []
+    throttled = False
+    start = time.time()
+    api = hackerrank_client.HackerRankAPI()
+    try:
+        for handle, _sid in queue[:batch]:
+            if throttled or time.time() - start >= budget:
+                break  # time-boxed or throttled: leftovers wait for next call
+            try:
+                _save_hr_snapshot(handle, await _fetch_hr_snapshot_light(handle, api))
+                synced.append(handle)
+            except hackerrank_client.UserNotFound:
+                _save_hr_snapshot(handle, _hr_tombstone(handle))
+                invalid.append(handle)
+                continue
+            except hackerrank_client.UpstreamError as exc:
+                if getattr(exc, "status", 0) == 429:
+                    throttled = True  # back off now; the next call resumes
+                    failed[handle] = "rate_limited"
+                    break
+                failed[handle] = "upstream"
+                continue
+            except Exception:
+                failed[handle] = "upstream"
+                continue
+            await asyncio.sleep(HR_SYNC_SLEEP_SECONDS)
+    finally:
+        try:
+            await api.close()
+        except Exception:
+            pass
+    done = len(synced) + len(failed) + len(invalid)
+    _db_log_event(
+        "hackerrank_sync",
+        f"synced={len(synced)}; failed={len(failed)}; invalid={len(invalid)}; "
+        f"throttled={throttled}; remaining={pending - done}",
+    )
+    return JSONResponse(content={
+        "status": "ok",
+        "synced": len(synced),
+        "failed": failed,
+        "invalid": invalid,
+        "throttled": throttled,
+        "remaining": pending - done,
+        "total": total,
+    })
+
+
+def _sync_authorized(request: Request) -> bool:
+    """Admin/faculty session OR CRON_SECRET (header or bearer)."""
+    user = getattr(request.state, "user", None)
+    if user and user.get("role") in ("admin", "faculty"):
+        return True
+    configured_secret = os.environ.get("CRON_SECRET") or ""
+    if not configured_secret:
+        return False
+    supplied = request.headers.get("x-cron-secret") or ""
+    if not hmac.compare_digest(supplied, configured_secret):
+        bearer = request.headers.get("authorization") or ""
+        if bearer.lower().startswith("bearer "):
+            supplied = bearer[7:]
+    return hmac.compare_digest(supplied, configured_secret)
+
+
+@app.get("/api/hackerrank/handles")
+async def hr_sync_handles(request: Request, roster: str = "", limit: int = 600):
+    """Stale-first HackerRank handle queue for external runners.
+
+    Lets a GitHub Actions worker (rotating egress IPs, generous timeouts)
+    do the bulk fetching the serverless app must not: it pulls this list,
+    fetches hackerrank.com directly at a polite pace, and pushes results to
+    POST /api/hackerrank/snapshot. Same authorization as the sync endpoints.
+    """
+    if not _sync_authorized(request):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    limit = max(1, min(int(limit or 0), 2000))
+    handles = _hr_sync_handles(roster)
+    if handles is None:
+        return JSONResponse(status_code=404, content={"detail": "No completed analysis for this roster"})
+    snapshots = _hr_snapshots_state()
+    queue = _hr_stale_queue(handles, snapshots)
+    return JSONResponse(content={
+        "status": "ok",
+        "handles": [{"handle": handle, "student_id": sid} for handle, sid in queue[:limit]],
+        "remaining": len(queue),
+        "total": len(handles),
+    })
+
+
+@app.post("/api/hackerrank/snapshot")
+async def hr_snapshot_ingest(request: Request):
+    """Accept one externally-fetched HackerRank snapshot.
+
+    The companion GitHub Actions runner fetches public HackerRank pages
+    itself (no server load, no shared-IP throttling) and pushes the numbers
+    here. Payload: {handle, practice_score, total_solved, badges?,
+    display_name?, invalid?}. Values are range-checked; failures never raise.
+    """
+    if not _sync_authorized(request):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "Body must be a JSON object"})
+    handle = str(body.get("handle") or "").strip().lower()
+    if not handle or len(handle) > 64 or not re.fullmatch(r"[a-z0-9_@.-]+", handle):
+        return JSONResponse(status_code=400, content={"detail": "Invalid handle"})
+
+    def _nonneg(value, cap: int) -> int | None:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        if number < 0 or number > cap:
+            return None
+        return number
+
+    if body.get("invalid"):
+        snapshot = _hr_tombstone(handle)
+    else:
+        practice = _nonneg(body.get("practice_score"), 10_000_000)
+        solved = _nonneg(body.get("total_solved"), 1_000_000)
+        badges = _nonneg(body.get("badges", 0), 100)
+        if practice is None or solved is None or badges is None:
+            return JSONResponse(status_code=400, content={"detail": "Invalid snapshot numbers"})
+        snapshot = {
+            "username": handle,
+            "display_name": str(body.get("display_name") or "")[:120],
+            "practice_score": practice,
+            "total_solved": solved,
+            "badges": badges,
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+    _save_hr_snapshot(handle, snapshot)
+    return JSONResponse(content={"status": "ok", "handle": handle})
 async def sync_single_student(email: str, request: Request):
     """Client-orchestrated heavy sync for a single student.
     Accepts admin/faculty session OR CRON_SECRET (for GitHub Actions)."""
@@ -1738,19 +2064,23 @@ async def api_notifications_stream(request: Request):
 
 
 # ── HackerRank lazy profile API (vendored hackerrank_client) ────────────────
-_HACKERRANK_CACHE = hackerrank_client.TTLCache()
+# No shared cache: profile views fetch fresh each time (display-only; the
+# leaderboards get their own daily GitHub Actions sync, so profile opens
+# deliberately never write leaderboard snapshots).
 
 
 @app.get("/api/hackerrank/{username}")
 async def api_hackerrank_profile(username: str, request: Request):
     """Lazy HackerRank details for the profile modal HackerRank tab.
 
-    Uses the vendored unofficial-REST client (no auth, TTL 3600). Auth required
-    like the notifications API; unknown handle -> 404, upstream failure -> 502
-    so the tab can fall back to link-only instead of showing zeros.
+    Uses the vendored unofficial-REST client (no auth, fresh fetch every
+    open). Auth required like the notifications API; unknown handle -> 404,
+    upstream failure -> 502 so the tab can fall back to link-only instead of
+    showing zeros.
 
-    Successful fetches also persist a progressive snapshot (practice score +
-    solved count) that the HackerRank leaderboards rank from.
+    Display-only on purpose: leaderboard snapshots refresh exclusively via
+    the daily GitHub Actions sync (or the admin Sync button) — profile opens
+    never write them, so browsing can never hit HackerRank rate limits.
     """
     user = getattr(request.state, "user", None)
     if not user:
@@ -1758,7 +2088,7 @@ async def api_hackerrank_profile(username: str, request: Request):
     handle = (username or "").strip().lstrip("@").strip("/").split("/")[0]
     if not handle or len(handle) > 64:
         raise HTTPException(status_code=400, detail="Invalid HackerRank username")
-    api = hackerrank_client.HackerRankAPI(cache=_HACKERRANK_CACHE)
+    api = hackerrank_client.HackerRankAPI()
     try:
         profile, heatmap = await asyncio.gather(
             hackerrank_client.get_full_profile(handle, api),
@@ -1779,20 +2109,6 @@ async def api_hackerrank_profile(username: str, request: Request):
     data = profile.to_dict()
     data["heatmap"] = [d.to_dict() for d in (heatmap or [])]
     data["profile_url"] = services.hackerrank_profile_url(data.get("username") or handle)
-    try:
-        snapshot = {
-            "username": data.get("username") or handle,
-            "display_name": data.get("display_name") or "",
-            "practice_score": int(data.get("practice_score") or 0),
-            "total_solved": int(data.get("total_solved") or 0),
-            "badges": len(data.get("badges") or []),
-            "synced_at": datetime.now(timezone.utc).isoformat(),
-        }
-        roster_store.put_hr_snapshot(handle.lower(), snapshot)
-        if database.db_configured():
-            db.put_hackerrank_snapshot(handle.lower(), snapshot)
-    except Exception:
-        logger.warning("HackerRank snapshot save failed for %s", handle)
     return JSONResponse(content=data)
 
 

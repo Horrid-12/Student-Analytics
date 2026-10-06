@@ -2443,8 +2443,8 @@ def leaderboards_payload(
             except Exception:
                 continue
             snap = snapshots.get(handle)
-            if not isinstance(snap, dict):
-                continue
+            if not isinstance(snap, dict) or snap.get("invalid"):
+                continue  # tombstones never rank and never count as synced
             hr_synced_handles.add(handle)
             try:
                 solved = int(snap.get("total_solved") or 0)

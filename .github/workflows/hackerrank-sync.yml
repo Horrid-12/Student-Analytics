@@ -1,0 +1,46 @@
+# HackerRank bulk backfill — fetches public HackerRank profiles for every
+# stale handle, one at a time, from the GitHub runner (NOT Vercel).
+#
+# Why here: HackerRank throttles shared Vercel egress IPs after a handful of
+# concurrent bursts, and a full profile costs ~6 requests there. Runners get
+# fresh IPs and generous timeouts; the app only serves the handle queue and
+# ingests pushed snapshots, so page renders never slow down.
+#
+# Schedule: daily at midnight IST (18:30 UTC) + manual dispatch
+# (resumable via start_at). Change the cron below for a different time.
+# Budget:   600 profiles × ~6s ≈ 60 min worst case.
+#
+# Required repository secrets (same pair as heavy-sync.yml):
+#   APP_URL      — production Vercel URL (e.g. https://your-app.vercel.app)
+#   CRON_SECRET  — must match the CRON_SECRET env var on Vercel
+
+name: HackerRank Sync
+
+on:
+  schedule:
+    - cron: '30 18 * * *'   # daily 00:00 IST (midnight) = 18:30 UTC
+  workflow_dispatch:          # manual trigger from Actions tab
+    inputs:
+      start_at:
+        description: 'Resume from (number from the log, e.g. 362)'
+        required: false
+        default: '1'
+      roster:
+        description: 'Roster id (blank = whole fleet)'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backfill HackerRank snapshots
+        run: |
+          python3 .github/scripts/hr_sync.py \
+            --app-url "${{ secrets.APP_URL }}" \
+            --secret "${{ secrets.CRON_SECRET }}" \
+            --roster "${{ github.event.inputs.roster }}" \
+            --start-at "${{ github.event.inputs.start_at || '1' }}"
