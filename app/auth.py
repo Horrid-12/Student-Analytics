@@ -784,6 +784,7 @@ def submit_onboarding(
     practical_batch: str = "",
     semester: str = "",
     hackerrank_username: str = "",
+    linked_linkedin_name: str = "",
 ) -> tuple[bool, str]:
     """Record a student's academic onboarding submission and move the account
     to ``pending`` for registrar review. Returns ``(ok, error_code)`` where
@@ -819,6 +820,7 @@ def submit_onboarding(
         email, prn=prn, degree_branch=degree_branch, division=division,
         main_batch=main_batch, practical_batch=practical_batch, semester=semester,
         status="pending", submitted_at=now, hackerrank_username=hackerrank_username,
+        linked_linkedin_name=linked_linkedin_name,
     )
     if not stored:
         return False, "storage_unavailable"
@@ -837,6 +839,7 @@ def db_set_onboarding(
     submitted_at: str = "",
     github_verified_at: str = "",
     hackerrank_username: str = "",
+    linked_linkedin_name: str = "",
 ) -> bool:
     """Write onboarding fields for one account. Postgres-first, SQLite fallback.
     Returns True when the row updated."""
@@ -852,6 +855,8 @@ def db_set_onboarding(
                 main_batch=main_batch, practical_batch=practical_batch, semester=semester,
                 status=status, submitted_at=submitted_at,
                 github_verified_at=github_verified_at,
+                hackerrank_username=hackerrank_username,
+                linked_linkedin_name=linked_linkedin_name,
             )
         try:
             with closing(_connect()) as conn:
