@@ -405,6 +405,17 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
+CREATE INDEX IF NOT EXISTS idx_weekly_commits_email ON weekly_commits (email);
+
+-- 16. Monthly HR practice-score baselines (first sighting per user per
+-- month; monthly points = current total minus baseline).
+CREATE TABLE IF NOT EXISTS monthly_hr_baseline (
+    email          TEXT NOT NULL,
+    month_id       TEXT NOT NULL,
+    practice_score INTEGER NOT NULL DEFAULT 0,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (email, month_id)
+);
 
 -- 15. Fleet-mode fix: blacklist/hidden/workflow keys are TEXT ('fleet' + roster
 --     UUIDs), not UUID FKs. Fresh tables above are already TEXT; these migrate
