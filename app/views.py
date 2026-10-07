@@ -703,9 +703,20 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
+    # Unfiltered copy: the "Overall Average" benchmark and every selectable
+    # cohort in the Class Metrics Radar are measured against the whole roster.
+    # When My Classes scopes the page, callers pass the unscoped `overall_view`
+    # so the radar baseline stays college-wide while the rest of the page
+    # continues to use the scoped data.
+    if overall_view is not None and overall_view.get("students") is not None:
+        _overall_students = overall_view["students"].copy()
+        _overall_score_repos = _merged_repos_frame(overall_view)
+    else:
+        _overall_students = students.copy() if students is not None else students
+        _overall_score_repos = None
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
     # cohort in the Class Metrics Radar are measured against the whole roster.
     _all_students = students.copy() if students is not None else students
@@ -956,7 +967,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # 2. "All students": the whole-roster baseline. Always pre-applied so the
     #    radar opens with a visible shape; users can clear it via the Clear
     #    Filters button.
-    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_all_students, _all_score_repos)})
+    _overall_score = _overall_score_repos if _overall_score_repos is not None else _all_score_repos
+    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_overall_students, _overall_score)})
     _radar_active.append("overall")
     # 3. Every selectable cohort, measured with the same formulas.
     for _c in _cohort_rows:

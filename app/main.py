@@ -1485,6 +1485,7 @@ def overview(
             ctx["my_classes_on"] = (mine or "1") != "0"
             ctx["mine"] = "1" if ctx["my_classes_on"] else "0"
             if ctx["my_classes_on"]:
+                _full_view = view
                 if view is not None and _is_complete(view):
                     view = views.filter_view_by_teaching(view, teaching)
                 ctx["teaching_scope"] = "; ".join(
@@ -1496,7 +1497,11 @@ def overview(
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
-            ctx["payload"] = views.overview_payload(view, query=q or "", division=division or "All", batch=batch or "All", semester=semester or "All")
+            _overall_view = _full_view if ctx.get("my_classes_on") and "_full_view" in locals() else None
+            ctx["payload"] = views.overview_payload(
+                view, query=q or "", division=division or "All", batch=batch or "All",
+                semester=semester or "All", overall_view=_overall_view,
+            )
         except Exception:
             ctx["view"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
