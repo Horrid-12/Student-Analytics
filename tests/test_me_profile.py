@@ -168,7 +168,13 @@ class TestMonthlyRoute:
         self_view = make_view(email=email)
         monkeypatch.setattr(main, "_analysis_view", lambda roster_id: self_view)
         seen = []
-        canned = {"month_id": "2026-09", "month_label": "September 2026"}
+        canned = {"month_id": "2026-09", "month_label": "September 2026",
+                  "github": {"commits": 5, "weeks": 2, "repos": 3},
+                  "hackerrank": {"available": False, "handle": "", "solved_month": None,
+                                 "solves": [], "points_month": None, "score_total": None,
+                                 "collecting": False},
+                  "peers": {"total": 0, "reporting": 0, "division": ""},
+                  "standing": {"ranked": False}}
 
         def fake_summary(user_email, now=None):
             seen.append(user_email)
