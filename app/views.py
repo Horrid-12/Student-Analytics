@@ -935,7 +935,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                 "key": f"{_batch_raw or '?'}|{_div_raw or '?'}",
                 "group": _group,
                 "name": _name,
-                "label": f"{_group} · {_name}",
+                "label": f"{_name} · {_group}",
                 "batch": _batch,
                 "div": _div,
                 "students": _slice,
@@ -953,18 +953,51 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         return (0, int(m.group(0)), str(name).lower()) if m else (1, 0, str(name).lower())
     _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, _div_sort_key(c["name"])))
 
+    # The Class Metrics Radar must NEVER follow the My Classes filter: its
+    # "current" series always reflects the full roster (with only the page's
+    # own query/division/batch/semester filters applied).
+    if overall_view is not None and _overall_students is not None:
+        radar_students = _overall_students
+        try:
+            radar_students = filter_text(
+                radar_students,
+                query or "",
+                [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+            )
+        except Exception:
+            pass
+        for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
+            try:
+                radar_students = apply_value_filter(radar_students, _col, _val or "All")
+            except Exception:
+                pass
+        try:
+            _radar_cohort = set(radar_students["GitHub_Username"].dropna().astype(str)) if radar_students is not None and not radar_students.empty and "GitHub_Username" in radar_students.columns else set()
+        except Exception:
+            _radar_cohort = set()
+        radar_score_repos = _all_score_repos
+        try:
+            if radar_score_repos is not None and not radar_score_repos.empty and "Username" in radar_score_repos.columns and _radar_cohort:
+                radar_score_repos = radar_score_repos[radar_score_repos["Username"].astype(str).isin(_radar_cohort)].copy()
+            elif radar_score_repos is not None and radar_students is not None and radar_students.empty:
+                radar_score_repos = radar_score_repos.iloc[0:0].copy()
+        except Exception:
+            pass
+    else:
+        radar_students = students
+        radar_score_repos = _score_repos
     _radar_series = []
     _radar_active = []
     _has_current = False
     _current_label = ""
     _filtered = division != "All" or batch != "All" or semester != "All"
-    if students is not None and not students.empty:
-        # 1. "Your class": the student set the page filters are showing.
+    if radar_students is not None and not radar_students.empty:
+        # 1. "My Classes": the student set the page filters are showing.
         _current_label = "My Classes"
         if _filtered:
             _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
             _current_label += " · " + " · ".join(_bits)
-        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
+        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
         _has_current = True
     # 2. "All students": the whole-roster baseline. Always pre-applied so the

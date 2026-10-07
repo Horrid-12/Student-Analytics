@@ -100,17 +100,22 @@
     font-weight: 600;
     line-height: 1.3;
   }
+  .radar-grid .cmp-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .radar-grid .system-value {
     color: var(--text);
-    font-size: 46px;
+    font-size: 32px;
     line-height: 1;
     font-weight: 800;
   }
   /* Compress the big number as more classes are compared so every row stays
      legible and the grid keeps its even, symmetric proportions. */
-  .radar-grid .system-grid[data-density="two"] .system-value { font-size: 40px; }
-  .radar-grid .system-grid[data-density="three"] .system-value { font-size: 34px; }
-  .radar-grid .system-grid[data-density="many"] .system-value { font-size: 28px; }
+  .radar-grid .system-grid[data-density="two"] .system-value { font-size: 30px; }
+  .radar-grid .system-grid[data-density="three"] .system-value { font-size: 26px; }
+  .radar-grid .system-grid[data-density="many"] .system-value { font-size: 22px; }
   .radar-grid .system-grid[data-density="many"] .cmp-metric { font-size: 11px; }
   @media (max-width: 1100px) {
     .radar-grid {
@@ -621,14 +626,19 @@
       return (typeof v === 'number' && !isNaN(v)) ? v.toFixed(1) : '0.0';
     }
 
-    function cardHtml(metric, className, value, key, color) {
-      return '<div class="system-item cmp-card" data-key="' + key + '">' +
+    function cardHtml(className, key, color, avgRepos, avgQuality) {
+      return '<div class="system-item cmp-card" data-key="' + key + '" style="border:2px solid ' + color + '">' +
         '<div class="cmp-head">' +
-          '<span class="cmp-dot" style="background:' + color + '"></span>' +
           '<span class="cmp-class">' + className + '</span>' +
         '</div>' +
-        '<span class="cmp-metric">' + metric + '</span>' +
-        '<span class="system-value">' + value + '</span>' +
+        '<div class="cmp-row">' +
+          '<span class="cmp-metric">Avg Repositories</span>' +
+          '<span class="system-value">' + avgRepos + '</span>' +
+        '</div>' +
+        '<div class="cmp-row">' +
+          '<span class="cmp-metric">Avg Quality Score</span>' +
+          '<span class="system-value">' + avgQuality + '</span>' +
+        '</div>' +
       '</div>';
     }
 
@@ -647,17 +657,22 @@
       bridge.getSeries().forEach(function (s) { byKey[s.key] = s; });
       var active = bridge.getActive();
       var compared = active.filter(function (key) { return kindOf[key] === 'cohort'; });
-      var datasets = compared.length ? compared.slice(0, MAX_CMP) : ['overall'];
+      var datasets;
+      if (compared.length) {
+        datasets = compared.slice(0, MAX_CMP);
+      } else {
+        datasets = active.filter(function (key) { return kindOf[key] === 'current' || kindOf[key] === 'overall'; });
+        if (!datasets.length) datasets = ['overall'];
+      }
       var html = '';
       datasets.forEach(function (key) {
         var s = byKey[key];
         if (!s || !s.values) return;
         var cls = s.label || 'All students';
         var col = cardColor(key);
-        html += cardHtml('Avg Repositories', cls, fmtNum(s.values[0]), key, col);
-        html += cardHtml('Avg Quality Score', cls, fmtNum(s.values[3]), key, col);
+        html += cardHtml(cls, key, col, fmtNum(s.values[0]), fmtNum(s.values[3]));
       });
-      cardsEl.setAttribute('data-layout', compared.length <= 1 ? 'stack' : 'grid');
+      cardsEl.setAttribute('data-layout', datasets.length <= 1 ? 'stack' : 'grid');
       cardsEl.setAttribute('data-density', compared.length === 2 ? 'two' : (compared.length === 3 ? 'three' : (compared.length >= 4 ? 'many' : 'one')));
       cardsEl.innerHTML = html;
     }

@@ -600,7 +600,10 @@ window.__EC_THEME = (function () {
     if (key === BENCH_KEY) {
       return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.14)', symbol: 4 };
     }
-    var non = active.filter(function (k) { return k !== BENCH_KEY; });
+    if (key === 'current') {
+      return { color: '#8b5cf6', dash: false, fill: hexToRgba('#8b5cf6', 0.22), symbol: 6 };
+    }
+    var non = active.filter(function (k) { return k !== BENCH_KEY && k !== 'current'; });
     var pos = non.indexOf(key);
     if (pos < 0) pos = 0;
     var color = ACCENTS[pos % ACCENTS.length];
