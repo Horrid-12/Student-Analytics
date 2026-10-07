@@ -132,7 +132,7 @@ ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards
 # Verification page was removed entirely.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
+    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
     "faculty": ALL_PAGES,
     "admin": ALL_PAGES,
 }
