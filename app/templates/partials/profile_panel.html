@@ -57,6 +57,9 @@
       <div class="profile-tabs" role="tablist" aria-label="Profile sections">
         <button type="button" class="profile-tab" role="tab" id="profile-tab-github" aria-controls="profile-panel-github" aria-selected="true">GitHub</button>
         <button type="button" class="profile-tab" role="tab" id="profile-tab-hackerrank" aria-controls="profile-panel-hackerrank" aria-selected="false" tabindex="-1">HackerRank</button>
+        {% if monthly is defined and monthly %}
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-monthly" aria-controls="profile-panel-monthly" aria-selected="false" tabindex="-1">Monthly Summary</button>
+        {% endif %}
       </div>
       <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
         <details class="repo-dropdown">
@@ -154,6 +157,42 @@
         <p class="tab-empty">No HackerRank profile linked.</p>
         {% endif %}
       </div>
+      {% if monthly is defined and monthly %}
+      <div id="profile-panel-monthly" role="tabpanel" aria-labelledby="profile-tab-monthly" hidden>
+        <div class="panel-minor-title">Activity in {{ monthly.month_label }}</div>
+        <div class="activity-stats">
+          <div class="activity-stat">
+            <div class="activity-number">{% if monthly.github.commits is not none %}{{ monthly.github.commits }}{% else %}&mdash;{% endif %}</div>
+            <div class="activity-label">GitHub contributions this month{% if monthly.github.weeks %} &middot; counted across {{ monthly.github.weeks }} Sunday check-in{{ "s" if monthly.github.weeks != 1 else "" }}{% endif %}</div>
+          </div>
+          <div class="activity-stat">
+            <div class="activity-number">{% if monthly.hackerrank.solved_month is not none %}{{ monthly.hackerrank.solved_month }}{% else %}&mdash;{% endif %}</div>
+            <div class="activity-label">HackerRank questions solved this month{% if monthly.hackerrank.handle %} &middot; {{ monthly.hackerrank.handle }}{% endif %}</div>
+          </div>
+          <div class="activity-stat">
+            <div class="activity-number">{% if monthly.hackerrank.points_month is not none %}+{{ monthly.hackerrank.points_month }}{% else %}&mdash;{% endif %}</div>
+            <div class="activity-label">HackerRank points earned this month{% if monthly.hackerrank.collecting %} &middot; collecting baseline{% endif %}{% if monthly.hackerrank.score_total is not none %} &middot; {{ monthly.hackerrank.score_total }} all-time{% endif %}</div>
+          </div>
+          <div class="activity-stat">
+            {% if monthly.standing.ranked %}
+            <div class="activity-number">{{ monthly.standing.band }}</div>
+            <div class="pct-track" role="img" aria-label="Cohort standing {{ monthly.standing.percentile }} out of 100"><span class="pct-fill" style="width:{{ monthly.standing.percentile }}%"></span></div>
+            <div class="activity-label">Rank #{{ monthly.standing.rank }} of {{ monthly.standing.total }}{% if monthly.peers.division %} &middot; Division {{ monthly.peers.division }}{% endif %} &middot; {{ monthly.peers.reporting }} of {{ monthly.peers.total }} peers reporting</div>
+            <div class="activity-label">{{ monthly.standing.framing }}</div>
+            {% else %}
+            <div class="activity-number">&mdash;</div>
+            <div class="activity-label">{% if monthly.standing.framing %}{{ monthly.standing.framing }}{% else %}No peer data yet — check back after the next sync.{% endif %}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% if monthly.github.commits is none %}
+        <p class="tab-empty">GitHub activity is still being collected — tracked Sunday counts appear here.</p>
+        {% endif %}
+        {% if not monthly.hackerrank.available %}
+        <p class="tab-empty">No HackerRank profile linked.</p>
+        {% endif %}
+      </div>
+      {% endif %}
 <script>
   (function () {
     var backdrop = document.getElementById('student-modal-backdrop');
