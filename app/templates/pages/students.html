@@ -327,7 +327,7 @@
 
 {% if payload.profile %}
   {% set p = payload.profile %}
-  {% set close_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (payload.page_size|string) %}
+  {% set close_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&rows=" + (payload.page_size|string) %}
   <div class="student-modal-backdrop" id="student-modal-backdrop" data-close-url="{{ close_url }}">
     <div class="student-modal" role="dialog" aria-modal="true" aria-label="Student details for {{ p.name }}">
       <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">

@@ -131,7 +131,7 @@
   <span class="filter-count">{{ payload.total }} ranked</span>
 </form>
 
-{% set board_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+{% set board_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
 <div class="leaderboard-grid">
   <section class="panel leader-card">
     <div class="panel-title">Most Active Repositories</div>

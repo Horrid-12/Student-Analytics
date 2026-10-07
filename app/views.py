@@ -2098,6 +2098,10 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))
+    # Hide repos whose owner isn't in the current student scope — in My
+    # Classes mode those render as "Unknown student" noise cards.
+    if not repos.empty and "Student Name" in repos.columns:
+        repos = repos[repos["Student Name"].fillna("").astype(str).str.strip() != ""].copy()
     # Text search spans GitHub handles, repo/language names AND the student
     # identity columns the merge attached — so professors can look a student
     # up by real name or PRN without opening their profile.

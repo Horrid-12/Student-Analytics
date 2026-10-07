@@ -2458,6 +2458,7 @@ def students_rows(
         division=division,
         batch=batch,
         semester=semester,
+        mine=mine,
         page_size=payload["page_size"],
     )
     return HTMLResponse(html)
