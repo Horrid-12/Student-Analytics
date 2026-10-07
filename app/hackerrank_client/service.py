@@ -194,6 +194,56 @@ async def get_full_profile(
             await api.close()
 
 
+async def get_leaderboard_stats(
+    handles: list[str], api: HackerRankAPI | None = None, concurrency: int = 8
+) -> dict[str, dict]:
+    """Light leaderboard stats for the HackerRank boards (live view).
+
+    Three cheap calls per handle (scores, badges, latest solve) cover every
+    HackerRank ranking: problem solving, practice points, badges, and how
+    recently the student solved something. Handles that 404, time out, or
+    error are simply omitted so one quiet account never blanks a board.
+    Keys are the handles exactly as passed in; keyed by handle because the
+    roster may not match HackerRank's canonical casing.
+    """
+    close_after = False
+    if api is None:
+        api = HackerRankAPI()
+        close_after = True
+    sem = asyncio.Semaphore(max(1, int(concurrency)))
+    results: dict[str, dict] = {}
+
+    async def _one(handle: str) -> None:
+        async with sem:
+            # return_exceptions keeps one failed endpoint from leaking an
+            # un-awaited task error when its siblings are still in flight.
+            scores, badge_models, recent_models = await asyncio.gather(
+                api.fetch_scores(handle),
+                api.fetch_badges(handle),
+                api.fetch_recent(handle, limit=1),
+                return_exceptions=True,
+            )
+        for item in (scores, badge_models, recent_models):
+            if isinstance(item, BaseException):
+                return
+        practice_score, _ = decode_scores(scores)
+        badges = decode_badges(badge_models)
+        recent = decode_recent(recent_models)
+        results[handle] = {
+            "total_solved": int(decode_total_solved(badges)),
+            "practice_score": int(practice_score or 0),
+            "badges": len(badges),
+            "last_solved": recent[0].date if recent else None,
+        }
+
+    try:
+        await asyncio.gather(*(_one(handle) for handle in handles))
+    finally:
+        if close_after:
+            await api.close()
+    return results
+
+
 async def get_badges(
     username: str, api: HackerRankAPI | None = None
 ) -> list[Badge]:

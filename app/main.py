@@ -2221,9 +2221,49 @@ async def api_notifications_stream(request: Request):
 
 
 # ── HackerRank lazy profile API (vendored hackerrank_client) ────────────────
-# No shared cache: profile views fetch fresh each time (display-only; the
-# leaderboards get their own daily GitHub Actions sync, so profile opens
-# deliberately never write leaderboard snapshots).
+_HACKERRANK_CACHE = hackerrank_client.TTLCache()
+# The leaderboards page chunks its handles client-side (40 per request); the
+# cap keeps one call from fan-out-ing the upstream API unboundedly.
+_HR_BOARD_MAX_HANDLES = 60
+
+
+@app.get("/api/hackerrank/board")
+async def api_hackerrank_board(request: Request, handles: str = ""):
+    """Batch leaderboard stats for the HackerRank leaderboards view.
+
+    Registered before /api/hackerrank/{username} so "board" is never read as
+    a handle. Comma-separated handles, capped, same auth and shared TTL cache
+    as the single-profile API. Per-handle failures are omitted (rank whatever
+    loaded) so one quiet account cannot fail the whole board.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    cleaned: list[str] = []
+    for raw in (handles or "").split(","):
+        handle = raw.strip().lstrip("@").strip("/").split("/")[0]
+        if not handle:
+            continue
+        if len(handle) > 64:
+            raise HTTPException(status_code=400, detail="Invalid HackerRank username")
+        if handle not in cleaned:
+            cleaned.append(handle)
+    if not cleaned:
+        return JSONResponse(content={"results": {}})
+    if len(cleaned) > _HR_BOARD_MAX_HANDLES:
+        raise HTTPException(status_code=400, detail="Too many handles in one request")
+    api = hackerrank_client.HackerRankAPI(cache=_HACKERRANK_CACHE)
+    try:
+        results = await hackerrank_client.get_leaderboard_stats(cleaned, api=api)
+    except Exception:
+        logger.exception("HackerRank board fetch failed")
+        raise HTTPException(status_code=502, detail="HackerRank upstream error")
+    finally:
+        try:
+            await api.close()
+        except Exception:
+            pass
+    return JSONResponse(content={"results": results})
 
 
 @app.get("/api/hackerrank/{username}")
@@ -2503,7 +2543,11 @@ def leaderboards_page(
     active_window: str = "1m",
     commits_window: str = "1m",
     select: str = "",
+    platform: str = "github",
 ):
+    # Both platforms' boards render in one page; `platform` only decides
+    # which grid starts visible (the pill switcher toggles without a reload).
+    platform = "hackerrank" if str(platform).strip().lower() == "hackerrank" else "github"
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
@@ -2533,7 +2577,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 
