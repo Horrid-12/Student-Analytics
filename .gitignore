@@ -25,3 +25,8 @@ proposed_email_fixes.md
 sync_fixed_users.py
 upload_hackerrank.py
 scripts/verify_readme.py
+sync_horrid.py
+
+run_sync_with_env.py
+scratch_sync.py
+sync_horrid.py
