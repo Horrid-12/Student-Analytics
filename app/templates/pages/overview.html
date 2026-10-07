@@ -302,6 +302,27 @@
     gap: 8px;
     padding: 2px 14px 8px;
   }
+  /* Box around the top "Your class / All students" quick picks. */
+  .radar-compare-box {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-soft, rgba(128, 128, 128, 0.04));
+    margin: 0 0 8px;
+    padding: 4px;
+  }
+  /* Faculty's taught division gets a light purple wash; its batches go deeper. */
+  .radar-compare-divrow.taught {
+    background: rgba(139, 92, 246, 0.10);
+    border-radius: 8px;
+  }
+  .radar-compare-divrow.taught .radar-compare-div {
+    color: #8b5cf6;
+  }
+  .radar-compare-batch.taught {
+    background: #7c3aed;
+    border-color: #7c3aed;
+    color: #fff;
+  }
   @media (max-width: 720px) {
     .radar-compare-panel {
       width: calc(100vw - 48px);
@@ -524,24 +545,19 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="radar-compare-panel" class="radar-compare-panel" hidden>
-        {% if payload.radar_data.has_current %}
-        <button type="button" class="radar-compare-row" data-compare-key="current">{{ payload.radar_data.current_label }}</button>
-        {% endif %}
-        <button type="button" class="radar-compare-row" data-compare-key="overall">All students</button>
-        {% if payload.radar_data.compare_semesters %}
-        <div class="radar-compare-section">Semester-wise filters</div>
-        <div class="radar-compare-semesters">
-          {% for sem in payload.radar_data.compare_semesters %}
-          <button type="button" class="radar-compare-batch" data-compare-key="{{ sem.key }}">{{ sem.name }}</button>
-          {% endfor %}
+        <div class="radar-compare-box">
+          {% if payload.radar_data.has_current %}
+          <button type="button" class="radar-compare-row" data-compare-key="current">{{ payload.radar_data.current_label }}</button>
+          {% endif %}
+          <button type="button" class="radar-compare-row" data-compare-key="overall">All students</button>
         </div>
-        {% endif %}
         {% for div in payload.radar_data.compare_divisions %}
-        <div class="radar-compare-divrow">
+        {% set div_num = div.division.replace('Division ', '') %}
+        <div class="radar-compare-divrow{% if taught_map and div_num in taught_map %} taught{% endif %}">
           <span class="radar-compare-div">{{ div.division }}</span>
           <span class="radar-compare-batches">
             {% for b in div.batches %}
-            <button type="button" class="radar-compare-batch" data-compare-key="{{ b.key }}">{{ b.batch }}</button>
+            <button type="button" class="radar-compare-batch{% if taught_map and div_num in taught_map and b.batch in taught_map[div_num] %} taught{% endif %}" data-compare-key="{{ b.key }}">{{ b.batch }}</button>
             {% endfor %}
           </span>
         </div>
@@ -735,7 +751,12 @@
       if (!row) return;
       var key = row.getAttribute('data-compare-key');
       if (!key || !bridge.isActive) return;
-      if (bridge.isActive(key)) return;
+      // Clicking an already-added item removes it.
+      if (bridge.isActive(key)) {
+        bridge.removeSeries(key);
+        updateLegend();
+        return;
+      }
       if (kindOf[key] === 'cohort' && comparedCount() >= MAX_CMP) { showHint(); return; }
       bridge.addSeries(key);
       updateLegend();

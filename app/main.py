@@ -1472,6 +1472,7 @@ def overview(
     user = getattr(request.state, "user", None)
     ctx["teaching_scope"] = ""
     ctx["teaching_empty"] = False
+    ctx["taught_map"] = {}
     ctx["show_my_classes"] = False
     ctx["my_classes_on"] = True
     ctx["mine"] = "1"
@@ -1480,6 +1481,7 @@ def overview(
             teaching = auth.get_faculty_teaching(user.get("email", ""))
         except Exception:
             teaching = {}
+        ctx["taught_map"] = teaching or {}
         if teaching:
             ctx["show_my_classes"] = True
             ctx["my_classes_on"] = (mine or "1") != "0"

@@ -548,10 +548,9 @@ class TestRadarComparePicker:
         assert "Compare class" not in body  # ghost header gone
         assert "whole roster" not in body
         assert "Dashed line = average" not in body  # caption gone
-        assert "Semester-wise filters" in body
+        assert "Semester-wise filters" not in body  # removed by design
         assert "Division 3" in body and "Division 5" in body
-        for key in ("current", "overall", "semester|Semester 3", "semester|Semester 4",
-                    "1|3", "2|3", "1|5"):
+        for key in ("current", "overall", "1|3", "2|3", "1|5"):
             assert f'data-compare-key="{key}"' in body, key
 
     def test_every_offered_key_has_a_series(self, radar_fleet):
