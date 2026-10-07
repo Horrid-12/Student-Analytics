@@ -155,8 +155,8 @@
     </div>
     <div class="topbar-actions">
       <div class="platform-switcher" role="tablist" aria-label="Leaderboard platform">
-        <a class="platform-pill{% if platform == "github" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'github' else 'false' }}" data-platform="github" href="/leaderboards?{{ base_qs }}&platform=github">GitHub</a>
-        <a class="platform-pill{% if platform == "hackerrank" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'hackerrank' else 'false' }}" data-platform="hackerrank" href="/leaderboards?{{ base_qs }}&platform=hackerrank">HackerRank</a>
+        <a class="platform-pill{% if platform == "github" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'github' else 'false' }}" data-platform="github" aria-controls="board-github" tabindex="{{ '0' if platform == 'github' else '-1' }}" href="/leaderboards?{{ base_qs }}&platform=github">GitHub</a>
+        <a class="platform-pill{% if platform == "hackerrank" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'hackerrank' else 'false' }}" data-platform="hackerrank" aria-controls="board-hackerrank" tabindex="{{ '0' if platform == 'hackerrank' else '-1' }}" href="/leaderboards?{{ base_qs }}&platform=hackerrank">HackerRank</a>
       </div>
       {% if auth_role in ('Admin', 'Faculty') and payload.hr_total - payload.hr_synced > 0 %}
       <button type="button" class="btn" id="hr-sync-btn" data-roster="{{ roster_id }}">Sync HackerRank ({{ payload.hr_total - payload.hr_synced }} remaining)</button>
@@ -358,6 +358,7 @@
         var active = pill.getAttribute("data-platform") === platform;
         pill.classList.toggle("is-active", active);
         pill.setAttribute("aria-selected", active ? "true" : "false");
+        pill.tabIndex = active ? 0 : -1;
       });
       swapText("topbar-meta-text", platform);
       swapText("filter-count", platform);
@@ -367,10 +368,23 @@
         window.history.replaceState(null, "", url.toString());
       }
     }
-    Array.prototype.forEach.call(pills, function (pill) {
+    var pillList = Array.prototype.slice.call(pills);
+    pillList.forEach(function (pill, index) {
       pill.addEventListener("click", function (event) {
         event.preventDefault();
         showPlatform(pill.getAttribute("data-platform"));
+      });
+      // Same keyboard model as the Student Profile modal tabs: Left/Right
+      // arrows move focus and switch the selected platform.
+      pill.addEventListener("keydown", function (event) {
+        var next = null;
+        if (event.key === "ArrowRight") next = pillList[(index + 1) % pillList.length];
+        if (event.key === "ArrowLeft") next = pillList[(index - 1 + pillList.length) % pillList.length];
+        if (next) {
+          event.preventDefault();
+          next.focus();
+          showPlatform(next.getAttribute("data-platform"));
+        }
       });
     });
   })();
