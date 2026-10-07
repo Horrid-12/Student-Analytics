@@ -46,6 +46,52 @@
     color: var(--blue);
     text-decoration: underline;
   }
+  /* Platform switcher: rounded pill container with a filled active state,
+     using the same theme tokens as the activity tabs so both light and dark
+     themes carry over. */
+  .platform-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-soft);
+  }
+  .platform-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1.35;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .platform-pill:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+  .platform-pill.is-active {
+    background: var(--blue-active-bg);
+    color: var(--blue);
+    border-color: var(--blue-active-border);
+  }
+  /* Author display rules beat the UA [hidden] rule for grid containers. */
+  .leaderboard-grid[hidden] {
+    display: none;
+  }
+  /* Room for the switcher beside the bell on narrow screens. */
+  .topbar {
+    flex-wrap: wrap;
+  }
   .student-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -94,15 +140,24 @@
 {% endblock %}
 {% block content %}
 
+{# base_qs carries every live filter; board_qs adds the platform a profile
+   popup should return to. The switcher pills swap only `platform`. #}
+{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+{% set board_qs = base_qs + "&platform=" + platform %}
+
 <div class="topbar-card">
   <div class="topbar">
     <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
       <div class="topbar-title">Leaderboards</div>
       <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
-        <span>{{ payload.total }} students ranked</span>
+        <span id="topbar-meta-text" data-github="{{ payload.total }} students ranked" data-hackerrank="{{ payload.hr_total }} students ranked on HackerRank">{% if platform == "hackerrank" %}{{ payload.hr_total }} students ranked on HackerRank{% else %}{{ payload.total }} students ranked{% endif %}</span>
       </div>
     </div>
     <div class="topbar-actions">
+      <div class="platform-switcher" role="tablist" aria-label="Leaderboard platform">
+        <a class="platform-pill{% if platform == "github" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'github' else 'false' }}" data-platform="github" href="/leaderboards?{{ base_qs }}&platform=github">GitHub</a>
+        <a class="platform-pill{% if platform == "hackerrank" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'hackerrank' else 'false' }}" data-platform="hackerrank" href="/leaderboards?{{ base_qs }}&platform=hackerrank">HackerRank</a>
+      </div>
       {% include "partials/bell.html" %}
     </div>
   </div>
@@ -110,6 +165,7 @@
 
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
+  <input type="hidden" name="platform" value="{{ platform }}">
   <div class="filter-field">
     <label class="filter-label" for="division-filter">Division</label>
     <select id="division-filter" class="filter-select" name="division">
@@ -135,16 +191,16 @@
     </select>
   </div>
   <button class="btn" type="submit">Apply</button>
-  <a class="btn" href="/leaderboards?roster={{ roster_id }}">Clear</a>
-  <span class="filter-count">{{ payload.total }} ranked</span>
+  <a class="btn" href="/leaderboards?roster={{ roster_id }}&platform={{ platform }}">Clear</a>
+  <span class="filter-count" id="filter-count" data-github="{{ payload.total }} ranked" data-hackerrank="{{ payload.hr_total }} on HackerRank">{% if platform == "hackerrank" %}{{ payload.hr_total }} on HackerRank{% else %}{{ payload.total }} ranked{% endif %}</span>
 </form>
 
-{% set board_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
-<div class="leaderboard-grid">
+<div class="leaderboard-grid" id="board-github"{% if platform != "github" %} hidden{% endif %}>
   <section class="panel leader-card">
     <div class="panel-title">Most Active Repositories</div>
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="platform" value="{{ platform }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">
@@ -171,6 +227,7 @@
     <div class="panel-title">Most Commits (All Projects)</div>
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="platform" value="{{ platform }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">
@@ -225,6 +282,31 @@
   </section>
 </div>
 
+{# HackerRank view: same 2x2 grid and card structure; scores are fetched
+   live (cached 1h) by the script below, so this renders the honest fallback
+   until ranks arrive. Candidates are already Division/Batch/Semester
+   filtered server-side, exactly like the GitHub boards. #}
+<div class="leaderboard-grid" id="board-hackerrank" data-board-qs="{{ board_qs }}"{% if platform != "hackerrank" %} hidden{% endif %}>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Problems Solved</div>
+    <div data-hr-board="solved"><div class="leader-empty">{% if payload.hr_candidates %}Scores fetch live from HackerRank &mdash; cached for 1 hour.{% else %}No HackerRank handles in this cohort yet.{% endif %}</div></div>
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Top Practice Score</div>
+    <div data-hr-board="practice"><div class="leader-empty">{% if payload.hr_candidates %}Scores fetch live from HackerRank &mdash; cached for 1 hour.{% else %}No HackerRank handles in this cohort yet.{% endif %}</div></div>
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Badges Earned</div>
+    <div data-hr-board="badges"><div class="leader-empty">{% if payload.hr_candidates %}Scores fetch live from HackerRank &mdash; cached for 1 hour.{% else %}No HackerRank handles in this cohort yet.{% endif %}</div></div>
+  </section>
+  <section class="panel leader-card">
+    <div class="panel-title">Most Recently Active</div>
+    <div data-hr-board="active"><div class="leader-empty">{% if payload.hr_candidates %}Scores fetch live from HackerRank &mdash; cached for 1 hour.{% else %}No HackerRank handles in this cohort yet.{% endif %}</div></div>
+  </section>
+</div>
+
+<script type="application/json" id="hr-candidates">{{ payload.hr_candidates | tojson }}</script>
+
 {% if profile %}
   {% set p = profile %}
   {% set close_url = "/leaderboards?" + board_qs %}
@@ -238,4 +320,156 @@
     </div>
   </div>
 {% endif %}
+
+<script>
+  (function () {
+    var githubGrid = document.getElementById("board-github");
+    var hrGrid = document.getElementById("board-hackerrank");
+    if (!githubGrid || !hrGrid) return;
+    var candidates = [];
+    try {
+      candidates = JSON.parse(document.getElementById("hr-candidates").textContent || "[]");
+    } catch (err) {
+      candidates = [];
+    }
+    var results = {};
+    var loaded = false;
+    var loading = false;
+    var CHUNK = 40;
+    var LIMIT = 10;
+
+    function esc(text) {
+      return String(text).replace(/[&<>"']/g, function (ch) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+      });
+    }
+    function boardBody(key) {
+      return hrGrid.querySelector('[data-hr-board="' + key + '"]');
+    }
+    function rowsHtml(rows, fmt) {
+      if (!rows.length) return '<div class="leader-empty">No HackerRank data yet.</div>';
+      var qs = hrGrid.getAttribute("data-board-qs") || "";
+      return rows
+        .slice(0, LIMIT)
+        .map(function (row, index) {
+          return (
+            '<div class="leader-row"><span class="leader-rank">' + (index + 1) + "</span>" +
+            '<span class="leader-title"><a class="leader-link" href="/leaderboards?' + esc(qs) +
+            '&select=' + encodeURIComponent(row.candidate.student_id) + '">' + esc(row.candidate.name) +
+            '</a> <span class="leader-sub">@' + esc(row.candidate.handle) + "</span></span>" +
+            '<span class="leader-score">' + esc(fmt(row.score)) + "</span></div>"
+          );
+        })
+        .join("");
+    }
+    function renderBoard(key, scoreOf, fmt) {
+      var el = boardBody(key);
+      if (!el) return;
+      var rows = [];
+      candidates.forEach(function (candidate) {
+        var stats = results[candidate.handle];
+        if (!stats) return;
+        var score = scoreOf(stats);
+        if (score === null || score === undefined) return;
+        rows.push({ candidate: candidate, score: score });
+      });
+      rows.sort(function (a, b) {
+        if (a.score < b.score) return 1;
+        if (a.score > b.score) return -1;
+        var an = a.candidate.name.toLowerCase();
+        var bn = b.candidate.name.toLowerCase();
+        return an < bn ? -1 : an > bn ? 1 : 0;
+      });
+      el.innerHTML = rowsHtml(rows, fmt);
+    }
+    function positive(value) {
+      var n = Number(value) || 0;
+      return n > 0 ? n : null;
+    }
+    function renderAll() {
+      renderBoard("solved", function (s) { return positive(s.total_solved); }, function (v) { return v + " solved"; });
+      renderBoard("practice", function (s) { return positive(s.practice_score); }, function (v) { return v + " pts"; });
+      renderBoard("badges", function (s) { return positive(s.badges); }, function (v) { return v + (v === 1 ? " badge" : " badges"); });
+      renderBoard("active", function (s) { return s.last_solved || null; }, function (v) { return v; });
+    }
+    function loadingState() {
+      ["solved", "practice", "badges", "active"].forEach(function (key) {
+        var el = boardBody(key);
+        if (el) el.innerHTML = '<div class="leader-empty">Loading HackerRank scores&hellip;</div>';
+      });
+    }
+    function fetchStats() {
+      if (loading || loaded) return;
+      var handles = [];
+      candidates.forEach(function (candidate) {
+        if (handles.indexOf(candidate.handle) === -1) handles.push(candidate.handle);
+      });
+      if (!handles.length) {
+        loaded = true;
+        return;
+      }
+      loading = true;
+      loadingState();
+      var chunks = [];
+      for (var i = 0; i < handles.length; i += CHUNK) {
+        chunks.push(handles.slice(i, i + CHUNK));
+      }
+      var pending = chunks.length;
+      chunks.forEach(function (chunk) {
+        fetch("/api/hackerrank/board?handles=" + encodeURIComponent(chunk.join(",")), { credentials: "same-origin" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            var batch = (data && data.results) || {};
+            Object.keys(batch).forEach(function (handle) {
+              if (batch[handle]) results[handle] = batch[handle];
+            });
+          })
+          .catch(function () {
+            /* keep every board usable with whatever loaded */
+          })
+          .then(function () {
+            pending -= 1;
+            if (pending <= 0) {
+              loading = false;
+              loaded = true;
+              renderAll();
+            }
+          });
+      });
+    }
+    function swapText(id, platform) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = el.getAttribute("data-" + platform) || el.textContent;
+    }
+    function showPlatform(platform) {
+      var isHr = platform === "hackerrank";
+      githubGrid.hidden = isHr;
+      hrGrid.hidden = !isHr;
+      Array.prototype.forEach.call(document.querySelectorAll(".platform-pill"), function (pill) {
+        var active = pill.getAttribute("data-platform") === platform;
+        pill.classList.toggle("is-active", active);
+        pill.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      swapText("topbar-meta-text", platform);
+      swapText("filter-count", platform);
+      if (window.history && window.history.replaceState && window.URL) {
+        var url = new URL(window.location.href);
+        url.searchParams.set("platform", platform);
+        window.history.replaceState(null, "", url.toString());
+      }
+      if (isHr) fetchStats();
+    }
+    Array.prototype.forEach.call(document.querySelectorAll(".platform-pill"), function (pill) {
+      pill.addEventListener("click", function (event) {
+        event.preventDefault();
+        showPlatform(pill.getAttribute("data-platform"));
+      });
+    });
+    if (!hrGrid.hidden) fetchStats();
+  })();
+</script>
 {% endblock %}

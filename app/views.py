@@ -2399,6 +2399,41 @@ def leaderboards_payload(
                 )
         except Exception:
             top_repos = []
+
+    # HackerRank view: nothing about HR performance is stored in the analysis
+    # (scores are fetched live and cached for an hour), so the server only
+    # decides WHO may be ranked — under the same Division/Batch/Semester
+    # filters as the GitHub boards — and hands the handles to
+    # /api/hackerrank/board for the browser to rank.
+    hr_candidates: list[dict] = []
+    if "HackerRank_Username" in students.columns:
+        seen: set[str] = set()
+        for _, row in students.iterrows():
+            handle = str(row.get("HackerRank_Username") or "").strip().lstrip("@")
+            if not handle or handle.lower() in ("nan", "none") or handle.lower() in seen:
+                continue
+            seen.add(handle.lower())
+            owner = str(row.get("GitHub_Username") or "")
+            if owner.lower() in ("nan", "none"):
+                owner = ""
+            name = row.get("Student Name", "")
+            try:
+                name = "" if pd.isna(name) else str(name).strip()
+            except Exception:
+                name = str(name)
+            sid = row.get(STUDENT_ID_COL, "")
+            try:
+                sid = "" if pd.isna(sid) else str(sid).strip()
+            except Exception:
+                sid = str(sid)
+            hr_candidates.append(
+                {
+                    "name": name or names.get(owner, owner or "Unknown"),
+                    "student_id": sid or ids.get(owner, ""),
+                    "handle": handle,
+                }
+            )
+
     return {
         "total": len(students),
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
@@ -2412,6 +2447,8 @@ def leaderboards_payload(
         "commits_ready": commits_ready,
         "star_rows": star_rows,
         "top_repos": top_repos,
+        "hr_candidates": hr_candidates,
+        "hr_total": len(hr_candidates),
     }
 
 
