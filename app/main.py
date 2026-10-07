@@ -1472,6 +1472,7 @@ def overview(
     user = getattr(request.state, "user", None)
     ctx["teaching_scope"] = ""
     ctx["teaching_empty"] = False
+    ctx["taught_map"] = {}
     ctx["show_my_classes"] = False
     ctx["my_classes_on"] = True
     ctx["mine"] = "1"
@@ -1480,13 +1481,18 @@ def overview(
             teaching = auth.get_faculty_teaching(user.get("email", ""))
         except Exception:
             teaching = {}
+        ctx["taught_map"] = teaching or {}
         if teaching:
             ctx["show_my_classes"] = True
             ctx["my_classes_on"] = (mine or "1") != "0"
             ctx["mine"] = "1" if ctx["my_classes_on"] else "0"
+            _full_view = view
+            if view is not None and _is_complete(view):
+                _taught_view = views.filter_view_by_teaching(view, teaching)
             if ctx["my_classes_on"]:
                 if view is not None and _is_complete(view):
-                    view = views.filter_view_by_teaching(view, teaching)
+                    view = _taught_view
+            if ctx["my_classes_on"]:
                 ctx["teaching_scope"] = "; ".join(
                     f"Division {div} (Batch {', '.join(batches)})"
                     for div, batches in sorted(teaching.items(), key=lambda kv: int(kv[0]))
@@ -1496,7 +1502,13 @@ def overview(
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
-            ctx["payload"] = views.overview_payload(view, query=q or "", division=division or "All", batch=batch or "All", semester=semester or "All")
+            _overall_view = _full_view if "_full_view" in locals() else None
+            _taught_view_for_radar = _taught_view if "_taught_view" in locals() else None
+            ctx["payload"] = views.overview_payload(
+                view, query=q or "", division=division or "All", batch=batch or "All",
+                semester=semester or "All", overall_view=_overall_view,
+                my_classes_view=_taught_view_for_radar,
+            )
         except Exception:
             ctx["view"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
@@ -2355,12 +2367,29 @@ def students_page(
     semester: str = "All",
     rows: int = 0,
     select: str = "",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Students", roster)
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return response
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        ctx["taught_map"] = taught_map
+        if teaching_active and (mine or "1") != "0" and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     payload = views.students_payload(view, q, division, batch, year, semester, rows, select or None)
+    payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
         "pages/students.html",
@@ -2392,6 +2421,7 @@ def students_rows(
     semester: str = "All",
     offset: int = 0,
     limit: int = 30,
+    mine: str = "1",
 ):
     """One batch of student rows for the infinite-scroll table.
 
@@ -2404,6 +2434,14 @@ def students_rows(
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return HTMLResponse("")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.students_payload(view, q, division, batch, year, semester)
     total = int(payload.get("total") or 0)
     if not total:
@@ -2420,6 +2458,7 @@ def students_rows(
         division=division,
         batch=batch,
         semester=semester,
+        mine=mine,
         page_size=payload["page_size"],
     )
     return HTMLResponse(html)
@@ -2453,10 +2492,19 @@ def students_export(
     batch: str = "All",
     year: str = "All",
     semester: str = "All",
+    mine: str = "1",
 ):
     view, response = _guard_page(request, {}, "Students", roster)
     if response is not None:
         raise HTTPException(status_code=404, detail="No completed analysis to export")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.students_payload(view, q, division, batch, year, semester)
     df = views.student_export_df(payload)
     return _export_response(df, format, "students")
@@ -2475,6 +2523,7 @@ def repositories_page(
     semester: str = "All",
     sort: str = "top",
     recency: str = "all",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -2494,7 +2543,22 @@ def repositories_page(
         view = "grid"
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        if teaching_active and (mine or "1") != "0" and data is not None and _is_complete(data):
+            data = views.filter_view_by_teaching(data, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort, recency)
+    payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
@@ -2515,6 +2579,7 @@ def repositories_rows(
     recency: str = "all",
     offset: int = 0,
     limit: int = 30,
+    mine: str = "1",
 ):
     """One batch of repository cards + rows for the infinite-scroll list.
 
@@ -2529,6 +2594,14 @@ def repositories_rows(
         return HTMLResponse("")
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.repositories_payload(
         view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort, recency
     )
@@ -2559,10 +2632,19 @@ def repositories_export(
     semester: str = "All",
     sort: str = "top",
     recency: str = "all",
+    mine: str = "1",
 ):
     view, response = _guard_page(request, {}, "Repositories", roster)
     if response is not None:
         raise HTTPException(status_code=404, detail="No completed analysis to export")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.repositories_payload(view, q, "All", 30, division, batch, semester, sort, recency)
     df = views.repository_export_df(payload)
     return _export_response(df, format, "repositories")
@@ -2578,11 +2660,26 @@ def leaderboards_page(
     active_window: str = "1m",
     commits_window: str = "1m",
     select: str = "",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        if teaching_active and (mine or "1") != "0" and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     # Fetched once: the payload and the template both need them, and each
     # lookup is a network round trip (Lag Fix — was 2 calls x 2 consumers).
     blacklist = _blacklist_state(roster)

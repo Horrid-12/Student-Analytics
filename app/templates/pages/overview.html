@@ -100,17 +100,22 @@
     font-weight: 600;
     line-height: 1.3;
   }
+  .radar-grid .cmp-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .radar-grid .system-value {
     color: var(--text);
-    font-size: 46px;
+    font-size: 32px;
     line-height: 1;
     font-weight: 800;
   }
   /* Compress the big number as more classes are compared so every row stays
      legible and the grid keeps its even, symmetric proportions. */
-  .radar-grid .system-grid[data-density="two"] .system-value { font-size: 40px; }
-  .radar-grid .system-grid[data-density="three"] .system-value { font-size: 34px; }
-  .radar-grid .system-grid[data-density="many"] .system-value { font-size: 28px; }
+  .radar-grid .system-grid[data-density="two"] .system-value { font-size: 30px; }
+  .radar-grid .system-grid[data-density="three"] .system-value { font-size: 26px; }
+  .radar-grid .system-grid[data-density="many"] .system-value { font-size: 22px; }
   .radar-grid .system-grid[data-density="many"] .cmp-metric { font-size: 11px; }
   @media (max-width: 1100px) {
     .radar-grid {
@@ -149,22 +154,11 @@
     margin-bottom: 0;
     flex: none;
   }
-  .radar-caption {
-    margin: 0 0 14px;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.5;
-  }
   .radar-controls {
     display: flex;
     align-items: center;
     gap: 10px;
     position: relative;
-  }
-  .radar-cohort-select {
-    min-width: 210px;
-    max-width: 280px;
-    font-size: 12px;
   }
   .radar-hint {
     position: absolute;
@@ -186,6 +180,163 @@
   }
   .radar-hint.show {
     opacity: 1;
+  }
+  .radar-compare-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 24px;
+    border: 3px solid #8b5cf6;
+    border-radius: 10px;
+    background: transparent;
+    color: #8b5cf6;
+    font-weight: 800;
+    font-size: 15px;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 180ms ease;
+  }
+  .radar-compare-btn:hover {
+    background: rgba(139, 92, 246, 0.12);
+  }
+  .radar-compare-btn[aria-expanded="true"] {
+    background: #8b5cf6;
+    color: #fff;
+  }
+  .radar-compare-btn[aria-expanded="true"] svg {
+    stroke: #fff;
+  }
+  .radar-compare-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 460px;
+    max-width: calc(100vw - 48px);
+    max-height: 440px;
+    overflow-y: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    padding: 10px;
+    z-index: 40;
+  }
+  .radar-compare-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: Inter, system-ui, sans-serif;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .radar-compare-row:hover {
+    background: var(--hover-bg);
+  }
+  .radar-compare-row[data-active="true"] {
+    color: var(--muted);
+  }
+  .radar-compare-row[data-active="true"]::after {
+    content: "\2713";
+    margin-left: auto;
+    font-weight: 800;
+    color: #22c55e;
+  }
+  .radar-compare-section {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding: 14px 14px 6px;
+  }
+  .radar-compare-divrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+  }
+  .radar-compare-divrow:hover {
+    background: var(--hover-bg);
+  }
+  .radar-compare-div {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .radar-compare-batches {
+    display: flex;
+    gap: 8px;
+    flex: none;
+  }
+  .radar-compare-batch {
+    min-width: 42px;
+    padding: 7px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: Inter, system-ui, sans-serif;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 180ms ease;
+  }
+  .radar-compare-batch:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+  }
+  .radar-compare-batch[data-active="true"] {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+    color: #fff;
+  }
+  .radar-compare-semesters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 2px 14px 8px;
+  }
+  /* Box around the top "Your class / All students" quick picks. */
+  .radar-compare-box {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-soft, rgba(128, 128, 128, 0.04));
+    margin: 0 0 8px;
+    padding: 4px;
+  }
+  /* Faculty's taught division gets a light purple wash; its batches go deeper. */
+  .radar-compare-divrow.taught {
+    background: rgba(139, 92, 246, 0.10);
+    border-radius: 8px;
+  }
+  .radar-compare-divrow.taught .radar-compare-div {
+    color: #8b5cf6;
+  }
+  .radar-compare-batch.taught {
+    background: transparent;
+    border-color: #7c3aed;
+    color: #7c3aed;
+  }
+  .radar-compare-batch.taught[data-active="true"] {
+    background: #7c3aed;
+    border-color: #7c3aed;
+    color: #fff;
+  }
+  @media (max-width: 720px) {
+    .radar-compare-panel {
+      width: calc(100vw - 48px);
+    }
   }
   /* Inline legend container: sits between the title and the compare dropdown,
      wrapped in a card-style box matching the Avg Repos / Avg Quality cards. */
@@ -281,12 +432,6 @@
   .radar-clear-btn.visible {
     display: inline-flex;
   }
-  @media (max-width: 720px) {
-    .radar-cohort-select {
-      min-width: 0;
-      max-width: 100%;
-    }
-  }
 
 </style>
 {% endblock %}
@@ -319,7 +464,7 @@
   <input type="hidden" name="roster" value="{{ roster_id }}">
   {% if show_my_classes %}
   <input type="hidden" name="mine" value="{{ mine }}">
-  <a href="/overview?roster={{ roster_id }}&amp;q={{ q|urlencode }}&amp;division={{ division|urlencode }}&amp;batch={{ batch|urlencode }}&amp;semester={{ semester|urlencode }}&amp;mine={{ "0" if my_classes_on else "1" }}" aria-pressed="{{ "true" if my_classes_on else "false" }}" title="Toggle your taught classes" style="display:inline-flex;align-items:center;min-height:42px;padding:0 24px;border:3px solid #8b5cf6;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;white-space:nowrap;{% if my_classes_on %}background:#8b5cf6;color:#fff;{% else %}background:transparent;color:#8b5cf6;{% endif %}">My Classes</a>
+  <a id="my-classes-btn" href="/overview?roster={{ roster_id }}&amp;q={{ q|urlencode }}&amp;division={{ division|urlencode }}&amp;batch={{ batch|urlencode }}&amp;semester={{ semester|urlencode }}&amp;mine={{ "0" if my_classes_on else "1" }}" aria-pressed="{{ "true" if my_classes_on else "false" }}" title="Toggle your taught classes" style="display:inline-flex;align-items:center;min-height:42px;padding:0 24px;border:3px solid #8b5cf6;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;white-space:nowrap;{% if my_classes_on %}background:#8b5cf6;color:#fff;{% else %}background:transparent;color:#8b5cf6;{% endif %}">{% if my_classes_on %}My Classes{% else %}All students{% endif %}</a>
   {% endif %}
   <div class="filter-field">
     <label class="filter-label" for="division-filter">Division</label>
@@ -405,20 +550,31 @@
       <div id="radar-legend" class="radar-legend"></div>
     </div>
     <div class="radar-controls">
-      <select id="radar-cohort-select" class="filter-select radar-cohort-select" aria-label="Compare a class">
-        <option value="" selected disabled>+ Compare class…</option>
+      <button type="button" id="radar-compare-btn" class="radar-compare-btn" aria-haspopup="true" aria-expanded="false">
+        Compare
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="radar-compare-panel" class="radar-compare-panel" hidden>
         {% if payload.radar_data.has_current %}
-        <option value="current">{{ payload.radar_data.current_label }}</option>
+        <div class="radar-compare-box">
+          <button type="button" class="radar-compare-row" data-compare-key="current">{{ payload.radar_data.current_label }}</button>
+        </div>
         {% endif %}
-        <option value="overall">All students (whole roster)</option>
-        {% for g in payload.radar_data.cohort_groups %}
-        <optgroup label="{{ g.label }}">
-          {% for item in g.options %}
-          <option value="{{ item.key }}">{{ item.name }}</option>
-          {% endfor %}
-        </optgroup>
+        <div class="radar-compare-box">
+          <button type="button" class="radar-compare-row" data-compare-key="overall">All students</button>
+        </div>
+        {% for div in payload.radar_data.compare_divisions %}
+        {% set div_num = div.division.replace('Division ', '') %}
+        <div class="radar-compare-divrow{% if taught_map and div_num in taught_map %} taught{% endif %}">
+          <span class="radar-compare-div">{{ div.division }}</span>
+          <span class="radar-compare-batches">
+            {% for b in div.batches %}
+            <button type="button" class="radar-compare-batch{% if taught_map and div_num in taught_map and b.batch in taught_map[div_num] %} taught{% endif %}" data-compare-key="{{ b.key }}">{{ b.batch }}</button>
+            {% endfor %}
+          </span>
+        </div>
         {% endfor %}
-      </select>
+      </div>
       <button type="button" id="radar-clear-btn" class="radar-clear-btn" aria-label="Clear all comparison filters">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         Clear Filters
@@ -426,7 +582,6 @@
       <div id="radar-hint" class="radar-hint">Maximum 4 classes can be compared at the same time.</div>
     </div>
   </div>
-  <p class="radar-caption">Dashed line = average of all students. The cards to the right follow whatever classes you compare. Pick a batch + division above to overlay it.</p>
   <div class="radar-grid">
     <div>
       {{ ec.radar('metrics-radar', payload.radar_data) }}
@@ -438,13 +593,14 @@
   (function () {
     // Class Metrics Radar: cohort comparison picker + interactive pill legend.
     function byId(id) { return document.getElementById(id); }
-    var select = byId('radar-cohort-select');
+    var compareBtn = byId('radar-compare-btn');
+    var comparePanel = byId('radar-compare-panel');
     var legendEl = byId('radar-legend');
     var legendBox = byId('radar-legend-box');
     var hintEl = byId('radar-hint');
     var cardsEl = byId('radar-compare-cards');
     var clearBtn = byId('radar-clear-btn');
-    if (!select || !legendEl || !hintEl || !cardsEl) return;
+    if (!compareBtn || !comparePanel || !legendEl || !hintEl || !cardsEl) return;
     var bridge = null;
     var hintTimer = null;
     var kindOf = {};
@@ -470,14 +626,19 @@
       return (typeof v === 'number' && !isNaN(v)) ? v.toFixed(1) : '0.0';
     }
 
-    function cardHtml(metric, className, value, key, color) {
-      return '<div class="system-item cmp-card" data-key="' + key + '">' +
+    function cardHtml(className, key, color, avgRepos, avgQuality) {
+      return '<div class="system-item cmp-card" data-key="' + key + '" style="border:2px solid ' + color + '">' +
         '<div class="cmp-head">' +
-          '<span class="cmp-dot" style="background:' + color + '"></span>' +
           '<span class="cmp-class">' + className + '</span>' +
         '</div>' +
-        '<span class="cmp-metric">' + metric + '</span>' +
-        '<span class="system-value">' + value + '</span>' +
+        '<div class="cmp-row">' +
+          '<span class="cmp-metric">Avg Repositories</span>' +
+          '<span class="system-value">' + avgRepos + '</span>' +
+        '</div>' +
+        '<div class="cmp-row">' +
+          '<span class="cmp-metric">Avg Quality Score</span>' +
+          '<span class="system-value">' + avgQuality + '</span>' +
+        '</div>' +
       '</div>';
     }
 
@@ -496,17 +657,22 @@
       bridge.getSeries().forEach(function (s) { byKey[s.key] = s; });
       var active = bridge.getActive();
       var compared = active.filter(function (key) { return kindOf[key] === 'cohort'; });
-      var datasets = compared.length ? compared.slice(0, MAX_CMP) : ['overall'];
+      var datasets;
+      if (compared.length) {
+        datasets = compared.slice(0, MAX_CMP);
+      } else {
+        datasets = active.filter(function (key) { return kindOf[key] === 'current' || kindOf[key] === 'overall'; });
+        if (!datasets.length) datasets = ['overall'];
+      }
       var html = '';
       datasets.forEach(function (key) {
         var s = byKey[key];
         if (!s || !s.values) return;
         var cls = s.label || 'All students';
         var col = cardColor(key);
-        html += cardHtml('Avg Repositories', cls, fmtNum(s.values[0]), key, col);
-        html += cardHtml('Avg Quality Score', cls, fmtNum(s.values[3]), key, col);
+        html += cardHtml(cls, key, col, fmtNum(s.values[0]), fmtNum(s.values[3]));
       });
-      cardsEl.setAttribute('data-layout', compared.length <= 1 ? 'stack' : 'grid');
+      cardsEl.setAttribute('data-layout', datasets.length <= 1 ? 'stack' : 'grid');
       cardsEl.setAttribute('data-density', compared.length === 2 ? 'two' : (compared.length === 3 ? 'three' : (compared.length >= 4 ? 'many' : 'one')));
       cardsEl.innerHTML = html;
     }
@@ -545,6 +711,25 @@
       }
       updateClearBtn();
       renderCards();
+      refreshPanel();
+    }
+
+    function setPanel(open) {
+      comparePanel.hidden = !open;
+      compareBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    // Check-mark rows already on the chart so picked classes read as picked.
+    function refreshPanel() {
+      if (!bridge) return;
+      var rows = comparePanel.querySelectorAll('[data-compare-key]');
+      Array.prototype.forEach.call(rows, function (row) {
+        if (bridge.isActive(row.getAttribute('data-compare-key'))) {
+          row.setAttribute('data-active', 'true');
+        } else {
+          row.removeAttribute('data-active');
+        }
+      });
     }
 
     // Pill ✕ buttons remove the cohort from the comparison.
@@ -566,13 +751,34 @@
       });
     }
 
+    // Panel open/close: button toggles, outside click and Escape dismiss.
+    compareBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      setPanel(comparePanel.hidden);
+    });
+    document.addEventListener('click', function (e) {
+      if (!comparePanel.hidden && !comparePanel.contains(e.target) && e.target !== compareBtn && !compareBtn.contains(e.target)) {
+        setPanel(false);
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !comparePanel.hidden) setPanel(false);
+    });
+
     // Comparing is capped at MAX_CMP classes so the radar + cards stay readable.
-    select.addEventListener('change', function () {
+    // The panel stays open for multi-picks; every offered key has a series.
+    comparePanel.addEventListener('click', function (e) {
       if (!bridge) return;
-      var key = select.value;
-      select.selectedIndex = 0;
+      var row = e.target.closest ? e.target.closest('[data-compare-key]') : null;
+      if (!row) return;
+      var key = row.getAttribute('data-compare-key');
       if (!key || !bridge.isActive) return;
-      if (bridge.isActive(key)) return;
+      // Clicking an already-added item removes it.
+      if (bridge.isActive(key)) {
+        bridge.removeSeries(key);
+        updateLegend();
+        return;
+      }
       if (kindOf[key] === 'cohort' && comparedCount() >= MAX_CMP) { showHint(); return; }
       bridge.addSeries(key);
       updateLegend();

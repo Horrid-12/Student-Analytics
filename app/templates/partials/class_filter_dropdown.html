@@ -1,0 +1,131 @@
+{# Compare-style class filter dropdown: My Classes / All students scope
+   toggle + Division rows with Batch buttons. Clicking any option replaces
+   the page's division/batch/mine query params and reloads, so the Students,
+   Repositories and Leaderboards pages all filter identically. #}
+<style>
+  .cf-wrap { position: relative; }
+  .cf-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 42px; padding: 0 24px;
+    border: 3px solid #8b5cf6; border-radius: 10px;
+    background: transparent; color: #8b5cf6;
+    font-weight: 800; font-size: 15px;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer; white-space: nowrap; transition: all 180ms ease;
+  }
+  .cf-btn:hover { background: rgba(139, 92, 246, 0.12); }
+  .cf-btn[aria-expanded="true"] { background: #8b5cf6; color: #fff; }
+  .cf-panel {
+    position: absolute; top: calc(100% + 8px); left: 0;
+    width: 460px; max-width: calc(100vw - 48px); max-height: 440px;
+    overflow-y: auto; background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    padding: 10px; z-index: 40;
+  }
+  .cf-row {
+    display: flex; align-items: center; width: 100%; text-align: left;
+    padding: 12px 14px; font-size: 15px; font-weight: 600;
+    font-family: Inter, system-ui, sans-serif;
+    background: transparent; border: 2px solid transparent; border-radius: 8px; color: var(--text);
+    cursor: pointer;
+  }
+  .cf-row:hover { background: var(--hover-bg); }
+  .cf-row[data-active="true"] { border-color: #7c3aed; }
+  .cf-box {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card-soft, rgba(128, 128, 128, 0.04));
+    margin: 0 0 8px; padding: 4px;
+  }
+  .cf-divrow {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 14px; border-radius: 8px;
+  }
+  .cf-divrow:hover { background: var(--hover-bg); }
+  .cf-div {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    background: transparent; border: 0; padding: 0; cursor: pointer;
+    font-family: Inter, system-ui, sans-serif; text-align: left;
+  }
+  .cf-div:hover { color: #8b5cf6; }
+  .cf-div[data-active="true"] { color: #8b5cf6; }
+  .cf-batches { display: flex; gap: 8px; flex: none; }
+  .cf-batch {
+    min-width: 42px; padding: 7px 12px; font-size: 14px; font-weight: 700;
+    font-family: Inter, system-ui, sans-serif; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    cursor: pointer; transition: all 180ms ease;
+  }
+  .cf-batch:hover { border-color: #8b5cf6; color: #8b5cf6; }
+  .cf-batch[data-active="true"] { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
+  .cf-divrow.taught { background: rgba(139, 92, 246, 0.10); }
+  .cf-divrow.taught .cf-div { color: #8b5cf6; }
+  .cf-batch.taught { background: transparent; border-color: #7c3aed; color: #7c3aed; }
+  .cf-batch.taught[data-active="true"] { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+</style>
+
+<div class="filter-field cf-wrap">
+  <label class="filter-label" id="cf-label">Division / Batch</label>
+  <button type="button" class="cf-btn" id="cf-btn" aria-haspopup="true" aria-expanded="false">
+    Division &amp; Batch
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div id="cf-panel" class="cf-panel" hidden>
+    {% if teaching_active %}
+    <div class="cf-box">
+      <button type="button" class="cf-row" data-mine="1" {% if mine != '0' %}data-active="true"{% endif %}>My Classes</button>
+      <button type="button" class="cf-row" data-mine="0" {% if mine == '0' %}data-active="true"{% endif %}>All students</button>
+    </div>
+    {% endif %}
+    {% for g in payload.division_groups %}
+    {% set div_key = g.key %}
+    <div class="cf-divrow{% if teaching_active and taught_map and div_key in taught_map %} taught{% endif %}">
+      <button type="button" class="cf-div" data-division="{{ g.division }}" {% if division == g.division %}data-active="true"{% endif %}>{{ g.label }}</button>
+      <span class="cf-batches">
+        {% for b in g.batches %}
+        {% set bk = g.batch_keys[loop.index0] %}
+        <button type="button" class="cf-batch{% if teaching_active and taught_map and div_key in taught_map and bk in taught_map[div_key] %} taught{% endif %}" data-division="{{ g.division }}" data-batch="{{ b }}" {% if division == g.division and batch == b %}data-active="true"{% endif %}>{{ b }}</button>
+        {% endfor %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('cf-btn');
+    var panel = document.getElementById('cf-panel');
+    if (!btn || !panel) return;
+    function setPanel(open) {
+      panel.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function (e) { e.stopPropagation(); setPanel(panel.hidden); });
+    document.addEventListener('click', function (e) {
+      if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) setPanel(false);
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setPanel(false); });
+    function go(changes) {
+      var params = new URLSearchParams(window.location.search);
+      Object.keys(changes).forEach(function (key) {
+        if (changes[key] === null || changes[key] === '') { params.delete(key); } else { params.set(key, changes[key]); }
+      });
+      params.delete('offset');
+      window.location.search = params.toString();
+    }
+    panel.querySelectorAll('[data-mine]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        // Switching scope resets the division/batch refinement to avoid
+        // landing on a cohort that is no longer in scope.
+        go({ mine: row.getAttribute('data-mine'), division: 'All', batch: 'All' });
+      });
+    });
+    panel.querySelectorAll('.cf-div').forEach(function (d) {
+      d.addEventListener('click', function () { go({ division: d.getAttribute('data-division'), batch: 'All' }); });
+    });
+    panel.querySelectorAll('.cf-batch').forEach(function (b) {
+      b.addEventListener('click', function () { go({ division: b.getAttribute('data-division'), batch: b.getAttribute('data-batch') }); });
+    });
+  })();
+</script>
