@@ -96,6 +96,10 @@ MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
 #: Practical batch = the lab-section batch that fills the dashboard "Batch".
 PRACTICAL_BATCHES = ("1", "2", "3") + tuple(f"P{n}" for n in range(1, 9))
 
+#: Batches a faculty member can claim on the teaching form — just the three
+#: lab-section batches shown on the dashboard (subset of PRACTICAL_BATCHES).
+TEACHING_BATCHES = ("1", "2", "3")
+
 #: Current term options (1-8), matching the legacy "Semester N" labels.
 SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
 
@@ -1307,7 +1311,7 @@ def parse_faculty_teaching(raw: str | None) -> dict[str, list[str]]:
             batches = [batches]
         if not isinstance(batches, (list, tuple)):
             continue
-        kept = sorted({str(b).strip() for b in batches if str(b).strip() in PRACTICAL_BATCHES})
+        kept = sorted({str(b).strip() for b in batches if str(b).strip() in TEACHING_BATCHES})
         if kept:
             cleaned[division] = kept
     return cleaned
@@ -1345,7 +1349,7 @@ def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
         kept = []
         for batch in batches:
             batch = str(batch or "").strip()
-            if batch not in PRACTICAL_BATCHES:
+            if batch not in TEACHING_BATCHES:
                 return False, "bad_batch"
             if batch not in kept:
                 kept.append(batch)

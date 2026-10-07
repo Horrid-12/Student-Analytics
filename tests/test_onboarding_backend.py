@@ -381,13 +381,19 @@ class TestFacultyTeachingOnboarding:
 
     def test_save_roundtrip_and_prefill(self, client):
         email = _faculty_session(client)
-        r = _teaching_post(client, "division=3&batch=1&division=3&batch=2&division=5&batch=P1")
+        r = _teaching_post(client, "division=3&batch=1&division=3&batch=2&division=5&batch=3")
         assert r.status_code == 303
         assert r.headers["location"] == "/"
-        assert auth.get_faculty_teaching(email) == {"3": ["1", "2"], "5": ["P1"]}
+        assert auth.get_faculty_teaching(email) == {"3": ["1", "2"], "5": ["3"]}
         body = client.get("/onboarding").text
         assert 'value="3" selected' in body
-        assert 'value="P1" selected' in body
+        assert 'value="5" selected' in body
+
+    def test_only_three_batches_allowed(self, client):
+        _faculty_session(client)
+        body = client.get("/onboarding").text
+        assert 'value="1"' in body and 'value="3"' in body
+        assert 'value="P1"' not in body and 'value="P8"' not in body
 
     def test_invalid_rows_rejected(self, client):
         email = _faculty_session(client)
@@ -398,6 +404,10 @@ class TestFacultyTeachingOnboarding:
         assert "invalid_teaching" in r.headers.get("location", "")
         r = _teaching_post(client, "division=3&batch=Nope")
         assert "invalid_teaching" in r.headers.get("location", "")
+        # P-batches are student-side only — faculty form takes 1/2/3.
+        r = _teaching_post(client, "division=3&batch=P1")
+        assert "invalid_teaching" in r.headers.get("location", "")
+        assert auth.set_faculty_teaching(email, {"3": ["P1"]}) == (False, "bad_batch")
         assert auth.get_faculty_teaching(email) == {"3": ["1"]}  # untouched
 
     def test_non_faculty_blocked(self, client):

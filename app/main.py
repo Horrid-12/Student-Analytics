@@ -1488,7 +1488,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["submission"] = {}
     ctx["teaching"] = {}
     ctx["teaching_divisions"] = list(auth.DIVISIONS)
-    ctx["teaching_batches"] = list(auth.PRACTICAL_BATCHES)
+    ctx["teaching_batches"] = list(auth.TEACHING_BATCHES)
     if role == "faculty" and user:
         try:
             ctx["teaching"] = auth.get_faculty_teaching(user.get("email", ""))
