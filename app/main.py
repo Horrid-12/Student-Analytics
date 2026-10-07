@@ -863,11 +863,18 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
     # so the old pre-saved credential stops working after first setup.
     invite = auth.verify_faculty_invite(email, password)
     if invite is not None:
+        # Normalize the invite address before it touches the cookie: the token
+        # payload must only ever carry a canonical email, never raw form input
+        # (CodeQL cookie-construction hygiene; the token is HMAC-signed anyway).
+        invite_email = str(invite.get("invite_email") or "").strip().lower()
+        if not invite_email:
+            _db_log_event("login_failed", email)
+            return RedirectResponse("/login?error=1", status_code=302)
         _db_log_event("faculty_invite_login", email)
         response = RedirectResponse("/faculty-setup?welcome=1", status_code=302)
         response.set_cookie(
             auth._FACULTY_SETUP_COOKIE,
-            auth.create_faculty_setup_token(invite.get("invite_email", email)),
+            auth.create_faculty_setup_token(invite_email),
             max_age=auth._FACULTY_SETUP_TTL_SECONDS,
             httponly=True,
             secure=auth._SECURE_COOKIES,
