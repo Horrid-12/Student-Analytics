@@ -712,14 +712,17 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # so the radar baseline stays college-wide while the rest of the page
     # continues to use the scoped data.
     if overall_view is not None and overall_view.get("students") is not None:
-        _overall_students = overall_view["students"].copy()
+        _overall_students = _with_combined_metrics(overall_view["students"].copy())
         _overall_score_repos = _merged_repos_frame(overall_view)
+        # My Classes scopes the cards/graphs but must NOT hide other
+        # divisions/batches from the compare dropdown and cohort radar.
+        _all_students = _overall_students.copy()
     else:
         _overall_students = students.copy() if students is not None else students
         _overall_score_repos = None
+        _all_students = students.copy() if students is not None else students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
     # cohort in the Class Metrics Radar are measured against the whole roster.
-    _all_students = students.copy() if students is not None else students
     # Same filters as the Students page: text search + Division/Batch/Semester.
     try:
         students = filter_text(
@@ -763,7 +766,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # Unfiltered merged repo frame: the Overall Average radar benchmark and the
     # per-cohort series sample from this, while the filtered _score_repos below
     # still drives the "Average Quality Score" card + Repositories page.
-    _all_score_repos = _merged_repos_frame(view)
+    _all_score_repos = _merged_repos_frame(overall_view) if overall_view is not None else _merged_repos_frame(view)
     _score_repos = _all_score_repos
     try:
         if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
@@ -957,7 +960,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _filtered = division != "All" or batch != "All" or semester != "All"
     if students is not None and not students.empty:
         # 1. "Your class": the student set the page filters are showing.
-        _current_label = "Your class"
+        _current_label = "My Classes"
         if _filtered:
             _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
             _current_label += " · " + " · ".join(_bits)

@@ -319,6 +319,11 @@
     color: #8b5cf6;
   }
   .radar-compare-batch.taught {
+    background: transparent;
+    border-color: #7c3aed;
+    color: #7c3aed;
+  }
+  .radar-compare-batch.taught[data-active="true"] {
     background: #7c3aed;
     border-color: #7c3aed;
     color: #fff;
@@ -545,10 +550,12 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="radar-compare-panel" class="radar-compare-panel" hidden>
+        {% if payload.radar_data.has_current %}
         <div class="radar-compare-box">
-          {% if payload.radar_data.has_current %}
           <button type="button" class="radar-compare-row" data-compare-key="current">{{ payload.radar_data.current_label }}</button>
-          {% endif %}
+        </div>
+        {% endif %}
+        <div class="radar-compare-box">
           <button type="button" class="radar-compare-row" data-compare-key="overall">All students</button>
         </div>
         {% for div in payload.radar_data.compare_divisions %}

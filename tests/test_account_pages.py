@@ -575,4 +575,4 @@ class TestRadarComparePicker:
         client.post("/login", data={"email": "radar-pf@college.edu", "password": "secret123"})
         panel = self._overview(client).split('id="radar-compare-panel"')[1].split("radar-clear-btn")[0]
         assert "Division 3" in panel
-        assert "Division 5" not in panel  # untaught division not offered
+        assert "Division 5" in panel  # compare dropdown stays college-wide; only stats/graphs are scoped
