@@ -1454,6 +1454,7 @@ def overview(
     division: str = "All",
     batch: str = "All",
     semester: str = "All",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
@@ -1463,6 +1464,35 @@ def overview(
     ctx["batch"] = batch or "All"
     ctx["semester"] = semester or "All"
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
+    # Faculty "My Classes" toggle (fleet views only — an explicitly attached
+    # roster is its own dataset): ON by default, restricts the dashboard to
+    # the taught (division, batch) pairs. The memoised fleet frame is never
+    # mutated; the filter returns a per-request copy. No teaching saved yet ->
+    # full fleet + nudge (no toggle to show).
+    user = getattr(request.state, "user", None)
+    ctx["teaching_scope"] = ""
+    ctx["teaching_empty"] = False
+    ctx["show_my_classes"] = False
+    ctx["my_classes_on"] = True
+    ctx["mine"] = "1"
+    if (user or {}).get("role") == "faculty" and not roster:
+        try:
+            teaching = auth.get_faculty_teaching(user.get("email", ""))
+        except Exception:
+            teaching = {}
+        if teaching:
+            ctx["show_my_classes"] = True
+            ctx["my_classes_on"] = (mine or "1") != "0"
+            ctx["mine"] = "1" if ctx["my_classes_on"] else "0"
+            if ctx["my_classes_on"]:
+                if view is not None and _is_complete(view):
+                    view = views.filter_view_by_teaching(view, teaching)
+                ctx["teaching_scope"] = "; ".join(
+                    f"Division {div} (Batch {', '.join(batches)})"
+                    for div, batches in sorted(teaching.items(), key=lambda kv: int(kv[0]))
+                )
+        else:
+            ctx["teaching_empty"] = True
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view

@@ -305,9 +305,22 @@
     </div>
   </div>
 </div>
+{% if teaching_scope %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); padding: 12px 16px; border-radius: 8px;">
+    <div style="font-size: 13px; color: var(--text);">Showing your classes: <strong>{{ teaching_scope }}</strong></div>
+</div>
+{% elif teaching_empty %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); padding: 12px 16px; border-radius: 8px;">
+    <div style="font-size: 13px; color: var(--text);">Showing the whole fleet — <a href="/onboarding" style="color: var(--blue); font-weight: 600;">set the divisions and batches you teach</a> to personalize this dashboard.</div>
+</div>
+{% endif %}
 {% if complete and payload %}
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
+  {% if show_my_classes %}
+  <input type="hidden" name="mine" value="{{ mine }}">
+  <a href="/overview?roster={{ roster_id }}&amp;q={{ q|urlencode }}&amp;division={{ division|urlencode }}&amp;batch={{ batch|urlencode }}&amp;semester={{ semester|urlencode }}&amp;mine={{ "0" if my_classes_on else "1" }}" aria-pressed="{{ "true" if my_classes_on else "false" }}" title="Toggle your taught classes" style="display:inline-flex;align-items:center;min-height:42px;padding:0 24px;border:3px solid #8b5cf6;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;white-space:nowrap;{% if my_classes_on %}background:#8b5cf6;color:#fff;{% else %}background:transparent;color:#8b5cf6;{% endif %}">My Classes</a>
+  {% endif %}
   <div class="filter-field">
     <label class="filter-label" for="division-filter">Division</label>
     <select id="division-filter" class="filter-select" name="division">
