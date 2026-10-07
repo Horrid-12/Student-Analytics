@@ -4,7 +4,7 @@ Every analytics page renders for students AND faculty/admins straight from the
 synced account fleet (approved accounts' snapshots) — no roster upload needed.
 A student who walked the onboarding → approval flow sees their own snapshot on
 Overview / My Profile plus the whole fleet on Students / Repositories /
-Leaderboards; Issues and Verification stay faculty/admin-only.
+Leaderboards; the Issues and Verification pages are removed.
 The ``POST /sync/accounts`` endpoint enforces its RBAC + cron-secret gate and
 runs the sweep. The sync engine itself is covered in tests/test_accounts.py.
 """
@@ -383,9 +383,9 @@ class TestFleetPages:
         assert me.iloc[0]["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
         assert me.iloc[0]["LinkedIn_Username"] == "alice-li"
 
-    def test_student_redirected_from_verification(self):
+    def test_verification_page_is_gone(self):
         client, _ = self._fleet()
-        assert self._get(client, "/verification").status_code == 303  # 5.5: Verification is faculty/admin-only again
+        assert self._get(client, "/verification").status_code == 404  # page removed
 
     def test_issues_page_is_gone(self):
         client, _ = self._fleet()

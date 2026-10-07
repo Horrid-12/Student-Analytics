@@ -115,19 +115,17 @@ _PAGE_BY_PREFIX = (
     ("/students", "Students"),
     ("/onboarding", "Onboarding"),
     ("/overview", "Overview"),
-    ("/verification", "Verification"),
     ("/me", "My Profile"),
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Verification", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile")
 
 # BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
 # Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
-# (Students + Verification stay faculty/admin pages: 5.2 widened the
-# student stack to the full fleet-backed analytics set, but the later 4be7609
-# "Changed which tabs student account can see" narrowed it back to this list,
-# which is the current product decision.)
+# (The later 4be7609 "Changed which tabs student account can see" narrowed the
+# student stack to this list, which is the current product decision. The old
+# Verification page was removed entirely.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
     "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),

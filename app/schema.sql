@@ -379,17 +379,8 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
 CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
 ALTER TABLE account_snapshots ADD COLUMN IF NOT EXISTS team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb;
 
--- 13. Reference sheet for the Verification cross-check (Phase 4.12).
---     A single active "Student Details"-schema workbook uploaded by faculty:
---     JSONB holds the normalized reference rows (email, PRN, name, division,
---     extracted GitHub username), so /verification can cross-check the active
---     analysis without re-parsing the workbook on every request.
-CREATE TABLE IF NOT EXISTS reference_sheets (
-    id          INTEGER PRIMARY KEY CHECK (id = 1),
-    filename    TEXT NOT NULL DEFAULT '',
-    uploaded_at TEXT NOT NULL DEFAULT '',
-    rows_json   JSONB NOT NULL DEFAULT '[]'::jsonb
-);
+-- 13. (Removed: Verification page + reference_sheets table. Pre-existing
+--     deployments keep the orphan table; no code reads it anymore.)
 
 -- 14. Notifications (Real-time student alerts for support ticket updates)
 CREATE TABLE IF NOT EXISTS notifications (

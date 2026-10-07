@@ -1808,69 +1808,6 @@ def clear_account_snapshot(email: str) -> bool:
         return False
 
 
-# ── Verification reference sheet ─────────────────────────────────────────────
-
-def save_reference_sheet(filename: str, rows: list, uploaded_at: str = "") -> bool:
-    """Upsert the single active Verification reference sheet (id = 1). Rows is
-    the parsed list of normalized reference records (no workbook bytes)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "INSERT INTO reference_sheets (id, filename, uploaded_at, rows_json) "
-                "VALUES (1, %s, %s, %s) "
-                "ON CONFLICT (id) DO UPDATE SET "
-                "filename = EXCLUDED.filename, uploaded_at = EXCLUDED.uploaded_at, "
-                "rows_json = EXCLUDED.rows_json",
-                (
-                    (filename or "").strip(),
-                    uploaded_at or "",
-                    Jsonb(rows or []),
-                ),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("save_reference_sheet failed: %s", exc)
-        return False
-
-
-def get_reference_sheet() -> Optional[dict]:
-    """The active reference sheet dict ``{filename, uploaded_at, rows}``, or
-    None when none has been uploaded yet (Postgres leg)."""
-    try:
-        with database.read_conn() as c:
-            if c is None:
-                return None
-            cur = c.execute(
-                "SELECT filename, uploaded_at, rows_json FROM reference_sheets WHERE id = 1"
-            )
-            row = cur.fetchone()
-            if row is None:
-                return None
-            return {
-                "filename": row["filename"],
-                "uploaded_at": row["uploaded_at"],
-                "rows": row["rows_json"] if isinstance(row["rows_json"], list) else [],
-            }
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("get_reference_sheet failed: %s", exc)
-        return None
-
-
-def clear_reference_sheet() -> bool:
-    """Drop the active reference sheet (Postgres leg)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute("DELETE FROM reference_sheets WHERE id = 1")
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("clear_reference_sheet failed: %s", exc)
-        return False
-
-
 # ── retention ──────────────────────────────────────────────────────────────────
 
 def prune_old_results(keep_n: int = 10) -> int:

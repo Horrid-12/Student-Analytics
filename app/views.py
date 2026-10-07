@@ -1370,62 +1370,6 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(pairs)
 
 
-AUDIT_COLS = [
-    STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
-    "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following",
-]
-
-
-def verification_payload(view: dict, references: list[dict], query: str = "", status: str = "All", rows: int = 50) -> dict:
-    """Cross-check audit table for the Verification page.
-
-    Each analyzed student is matched to the uploaded "Student Details"
-    reference (email-first, PRN-fallback via ``crosscheck.cross_check_status``)
-    and tagged Verified / Mismatch / Missing / Unreferenced. Returns the same
-    ``{total, showing, display, filtered, statuses}`` contract every page
-    payload uses so the template/filter/export helpers work unchanged.
-    """
-    from app import crosscheck
-
-    students = view["students"]
-    records = view["records"]
-    stats = {
-        str(row.get(STUDENT_ID_COL, "")): row for row in students.to_dict("records")
-    }
-    audit_rows = []
-    for record in records:
-        sid = str(record.get(STUDENT_ID_COL, "") or "")
-        username = str(record.get("GitHub_Username") or "").strip()
-        status_label, ref_username = crosscheck.cross_check_status(record, references or [])
-        stat = stats.get(sid, {})
-        audit_rows.append({
-            STUDENT_ID_COL: sid,
-            "Student Name": record.get("Student Name", ""),
-            "Division": record.get("Division", ""),
-            "GitHub_Username": username,
-            "GitHub Profile": github_profile_url(username),
-            "Reference_Username": ref_username,
-            "Validation Status": status_label,
-            "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
-            "Followers": int(stat.get("Followers", 0) or 0),
-            "Following": int(stat.get("Following", 0) or 0),
-        })
-
-    audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
-    filtered = filter_text(
-        audit, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Reference_Username", "Division"]
-    )
-    filtered = apply_value_filter(filtered, "Validation Status", status)
-    return {
-        "total": len(filtered),
-        "showing": min(int(rows), len(filtered)) if not filtered.empty else 0,
-        "display": filtered.head(int(rows)),
-        "filtered": filtered,
-        "statuses": ["All"] + sorted(str(value) for value in audit["Validation Status"].dropna().unique().tolist()),
-    }
-
-
 def _recent_activity(
     student_repos: pd.DataFrame,
     team_active_dates: set | None = None,
