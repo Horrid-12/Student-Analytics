@@ -874,6 +874,13 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
             samesite="lax",
         )
         return response
+    # A known invite address that failed verification means wrong password (unused
+    # invite) or a spent key (consumed invite) — either way it is "invalid email
+    # or password", never a domain error (invites like faculty1@dashboard.local
+    # are intentionally non-college).
+    if auth.get_faculty_invite(email) is not None:
+        _db_log_event("login_failed", email)
+        return RedirectResponse("/login?error=1", status_code=302)
     # Phase 4.7.2: password login is gated to the college domain (error=2 =
     # non-college email), except seeded/allowlisted admin bypass accounts and
     # faculty accounts (faculty are never domain-gated — setup + login accept
@@ -1015,6 +1022,44 @@ async def faculty_setup_submit(
         samesite="lax",
     )
     return response
+
+
+def _require_admin_api(request: Request):
+    """Admin gate for the faculty-key JSON endpoints (unknown slugs bypass the
+    page-level auth_gate, so these handlers enforce it themselves). Returns the
+    user dict, or a JSONResponse 401/403 when the caller may not mint keys."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return None, JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    if user.get("role") != "admin":
+        return None, JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return user, None
+
+
+@app.get("/admin/faculty-invites")
+def admin_faculty_invites(request: Request):
+    """Admin-only history of generated faculty keys (no passwords — the
+    plaintext is shown once at generation and only the hash is stored)."""
+    user, denied = _require_admin_api(request)
+    if denied is not None:
+        return denied
+    return JSONResponse(content={"invites": auth.list_faculty_invites()})
+
+
+@app.post("/admin/faculty-invites/generate")
+def admin_faculty_invite_generate(request: Request):
+    """Admin-only: mint the next faculty<N>@dashboard.local one-time key.
+
+    Returns ``{"email", "password"}`` — the ONLY time the plaintext password
+    ever leaves the server. History endpoints never include it."""
+    user, denied = _require_admin_api(request)
+    if denied is not None:
+        return denied
+    email, password = auth.mint_next_faculty_invite()
+    if email is None:
+        return JSONResponse(status_code=503, content={"detail": "storage_unavailable"})
+    _db_log_event("faculty_invite_generated", f"{user.get('email', '')} -> {email}")
+    return JSONResponse(content={"email": email, "password": password})
 
 
 def _oauth_base_url(request: Request) -> str:

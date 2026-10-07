@@ -29,6 +29,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -382,6 +383,131 @@ def create_faculty_invite(email: str, password: str) -> bool:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("create_faculty_invite failed for %s: %s", email, exc)
         return False
+
+
+#: Auto-generated faculty key pattern: faculty<N>@dashboard.local where N is
+#: the 1-based sequence number of the generated account.
+FACULTY_KEY_DOMAIN = "dashboard.local"
+FACULTY_KEY_PREFIX = "faculty"
+_FACULTY_KEY_RE = re.compile(r"^faculty(\d+)@dashboard\.local$")
+
+#: Symbols allowed in generated faculty passwords — clipboard/HTML-safe (no
+#: quotes, backticks, spaces or backslashes that break copy-paste or JS).
+_FACULTY_KEY_SYMBOLS = "!@#$%^&*-_=+?"
+
+
+def generate_faculty_key_password(length: int = 10) -> str:
+    """Random ``length``-char password with upper + lower + digit + symbol.
+
+    Guarantees at least one char from each class, then fills and shuffles with
+    ``secrets`` so every password is send-ready and strong. Never logs/stores
+    the plaintext — callers show it once and keep only the PBKDF2 hash."""
+    import string
+
+    length = max(int(length or 10), 4)
+    rng = secrets.SystemRandom()
+    chars = [
+        rng.choice(string.ascii_uppercase),
+        rng.choice(string.ascii_lowercase),
+        rng.choice(string.digits),
+        rng.choice(_FACULTY_KEY_SYMBOLS),
+    ]
+    pool = string.ascii_letters + string.digits + _FACULTY_KEY_SYMBOLS
+    chars += [rng.choice(pool) for _ in range(length - len(chars))]
+    rng.shuffle(chars)
+    return "".join(chars)
+
+
+def list_faculty_invites() -> list[dict]:
+    """All faculty invites newest-last, WITHOUT password hashes.
+
+    Each dict has ``invite_email``/``used`` (0/1)/``consumed_by``/``created_at``.
+    The plaintext password is never stored and never listed — it is shown once
+    at generation time only (secret place = PBKDF2 hash in storage). [] on
+    storage failure. Never raises."""
+    rows: list[dict] = []
+    if database.db_configured():
+        try:
+            rows = db.list_faculty_invites() or []
+        except Exception:
+            rows = []
+    else:
+        try:
+            with closing(_connect()) as conn:
+                _ensure_schema(conn)
+                _ensure_invites_schema(conn)
+                conn.row_factory = sqlite3.Row
+                fetched = conn.execute(
+                    "SELECT invite_email, used, consumed_by, created_at FROM faculty_invites"
+                ).fetchall()
+            rows = [dict(r) for r in fetched]
+        except (sqlite3.Error, OSError) as exc:
+            logger.warning("list_faculty_invites failed: %s", exc)
+            return []
+
+    def _sort_key(row: dict) -> tuple:
+        email = str(row.get("invite_email") or "").strip().lower()
+        match = _FACULTY_KEY_RE.match(email)
+        if match:
+            try:
+                return (0, int(match.group(1)), email)
+            except ValueError:
+                pass
+        return (1, 0, email)
+
+    rows.sort(key=_sort_key)
+    cleaned = []
+    for row in rows:
+        cleaned.append(
+            {
+                "invite_email": str(row.get("invite_email") or ""),
+                "used": int(row.get("used") or 0),
+                "consumed_by": str(row.get("consumed_by") or ""),
+                "created_at": str(row.get("created_at") or ""),
+            }
+        )
+    return cleaned
+
+
+def next_faculty_key_email() -> str:
+    """Next auto key address: faculty<N>@dashboard.local with N = max+1.
+
+    Only ``faculty<N>@dashboard.local`` rows count toward the sequence; manual
+    invites under other addresses never shift the numbering. Starts at 1."""
+    highest = 0
+    for row in list_faculty_invites():
+        match = _FACULTY_KEY_RE.match(str(row.get("invite_email") or "").strip().lower())
+        if match:
+            try:
+                highest = max(highest, int(match.group(1)))
+            except ValueError:
+                continue
+    return f"{FACULTY_KEY_PREFIX}{highest + 1}@{FACULTY_KEY_DOMAIN}"
+
+
+def mint_next_faculty_invite() -> tuple[str | None, str]:
+    """Generate the next faculty<N>@dashboard.local key and store its hash.
+
+    Returns ``(email, plaintext_password)`` on success — the password is shown
+    once and never stored (only its PBKDF2 hash). Returns
+    ``(None, "storage_unavailable")`` when no slot could be minted. Numbers
+    already owned by real users are skipped. Never raises."""
+    highest = 0
+    for row in list_faculty_invites():
+        match = _FACULTY_KEY_RE.match(str(row.get("invite_email") or "").strip().lower())
+        if match:
+            try:
+                highest = max(highest, int(match.group(1)))
+            except ValueError:
+                continue
+    for number in range(highest + 1, highest + 1001):
+        email = f"{FACULTY_KEY_PREFIX}{number}@{FACULTY_KEY_DOMAIN}"
+        if get_user(email) is not None:
+            continue  # someone chose this pattern as their setup email — skip
+        password = generate_faculty_key_password(10)
+        if create_faculty_invite(email, password):
+            return email, password
+    return None, "storage_unavailable"
 
 
 def verify_faculty_invite(email: str, password: str) -> dict | None:

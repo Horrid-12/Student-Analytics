@@ -2290,6 +2290,41 @@ def upsert_faculty_invite(email: str, password_hash: str) -> bool:
         return False
 
 
+def list_faculty_invites() -> list[dict]:
+    """Every faculty invite WITHOUT password hashes (Postgres leg).
+
+    Returns dicts with invite_email/used/consumed_by/created_at; [] on failure.
+    The plaintext password is never stored, so it can never leak here."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT invite_email, used, consumed_by, "
+                "(created_at AT TIME ZONE 'Asia/Kolkata')::text AS created_at "
+                "FROM faculty_invites"
+            )
+            rows = cur.fetchall()
+        cleaned = []
+        for row in rows:
+            try:
+                data = dict(row)
+            except (TypeError, ValueError):
+                continue
+            cleaned.append(
+                {
+                    "invite_email": str(data.get("invite_email") or ""),
+                    "used": int(data.get("used") or 0),
+                    "consumed_by": str(data.get("consumed_by") or ""),
+                    "created_at": str(data.get("created_at") or ""),
+                }
+            )
+        return cleaned
+    except Exception as exc:
+        logger.warning("list_faculty_invites failed: %s", exc)
+        return []
+
+
 def set_faculty_invite_used(email: str, consumed_by: str = "") -> bool:
     """Flag an invite consumed (inserts a used tombstone for env invites)."""
     email = (email or "").strip().lower()
