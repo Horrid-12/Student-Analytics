@@ -1,0 +1,53 @@
+{% extends "pages/auth_base.html" %}
+{% block title %}Faculty Setup{% endblock %}
+{% block auth_card %}
+<div class="auth-card">
+  <h1>Set up your faculty account</h1>
+  {% if show_welcome %}
+  <div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+    <div style="font-size:15px;font-weight:700;">Welcome faculty! Please set up your account!</div>
+    <div style="font-size:13px;margin-top:4px;">Enter your new email address and password below to register your permanent faculty login.</div>
+  </div>
+  {% endif %}
+  <p class="sub">Signed in with invite <strong>{{ invite_email }}</strong>. Choose your permanent faculty email and password — the invite credential stops working after this.</p>
+
+  {% if error_code == "mismatch" %}
+  <div class="banner-error">Passwords don't match — please re-enter them.</div>
+  {% elif error_code == "weak_password" %}
+  <div class="banner-error">Password must be at least 6 characters.</div>
+  {% elif error_code == "taken" %}
+  <div class="banner-error">That email already has an account — please choose a different one.</div>
+  {% elif error_code == "bad_email" %}
+  <div class="banner-error">Please enter a valid email address.</div>
+  {% elif error_code == "bad_invite" %}
+  <div class="banner-error">This invite was already used — please sign in with your faculty account.</div>
+  {% elif error_code == "storage_unavailable" %}
+  <div class="banner-error">Your account could not be saved right now (server storage unavailable). Your invite is still valid — please try again, or ask your administrator to check the server database.</div>
+  {% elif error_code %}
+  <div class="banner-error">Setup failed — please check your details and try again.</div>
+  {% endif %}
+
+  <form method="post" action="/faculty-setup">
+    <div class="form-group">
+      <label for="new_email">New faculty email address</label>
+      <input type="email" id="new_email" name="new_email" placeholder="you@example.com" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="name">Full name</label>
+      <input type="text" id="name" name="name" placeholder="Your name">
+    </div>
+    <div class="form-group">
+      <label for="password">New password</label>
+      <input type="password" id="password" name="password" placeholder="Min. 6 characters" required minlength="6">
+    </div>
+    <div class="form-group">
+      <label for="confirm_password">Confirm new password</label>
+      <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required>
+    </div>
+    <button type="submit" class="btn-primary">Create Faculty Account</button>
+  </form>
+
+  <p class="foot-text">The pre-saved invite login becomes invalid once your account is created.</p>
+</div>
+
+{% endblock %}

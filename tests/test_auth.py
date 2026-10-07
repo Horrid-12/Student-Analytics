@@ -122,7 +122,11 @@ class TestSignupOnlyCreatesStudents:
         assert auth.create_user("admin@college.edu", "secret123", "admin", "Admin")
         assert auth.create_user("fac@college.edu", "secret123", "faculty", "Prof Fac")
         assert auth.get_user("admin@college.edu")["role"] == "admin"
-        assert auth.get_user("fac@college.edu")["role"] == "faculty"
+        # Faculty live in the separate faculty table — never in users.
+        assert auth.get_user("fac@college.edu") is None
+        assert auth.get_faculty("fac@college.edu")["role"] == "faculty"
+        assert auth.get_account("fac@college.edu")["role"] == "faculty"
+        assert auth.verify_account_login("fac@college.edu", "secret123")["role"] == "faculty"
 
 
 class TestRBACGating:

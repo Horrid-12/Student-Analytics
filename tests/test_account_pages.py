@@ -91,7 +91,7 @@ def fake_github(monkeypatch):
 def make_client(role: str, email: str | None = None):
     client = TestClient(app)
     user_email = email or f"{role.lower()}-{uuid.uuid4().hex[:6]}@college.edu"
-    if auth.get_user(user_email) is None:
+    if auth.get_account(user_email) is None:
         assert auth.create_user(user_email, "secret123", role, "Someone Test")
     r = client.post("/login", data={"email": user_email, "password": "secret123"})
     assert r.status_code in (200, 302)

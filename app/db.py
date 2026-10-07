@@ -2123,7 +2123,7 @@ def count_unread_notifications(user_id: str) -> int:
 
 
 def list_user_emails() -> list[str]:
-    """Every account email, smallest first; [] on failure. Used for
+    """Every users-table email, smallest first; [] on failure. Used for
     broadcast fan-out (weekly announcements reach every role)."""
     try:
         with database.conn() as c:
@@ -2133,6 +2133,208 @@ def list_user_emails() -> list[str]:
             return [str(r["email"]) for r in cur.fetchall() if r and r.get("email")]
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("list_user_emails failed: %s", exc)
+        return []
+
+
+_FACULTY_COLUMNS = (
+    "id, email, password_hash, name, created_at, auth_source, google_sub, "
+    "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+)
+
+
+def get_faculty_by_email(email: str) -> Optional[dict]:
+    """One faculty row by email (Postgres leg) with ``role='faculty'`` injected, or None."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["role"] = "faculty"
+            return data
+    except Exception as exc:
+        logger.warning("get_faculty_by_email failed: %s", exc)
+        return None
+
+
+def create_faculty(email: str, password_hash: str, name: str = "") -> Optional[dict]:
+    """Insert one faculty row; None when taken or unavailable. Never raises."""
+    email = (email or "").strip().lower()
+    if not email or not password_hash:
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            c.execute(
+                "INSERT INTO faculty (email, password_hash, name, auth_source) "
+                "VALUES (%s, %s, %s, 'password')",
+                (email, password_hash, (name or "").strip()),
+            )
+            return get_faculty_by_email(email)
+    except Exception as exc:
+        logger.warning("create_faculty failed: %s", exc)
+        return None
+
+
+def upsert_faculty(
+    email: str,
+    name: str = "",
+    password_hash: Optional[str] = None,
+    auth_source: str = "password",
+    google_sub: str = "",
+) -> Optional[dict]:
+    """Create or update a faculty row (Postgres leg, e.g. Google sign-in).
+    Never clobbers an existing password_hash with NULL. Never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            c.execute(
+                "INSERT INTO faculty (email, password_hash, name, auth_source, google_sub) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (email) DO UPDATE SET "
+                "password_hash = COALESCE(EXCLUDED.password_hash, faculty.password_hash), "
+                "name = COALESCE(NULLIF(EXCLUDED.name, ''), faculty.name), "
+                "auth_source = EXCLUDED.auth_source, "
+                "google_sub = COALESCE(NULLIF(EXCLUDED.google_sub, ''), faculty.google_sub)",
+                (email, password_hash, (name or "").strip(), auth_source, google_sub or ""),
+            )
+            return get_faculty_by_email(email)
+    except Exception as exc:
+        logger.warning("upsert_faculty failed: %s", exc)
+        return None
+
+
+def set_faculty_password(email: str, password_hash: str) -> bool:
+    """Update a faculty row's password hash. Never raises."""
+    email = (email or "").strip().lower()
+    if not email or not password_hash:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET password_hash = %s WHERE email = %s",
+                (password_hash, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except Exception as exc:
+        logger.warning("set_faculty_password failed: %s", exc)
+        return False
+
+
+def link_faculty_github_username(email: str, github_username: str) -> bool:
+    """Set github_username on a faculty row (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET github_username = %s WHERE email = %s",
+                (github_username, (email or "").strip().lower()),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError):
+        return False
+
+
+def link_faculty_linkedin_sub(email: str, linkedin_sub: str) -> bool:
+    """Set linkedin_sub on a faculty row (Postgres leg)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET linkedin_sub = %s WHERE email = %s",
+                (linkedin_sub, (email or "").strip().lower()),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError):
+        return False
+
+
+def save_faculty_linked_profile(email: str, source: str, handle: str, avatar: str) -> bool:
+    """Persist an OAuth-fetched candidate identity on a faculty row (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    handle = (handle or "").strip()
+    email = (email or "").strip().lower()
+    if not handle or not email:
+        return False
+    avatar = (avatar or "").strip()
+    if avatar and not avatar.startswith(("https://", "http://")):
+        avatar = ""
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                f"UPDATE faculty SET {handle_col} = %s, {avatar_col} = %s WHERE email = %s",
+                (handle, avatar, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("save_faculty_linked_profile failed: %s", exc)
+        return False
+
+
+def confirm_faculty_profile_source(email: str, source: str) -> bool:
+    """Activate a previously fetched candidate on a faculty row (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    user = get_faculty_by_email(email)
+    if user is None:
+        return False
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    if not (user.get(handle_col) or "").strip():
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET profile_source = %s WHERE email = %s",
+                (source, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("confirm_faculty_profile_source failed: %s", exc)
+        return False
+
+
+def list_account_emails() -> list[str]:
+    """Every account email across users + faculty, smallest first, deduplicated
+    (Postgres leg). Used for broadcast fan-out."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email FROM users UNION SELECT email FROM faculty ORDER BY email ASC"
+            )
+            return [str(r["email"]) for r in cur.fetchall() if r and r.get("email")]
+    except Exception as exc:
+        logger.warning("list_account_emails failed: %s", exc)
         return []
 
 
@@ -2236,6 +2438,114 @@ def save_weekly_run(week_id: str, label: str, status: str, top_json: str) -> boo
             return True
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("save_weekly_run failed: %s", exc)
+        return False
+
+
+# ── faculty invites (one-time pre-saved login → real faculty account) ─────────
+
+def get_faculty_invite(email: str) -> Optional[dict]:
+    """Invite row for ``email`` (Postgres leg) or None. Never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT invite_email, password_hash, used, consumed_by, created_at "
+                "FROM faculty_invites WHERE invite_email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["used"] = int(data.get("used") or 0)
+            return data
+    except Exception as exc:
+        logger.warning("get_faculty_invite failed: %s", exc)
+        return None
+
+
+def upsert_faculty_invite(email: str, password_hash: str) -> bool:
+    """Mint/refresh an unused invite; consumed invites are never resurrected."""
+    email = (email or "").strip().lower()
+    if not email or not password_hash:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            existing = get_faculty_invite(email)
+            if existing is not None and int(existing.get("used") or 0) == 1:
+                return False
+            c.execute(
+                "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by) "
+                "VALUES (%s, %s, 0, '') "
+                "ON CONFLICT (invite_email) DO UPDATE SET password_hash = EXCLUDED.password_hash",
+                (email, password_hash),
+            )
+            return True
+    except Exception as exc:
+        logger.warning("upsert_faculty_invite failed: %s", exc)
+        return False
+
+
+def list_faculty_invites() -> list[dict]:
+    """Every faculty invite WITHOUT password hashes (Postgres leg).
+
+    Returns dicts with invite_email/used/consumed_by/created_at; [] on failure.
+    The plaintext password is never stored, so it can never leak here."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT invite_email, used, consumed_by, "
+                "(created_at AT TIME ZONE 'Asia/Kolkata')::text AS created_at "
+                "FROM faculty_invites"
+            )
+            rows = cur.fetchall()
+        cleaned = []
+        for row in rows:
+            try:
+                data = dict(row)
+            except (TypeError, ValueError):
+                continue
+            cleaned.append(
+                {
+                    "invite_email": str(data.get("invite_email") or ""),
+                    "used": int(data.get("used") or 0),
+                    "consumed_by": str(data.get("consumed_by") or ""),
+                    "created_at": str(data.get("created_at") or ""),
+                }
+            )
+        return cleaned
+    except Exception as exc:
+        logger.warning("list_faculty_invites failed: %s", exc)
+        return []
+
+
+def set_faculty_invite_used(email: str, consumed_by: str = "") -> bool:
+    """Flag an invite consumed (inserts a used tombstone for env invites)."""
+    email = (email or "").strip().lower()
+    consumed_by = (consumed_by or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            c.execute(
+                "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by) "
+                "VALUES (%s, '', 1, %s) "
+                "ON CONFLICT (invite_email) DO UPDATE SET used = 1, consumed_by = EXCLUDED.consumed_by",
+                (email, consumed_by),
+            )
+            return True
+    except Exception as exc:
+        logger.warning("set_faculty_invite_used failed: %s", exc)
         return False
 
 

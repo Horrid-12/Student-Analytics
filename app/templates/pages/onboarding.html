@@ -2,9 +2,33 @@
 {% block title %}Academic Onboarding & Record Setup{% endblock %}
 
 {% block content %}
-<div class="topbar-card">
-    <div class="topbar-title">Academic Onboarding & Record Setup</div>
+<div class="topbar-card" style="position: relative;">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div class="topbar-title">Academic Onboarding & Record Setup</div>
+        {% if is_admin %}
+        <button type="button" id="faculty-key-btn" aria-haspopup="true" aria-expanded="false" style="padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; background: transparent; border: 1px solid var(--border); color: var(--text);">Faculty</button>
+        {% endif %}
+    </div>
     <div class="topbar-subtitle">Complete your cohort credentials and verify your student identity to finalize enrollment.</div>
+    {% if is_admin %}
+    <div id="faculty-key-dropdown" hidden style="position: absolute; top: 100%; right: 16px; margin-top: 8px; width: 360px; max-width: calc(100% - 32px); max-height: 420px; overflow-y: auto; background: var(--card-bg, var(--card)); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px; z-index: 200;">
+        <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Temporary faculty login keys</div>
+        <div style="font-size: 12px; color: var(--muted); margin-bottom: 12px;">One-time <span style="font-family: monospace;">facultyN@dashboard.local</span> credentials. The password is shown once — only its hash is stored.</div>
+        <button type="button" id="faculty-key-generate" style="width: 100%; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 6px; background: var(--blue); border: 1px solid var(--blue); color: #fff;">Generate new key</button>
+        <div id="faculty-key-error" hidden style="font-size: 12px; color: #ef4444; margin-top: 8px;"></div>
+        <div id="faculty-key-result" hidden style="margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-soft);">
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 6px;">New key — copy now (shown once)</div>
+            <div style="font-size: 13px; color: var(--text); margin-bottom: 4px;">Email: <span id="faculty-key-email" style="font-family: monospace; font-weight: 600;"></span></div>
+            <div style="font-size: 13px; color: var(--text); margin-bottom: 8px;">Password: <span id="faculty-key-password" style="font-family: monospace; font-weight: 600;"></span></div>
+            <button type="button" id="faculty-key-copy" style="padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Copy</button>
+            <span id="faculty-key-copied" hidden style="font-size: 12px; color: #22c55e; margin-left: 8px;">Copied</span>
+        </div>
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px;">History</div>
+        <div id="faculty-key-history" style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 12px; color: var(--muted);">Loading…</div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 {% set error_text = {
@@ -468,5 +492,149 @@ function openEditModal(email, prn, branch, division, batch, semester, hackerrank
     document.getElementById('admin-edit-modal').style.display = 'flex';
 }
 </script>
+{% if is_admin %}
+<script>
+// Admin faculty-key dropdown: generate one-time facultyN@dashboard.local keys,
+// copy the fresh credential, and list history as Valid/Used (textContent-only
+// so generated addresses can never inject HTML).
+(function () {
+    var btn = document.getElementById('faculty-key-btn');
+    var dropdown = document.getElementById('faculty-key-dropdown');
+    var generateBtn = document.getElementById('faculty-key-generate');
+    var errorBox = document.getElementById('faculty-key-error');
+    var resultBox = document.getElementById('faculty-key-result');
+    var emailEl = document.getElementById('faculty-key-email');
+    var passwordEl = document.getElementById('faculty-key-password');
+    var copyBtn = document.getElementById('faculty-key-copy');
+    var copiedNote = document.getElementById('faculty-key-copied');
+    var historyBox = document.getElementById('faculty-key-history');
+    if (!btn || !dropdown) return;
+    var historyLoaded = false;
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+    }
+    function clearError() {
+        errorBox.textContent = '';
+        errorBox.hidden = true;
+    }
+
+    function statusBadge(used) {
+        var badge = document.createElement('span');
+        var isUsed = Number(used) === 1;
+        badge.textContent = isUsed ? 'Used' : 'Valid';
+        badge.style.cssText = isUsed
+            ? 'font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(107,114,128,.12); color: var(--muted); border: 1px solid var(--border);'
+            : 'font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(34,197,94,.1); color: #22c55e; border: 1px solid rgba(34,197,94,.25);';
+        return badge;
+    }
+
+    function renderHistory(invites) {
+        historyBox.textContent = '';
+        if (!invites || !invites.length) {
+            var empty = document.createElement('div');
+            empty.style.cssText = 'font-size: 12px; color: var(--muted);';
+            empty.textContent = 'No keys generated yet.';
+            historyBox.appendChild(empty);
+            return;
+        }
+        invites.forEach(function (invite) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;';
+            var addr = document.createElement('span');
+            addr.style.cssText = 'font-family: monospace; color: var(--text); overflow-wrap: anywhere; flex: 1;';
+            addr.textContent = invite.invite_email || '';
+            row.appendChild(addr);
+            row.appendChild(statusBadge(invite.used));
+            historyBox.appendChild(row);
+            if (Number(invite.used) === 1 && invite.consumed_by) {
+                var sub = document.createElement('div');
+                sub.style.cssText = 'font-size: 11px; color: var(--muted); margin: -2px 0 2px 2px;';
+                sub.textContent = '→ ' + invite.consumed_by;
+                historyBox.appendChild(sub);
+            }
+        });
+    }
+
+    function loadHistory() {
+        fetch('/admin/faculty-invites', { headers: { 'Accept': 'application/json' } })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('history');
+                return resp.json();
+            })
+            .then(function (data) { renderHistory(data.invites); })
+            .catch(function () {
+                historyBox.textContent = '';
+                var err = document.createElement('div');
+                err.style.cssText = 'font-size: 12px; color: #ef4444;';
+                err.textContent = 'Could not load history.';
+                historyBox.appendChild(err);
+            });
+    }
+
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = dropdown.hidden;
+        dropdown.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && !historyLoaded) { historyLoaded = true; loadHistory(); }
+    });
+    document.addEventListener('click', function (e) {
+        if (!dropdown.hidden && !dropdown.contains(e.target) && e.target !== btn) {
+            dropdown.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    generateBtn.addEventListener('click', function () {
+        clearError();
+        copiedNote.hidden = true;
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating…';
+        fetch('/admin/faculty-invites/generate', { method: 'POST' })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('generate');
+                return resp.json();
+            })
+            .then(function (data) {
+                emailEl.textContent = data.email || '';
+                passwordEl.textContent = data.password || '';
+                resultBox.hidden = false;
+                loadHistory();
+            })
+            .catch(function () { showError('Could not generate a key — please try again.'); })
+            .finally(function () {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate new key';
+            });
+    });
+
+    copyBtn.addEventListener('click', function () {
+        var text = 'Email: ' + emailEl.textContent + '\nPassword: ' + passwordEl.textContent;
+        function done() {
+            copiedNote.hidden = false;
+            setTimeout(function () { copiedNote.hidden = true; }, 2000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+        } else {
+            fallbackCopy(text);
+            done();
+        }
+    });
+    function fallbackCopy(text) {
+        var area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); } catch (err) {}
+        document.body.removeChild(area);
+    }
+})();
+</script>
+{% endif %}
 
 {% endblock %}

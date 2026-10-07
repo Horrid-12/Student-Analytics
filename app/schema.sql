@@ -432,3 +432,48 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 -- Backfill for HackerRank on onboarding.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
+
+-- 18. Faculty accounts live here — never in ``users``. Same identity columns
+--     (password/avatar/linked OAuth identities) but no academic or onboarding
+--     columns (faculty never onboard as students).
+CREATE TABLE IF NOT EXISTS faculty (
+    id                      SERIAL PRIMARY KEY,
+    email                   TEXT NOT NULL UNIQUE,
+    password_hash           TEXT,
+    name                    TEXT NOT NULL DEFAULT '',
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    auth_source             TEXT NOT NULL DEFAULT 'password',
+    google_sub              TEXT NOT NULL DEFAULT '',
+    github_username         TEXT NOT NULL DEFAULT '',
+    linkedin_sub            TEXT NOT NULL DEFAULT '',
+    linked_github_username  TEXT NOT NULL DEFAULT '',
+    linked_github_avatar    TEXT NOT NULL DEFAULT '',
+    linked_linkedin_name    TEXT NOT NULL DEFAULT '',
+    linked_linkedin_avatar  TEXT NOT NULL DEFAULT '',
+    profile_source          TEXT NOT NULL DEFAULT ''
+);
+
+-- One-way migration from before the split: move legacy users.role='faculty'
+-- rows into faculty, then drop them from users. Idempotent (CONFLICT-safe);
+-- runs once when this file's hash changes forces a re-apply.
+INSERT INTO faculty (email, password_hash, name, created_at, auth_source, google_sub,
+    github_username, linkedin_sub, linked_github_username, linked_github_avatar,
+    linked_linkedin_name, linked_linkedin_avatar, profile_source)
+SELECT email, password_hash, name, created_at, auth_source, google_sub,
+    github_username, linkedin_sub, linked_github_username, linked_github_avatar,
+    linked_linkedin_name, linked_linkedin_avatar, profile_source
+FROM users WHERE role = 'faculty'
+ON CONFLICT (email) DO NOTHING;
+DELETE FROM users WHERE role = 'faculty';
+
+-- 17. Faculty invites: one-time pre-saved login credentials. The first successful
+--     login with an unused invite forces the /faculty-setup flow, which registers
+--     the real faculty account and flags the invite used=1 so the pre-saved
+--     credential stops verifying (consumed env invites leave a used tombstone row).
+CREATE TABLE IF NOT EXISTS faculty_invites (
+    invite_email  TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL DEFAULT '',
+    used          INTEGER NOT NULL DEFAULT 0,
+    consumed_by   TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
