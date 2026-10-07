@@ -172,9 +172,16 @@ CREATE TABLE IF NOT EXISTS faculty (
     linked_github_avatar TEXT NOT NULL DEFAULT '',
     linked_linkedin_name TEXT NOT NULL DEFAULT '',
     linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
-    profile_source TEXT NOT NULL DEFAULT ''
+    profile_source TEXT NOT NULL DEFAULT '',
+    teaching_json TEXT NOT NULL DEFAULT '{}'
 )
 """
+
+#: Columns added to faculty after the split; _ensure_faculty_schema() upgrades
+#: existing faculty tables in place (ALTER TABLE ... ADD COLUMN).
+_FACULTY_EXTRA_COLUMNS = (
+    ("teaching_json", "TEXT NOT NULL DEFAULT '{}'"),
+)
 
 
 _WARNED_AUTH_SECRET = False
@@ -764,6 +771,10 @@ def _ensure_faculty_schema(conn: sqlite3.Connection) -> None:
     best-effort — a row is only deleted from ``users`` after it lands in
     ``faculty``. Never raises."""
     conn.execute(_FACULTY_SCHEMA)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(faculty)").fetchall()}
+    for column, declaration in _FACULTY_EXTRA_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE faculty ADD COLUMN {column} {declaration}")
     try:
         conn.execute(
             "INSERT OR IGNORE INTO faculty "
@@ -1153,7 +1164,7 @@ def verify_login(email: str, password: str) -> dict | None:
 _FACULTY_COLUMNS = (
     "id, email, password_hash, name, created_at, auth_source, google_sub, "
     "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
-    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source, teaching_json"
 )
 
 
@@ -1276,6 +1287,103 @@ def set_faculty_password(email: str, password: str) -> bool:
             return False
     finally:
         _drop_user(email)
+
+
+def parse_faculty_teaching(raw: str | None) -> dict[str, list[str]]:
+    """Parse a stored teaching blob into ``{division: [batches]}``. Tolerates
+    garbage (returns {}) so a corrupt row can never break a page render."""
+    try:
+        data = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cleaned: dict[str, list[str]] = {}
+    for division, batches in data.items():
+        division = str(division or "").strip()
+        if division not in DIVISIONS:
+            continue
+        if isinstance(batches, str):
+            batches = [batches]
+        if not isinstance(batches, (list, tuple)):
+            continue
+        kept = sorted({str(b).strip() for b in batches if str(b).strip() in PRACTICAL_BATCHES})
+        if kept:
+            cleaned[division] = kept
+    return cleaned
+
+
+def get_faculty_teaching(email: str) -> dict[str, list[str]]:
+    """A faculty account's teaching assignments ({} when none saved)."""
+    row = get_faculty(email)
+    if row is None:
+        return {}
+    return parse_faculty_teaching(row.get("teaching_json"))
+
+
+def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
+    """Validate and store a faculty account's teaching assignments.
+
+    ``mapping`` is ``{division: [batches]}`` (divisions 1-14, batches from the
+    practical-batch list). Returns ``(True, "")`` on success, ``(False, code)``
+    otherwise where code is one of ``no_user``, ``empty`` (no valid rows),
+    ``bad_division``, ``bad_batch``, ``storage_unavailable``. Never raises."""
+    email = (email or "").strip().lower()
+    if get_faculty(email) is None:
+        return False, "no_user"
+    if not isinstance(mapping, dict) or not mapping:
+        return False, "empty"
+    cleaned: dict[str, list[str]] = {}
+    for division, batches in mapping.items():
+        division = str(division or "").strip()
+        if division not in DIVISIONS:
+            return False, "bad_division"
+        if isinstance(batches, str):
+            batches = [batches]
+        if not isinstance(batches, (list, tuple)) or not batches:
+            return False, "bad_batch"
+        kept = []
+        for batch in batches:
+            batch = str(batch or "").strip()
+            if batch not in PRACTICAL_BATCHES:
+                return False, "bad_batch"
+            if batch not in kept:
+                kept.append(batch)
+        if not kept:
+            return False, "bad_batch"
+        if division in cleaned:
+            for batch in kept:
+                if batch not in cleaned[division]:
+                    cleaned[division].append(batch)
+        else:
+            cleaned[division] = kept
+    for division in cleaned:
+        cleaned[division] = sorted(cleaned[division])
+    blob = json.dumps(cleaned, sort_keys=True)
+    try:
+        if database.db_configured():
+            try:
+                ok = db.set_faculty_teaching(email, blob)
+            except Exception:
+                ok = False
+            if not ok:
+                return False, "storage_unavailable"
+        else:
+            try:
+                with closing(_connect()) as conn:
+                    with conn:
+                        _ensure_schema(conn)
+                        cur = conn.execute(
+                            "UPDATE faculty SET teaching_json = ? WHERE email = ?",
+                            (blob, email),
+                        )
+                        if (cur.rowcount or 0) == 0:
+                            return False, "storage_unavailable"
+            except (sqlite3.Error, OSError):
+                return False, "storage_unavailable"
+    finally:
+        _drop_user(email)
+    return True, ""
 
 
 def _drop_user(email: str) -> None:

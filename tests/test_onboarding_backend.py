@@ -332,3 +332,80 @@ class TestOnboardingAuthHelpers:
         assert user["main_batch"] == "Batch 2022"
         assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"
+
+
+def _faculty_session(client, email="prof@example.com"):
+    """Seed a faculty account and log it in (faculty table, any domain)."""
+    assert auth.create_faculty(email, "secret123", "Prof")
+    r = client.post("/login", data={"email": email, "password": "secret123"})
+    assert r.status_code in (200, 302)
+    return email
+
+
+def _teaching_post(client, body: str):
+    """Raw urlencoded post (this httpx can't encode repeated keys via data=)."""
+    return client.post(
+        "/onboarding/faculty",
+        content=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        follow_redirects=False,
+    )
+
+
+class TestFacultyTeachingOnboarding:
+    def test_setup_redirects_to_onboarding(self, client):
+        assert auth.create_faculty_invite("invite@college.edu", "invitepass123")
+        client.post("/login", data={"email": "invite@college.edu", "password": "invitepass123"})
+        r = client.post(
+            "/faculty-setup",
+            data={"new_email": "prof@example.com", "name": "Prof",
+                  "password": "secret123", "confirm_password": "secret123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/onboarding"
+
+    def test_faculty_sees_teaching_form_not_ledger(self, client):
+        _faculty_session(client)
+        body = client.get("/onboarding").text
+        assert "Teaching Assignments" in body
+        assert 'name="division"' in body and 'name="batch"' in body
+        assert 'id="ledger-table"' not in body
+        assert "Academic Information" not in body
+
+    def test_admin_still_sees_ledger(self, client):
+        _session(client, "admin")
+        body = client.get("/onboarding").text
+        assert "Teaching Assignments" not in body
+        assert 'id="ledger-table"' in body or "No submissions yet" in body
+
+    def test_save_roundtrip_and_prefill(self, client):
+        email = _faculty_session(client)
+        r = _teaching_post(client, "division=3&batch=1&division=3&batch=2&division=5&batch=P1")
+        assert r.status_code == 303
+        assert r.headers["location"] == "/"
+        assert auth.get_faculty_teaching(email) == {"3": ["1", "2"], "5": ["P1"]}
+        body = client.get("/onboarding").text
+        assert 'value="3" selected' in body
+        assert 'value="P1" selected' in body
+
+    def test_invalid_rows_rejected(self, client):
+        email = _faculty_session(client)
+        assert auth.set_faculty_teaching(email, {"3": ["1"]}) == (True, "")
+        r = _teaching_post(client, "division=99&batch=1")
+        assert "invalid_teaching" in r.headers.get("location", "")
+        r = _teaching_post(client, "division=3&batch=")
+        assert "invalid_teaching" in r.headers.get("location", "")
+        r = _teaching_post(client, "division=3&batch=Nope")
+        assert "invalid_teaching" in r.headers.get("location", "")
+        assert auth.get_faculty_teaching(email) == {"3": ["1"]}  # untouched
+
+    def test_non_faculty_blocked(self, client):
+        _session(client, "student")
+        r = client.post("/onboarding/faculty", data={"division": "1", "batch": "1"},
+                        follow_redirects=False)
+        assert r.status_code == 403
+        anon = TestClient(app)
+        r = anon.post("/onboarding/faculty", data={"division": "1", "batch": "1"},
+                      follow_redirects=False)
+        assert r.status_code == 401

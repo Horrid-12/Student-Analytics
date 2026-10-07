@@ -441,8 +441,10 @@ CREATE TABLE IF NOT EXISTS faculty (
     linked_github_avatar    TEXT NOT NULL DEFAULT '',
     linked_linkedin_name    TEXT NOT NULL DEFAULT '',
     linked_linkedin_avatar  TEXT NOT NULL DEFAULT '',
-    profile_source          TEXT NOT NULL DEFAULT ''
+    profile_source          TEXT NOT NULL DEFAULT '',
+    teaching_json           TEXT NOT NULL DEFAULT '{}'
 );
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS teaching_json TEXT NOT NULL DEFAULT '{}';
 
 -- One-way migration from before the split: move legacy users.role='faculty'
 -- rows into faculty, then drop them from users. Idempotent (CONFLICT-safe);

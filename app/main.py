@@ -1019,7 +1019,9 @@ async def faculty_setup_submit(
             return RedirectResponse("/faculty-setup?error=storage_unavailable", status_code=302)
         return RedirectResponse(f"/faculty-setup?error={code}", status_code=302)
     _db_log_event("faculty_setup_complete", user.get("email", ""))
-    response = RedirectResponse("/", status_code=302)
+    # Fresh faculty accounts land on their own onboarding step (divisions +
+    # batches they teach) before the Overview.
+    response = RedirectResponse("/onboarding", status_code=302)
     response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -1474,15 +1476,25 @@ def overview(
 @app.get("/onboarding", response_class=HTMLResponse)
 def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = ""):
     """Onboarding page. Students see their own submission form + status;
-    faculty/admin see the registrar ledger with approve/reject actions."""
+    faculty see their teaching-assignment form (divisions + batches taught);
+    admins see the registrar ledger with approve/reject actions."""
     ctx = _base_context(request, "Onboarding")
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
     ctx["manager"] = role in ("admin", "faculty")
     ctx["is_admin"] = role == "admin"
+    ctx["is_faculty"] = role == "faculty"
     ctx["auth_email"] = (user or {}).get("email", "")
     ctx["submission"] = {}
-    if ctx["manager"]:
+    ctx["teaching"] = {}
+    ctx["teaching_divisions"] = list(auth.DIVISIONS)
+    ctx["teaching_batches"] = list(auth.PRACTICAL_BATCHES)
+    if role == "faculty" and user:
+        try:
+            ctx["teaching"] = auth.get_faculty_teaching(user.get("email", ""))
+        except Exception:
+            ctx["teaching"] = {}
+    elif ctx["manager"]:
         ctx["onboarding_users"] = auth.get_onboarding_users()
     elif user:
         try:
@@ -1495,6 +1507,42 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["action_email"] = email
     ctx["oauth"] = oauth
     return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
+
+
+@app.post("/onboarding/faculty", response_class=HTMLResponse)
+async def onboarding_faculty_submit(request: Request):
+    """Faculty teaching-assignment submission. Accepts repeated
+    ``division``/``batch`` row pairs, validates them server-side, and stores
+    the ``{division: [batches]}`` mapping on the faculty account."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") != "faculty":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    try:
+        form = await request.form()
+        divisions = [str(v or "").strip() for v in form.getlist("division")]
+        batches = [str(v or "").strip() for v in form.getlist("batch")]
+    except Exception:
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    pairs = [(d, b) for d, b in zip(divisions, batches) if d or b][:50]
+    if not pairs:
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    mapping: dict[str, list[str]] = {}
+    for division, batch in pairs:
+        if not division or not batch:
+            return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+        mapping.setdefault(division, [])
+        if batch not in mapping[division]:
+            mapping[division].append(batch)
+    ok, err = auth.set_faculty_teaching(user["email"], mapping)
+    if ok:
+        _db_log_event("faculty_teaching_saved", user["email"])
+        return RedirectResponse("/", status_code=303)
+    _db_log_event("faculty_teaching_rejected", f"{user['email']}; {err}")
+    if err in ("bad_division", "bad_batch", "empty"):
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    return RedirectResponse("/onboarding?error=storage_unavailable", status_code=303)
 
 
 @app.post("/onboarding", response_class=HTMLResponse)

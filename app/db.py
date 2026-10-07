@@ -2094,7 +2094,7 @@ def list_user_emails() -> list[str]:
 _FACULTY_COLUMNS = (
     "id, email, password_hash, name, created_at, auth_source, google_sub, "
     "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
-    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source, teaching_json"
 )
 
 
@@ -2212,6 +2212,26 @@ def set_faculty_password(email: str, password_hash: str) -> bool:
             return (cur.rowcount or 0) > 0
     except Exception as exc:
         logger.warning("set_faculty_password failed: %s", exc)
+        return False
+
+
+def set_faculty_teaching(email: str, teaching_json: str) -> bool:
+    """Store a faculty row's teaching-assignments blob (validated JSON string
+    built by ``auth.set_faculty_teaching``). Returns True when the row updated."""
+    email = (email or "").strip().lower()
+    if not email or not teaching_json:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET teaching_json = %s WHERE email = %s",
+                (teaching_json, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except Exception as exc:
+        logger.warning("set_faculty_teaching failed: %s", exc)
         return False
 
 

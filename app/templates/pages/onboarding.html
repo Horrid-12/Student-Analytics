@@ -4,12 +4,12 @@
 {% block content %}
 <div class="topbar-card" style="position: relative;">
     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <div class="topbar-title">Academic Onboarding & Record Setup</div>
+        <div class="topbar-title">{% if is_faculty %}Faculty Onboarding & Teaching Setup{% else %}Academic Onboarding & Record Setup{% endif %}</div>
         {% if is_admin %}
         <button type="button" id="faculty-key-btn" aria-haspopup="true" aria-expanded="false" style="padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; background: transparent; border: 1px solid var(--border); color: var(--text);">Faculty</button>
         {% endif %}
     </div>
-    <div class="topbar-subtitle">Complete your cohort credentials and verify your student identity to finalize enrollment.</div>
+    <div class="topbar-subtitle">{% if is_faculty %}Tell us which divisions and batches you teach so your classes show up on your dashboard.{% else %}Complete your cohort credentials and verify your student identity to finalize enrollment.{% endif %}</div>
     {% if is_admin %}
     <div id="faculty-key-dropdown" hidden style="position: absolute; top: 100%; right: 16px; margin-top: 8px; width: 360px; max-width: calc(100% - 32px); max-height: 420px; overflow-y: auto; background: var(--card-bg, var(--card)); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px; z-index: 200;">
         <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Temporary faculty login keys</div>
@@ -44,6 +44,7 @@
     'bad_status': 'That action is not allowed.',
     'no_user': 'No account matches that submission.',
     'no_submission': 'That account has not submitted onboarding yet.',
+    'invalid_teaching': 'Please pick a valid division and batch for each row (remove empty rows).',
 } %}
 
 {% if saved %}
@@ -70,7 +71,126 @@
 </div>
 {% endif %}
 
-{% if manager %}
+{% if is_faculty %}
+<div class="panel" style="padding: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+        <h2 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--text);">Teaching Assignments</h2>
+    </div>
+    <p style="font-size: 13px; color: var(--muted); margin: 0 0 20px 0;">Add one row per division and batch you teach. You can add as many rows as you need.</p>
+    <form method="post" action="/onboarding/faculty" id="faculty-teaching-form">
+        <div id="teaching-rows" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+            {% set ns = namespace(has_rows=false) %}
+            {% for division, batches in teaching.items() %}
+            {% for batch in batches %}
+            {% set ns.has_rows = true %}
+            <div class="teaching-row" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division *</label>
+                    <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                        <option value="" disabled hidden>(Select division)</option>
+                        {% for option in teaching_divisions %}
+                        <option value="{{ option }}" {% if option == division %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Batch *</label>
+                    <select name="batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                        <option value="" disabled hidden>(Select batch)</option>
+                        {% for option in teaching_batches %}
+                        <option value="{{ option }}" {% if option == batch %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" class="teaching-remove" style="height: 40px; padding: 0 14px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+            </div>
+            {% endfor %}
+            {% endfor %}
+            {% if not ns.has_rows %}
+            <div class="teaching-row" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division *</label>
+                    <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                        <option value="" disabled selected hidden>(Select division)</option>
+                        {% for option in teaching_divisions %}
+                        <option value="{{ option }}">{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Batch *</label>
+                    <select name="batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                        <option value="" disabled selected hidden>(Select batch)</option>
+                        {% for option in teaching_batches %}
+                        <option value="{{ option }}">{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" class="teaching-remove" style="height: 40px; padding: 0 14px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+            </div>
+            {% endif %}
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button type="button" id="teaching-add" style="height: 44px; padding: 0 18px; font-weight: 600; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">+ Add division</button>
+            <button type="submit" class="btn-primary" style="flex: 1; min-width: 200px; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Save Teaching Assignments</button>
+        </div>
+    </form>
+</div>
+<template id="teaching-row-template">
+    <div class="teaching-row" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division *</label>
+            <select name="division" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);"></select>
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Batch *</label>
+            <select name="batch" required style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);"></select>
+        </div>
+        <button type="button" class="teaching-remove" style="height: 40px; padding: 0 14px; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444;">Remove</button>
+    </div>
+</template>
+<script>
+(function () {
+    var divisions = [{% for option in teaching_divisions %}"{{ option }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    var batches = [{% for option in teaching_batches %}"{{ option }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    var rows = document.getElementById('teaching-rows');
+    var template = document.getElementById('teaching-row-template');
+    if (!rows || !template) return;
+    function fillOptions(select, values, placeholder) {
+        select.textContent = '';
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.disabled = true;
+        empty.selected = true;
+        empty.hidden = true;
+        empty.textContent = placeholder;
+        select.appendChild(empty);
+        values.forEach(function (value) {
+            var opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            select.appendChild(opt);
+        });
+    }
+    document.getElementById('teaching-add').addEventListener('click', function () {
+        var clone = template.content.firstElementChild.cloneNode(true);
+        var selects = clone.querySelectorAll('select');
+        fillOptions(selects[0], divisions, '(Select division)');
+        fillOptions(selects[1], batches, '(Select batch)');
+        rows.appendChild(clone);
+    });
+    rows.addEventListener('click', function (e) {
+        if (e.target && e.target.classList.contains('teaching-remove')) {
+            var row = e.target.closest('.teaching-row');
+            if (row && rows.querySelectorAll('.teaching-row').length > 1) {
+                row.remove();
+            }
+        }
+    });
+})();
+</script>
+{% elif manager %}
 
 
 
