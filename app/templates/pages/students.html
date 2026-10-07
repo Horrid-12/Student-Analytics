@@ -193,26 +193,14 @@
 
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
+  <input type="hidden" name="mine" value="{{ mine }}">
+  <input type="hidden" name="division" value="{{ division }}">
+  <input type="hidden" name="batch" value="{{ batch }}">
   <div class="filter-field search-box-row">
     <label class="filter-label" for="student-search">Search</label>
     <input id="student-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
   </div>
-  <div class="filter-field">
-    <label class="filter-label" for="division-filter">Division</label>
-    <select id="division-filter" class="filter-select" name="division">
-      {% for value in payload.divisions %}
-      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="filter-field">
-    <label class="filter-label" for="batch-filter">Batch</label>
-    <select id="batch-filter" class="filter-select" name="batch">
-      {% for value in payload.batches %}
-      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="semester-filter">Semester</label>
     <select id="semester-filter" class="filter-select" name="semester">

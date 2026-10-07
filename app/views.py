@@ -703,7 +703,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None) -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -953,18 +953,49 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         return (0, int(m.group(0)), str(name).lower()) if m else (1, 0, str(name).lower())
     _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, _div_sort_key(c["name"])))
 
-    # The radar's "My Classes" series reflects the faculty-scoped data (when
-    # the toggle is on); the "All students" baseline and every cohort in the
-    # compare dropdown stay college-wide via _all_students/_overall_*.
-    radar_students = students
-    radar_score_repos = _score_repos
+    # The radar's "My Classes" series ALWAYS reflects the faculty's taught
+    # classes (my_classes_view), regardless of the page mode toggle; the
+    # "All students" baseline and every compare-dropdown cohort stay
+    # college-wide via _all_students/_overall_*.
+    if my_classes_view is not None and my_classes_view.get("students") is not None:
+        _mc_students = _with_combined_metrics(my_classes_view["students"].copy())
+        radar_students = _mc_students
+        try:
+            radar_students = filter_text(
+                radar_students,
+                query or "",
+                [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+            )
+        except Exception:
+            pass
+        for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
+            try:
+                radar_students = apply_value_filter(radar_students, _col, _val or "All")
+            except Exception:
+                pass
+        try:
+            _mc_cohort = set(radar_students["GitHub_Username"].dropna().astype(str)) if radar_students is not None and not radar_students.empty and "GitHub_Username" in radar_students.columns else set()
+        except Exception:
+            _mc_cohort = set()
+        _mc_score = _merged_repos_frame(my_classes_view)
+        radar_score_repos = _mc_score
+        try:
+            if radar_score_repos is not None and not radar_score_repos.empty and "Username" in radar_score_repos.columns and _mc_cohort:
+                radar_score_repos = radar_score_repos[radar_score_repos["Username"].astype(str).isin(_mc_cohort)].copy()
+            elif radar_score_repos is not None and radar_students is not None and radar_students.empty:
+                radar_score_repos = radar_score_repos.iloc[0:0].copy()
+        except Exception:
+            pass
+    else:
+        radar_students = students
+        radar_score_repos = _score_repos
     _radar_series = []
     _radar_active = []
     _has_current = False
     _current_label = ""
     _filtered = division != "All" or batch != "All" or semester != "All"
     if radar_students is not None and not radar_students.empty:
-        # 1. "My Classes": the student set the page filters are showing.
+        # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
         if _filtered:
             _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
@@ -1294,6 +1325,35 @@ def dist_options(values) -> list[str]:
     )
 
 
+def division_batch_groups(students) -> list[dict]:
+    """Division -> taught batches structure for the compare-style class
+    filter dropdown (raw values kept for filtering, display labels added)."""
+    if students is None or students.empty or not {"Division", "Batch"}.issubset(students.columns):
+        return []
+    try:
+        pairs = students.groupby(["Division", "Batch"], dropna=False).size().reset_index()
+    except Exception:
+        return []
+    index: dict[str, dict] = {}
+    for _, row in pairs.iterrows():
+        div = str(row["Division"]) if pd.notna(row["Division"]) else ""
+        bat = str(row["Batch"]) if pd.notna(row["Batch"]) else ""
+        if not div or div.lower() in {"nan", "none"}:
+            continue
+        entry = index.setdefault(div, {"division": div, "label": "", "key": _clean_division_text(div), "batches": [], "batch_keys": []})
+        if bat and bat not in entry["batches"]:
+            entry["batches"].append(bat)
+            entry["batch_keys"].append(_clean_batch_text(bat))
+    groups = list(index.values())
+    for g in groups:
+        g["label"] = g["key"] if g["key"].lower().startswith(("div", "division")) else f"Division {g['key']}"
+        _sorted = sorted(zip(g["batches"], g["batch_keys"]), key=lambda pair: _dist_sort_key(pair[0]))
+        g["batches"] = [p[0] for p in _sorted]
+        g["batch_keys"] = [p[1] for p in _sorted]
+    groups.sort(key=lambda g: _dist_sort_key(g["key"]))
+    return groups
+
+
 def linkedin_display_name(slug) -> str:
     """Shorten a LinkedIn /in/ slug for display by dropping the trailing
     auto-generated ID segment (e.g. "anshuman-kulkarni-b27b0142a" becomes
@@ -1418,6 +1478,7 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "batches": dist_options(students["Batch"].dropna().astype(str).unique().tolist()),
         "years": dist_options(students["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(students["Semester"].dropna().astype(str).unique().tolist()),
+        "division_groups": division_batch_groups(students),
         "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester),
     }
 
@@ -2096,6 +2157,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
+        "division_groups": division_batch_groups(view.get("students")),
         "export_query": repositories_export_query(
             view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
         ),
@@ -2531,6 +2593,7 @@ def leaderboards_payload(
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
+        "division_groups": division_batch_groups(view["students"]),
         "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
         "active_window": active_window,
         "commits_window": commits_window,
