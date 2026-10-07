@@ -7,7 +7,7 @@ local testing, leaving the backend (Neon) alone.
 
 Usage:
     python -m app.clear_local_data          # wipe analysis runs only
-    python -m app.clear_local_data --all    # also wipe users/support/accounts/reference DBs
+    python -m app.clear_local_data --all    # also wipe users/support/accounts DBs
 
 Deleted files are printed; the run stores are versioned caches, so nothing
 that exists only locally is lost from the authoritative backend store.
@@ -19,13 +19,13 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import accounts, auth, crosscheck, storage, support
+from app import accounts, auth, storage, support
 
 #: Stores that hold pure analysis/roster artifacts — safe to clear by default.
 ANALYSIS_FILES = [storage.DB_PATH]
 
 #: Identity/feature stores — only wiped with ``--all``.
-FEATURE_FILES = [auth.USERS_DB, support.DB_PATH, accounts.ACCOUNTS_DB, crosscheck.REFERENCE_DB]
+FEATURE_FILES = [auth.USERS_DB, support.DB_PATH, accounts.ACCOUNTS_DB]
 
 #: Legacy files removed at the Phase-3.10 cutover — delete if they ever resurface.
 STALE_FILES = [
@@ -75,7 +75,7 @@ def main() -> int:
     removed = _wipe_many(targets, "all" if args.all else "analysis")
     print(f"Done — removed {removed} file(s). Backend (Neon/Postgres) data is untouched.")
     if not args.all:
-        print("Tip: `python -m app.clear_local_data --all` also wipes the local users/support/accounts/reference DBs.")
+        print("Tip: `python -m app.clear_local_data --all` also wipes the local users/support/accounts DBs.")
     return 0
 
 

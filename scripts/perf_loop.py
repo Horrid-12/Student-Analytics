@@ -34,7 +34,6 @@ PAGES = [
     ("/students", "students"),
     ("/repositories", "repositories"),
     ("/leaderboards", "leaderboards"),
-    ("/verification", "verification"),
     ("/support", "support"),
     ("/settings", "settings"),
     ("/me", "me"),

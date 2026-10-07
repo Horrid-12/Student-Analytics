@@ -96,6 +96,10 @@ MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
 #: Practical batch = the lab-section batch that fills the dashboard "Batch".
 PRACTICAL_BATCHES = ("1", "2", "3") + tuple(f"P{n}" for n in range(1, 9))
 
+#: Batches a faculty member can claim on the teaching form — just the three
+#: lab-section batches shown on the dashboard (subset of PRACTICAL_BATCHES).
+TEACHING_BATCHES = ("1", "2", "3")
+
 #: Current term options (1-8), matching the legacy "Semester N" labels.
 SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
 
@@ -115,19 +119,17 @@ _PAGE_BY_PREFIX = (
     ("/students", "Students"),
     ("/onboarding", "Onboarding"),
     ("/overview", "Overview"),
-    ("/verification", "Verification"),
     ("/me", "My Profile"),
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Verification", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile")
 
 # BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
 # Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
-# (Students + Verification stay faculty/admin pages: 5.2 widened the
-# student stack to the full fleet-backed analytics set, but the later 4be7609
-# "Changed which tabs student account can see" narrowed it back to this list,
-# which is the current product decision.)
+# (The later 4be7609 "Changed which tabs student account can see" narrowed the
+# student stack to this list, which is the current product decision. The old
+# Verification page was removed entirely.)
 # (Anonymized leaderboards are rendered by the page.)
 ROLE_PAGES = {
     "student": ("Overview", "Onboarding", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
@@ -174,9 +176,16 @@ CREATE TABLE IF NOT EXISTS faculty (
     linked_github_avatar TEXT NOT NULL DEFAULT '',
     linked_linkedin_name TEXT NOT NULL DEFAULT '',
     linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
-    profile_source TEXT NOT NULL DEFAULT ''
+    profile_source TEXT NOT NULL DEFAULT '',
+    teaching_json TEXT NOT NULL DEFAULT '{}'
 )
 """
+
+#: Columns added to faculty after the split; _ensure_faculty_schema() upgrades
+#: existing faculty tables in place (ALTER TABLE ... ADD COLUMN).
+_FACULTY_EXTRA_COLUMNS = (
+    ("teaching_json", "TEXT NOT NULL DEFAULT '{}'"),
+)
 
 
 _WARNED_AUTH_SECRET = False
@@ -628,7 +637,7 @@ def complete_faculty_setup(invite_email: str, new_email: str, password: str, nam
     """Consume an unused invite and register the real faculty account.
 
     Faculty addresses are NOT gated to the college domain — any valid email
-    works. Returns ``(user_dict, "")`` on success, ``(None, code)`` otherwise
+    works.     Returns ``(user_dict, "")`` on success, ``(None, code)`` otherwise
     where code is one of ``bad_invite`` (unknown/consumed), ``bad_email``,
     ``taken`` (address registered), ``weak_password`` (<6 chars),
     ``storage_unavailable``. Never raises."""
@@ -642,7 +651,20 @@ def complete_faculty_setup(invite_email: str, new_email: str, password: str, nam
         return None, "bad_email"
     if len(password or "") < 6:
         return None, "weak_password"
-    if get_account(new_email) is not None:
+    if get_user(new_email) is not None:
+        return None, "taken"
+    existing_fac = get_faculty(new_email)
+    if existing_fac is not None:
+        # Retry-after-orphan: a previous setup attempt stored this account but
+        # its read-back missed the uncommitted row (pre-fix Postgres bug), so
+        # the user saw a false failure. The password proves ownership — adopt
+        # the account and consume the invite instead of crying "taken".
+        # (Passwordless Google-created rows have no hash to match, so they
+        # stay "taken" and keep signing in via Google, mirroring BUG-131.)
+        if verify_password(password or "", existing_fac.get("password_hash")):
+            _mark_faculty_invite_used(invite_email, new_email)
+            existing_fac.pop("password_hash", None)
+            return existing_fac, ""
         return None, "taken"
     user = create_faculty(new_email, password, name=name)
     if user is None:
@@ -753,6 +775,10 @@ def _ensure_faculty_schema(conn: sqlite3.Connection) -> None:
     best-effort — a row is only deleted from ``users`` after it lands in
     ``faculty``. Never raises."""
     conn.execute(_FACULTY_SCHEMA)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(faculty)").fetchall()}
+    for column, declaration in _FACULTY_EXTRA_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE faculty ADD COLUMN {column} {declaration}")
     try:
         conn.execute(
             "INSERT OR IGNORE INTO faculty "
@@ -1142,7 +1168,7 @@ def verify_login(email: str, password: str) -> dict | None:
 _FACULTY_COLUMNS = (
     "id, email, password_hash, name, created_at, auth_source, google_sub, "
     "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
-    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source, teaching_json"
 )
 
 
@@ -1265,6 +1291,103 @@ def set_faculty_password(email: str, password: str) -> bool:
             return False
     finally:
         _drop_user(email)
+
+
+def parse_faculty_teaching(raw: str | None) -> dict[str, list[str]]:
+    """Parse a stored teaching blob into ``{division: [batches]}``. Tolerates
+    garbage (returns {}) so a corrupt row can never break a page render."""
+    try:
+        data = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cleaned: dict[str, list[str]] = {}
+    for division, batches in data.items():
+        division = str(division or "").strip()
+        if division not in DIVISIONS:
+            continue
+        if isinstance(batches, str):
+            batches = [batches]
+        if not isinstance(batches, (list, tuple)):
+            continue
+        kept = sorted({str(b).strip() for b in batches if str(b).strip() in TEACHING_BATCHES})
+        if kept:
+            cleaned[division] = kept
+    return cleaned
+
+
+def get_faculty_teaching(email: str) -> dict[str, list[str]]:
+    """A faculty account's teaching assignments ({} when none saved)."""
+    row = get_faculty(email)
+    if row is None:
+        return {}
+    return parse_faculty_teaching(row.get("teaching_json"))
+
+
+def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
+    """Validate and store a faculty account's teaching assignments.
+
+    ``mapping`` is ``{division: [batches]}`` (divisions 1-14, batches from the
+    practical-batch list). Returns ``(True, "")`` on success, ``(False, code)``
+    otherwise where code is one of ``no_user``, ``empty`` (no valid rows),
+    ``bad_division``, ``bad_batch``, ``storage_unavailable``. Never raises."""
+    email = (email or "").strip().lower()
+    if get_faculty(email) is None:
+        return False, "no_user"
+    if not isinstance(mapping, dict) or not mapping:
+        return False, "empty"
+    cleaned: dict[str, list[str]] = {}
+    for division, batches in mapping.items():
+        division = str(division or "").strip()
+        if division not in DIVISIONS:
+            return False, "bad_division"
+        if isinstance(batches, str):
+            batches = [batches]
+        if not isinstance(batches, (list, tuple)) or not batches:
+            return False, "bad_batch"
+        kept = []
+        for batch in batches:
+            batch = str(batch or "").strip()
+            if batch not in TEACHING_BATCHES:
+                return False, "bad_batch"
+            if batch not in kept:
+                kept.append(batch)
+        if not kept:
+            return False, "bad_batch"
+        if division in cleaned:
+            for batch in kept:
+                if batch not in cleaned[division]:
+                    cleaned[division].append(batch)
+        else:
+            cleaned[division] = kept
+    for division in cleaned:
+        cleaned[division] = sorted(cleaned[division])
+    blob = json.dumps(cleaned, sort_keys=True)
+    try:
+        if database.db_configured():
+            try:
+                ok = db.set_faculty_teaching(email, blob)
+            except Exception:
+                ok = False
+            if not ok:
+                return False, "storage_unavailable"
+        else:
+            try:
+                with closing(_connect()) as conn:
+                    with conn:
+                        _ensure_schema(conn)
+                        cur = conn.execute(
+                            "UPDATE faculty SET teaching_json = ? WHERE email = ?",
+                            (blob, email),
+                        )
+                        if (cur.rowcount or 0) == 0:
+                            return False, "storage_unavailable"
+            except (sqlite3.Error, OSError):
+                return False, "storage_unavailable"
+    finally:
+        _drop_user(email)
+    return True, ""
 
 
 def _drop_user(email: str) -> None:

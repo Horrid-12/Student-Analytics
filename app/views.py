@@ -1357,6 +1357,53 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
     }
 
 
+def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | None:
+    """Restrict a fleet-shaped view to a faculty member's taught classes.
+
+    Keeps students (and raw records) whose Division is taught AND whose Batch
+    is taught in that Division. Returns a NEW dict — the input is never
+    mutated (fleet/analysis views are memoised and shared across roles, and
+    the repo/team frames are re-derived from the kept cohort downstream).
+    Empty teaching, missing Division/Batch columns, or any error passes the
+    view through untouched: fail open to the full fleet, never a blank page.
+    """
+    if not view or not teaching or not isinstance(teaching, dict):
+        return view
+    try:
+        scope = {
+            str(div or "").strip(): {str(b or "").strip() for b in batches}
+            for div, batches in teaching.items()
+            if isinstance(batches, (list, tuple))
+        }
+        scope = {div: batches for div, batches in scope.items() if div and batches}
+        if not scope:
+            return view
+        students = view.get("students")
+        if students is None or students.empty:
+            return view
+        if "Division" not in students.columns or "Batch" not in students.columns:
+            return view
+        divisions = students["Division"].astype(str).str.strip()
+        batches = students["Batch"].astype(str).str.strip()
+        mask = pd.Series(False, index=students.index)
+        for taught_div, taught_batches in scope.items():
+            mask = mask | (divisions.eq(taught_div) & batches.isin(taught_batches))
+        kept = students[mask].copy()
+        records = view.get("records")
+        kept_records = [
+            row for row in (records or [])
+            if str((row or {}).get("Division") or "").strip() in scope
+            and str((row or {}).get("Batch") or "").strip() in scope.get(
+                str((row or {}).get("Division") or "").strip(), set())
+        ] if isinstance(records, list) else records
+        state = dict(view.get("state") or {})
+        state.update({"valid": len(kept), "invalid": 0, "errors": 0})
+        state.setdefault("status", "complete")
+        return {**view, "students": kept, "records": kept_records, "state": state}
+    except Exception:
+        return view
+
+
 def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="") -> str:
     pairs = []
     if roster_id:
@@ -1368,62 +1415,6 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     from urllib.parse import urlencode
 
     return urlencode(pairs)
-
-
-AUDIT_COLS = [
-    STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
-    "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following",
-]
-
-
-def verification_payload(view: dict, references: list[dict], query: str = "", status: str = "All", rows: int = 50) -> dict:
-    """Cross-check audit table for the Verification page.
-
-    Each analyzed student is matched to the uploaded "Student Details"
-    reference (email-first, PRN-fallback via ``crosscheck.cross_check_status``)
-    and tagged Verified / Mismatch / Missing / Unreferenced. Returns the same
-    ``{total, showing, display, filtered, statuses}`` contract every page
-    payload uses so the template/filter/export helpers work unchanged.
-    """
-    from app import crosscheck
-
-    students = view["students"]
-    records = view["records"]
-    stats = {
-        str(row.get(STUDENT_ID_COL, "")): row for row in students.to_dict("records")
-    }
-    audit_rows = []
-    for record in records:
-        sid = str(record.get(STUDENT_ID_COL, "") or "")
-        username = str(record.get("GitHub_Username") or "").strip()
-        status_label, ref_username = crosscheck.cross_check_status(record, references or [])
-        stat = stats.get(sid, {})
-        audit_rows.append({
-            STUDENT_ID_COL: sid,
-            "Student Name": record.get("Student Name", ""),
-            "Division": record.get("Division", ""),
-            "GitHub_Username": username,
-            "GitHub Profile": github_profile_url(username),
-            "Reference_Username": ref_username,
-            "Validation Status": status_label,
-            "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
-            "Followers": int(stat.get("Followers", 0) or 0),
-            "Following": int(stat.get("Following", 0) or 0),
-        })
-
-    audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
-    filtered = filter_text(
-        audit, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Reference_Username", "Division"]
-    )
-    filtered = apply_value_filter(filtered, "Validation Status", status)
-    return {
-        "total": len(filtered),
-        "showing": min(int(rows), len(filtered)) if not filtered.empty else 0,
-        "display": filtered.head(int(rows)),
-        "filtered": filtered,
-        "statuses": ["All"] + sorted(str(value) for value in audit["Validation Status"].dropna().unique().tolist()),
-    }
 
 
 def _recent_activity(
