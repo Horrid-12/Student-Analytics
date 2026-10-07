@@ -787,26 +787,6 @@ def get_weekly_commits(week_id: str) -> list[dict]:
         return []
 
 
-def get_user_weekly_commits(email: str) -> list[dict]:
-    """Every stored weekly row for one account, oldest first. Used for
-    calendar-month sums (Monthly Summary) without touching the network."""
-    email = str(email or "").strip().lower()
-    if not email:
-        return []
-    try:
-        with closing(_connect()) as conn:
-            _ensure_schema(conn)
-            cur = conn.execute(
-                "SELECT week_id, email, username, commits, repos_checked, status, updated_at "
-                "FROM weekly_commits WHERE lower(email) = ? ORDER BY updated_at ASC",
-                (email,),
-            )
-            return [dict(r) for r in cur.fetchall()]
-    except (sqlite3.Error, OSError) as exc:
-        logger.warning("get_user_weekly_commits failed: %s", exc)
-        return []
-
-
 def get_weekly_run(week_id: str) -> dict | None:
     """One week's run record (for idempotent publish); None when absent."""
     week_id = (week_id or "").strip()
