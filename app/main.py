@@ -62,7 +62,8 @@ def shutdown_event():
 
 # /auth/* is the Google OAuth handshake (Phase 4.7.2); it must stay public so
 # anonymous browsers can reach the consent redirect and callback.
-_PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico", "/privacy")
+# /faculty-setup is the one-time faculty-invite flow (invite auth → setup cookie).
+_PUBLIC_PREFIXES = ("/static/", "/auth/", "/login", "/signup", "/logout", "/favicon.ico", "/privacy", "/faculty-setup")
 
 
 @app.middleware("http")
@@ -855,18 +856,40 @@ def login_page(request: Request, registered: int = 0, error: int = 0, oauth: str
 
 @app.post("/login", response_class=HTMLResponse)
 async def login_submit(request: Request, email: str = Form(...), password: str = Form(...), next: str = Form("/")):
+    # Faculty invite first: an UNUSED pre-saved faculty credential never creates
+    # a normal session — it mints a short-lived setup cookie and forces the
+    # one-time /faculty-setup flow (welcome popup → new email + password).
+    # Consumed invites fall through to the normal password/domain gates below,
+    # so the old pre-saved credential stops working after first setup.
+    invite = auth.verify_faculty_invite(email, password)
+    if invite is not None:
+        _db_log_event("faculty_invite_login", email)
+        response = RedirectResponse("/faculty-setup?welcome=1", status_code=302)
+        response.set_cookie(
+            auth._FACULTY_SETUP_COOKIE,
+            auth.create_faculty_setup_token(invite.get("invite_email", email)),
+            max_age=auth._FACULTY_SETUP_TTL_SECONDS,
+            httponly=True,
+            secure=auth._SECURE_COOKIES,
+            samesite="lax",
+        )
+        return response
     # Phase 4.7.2: password login is gated to the college domain (error=2 =
-    # non-college email), except seeded/allowlisted admin bypass accounts.
+    # non-college email), except seeded/allowlisted admin bypass accounts and
+    # faculty accounts (faculty are never domain-gated — setup + login accept
+    # any valid email).
     if auth.domain_allowed_email(email):
         user = auth.verify_login(email, password)
         if user is None:
             _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
     else:
-        if not auth.admin_bypass_eligible(email):
+        if not (auth.admin_bypass_eligible(email) or auth.faculty_bypass_eligible(email)):
             _db_log_event("login_failed_domain", email)
             return RedirectResponse("/login?error=2", status_code=302)
         user = auth.verify_admin_bypass(email, password)
+        if user is None:
+            user = auth.verify_faculty_bypass(email, password)
         if user is None:
             _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
@@ -926,6 +949,72 @@ async def signup_submit(
         return RedirectResponse("/signup?error=1", status_code=302)
     _db_log_event("signup", email)
     return RedirectResponse("/login?registered=1", status_code=302)
+
+
+@app.get("/faculty-setup", response_class=HTMLResponse)
+def faculty_setup_page(request: Request, welcome: int = 0, error: str = ""):
+    """One-time faculty onboarding: requires the short-lived setup cookie minted
+    by a successful invite login. Shows the 'Welcome faculty!' popup and the
+    new-email + password form. Faculty sees the same pages as admin after this
+    (ROLE_PAGES already maps faculty → ALL_PAGES)."""
+    if request.state.user:
+        return RedirectResponse("/", status_code=302)
+    invite_email = auth.read_faculty_setup_token(request.cookies.get(auth._FACULTY_SETUP_COOKIE))
+    if not invite_email:
+        return RedirectResponse("/login", status_code=302)
+    invite = auth.get_faculty_invite(invite_email)
+    if invite is None or int(invite.get("used") or 0) == 1:
+        response = RedirectResponse("/login?error=1", status_code=302)
+        response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
+        return response
+    return templates.TemplateResponse(
+        request,
+        "pages/faculty_setup.html",
+        {
+            "page_name": "faculty-setup",
+            "invite_email": invite_email,
+            "show_welcome": True if welcome else True,  # popup shows on every visit of this one-time page
+            "error_code": (error or "").strip(),
+        },
+    )
+
+
+@app.post("/faculty-setup", response_class=HTMLResponse)
+async def faculty_setup_submit(
+    request: Request,
+    new_email: str = Form(""),
+    name: str = Form(""),
+    password: str = Form(...),
+    confirm_password: str = Form(""),
+):
+    if request.state.user:
+        return RedirectResponse("/", status_code=302)
+    invite_email = auth.read_faculty_setup_token(request.cookies.get(auth._FACULTY_SETUP_COOKIE))
+    if not invite_email:
+        return RedirectResponse("/login", status_code=302)
+    if (password or "") != (confirm_password or ""):
+        return RedirectResponse("/faculty-setup?error=mismatch", status_code=302)
+    user, code = auth.complete_faculty_setup(invite_email, new_email, password, name)
+    if user is None:
+        # Storage failure bounces to login (fail-safe); validation codes stay
+        # on the setup page with a targeted banner.
+        if code == "storage_unavailable":
+            response = RedirectResponse("/login?error=1", status_code=302)
+            response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
+            return response
+        return RedirectResponse(f"/faculty-setup?error={code}", status_code=302)
+    _db_log_event("faculty_setup_complete", user.get("email", ""))
+    response = RedirectResponse("/", status_code=302)
+    response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
 
 
 def _oauth_base_url(request: Request) -> str:

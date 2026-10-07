@@ -432,3 +432,15 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 -- Backfill for HackerRank on onboarding.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
+
+-- 17. Faculty invites: one-time pre-saved login credentials. The first successful
+--     login with an unused invite forces the /faculty-setup flow, which registers
+--     the real faculty account and flags the invite used=1 so the pre-saved
+--     credential stops verifying (consumed env invites leave a used tombstone row).
+CREATE TABLE IF NOT EXISTS faculty_invites (
+    invite_email  TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL DEFAULT '',
+    used          INTEGER NOT NULL DEFAULT 0,
+    consumed_by   TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

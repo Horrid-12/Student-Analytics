@@ -1,0 +1,67 @@
+{% extends "pages/auth_base.html" %}
+{% block title %}Faculty Setup{% endblock %}
+{% block auth_card %}
+<div class="auth-card">
+  <h1>Set up your faculty account</h1>
+  <p class="sub">Signed in with invite <strong>{{ invite_email }}</strong>. Choose your permanent faculty email and password — the invite credential stops working after this.</p>
+
+  {% if error_code == "mismatch" %}
+  <div class="banner-error">Passwords don't match — please re-enter them.</div>
+  {% elif error_code == "weak_password" %}
+  <div class="banner-error">Password must be at least 6 characters.</div>
+  {% elif error_code == "taken" %}
+  <div class="banner-error">That email already has an account — please choose a different one.</div>
+  {% elif error_code == "bad_email" %}
+  <div class="banner-error">Please enter a valid email address.</div>
+  {% elif error_code == "bad_invite" %}
+  <div class="banner-error">This invite was already used — please sign in with your faculty account.</div>
+  {% elif error_code %}
+  <div class="banner-error">Setup failed — please check your details and try again.</div>
+  {% endif %}
+
+  <form method="post" action="/faculty-setup">
+    <div class="form-group">
+      <label for="new_email">New faculty email address</label>
+      <input type="email" id="new_email" name="new_email" placeholder="you@example.com" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="name">Full name</label>
+      <input type="text" id="name" name="name" placeholder="Your name">
+    </div>
+    <div class="form-group">
+      <label for="password">New password</label>
+      <input type="password" id="password" name="password" placeholder="Min. 6 characters" required minlength="6">
+    </div>
+    <div class="form-group">
+      <label for="confirm_password">Confirm new password</label>
+      <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required>
+    </div>
+    <button type="submit" class="btn-primary">Create Faculty Account</button>
+  </form>
+
+  <p class="foot-text">The pre-saved invite login becomes invalid once your account is created.</p>
+</div>
+
+{% if show_welcome %}
+<div id="faculty-welcome-overlay" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px;box-sizing:border-box;">
+  <div role="dialog" aria-modal="true" aria-labelledby="faculty-welcome-title" style="background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:28px 26px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center;">
+    <h2 id="faculty-welcome-title" style="margin:0 0 8px;font-size:20px;color:var(--text);">Welcome faculty! Please set up your account!</h2>
+    <p style="margin:0 0 18px;font-size:14px;color:var(--muted);">Enter your new email address and password below to register your permanent faculty login.</p>
+    <button type="button" id="faculty-welcome-dismiss" class="btn-primary" style="width:100%;padding:11px;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;background:var(--blue);color:#fff;">Set Up My Account</button>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('faculty-welcome-overlay');
+  var dismiss = document.getElementById('faculty-welcome-dismiss');
+  var emailInput = document.getElementById('new_email');
+  if (dismiss && overlay) {
+    dismiss.addEventListener('click', function () {
+      overlay.style.display = 'none';
+      if (emailInput) { emailInput.focus(); }
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -239,11 +239,11 @@ class TestPasswordDomainGate:
         assert "error=1" in str(r.url)
         assert "gsad_session" not in client.cookies
 
-    def test_faculty_does_not_bypass_domain_gate(self, client):
+    def test_faculty_bypasses_domain_gate(self, client):
+        # Faculty are never domain-gated (setup + login accept any valid email).
         assert auth.create_user("prof@dev.crew", "secret123", "faculty", "Prof")
         r = client.post("/login", data={"email": "prof@dev.crew", "password": "secret123"})
-        assert str(r.url).endswith("?error=2")
-        assert "gsad_session" not in client.cookies
+        assert "gsad_session" in client.cookies
 
     def test_student_does_not_bypass_domain_gate(self, client):
         assert auth.create_user("stu1@dev.crew", "secret123", "student", "S")

@@ -2239,3 +2239,76 @@ def save_weekly_run(week_id: str, label: str, status: str, top_json: str) -> boo
         return False
 
 
+# ── faculty invites (one-time pre-saved login → real faculty account) ─────────
+
+def get_faculty_invite(email: str) -> Optional[dict]:
+    """Invite row for ``email`` (Postgres leg) or None. Never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT invite_email, password_hash, used, consumed_by, created_at "
+                "FROM faculty_invites WHERE invite_email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["used"] = int(data.get("used") or 0)
+            return data
+    except Exception as exc:
+        logger.warning("get_faculty_invite failed: %s", exc)
+        return None
+
+
+def upsert_faculty_invite(email: str, password_hash: str) -> bool:
+    """Mint/refresh an unused invite; consumed invites are never resurrected."""
+    email = (email or "").strip().lower()
+    if not email or not password_hash:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            existing = get_faculty_invite(email)
+            if existing is not None and int(existing.get("used") or 0) == 1:
+                return False
+            c.execute(
+                "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by) "
+                "VALUES (%s, %s, 0, '') "
+                "ON CONFLICT (invite_email) DO UPDATE SET password_hash = EXCLUDED.password_hash",
+                (email, password_hash),
+            )
+            return True
+    except Exception as exc:
+        logger.warning("upsert_faculty_invite failed: %s", exc)
+        return False
+
+
+def set_faculty_invite_used(email: str, consumed_by: str = "") -> bool:
+    """Flag an invite consumed (inserts a used tombstone for env invites)."""
+    email = (email or "").strip().lower()
+    consumed_by = (consumed_by or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            c.execute(
+                "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by) "
+                "VALUES (%s, '', 1, %s) "
+                "ON CONFLICT (invite_email) DO UPDATE SET used = 1, consumed_by = EXCLUDED.consumed_by",
+                (email, consumed_by),
+            )
+            return True
+    except Exception as exc:
+        logger.warning("set_faculty_invite_used failed: %s", exc)
+        return False
+
+

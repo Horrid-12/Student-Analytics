@@ -5,9 +5,12 @@ Public signup (email/password) only ever creates students; admin/faculty are
 created via the ``python -m app.seed_users`` bootstrap. Google sign-in upserts
 the verified email into the same ``users`` table, resolving roles from the
 ``ADMIN_EMAILS``/``FACULTY_EMAILS`` env allowlists first and a stored row second
-(defaulting to student). Both login paths enforce the ``ALLOWED_OAUTH_DOMAINS``
-allowlist server-side (email suffix match + Google ``hd``/``email_verified``
-claims are NEVER skipped), so only college addresses can authenticate.
+(defaulting to student). Student password login/signup and all Google sign-ins
+enforce the ``ALLOWED_OAUTH_DOMAINS`` allowlist server-side (email suffix
+match + Google ``hd``/``email_verified`` claims are NEVER skipped).
+Admin/faculty password logins bypass the domain gate (any valid email works);
+faculty one-time invites live in ``faculty_invites`` until /faculty-setup
+consumes them.
 
 Users are stored in a SQLite ``users`` table fail-safe like the
 analysis-history storage (BUG-020/021/022): a missing/locked DB denies auth
@@ -263,6 +266,282 @@ def verify_admin_bypass(email: str, password: str) -> dict | None:
     return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
 
 
+_FACULTY_INVITES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS faculty_invites (
+    invite_email TEXT NOT NULL PRIMARY KEY,
+    password_hash TEXT NOT NULL DEFAULT '',
+    used INTEGER NOT NULL DEFAULT 0,
+    consumed_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
+#: Short-lived cookie that proves the browser just authenticated with an
+#: unused faculty invite. The setup form requires it — the invite password
+#: alone is never enough to create the real faculty account.
+_FACULTY_SETUP_COOKIE = "gsad_faculty_setup"
+_FACULTY_SETUP_TTL_SECONDS = 30 * 60
+
+
+def faculty_invite_email() -> str:
+    """Pre-saved faculty invite address from env/secrets (single-invite
+    bootstrap for Vercel's read-only filesystem). Empty when unconfigured —
+    operators can also mint DB-backed invites via ``seed_users --invite``."""
+    return _env_or_secrets("FACULTY_INVITE_EMAIL").strip().lower()
+
+
+def faculty_invite_password_hash() -> str:
+    return _env_or_secrets("FACULTY_INVITE_PASSWORD_HASH").strip()
+
+
+def faculty_invite_password_plain() -> str:
+    """Plaintext fallback (``FACULTY_INVITE_PASSWORD``) so operators don't
+    have to pre-hash the invite password by hand. The hash env var wins."""
+    return _env_or_secrets("FACULTY_INVITE_PASSWORD")
+
+
+def _ensure_invites_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(_FACULTY_INVITES_SCHEMA)
+
+
+def get_faculty_invite(email: str) -> dict | None:
+    """Unused or used invite row for ``email`` (DB first, env fallback).
+
+    Returns a dict with ``invite_email``/``used``/``consumed_by`` keys, or
+    None when no invite exists. Never raises — storage failure yields None
+    (env fallback still applies when the DB is unreachable)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    if database.db_configured():
+        try:
+            row = db.get_faculty_invite(email)
+        except Exception:
+            row = None
+        if row is not None:
+            return row
+        # Env fallback below (a consumed env invite leaves a used=1 DB row,
+        # which the branch above already returned — so reaching here means
+        # the env invite is still fresh).
+        if email == faculty_invite_email() and (faculty_invite_password_hash() or faculty_invite_password_plain()):
+            return {"invite_email": email, "used": 0, "consumed_by": "", "password_hash": "", "env_backed": True}
+        return None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            _ensure_invites_schema(conn)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT invite_email, password_hash, used, consumed_by, created_at "
+                "FROM faculty_invites WHERE invite_email = ?",
+                (email,),
+            ).fetchone()
+        if row is not None:
+            return dict(row)
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("faculty-invite lookup failed: %s", exc)
+    if email == faculty_invite_email() and (faculty_invite_password_hash() or faculty_invite_password_plain()):
+        return {"invite_email": email, "used": 0, "consumed_by": "", "password_hash": "", "env_backed": True}
+    return None
+
+
+def create_faculty_invite(email: str, password: str) -> bool:
+    """Mint (or refresh) a one-time faculty invite. Returns True on success.
+
+    Idempotent: re-issuing an unused invite updates its password; a consumed
+    (used=1) invite is left untouched so a spent credential can never be
+    silently resurrected — delete the row first to re-issue deliberately."""
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return False
+    if get_user(email) is not None:
+        return False  # a real account already owns this address
+    hashed = hash_password(password)
+    if database.db_configured():
+        try:
+            return db.upsert_faculty_invite(email, hashed)
+        except Exception:
+            return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                _ensure_invites_schema(conn)
+                existing = conn.execute(
+                    "SELECT used FROM faculty_invites WHERE invite_email = ?", (email,)
+                ).fetchone()
+                if existing is not None and int(existing[0] or 0) == 1:
+                    return False
+                conn.execute(
+                    "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by, created_at) "
+                    "VALUES (?, ?, 0, '', ?) "
+                    "ON CONFLICT(invite_email) DO UPDATE SET password_hash = excluded.password_hash",
+                    (email, hashed, time.strftime("%Y-%m-%d %H:%M:%S UTC")),
+                )
+        return True
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("create_faculty_invite failed for %s: %s", email, exc)
+        return False
+
+
+def verify_faculty_invite(email: str, password: str) -> dict | None:
+    """Verify a one-time faculty invite login. Returns the invite dict when
+    ``email`` names an UNUSED invite and ``password`` matches; None otherwise
+    (unknown, already consumed, or wrong password). Consumed invites never
+    verify again — the pre-saved credential dies on first setup."""
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return None
+    invite = get_faculty_invite(email)
+    if invite is None or int(invite.get("used") or 0) == 1:
+        return None
+    stored = (invite.get("password_hash") or "").strip()
+    if stored:
+        if not verify_password(password, stored):
+            return None
+        return invite
+    # Env-backed invite (no DB row yet): hash var wins, else plaintext compare.
+    env_hash = faculty_invite_password_hash()
+    if env_hash:
+        if not verify_password(password, env_hash):
+            return None
+        return invite
+    plain = faculty_invite_password_plain()
+    if not plain or not hmac.compare_digest(password, plain):
+        return None
+    return invite
+
+
+def _mark_faculty_invite_used(invite_email: str, consumed_by: str) -> bool:
+    """Flag an invite consumed so the pre-saved credential stops verifying.
+    Inserts a used=1 tombstone for env-backed invites (Vercel-safe once
+    Postgres is configured; SQLite locally). Never raises."""
+    invite_email = (invite_email or "").strip().lower()
+    consumed_by = (consumed_by or "").strip().lower()
+    if not invite_email:
+        return False
+    if database.db_configured():
+        try:
+            return db.set_faculty_invite_used(invite_email, consumed_by)
+        except Exception:
+            return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                _ensure_invites_schema(conn)
+                cur = conn.execute(
+                    "INSERT INTO faculty_invites (invite_email, password_hash, used, consumed_by, created_at) "
+                    "VALUES (?, '', 1, ?, ?) "
+                    "ON CONFLICT(invite_email) DO UPDATE SET used = 1, consumed_by = excluded.consumed_by",
+                    (invite_email, consumed_by, time.strftime("%Y-%m-%d %H:%M:%S UTC")),
+                )
+                return (cur.rowcount or 0) > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("consume faculty invite failed for %s: %s", invite_email, exc)
+        return False
+
+
+def _faculty_bypass_name() -> str:
+    return _env_or_secrets("FACULTY_NAME", "Faculty")
+
+
+def faculty_bypass_eligible(email: str) -> bool:
+    """True when a non-college address is allowed to attempt a faculty bypass:
+    listed in the ``FACULTY_EMAILS`` env allowlist (Vercel-safe, no DB), or a
+    stored users row with the faculty role. Mirrors ``admin_bypass_eligible``
+    — faculty logins are never gated to the college domain."""
+    email = (email or "").strip().lower()
+    if email in _env_faculty_emails():
+        return True
+    user = get_user(email)
+    return bool(user and user.get("role") == "faculty")
+
+
+def verify_faculty_bypass(email: str, password: str) -> dict | None:
+    """Password-verify a faculty bypass attempt. For ``FACULTY_EMAILS``
+    allowlist entries the hash comes from the shared ``FACULTY_PASSWORD_HASH``
+    env var; stored faculty rows verify against their own hash. Returns the
+    user dict or None."""
+    email = (email or "").strip().lower()
+    if email in _env_faculty_emails():
+        env_hash = _env_or_secrets("FACULTY_PASSWORD_HASH")
+        if not env_hash or not verify_password(password, env_hash):
+            return None
+        return {"email": email, "role": "faculty", "name": _faculty_bypass_name()}
+    user = get_user(email)
+    if user is None or user.get("role") != "faculty":
+        return None
+    if not user.get("password_hash") or not verify_password(password, user["password_hash"]):
+        return None
+    return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+
+
+def complete_faculty_setup(invite_email: str, new_email: str, password: str, name: str = "") -> tuple[dict | None, str]:
+    """Consume an unused invite and register the real faculty account.
+
+    Faculty addresses are NOT gated to the college domain — any valid email
+    works. Returns ``(user_dict, "")`` on success, ``(None, code)`` otherwise
+    where code is one of ``bad_invite`` (unknown/consumed), ``bad_email``,
+    ``taken`` (address registered), ``weak_password`` (<6 chars),
+    ``storage_unavailable``. Never raises."""
+    invite_email = (invite_email or "").strip().lower()
+    new_email = (new_email or "").strip().lower()
+    name = (name or "").strip()
+    invite = get_faculty_invite(invite_email)
+    if invite is None or int(invite.get("used") or 0) == 1:
+        return None, "bad_invite"
+    if not new_email or "@" not in new_email:
+        return None, "bad_email"
+    if len(password or "") < 6:
+        return None, "weak_password"
+    if get_user(new_email) is not None:
+        return None, "taken"
+    user = create_user(new_email, password, role="faculty", name=name)
+    if user is None:
+        return None, "storage_unavailable"
+    _mark_faculty_invite_used(invite_email, new_email)
+    user.pop("password_hash", None)
+    return user, ""
+
+
+def create_faculty_setup_token(invite_email: str) -> str:
+    """Short-lived proof that ``invite_email`` just passed invite auth."""
+    payload = {
+        "invite_email": (invite_email or "").strip().lower(),
+        "purpose": "faculty_setup",
+        "exp": int(time.time()) + _FACULTY_SETUP_TTL_SECONDS,
+    }
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+    digest = base64.urlsafe_b64encode(
+        hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
+    ).decode("ascii").rstrip("=")
+    return f"{body}.{digest}"
+
+
+def read_faculty_setup_token(token: str | None) -> str | None:
+    """Return the invite email when ``token`` is a live setup token, else None."""
+    if not token:
+        return None
+    try:
+        body, digest = token.split(".", 1)
+        expected = base64.urlsafe_b64encode(
+            hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
+        ).decode("ascii").rstrip("=")
+        if not hmac.compare_digest(digest, expected):
+            return None
+        padded = body + "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        if payload.get("purpose") != "faculty_setup":
+            return None
+        if int(payload.get("exp", 0)) < time.time():
+            return None
+        invite_email = str(payload.get("invite_email") or "").strip().lower()
+        return invite_email or None
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return None
+
+
 def authorize_domain(claims: dict) -> bool:
     """Server-side Google domain gate (spec item H).
 
@@ -317,13 +596,14 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def init_db() -> bool:
-    """Create the users table if needed. Returns True when usable."""
+    """Create the users + faculty-invites tables if needed. Returns True when usable."""
     if database.db_configured():
         return db.init_schema()
     try:
         with closing(_connect()) as conn:
             with conn:
                 _ensure_schema(conn)
+                _ensure_invites_schema(conn)
         return True
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Unable to initialize users storage: %s", exc)

@@ -219,6 +219,7 @@ Everything goes in **`.env.local`** (gitignored, auto-loaded at startup by `app/
 | `DATABASE_URL_UNPOOLED` / `UNPOOLED` | Optional | Direct (non-pooled) connection used for schema DDL. |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Optional | Cross-instance GitHub response cache; absent → in-process cache. |
 | `ADMIN_EMAILS`, `FACULTY_EMAILS`, `ADMIN_PASSWORD_HASH`, `ADMIN_NAME` | Optional | Staff roles for password logins without a pre-seeded database row. |
+| `FACULTY_INVITE_EMAIL` + `FACULTY_INVITE_PASSWORD_HASH` (or `FACULTY_INVITE_PASSWORD`) | Optional | One-time pre-saved faculty login — first sign-in forces `/faculty-setup` (welcome popup → new email + password), then the invite stops working. DB invites via `python -m app.seed_users EMAIL PASS faculty --invite`. |
 | `SYNC_TTL_SECONDS` | Optional (default `3600`) | Snapshot freshness window — younger snapshots are skipped during a sweep. |
 | `APP_URL` | GitHub Actions secret | Base URL the Heavy Sync workflow calls; not read by the app itself. |
 | `TEST_DATABASE_URL` | Test only | Enables `tests/test_db_layer.py`. |
