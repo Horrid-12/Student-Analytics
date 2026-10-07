@@ -1871,6 +1871,8 @@ async def hr_snapshot_ingest(request: Request):
         }
     _save_hr_snapshot(handle, snapshot)
     return JSONResponse(content={"status": "ok", "handle": handle})
+
+@app.post("/api/sync/single/{email:path}")
 async def sync_single_student(email: str, request: Request):
     """Client-orchestrated heavy sync for a single student.
     Accepts admin/faculty session OR CRON_SECRET (for GitHub Actions)."""
