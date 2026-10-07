@@ -932,6 +932,11 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         fall back to lowercase text for non-numeric divisions."""
         m = re.search(r'\d+', name)
         return (0, int(m.group(0)), name.lower()) if m else (1, 0, name.lower())
+
+    def _sem_sort_key(name: str):
+        """Same numeric sort for semester labels ("Semester 3" -> 3)."""
+        m = re.search(r'\d+', str(name))
+        return (0, int(m.group(0)), str(name).lower()) if m else (1, 0, str(name).lower())
     _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, _div_sort_key(c["name"])))
 
     _radar_series = []
@@ -961,14 +966,53 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         except Exception:
             continue
 
-    # Dropdown groups for the picker (one <optgroup> per batch).
-    _cohort_groups = []
-    _last_group = None
+    # Semester cohorts: one comparable series per semester present, measured
+    # with the same formulas. Keys are namespaced so they never collide with
+    # the batch|division cohort keys.
+    _sem_cohorts = []
+    if _all_students is not None and not _all_students.empty and "Semester" in _all_students.columns:
+        try:
+            _sem_vals = sorted(
+                {str(v).strip() for v in _all_students["Semester"].dropna().astype(str).tolist()},
+                key=_sem_sort_key,
+            )
+        except Exception:
+            _sem_vals = []
+        for _sem in _sem_vals:
+            if not _sem or _sem.lower() in {"nan", "none", "unknown"}:
+                continue
+            try:
+                _sem_slice = _all_students[_all_students["Semester"].astype(str).str.strip() == _sem]
+                _sem_users = _cohort_usernames(_sem_slice)
+                _sem_key = f"semester|{_sem}"
+                _sem_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_sem_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+                _radar_series.append({"key": _sem_key, "kind": "cohort", "group": "Semester", "name": _sem, "label": _sem, "values": _radar_metric_values(_sem_slice, _sem_score)})
+                _sem_cohorts.append({"key": _sem_key, "name": _sem})
+            except Exception:
+                continue
+
+    # Picker model for the custom Compare dropdown: divisions (clean values
+    # only) with the batch buttons offered per division, plus the semester
+    # filters. Every offered key is guaranteed a series above.
+    def _batch_sort_key(label: str):
+        m = re.search(r"\d+", str(label))
+        return (0, int(m.group(0)), str(label).lower()) if m else (1, 0, str(label).lower())
+
+    _compare_divisions = []
+    _compare_index: dict[str, dict] = {}
     for _c in _cohort_rows:
-        if _c["group"] != _last_group:
-            _cohort_groups.append({"label": _c["group"], "options": []})
-            _last_group = _c["group"]
-        _cohort_groups[-1]["options"].append({"key": _c["key"], "name": _c["name"]})
+        if not _c.get("div") or not _c.get("batch"):
+            continue
+        entry = _compare_index.get(_c["div"])
+        if entry is None:
+            entry = {"division": f"Division {_c['div']}", "batches": []}
+            _compare_index[_c["div"]] = entry
+            _compare_divisions.append(entry)
+        if not any(b["batch"] == _c["batch"] for b in entry["batches"]):
+            entry["batches"].append({"batch": _c["batch"], "key": _c["key"]})
+    _compare_divisions.sort(key=lambda e: _div_sort_key(e["division"]))
+    for entry in _compare_divisions:
+        entry["batches"].sort(key=lambda b: _batch_sort_key(b["batch"]))
 
     # Axis normalization: percentage axes are exact 0–100; count axes scale to
     # 1.5× the largest value seen across all series (with a readable floor).
@@ -987,7 +1031,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         ],
         "series": _radar_series,
         "active": _radar_active,
-        "cohort_groups": _cohort_groups,
+        "compare_divisions": _compare_divisions,
+        "compare_semesters": _sem_cohorts,
         "has_current": _has_current,
         "current_label": _current_label,
     }

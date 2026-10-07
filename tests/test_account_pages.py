@@ -500,18 +500,81 @@ class TestFacultyOverviewPersonalization:
     def test_my_classes_toggle_off_shows_whole_fleet(self, class_fleet):
         client = self._faculty_client({"3": ["1"]})
         on = client.get("/", headers={"accept": "text/html"}).text
-        assert "My Classes" in on
+        assert 'id="my-classes-btn"' in on
         assert "mine=0" in on  # button flips the toggle off
         assert 'aria-pressed="true"' in on
         body = client.get("/?mine=0", headers={"accept": "text/html"}).text
         assert 'value="5"' in body  # full fleet back
         assert "Showing your classes" not in body
-        assert "My Classes" in body
+        assert 'id="my-classes-btn"' in body
         assert "mine=1" in body  # button flips back on
         assert 'aria-pressed="false"' in body
 
     def test_my_classes_hidden_without_teaching_and_for_other_roles(self, class_fleet):
         body = self._overview(self._faculty_client())
-        assert "My Classes" not in body  # nothing taught yet -> nudge instead
+        assert 'id="my-classes-btn"' not in body  # nothing taught yet -> nudge instead
         admin, _ = make_client("admin")
-        assert "My Classes" not in self._overview(admin)
+        assert 'id="my-classes-btn"' not in self._overview(admin)
+
+
+class TestRadarComparePicker:
+    """Overview radar Compare control: custom dropdown (no native select),
+    semester filters, division rows with batch buttons."""
+
+    @pytest.fixture
+    def radar_fleet(self):
+        _seed_approved_student("radar-a@college.edu", "Radar A", "4000000001", "3", "1", "hr_ra")
+        _seed_approved_student("radar-b@college.edu", "Radar B", "4000000002", "3", "2", "hr_rb")
+        _seed_approved_student("radar-c@college.edu", "Radar C", "4000000003", "5", "1", "hr_rc")
+        assert auth.create_user("radar-d@college.edu", "secret123", "student", "Radar D")
+        ok, err = auth.submit_onboarding(
+            "radar-d@college.edu", "4000000004", "Core", "5",
+            main_batch="Batch 2022", practical_batch="1", semester="Semester 4",
+            hackerrank_username="hr_rd",
+        )
+        assert ok, err
+        assert auth.set_onboarding_status("radar-d@college.edu", "approved")[0]
+
+    def _overview(self, client):
+        r = client.get("/", headers={"accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 200
+        return r.text
+
+    def test_compare_markup(self, radar_fleet):
+        client, _ = make_client("admin")
+        body = self._overview(client)
+        assert 'id="radar-compare-btn"' in body
+        assert "radar-cohort-select" not in body  # native select gone
+        assert "<optgroup" not in body
+        assert "Compare class" not in body  # ghost header gone
+        assert "whole roster" not in body
+        assert "Dashed line = average" not in body  # caption gone
+        assert "Semester-wise filters" in body
+        assert "Division 3" in body and "Division 5" in body
+        for key in ("current", "overall", "semester|Semester 3", "semester|Semester 4",
+                    "1|3", "2|3", "1|5"):
+            assert f'data-compare-key="{key}"' in body, key
+
+    def test_every_offered_key_has_a_series(self, radar_fleet):
+        view = views.fleet_view()
+        payload = views.overview_payload(view, query="", division="All", batch="All", semester="All")
+        rd = payload["radar_data"]
+        assert "cohort_groups" not in rd
+        series = {s["key"]: s for s in rd["series"]}
+        assert series["semester|Semester 3"]["kind"] == "cohort"
+        offered = ["current", "overall"]
+        offered += [s["key"] for s in rd["compare_semesters"]]
+        for div in rd["compare_divisions"]:
+            offered += [b["key"] for b in div["batches"]]
+        assert [k for k in offered if k not in series] == []
+        assert {d["division"] for d in rd["compare_divisions"]} == {"Division 3", "Division 5"}
+        assert {s["name"] for s in rd["compare_semesters"]} == {"Semester 3", "Semester 4"}
+
+    def test_panel_follows_faculty_scope(self, radar_fleet):
+        client = TestClient(app)
+        assert auth.create_faculty("radar-pf@college.edu", "secret123", "Prof")
+        assert auth.set_faculty_teaching("radar-pf@college.edu", {"3": ["1", "2"]}) == (True, "")
+        client.post("/login", data={"email": "radar-pf@college.edu", "password": "secret123"})
+        panel = self._overview(client).split('id="radar-compare-panel"')[1].split("radar-clear-btn")[0]
+        assert "Division 3" in panel
+        assert "Division 5" not in panel  # untaught division not offered

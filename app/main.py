@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, database, db, github_client, google_oauth, hackerrank_client, monthly, services, storage, support, sync, views, view_cache, weekly
 from app.hackerrank_client.service import (
     decode_badges,
     decode_profile_model,
