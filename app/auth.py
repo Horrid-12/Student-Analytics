@@ -628,7 +628,7 @@ def complete_faculty_setup(invite_email: str, new_email: str, password: str, nam
     """Consume an unused invite and register the real faculty account.
 
     Faculty addresses are NOT gated to the college domain — any valid email
-    works. Returns ``(user_dict, "")`` on success, ``(None, code)`` otherwise
+    works.     Returns ``(user_dict, "")`` on success, ``(None, code)`` otherwise
     where code is one of ``bad_invite`` (unknown/consumed), ``bad_email``,
     ``taken`` (address registered), ``weak_password`` (<6 chars),
     ``storage_unavailable``. Never raises."""
@@ -642,7 +642,20 @@ def complete_faculty_setup(invite_email: str, new_email: str, password: str, nam
         return None, "bad_email"
     if len(password or "") < 6:
         return None, "weak_password"
-    if get_account(new_email) is not None:
+    if get_user(new_email) is not None:
+        return None, "taken"
+    existing_fac = get_faculty(new_email)
+    if existing_fac is not None:
+        # Retry-after-orphan: a previous setup attempt stored this account but
+        # its read-back missed the uncommitted row (pre-fix Postgres bug), so
+        # the user saw a false failure. The password proves ownership — adopt
+        # the account and consume the invite instead of crying "taken".
+        # (Passwordless Google-created rows have no hash to match, so they
+        # stay "taken" and keep signing in via Google, mirroring BUG-131.)
+        if verify_password(password or "", existing_fac.get("password_hash")):
+            _mark_faculty_invite_used(invite_email, new_email)
+            existing_fac.pop("password_hash", None)
+            return existing_fac, ""
         return None, "taken"
     user = create_faculty(new_email, password, name=name)
     if user is None:

@@ -1488,7 +1488,25 @@ def upsert_user(
                 "linkedin_sub = COALESCE(NULLIF(EXCLUDED.linkedin_sub,''), users.linkedin_sub)",
                 (email, password_hash, role, name, auth_source, google_sub, github_username, linkedin_sub),
             )
-            return get_user_by_email(email)
+            # Same-connection read-back: get_user_by_email() opens a SEPARATE
+            # pooled connection which cannot see this still-uncommitted row
+            # (READ COMMITTED) — reading through it always misses, the caller
+            # reports failure, and the row commits anyway ("error shown, but
+            # the account was created"). Never read-your-write across
+            # connections here.
+            cur = c.execute(
+                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, "
+                "github_username, linkedin_sub, "
+                "linked_github_username, linked_github_avatar, linked_linkedin_name, "
+                "linked_linkedin_avatar, profile_source, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester, hackerrank_username "
+                "FROM users WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("upsert_user failed: %s", exc)
         return None
@@ -2181,7 +2199,19 @@ def create_faculty(email: str, password_hash: str, name: str = "") -> Optional[d
                 "VALUES (%s, %s, %s, 'password')",
                 (email, password_hash, (name or "").strip()),
             )
-            return get_faculty_by_email(email)
+            # Same-connection read-back (see upsert_user): a cross-connection
+            # read here would miss the uncommitted row and falsely report
+            # failure while the row still commits.
+            cur = c.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["role"] = "faculty"
+            return data
     except Exception as exc:
         logger.warning("create_faculty failed: %s", exc)
         return None
@@ -2213,7 +2243,17 @@ def upsert_faculty(
                 "google_sub = COALESCE(NULLIF(EXCLUDED.google_sub, ''), faculty.google_sub)",
                 (email, password_hash, (name or "").strip(), auth_source, google_sub or ""),
             )
-            return get_faculty_by_email(email)
+            # Same-connection read-back (see upsert_user).
+            cur = c.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["role"] = "faculty"
+            return data
     except Exception as exc:
         logger.warning("upsert_faculty failed: %s", exc)
         return None
