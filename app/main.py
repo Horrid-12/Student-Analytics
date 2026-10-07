@@ -717,7 +717,7 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         try:
             # Memoised: every page renders this row (sidebar + settings identity)
             # and each fetch is a full Neon round trip (Lag Fix).
-            user_row = _memo(f"user:{email}", lambda: auth.get_user(email))
+            user_row = _memo(f"user:{email}", lambda: auth.get_account(email))
             if (role or "") == "student":
                 identity = auth.github_sidebar_identity(user_row)
             else:
@@ -893,7 +893,8 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
     # faculty accounts (faculty are never domain-gated — setup + login accept
     # any valid email).
     if auth.domain_allowed_email(email):
-        user = auth.verify_login(email, password)
+        # Both tables: students/admins in users, faculty in faculty.
+        user = auth.verify_account_login(email, password)
         if user is None:
             _db_log_event("login_failed", email)
             return RedirectResponse("/login?error=1", status_code=302)
@@ -956,7 +957,8 @@ async def signup_submit(
         return RedirectResponse("/signup?error=2", status_code=302)
     # Already-registered addresses (e.g. created via Google sign-in) get their
     # own banner — the generic "check your details" one sends users in circles.
-    if auth.get_user(email) is not None:
+    # Faculty-table addresses count too (one address, one account, either table).
+    if auth.get_account(email) is not None:
         return RedirectResponse("/signup?error=3", status_code=302)
     user = auth.create_user(email, password, role="student", name=name)
     if user is None:
@@ -1010,12 +1012,14 @@ async def faculty_setup_submit(
         return RedirectResponse("/faculty-setup?error=mismatch", status_code=302)
     user, code = auth.complete_faculty_setup(invite_email, new_email, password, name)
     if user is None:
-        # Storage failure bounces to login (fail-safe); validation codes stay
-        # on the setup page with a targeted banner.
+        # Every failure stays on the setup page with a targeted banner. In
+        # particular a storage failure must NOT bounce to /login?error=1 — the
+        # account was never created, so "invalid username or password" is a
+        # lie, and the invite is still unused so the setup cookie is kept for
+        # an honest retry.
         if code == "storage_unavailable":
-            response = RedirectResponse("/login?error=1", status_code=302)
-            response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
-            return response
+            _db_log_event("faculty_setup_storage_failed", invite_email)
+            return RedirectResponse("/faculty-setup?error=storage_unavailable", status_code=302)
         return RedirectResponse(f"/faculty-setup?error={code}", status_code=302)
     _db_log_event("faculty_setup_complete", user.get("email", ""))
     response = RedirectResponse("/", status_code=302)
@@ -1138,7 +1142,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
     # Phase 5.4: full user row (onboarding status + verified GitHub handle);
     # the OAuth upsert returns a slim dict, so re-fetch for sync + landing.
     try:
-        full_user = auth.get_user(email) or user
+        full_user = auth.get_account(email) or user
     except Exception:
         full_user = user
     await asyncio.to_thread(_self_sync_on_login, full_user)
@@ -1217,7 +1221,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         # own pages populate right after linking (the session cookie carries no
         # github_username, so mid-session pages can't self-sync on their own).
         try:
-            linked = auth.get_user(user["email"]) or user
+            linked = auth.get_account(user["email"]) or user
             if str(linked.get("github_username") or "").strip():
                 oauth_tok = claims.get("access_token") or github_client.load_token()
                 await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
@@ -3194,7 +3198,7 @@ def settings_page(request: Request, linked: str = ""):
     # _base_context already fetched this row for the sidebar — reuse it.
     row = getattr(request.state, "user_row", None)
     if row is None and user:
-        row = auth.get_user(user.get("email", ""))
+        row = auth.get_account(user.get("email", ""))
     identity = auth.linked_identity(row)
     
     hackerrank_handle = ""

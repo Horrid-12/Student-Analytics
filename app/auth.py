@@ -12,9 +12,10 @@ Admin/faculty password logins bypass the domain gate (any valid email works);
 faculty one-time invites live in ``faculty_invites`` until /faculty-setup
 consumes them.
 
-Users are stored in a SQLite ``users`` table fail-safe like the
-analysis-history storage (BUG-020/021/022): a missing/locked DB denies auth
-with a friendly error but must never crash the app. On Vercel's read-only
+Users are stored in a SQLite ``users`` table (faculty live in a separate
+``faculty`` table, never in ``users``) fail-safe like the analysis-history
+storage (BUG-020/021/022): a missing/locked DB denies auth with a friendly
+error but must never crash the app. On Vercel's read-only
 volume this database does not persist — role resolution falls back to the env
 allowlists, so Google sign-in works there with zero DB writes; signups/logins
 only survive on hosts with a writable filesystem until Phase 4.8 moves accounts
@@ -151,6 +152,29 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
+)
+"""
+
+#: Faculty live in their own table — never in ``users``. Same identity columns
+#: as users (password/avatar/linked OAuth identities) but no academic or
+#: onboarding columns (faculty never onboard as students). Readers use .get()
+#: so a faculty row flows through sidebar/identity helpers unchanged.
+_FACULTY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS faculty (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    auth_source TEXT NOT NULL DEFAULT 'password',
+    google_sub TEXT NOT NULL DEFAULT '',
+    github_username TEXT NOT NULL DEFAULT '',
+    linkedin_sub TEXT NOT NULL DEFAULT '',
+    linked_github_username TEXT NOT NULL DEFAULT '',
+    linked_github_avatar TEXT NOT NULL DEFAULT '',
+    linked_linkedin_name TEXT NOT NULL DEFAULT '',
+    linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
+    profile_source TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -355,7 +379,7 @@ def create_faculty_invite(email: str, password: str) -> bool:
     email = (email or "").strip().lower()
     if not email or not password:
         return False
-    if get_user(email) is not None:
+    if get_account(email) is not None:
         return False  # a real account already owns this address
     hashed = hash_password(password)
     if database.db_configured():
@@ -502,7 +526,7 @@ def mint_next_faculty_invite() -> tuple[str | None, str]:
                 continue
     for number in range(highest + 1, highest + 1001):
         email = f"{FACULTY_KEY_PREFIX}{number}@{FACULTY_KEY_DOMAIN}"
-        if get_user(email) is not None:
+        if get_account(email) is not None:
             continue  # someone chose this pattern as their setup email — skip
         password = generate_faculty_key_password(10)
         if create_faculty_invite(email, password):
@@ -575,32 +599,29 @@ def _faculty_bypass_name() -> str:
 def faculty_bypass_eligible(email: str) -> bool:
     """True when a non-college address is allowed to attempt a faculty bypass:
     listed in the ``FACULTY_EMAILS`` env allowlist (Vercel-safe, no DB), or a
-    stored users row with the faculty role. Mirrors ``admin_bypass_eligible``
-    — faculty logins are never gated to the college domain."""
+    row in the separate faculty table. Mirrors ``admin_bypass_eligible`` —
+    faculty logins are never gated to the college domain."""
     email = (email or "").strip().lower()
     if email in _env_faculty_emails():
         return True
-    user = get_user(email)
-    return bool(user and user.get("role") == "faculty")
+    return get_faculty(email) is not None
 
 
 def verify_faculty_bypass(email: str, password: str) -> dict | None:
     """Password-verify a faculty bypass attempt. For ``FACULTY_EMAILS``
     allowlist entries the hash comes from the shared ``FACULTY_PASSWORD_HASH``
-    env var; stored faculty rows verify against their own hash. Returns the
-    user dict or None."""
+    env var; stored faculty-table rows verify against their own hash. Returns
+    the user dict or None."""
     email = (email or "").strip().lower()
     if email in _env_faculty_emails():
         env_hash = _env_or_secrets("FACULTY_PASSWORD_HASH")
         if not env_hash or not verify_password(password, env_hash):
             return None
         return {"email": email, "role": "faculty", "name": _faculty_bypass_name()}
-    user = get_user(email)
-    if user is None or user.get("role") != "faculty":
+    user = verify_faculty_login(email, password)
+    if user is None:
         return None
-    if not user.get("password_hash") or not verify_password(password, user["password_hash"]):
-        return None
-    return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
+    return {"email": user["email"], "role": "faculty", "name": user.get("name", "")}
 
 
 def complete_faculty_setup(invite_email: str, new_email: str, password: str, name: str = "") -> tuple[dict | None, str]:
@@ -621,9 +642,9 @@ def complete_faculty_setup(invite_email: str, new_email: str, password: str, nam
         return None, "bad_email"
     if len(password or "") < 6:
         return None, "weak_password"
-    if get_user(new_email) is not None:
+    if get_account(new_email) is not None:
         return None, "taken"
-    user = create_user(new_email, password, role="faculty", name=name)
+    user = create_faculty(new_email, password, name=name)
     if user is None:
         return None, "storage_unavailable"
     _mark_faculty_invite_used(invite_email, new_email)
@@ -692,14 +713,16 @@ def authorize_domain(claims: dict) -> bool:
 
 def resolve_google_role(email: str) -> str:
     """Role for a Google sign-in: ``ADMIN_EMAILS``/``FACULTY_EMAILS`` allowlists
-    (Vercel-safe, no DB), then a stored users row (seeded faculty/admin keep
-    their role), else a student."""
+    (Vercel-safe, no DB), then the faculty table, then a stored users row
+    (seeded admin keeps its role), else a student."""
     email = (email or "").strip().lower()
     admin = _env_admin_emails()
     facility = _env_faculty_emails()
     if email in admin:
         return "admin"
     if email in facility:
+        return "faculty"
+    if get_faculty(email) is not None:
         return "faculty"
     existing = get_user(email)
     if existing is not None:
@@ -719,15 +742,42 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     for column, declaration in _EXTRA_COLUMNS:
         if column not in existing:
             conn.execute(f"ALTER TABLE users ADD COLUMN {column} {declaration}")
+    # Faculty split: every users-table touch also guarantees the faculty table
+    # and drains legacy users.role='faculty' rows into it (tiny tables, cheap).
+    _ensure_faculty_schema(conn)
+
+
+def _ensure_faculty_schema(conn: sqlite3.Connection) -> None:
+    """Create the faculty table and move any legacy ``users.role='faculty'``
+    rows into it (one-way migration from before the split). Idempotent and
+    best-effort — a row is only deleted from ``users`` after it lands in
+    ``faculty``. Never raises."""
+    conn.execute(_FACULTY_SCHEMA)
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO faculty "
+            "(email, password_hash, name, created_at, auth_source, google_sub, "
+            "github_username, linkedin_sub, linked_github_username, "
+            "linked_github_avatar, linked_linkedin_name, linked_linkedin_avatar, "
+            "profile_source) "
+            "SELECT email, password_hash, name, created_at, auth_source, google_sub, "
+            "github_username, linkedin_sub, linked_github_username, "
+            "linked_github_avatar, linked_linkedin_name, linked_linkedin_avatar, "
+            "profile_source FROM users WHERE role = 'faculty'"
+        )
+        conn.execute("DELETE FROM users WHERE role = 'faculty'")
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("faculty migration failed: %s", exc)
 
 
 def init_db() -> bool:
-    """Create the users + faculty-invites tables if needed. Returns True when usable."""
+    """Create the users + faculty + faculty-invites tables if needed. Returns True when usable."""
     if database.db_configured():
         return db.init_schema()
     try:
         with closing(_connect()) as conn:
             with conn:
+                # _ensure_schema also guarantees the faculty table + migration.
                 _ensure_schema(conn)
                 _ensure_invites_schema(conn)
         return True
@@ -772,6 +822,9 @@ def upsert_google_user(email: str, name: str, google_sub: str, role: str = "stud
         return None
     if role not in ROLES:
         role = "student"
+    if role == "faculty":
+        # Faculty Google sign-ins land in the faculty table, never users.
+        return _upsert_faculty_google_user(email, name, google_sub)
     if database.db_configured():
         user = db.upsert_user(
             email=email,
@@ -807,6 +860,49 @@ def upsert_google_user(email: str, name: str, google_sub: str, role: str = "stud
         return {"email": user["email"], "role": user["role"], "name": user.get("name", "")}
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Google upsert failed for %s: %s", email, exc)
+        return None
+
+
+def _upsert_faculty_google_user(email: str, name: str, google_sub: str) -> dict | None:
+    """Create or update a Google-authenticated faculty row (faculty table only).
+    Never clobbers an existing password_hash. Returns the slim session dict."""
+    email = (email or "").strip().lower()
+    if database.db_configured():
+        try:
+            user = db.upsert_faculty(
+                email=email,
+                name=(name or "").strip(),
+                password_hash=None,
+                auth_source="google",
+                google_sub=google_sub or "",
+            )
+        except Exception:
+            return None
+        if user is None:
+            return None
+        return {"email": user.get("email", email), "role": "faculty", "name": user.get("name", "")}
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO faculty (email, password_hash, name, created_at, auth_source, google_sub)
+                    VALUES (?, NULL, ?, ?, 'google', ?)
+                    ON CONFLICT(email) DO UPDATE SET
+                        name = excluded.name,
+                        auth_source = 'google',
+                        google_sub = excluded.google_sub
+                    """,
+                    (email, (name or "").strip(), now, google_sub or ""),
+                )
+        user = get_faculty(email)
+        if user is None:
+            return None
+        return {"email": user["email"], "role": "faculty", "name": user.get("name", "")}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Faculty Google upsert failed for %s: %s", email, exc)
         return None
 
 
@@ -898,18 +994,41 @@ def upsert_linkedin_user(email: str, name: str, linkedin_sub: str, role: str = "
         return None
 
 
+def _owns_faculty_row(email: str) -> bool:
+    """True when ``email`` lives in the faculty table (link writes route there).
+    Read-only probe — guarantees the table exists (DDL autocommits) but never
+    writes rows, so it is safe to call outside a transaction."""
+    if database.db_configured():
+        try:
+            return db.get_faculty_by_email(email) is not None
+        except Exception:
+            return False
+    try:
+        with closing(_connect()) as conn:
+            conn.execute(_FACULTY_SCHEMA)
+            row = conn.execute("SELECT 1 FROM faculty WHERE email = ?", (email,)).fetchone()
+        return row is not None
+    except (sqlite3.Error, OSError):
+        return False
+
+
 def link_github_username(email: str, github_username: str) -> bool:
     email = (email or "").strip().lower()
     if database.db_configured():
-        linked = db.link_github_username(email, github_username)
+        if _owns_faculty_row(email):
+            linked = db.link_faculty_github_username(email, github_username)
+        else:
+            linked = db.link_github_username(email, github_username)
         if linked:
             view_cache.invalidate()  # fleet rows carry GitHub_Username
         return linked
+    faculty_owned = _owns_faculty_row(email)
     try:
         with closing(_connect()) as conn:
             with conn:
                 _ensure_schema(conn)
-                conn.execute("UPDATE users SET github_username = ? WHERE email = ?", (github_username, email))
+                table = "faculty" if faculty_owned else "users"
+                conn.execute(f"UPDATE {table} SET github_username = ? WHERE email = ?", (github_username, email))
         return True
     except (sqlite3.Error, OSError):
         return False
@@ -917,14 +1036,18 @@ def link_github_username(email: str, github_username: str) -> bool:
 
 def link_linkedin_sub(email: str, linkedin_sub: str) -> bool:
     email = (email or "").strip().lower()
+    faculty_owned = _owns_faculty_row(email)
     try:
         if database.db_configured():
+            if faculty_owned:
+                return db.link_faculty_linkedin_sub(email, linkedin_sub)
             return db.link_linkedin_sub(email, linkedin_sub)
         try:
             with closing(_connect()) as conn:
                 with conn:
                     _ensure_schema(conn)
-                    conn.execute("UPDATE users SET linkedin_sub = ? WHERE email = ?", (linkedin_sub, email))
+                    table = "faculty" if faculty_owned else "users"
+                    conn.execute(f"UPDATE {table} SET linkedin_sub = ? WHERE email = ?", (linkedin_sub, email))
             return True
         except (sqlite3.Error, OSError):
             return False
@@ -940,12 +1063,17 @@ def new_oauth_state() -> str:
 
 def create_user(email: str, password: str, role: str = "student", name: str = "") -> dict | None:
     """Create a user. Returns the user dict, or None when the email is already
-    taken or the database is unavailable."""
+    taken or the database is unavailable. ``role="faculty"`` routes to the
+    separate faculty table — faculty are never stored in ``users``."""
     email = (email or "").strip().lower()
     if not email or not password:
         return None
     if role not in ROLES:
         role = "student"
+    if role == "faculty":
+        return create_faculty(email, password, name)
+    if get_faculty(email) is not None:
+        return None  # email already taken by a faculty account
     if not init_db():
         return None
     if database.db_configured():
@@ -1001,12 +1129,142 @@ def get_user(email: str) -> dict | None:
 
 
 def verify_login(email: str, password: str) -> dict | None:
-    """Authenticate. Returns the user dict (without the hash) on success."""
+    """Authenticate against the users table. Returns the user dict (without
+    the hash) on success. Faculty live in their own table — see
+    ``verify_account_login`` for the both-tables check used at sign-in."""
     user = get_user(email)
     if user is None or not verify_password(password, user["password_hash"]):
         return None
     user.pop("password_hash", None)
     return user
+
+
+_FACULTY_COLUMNS = (
+    "id, email, password_hash, name, created_at, auth_source, google_sub, "
+    "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+)
+
+
+def get_faculty(email: str) -> dict | None:
+    """One faculty row by email, or None. The returned dict carries
+    ``role="faculty"`` so role-driven code (sessions, nav, sidebar) works
+    unchanged. Never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    if database.db_configured():
+        try:
+            row = db.get_faculty_by_email(email)
+        except Exception:
+            return None
+        if row is None:
+            return None
+        return {**row, "role": "faculty"}
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            row = conn.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = ?",
+                (email,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {**dict(row), "role": "faculty"}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Faculty lookup failed: %s", exc)
+        return None
+
+
+def get_account(email: str) -> dict | None:
+    """Whichever account owns ``email`` — users table first, faculty table
+    second (addresses are unique across both). None when unknown."""
+    user = get_user(email)
+    if user is not None:
+        return user
+    return get_faculty(email)
+
+
+def create_faculty(email: str, password: str, name: str = "") -> dict | None:
+    """Register a faculty account in the separate faculty table. Returns the
+    faculty dict, or None when the email is taken (either table) or the
+    database is unavailable."""
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return None
+    if get_user(email) is not None or get_faculty(email) is not None:
+        return None  # email already taken
+    if not init_db():
+        return None
+    if database.db_configured():
+        try:
+            return db.create_faculty(
+                email=email,
+                password_hash=hash_password(password),
+                name=(name or "").strip(),
+            )
+        except Exception:
+            return None
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                conn.execute(
+                    "INSERT INTO faculty (email, password_hash, name, created_at, auth_source) "
+                    "VALUES (?, ?, ?, ?, 'password')",
+                    (email, hash_password(password), (name or "").strip(),
+                     time.strftime("%Y-%m-%d %H:%M:%S UTC")),
+                )
+        return get_faculty(email)
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Faculty signup failed for %s: %s", email, exc)
+        return None
+
+
+def verify_faculty_login(email: str, password: str) -> dict | None:
+    """Authenticate against the faculty table. Returns the faculty dict
+    (without the hash) on success."""
+    user = get_faculty(email)
+    if user is None or not verify_password(password, user.get("password_hash")):
+        return None
+    user.pop("password_hash", None)
+    return user
+
+
+def verify_account_login(email: str, password: str) -> dict | None:
+    """Authenticate against both tables (users, then faculty). Used by the
+    sign-in route so faculty sign in with the same form. Never raises."""
+    user = verify_login(email, password)
+    if user is not None:
+        return user
+    return verify_faculty_login(email, password)
+
+
+def set_faculty_password(email: str, password: str) -> bool:
+    """Reset a faculty account's password. Returns True on success."""
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return False
+    try:
+        if database.db_configured():
+            try:
+                return db.set_faculty_password(email, hash_password(password))
+            except Exception:
+                return False
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        "UPDATE faculty SET password_hash = ? WHERE email = ?",
+                        (hash_password(password), email),
+                    )
+                    return (cur.rowcount or 0) > 0
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        _drop_user(email)
 
 
 def _drop_user(email: str) -> None:
@@ -1080,8 +1338,12 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
     if not email:
         return False
     avatar = _clean_avatar(avatar)
+    faculty_owned = _owns_faculty_row(email)
+    table = "faculty" if faculty_owned else "users"
     try:
         if database.db_configured():
+            if faculty_owned:
+                return db.save_faculty_linked_profile(email, source, handle, avatar)
             return db.save_linked_profile(email, source, handle, avatar)
         handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
         avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
@@ -1090,7 +1352,7 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
                 with conn:
                     _ensure_schema(conn)
                     cur = conn.execute(
-                        f"UPDATE users SET {handle_col} = ?, {avatar_col} = ? WHERE email = ?",
+                        f"UPDATE {table} SET {handle_col} = ?, {avatar_col} = ? WHERE email = ?",
                         (handle, avatar, email),
                     )
                     return (cur.rowcount or 0) > 0
@@ -1108,14 +1370,18 @@ def confirm_profile_source(email: str, source: str) -> bool:
     email = (email or "").strip().lower()
     if not email:
         return False
-    user = get_user(email)
+    user = get_account(email)
     if user is None:
         return False
+    faculty_owned = (user.get("role") or "") == "faculty"
+    table = "faculty" if faculty_owned else "users"
     handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
     if not (user.get(handle_col) or "").strip():
         return False
     if database.db_configured():
         try:
+            if faculty_owned:
+                return db.confirm_faculty_profile_source(email, source)
             return db.confirm_profile_source(email, source)
         finally:
             _drop_user(email)
@@ -1124,7 +1390,7 @@ def confirm_profile_source(email: str, source: str) -> bool:
             with conn:
                 _ensure_schema(conn)
                 cur = conn.execute(
-                    "UPDATE users SET profile_source = ? WHERE email = ?", (source, email)
+                    f"UPDATE {table} SET profile_source = ? WHERE email = ?", (source, email)
                 )
                 ok = (cur.rowcount or 0) > 0
     except (sqlite3.Error, OSError):
@@ -1400,15 +1666,22 @@ def get_approved_accounts() -> list[dict]:
 
 
 def list_user_emails() -> list[str]:
-    """Every account email, smallest first; [] on storage failure. Used for
-    broadcast fan-out (weekly announcements reach every role)."""
+    """Every account email across both tables, smallest first, deduplicated;
+    [] on storage failure. Used for broadcast fan-out (weekly announcements
+    reach every role)."""
     if database.db_configured():
-        return db.list_user_emails()
+        try:
+            return db.list_account_emails()
+        except Exception:
+            return db.list_user_emails()
     try:
         with closing(_connect()) as conn:
             _ensure_schema(conn)
             rows = conn.execute("SELECT email FROM users ORDER BY email ASC").fetchall()
-        return [str(r[0]) for r in rows if r and r[0]]
+            faculty_rows = conn.execute("SELECT email FROM faculty ORDER BY email ASC").fetchall()
+        seen = {str(r[0]) for r in rows if r and r[0]}
+        seen.update(str(r[0]) for r in faculty_rows if r and r[0])
+        return sorted(seen)
     except (sqlite3.Error, OSError) as exc:
         logger.warning("user-email lookup failed: %s", exc)
         return []

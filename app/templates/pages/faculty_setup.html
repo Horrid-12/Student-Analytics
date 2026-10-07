@@ -21,6 +21,8 @@
   <div class="banner-error">Please enter a valid email address.</div>
   {% elif error_code == "bad_invite" %}
   <div class="banner-error">This invite was already used — please sign in with your faculty account.</div>
+  {% elif error_code == "storage_unavailable" %}
+  <div class="banner-error">Your account could not be saved right now (server storage unavailable). Your invite is still valid — please try again, or ask your administrator to check the server database.</div>
   {% elif error_code %}
   <div class="banner-error">Setup failed — please check your details and try again.</div>
   {% endif %}

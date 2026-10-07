@@ -87,6 +87,7 @@ class TestRoleResolution:
 
     def test_stored_row_role_used_when_not_in_allowlist(self, client):
         assert auth.create_user("prof@mitwpu.edu.in", "secret123", "faculty", "Prof")
+        assert auth.get_faculty("prof@mitwpu.edu.in")["role"] == "faculty"
         assert auth.resolve_google_role("prof@mitwpu.edu.in") == "faculty"
 
 

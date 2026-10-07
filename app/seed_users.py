@@ -2,7 +2,8 @@
 
 Public signup only ever creates students. Run this once (locally) to create
 admin and faculty accounts; re-running with the same email updates the password
-and role in place. Role must be one of: student, faculty, admin.
+and role in place. Role must be one of: student, faculty, admin. Faculty
+accounts live in the separate ``faculty`` table (never in ``users``).
 
 ``--invite`` mints a ONE-TIME faculty invite instead of a real account: the
 first login with the pre-saved EMAIL/PASSWORD is forced through /faculty-setup
@@ -44,8 +45,28 @@ def main(argv=None) -> int:
         print(f"OK faculty invite: {email} (one-time — first login forces /faculty-setup)")
         return 0
 
+    if role == "faculty":
+        existing = auth.get_faculty(email)
+        if existing is None:
+            if auth.get_user(email) is not None:
+                print(f"refused: {email} already owns a users-table account (one address, one account)")
+                return 1
+            user = auth.create_faculty(email, password, name)
+            if user is None:
+                print(f"signup failed: {email} (database unavailable or email taken)")
+                return 1
+        else:
+            if not auth.set_faculty_password(email, password):
+                print(f"password update failed for {email}")
+                return 1
+        print(f"OK: {email} -> faculty (faculty table)")
+        return 0
+
     existing = auth.get_user(email)
     if existing is None:
+        if auth.get_faculty(email) is not None:
+            print(f"refused: {email} already owns a faculty account (one address, one account)")
+            return 1
         user = auth.create_user(email, password, role, name)
         if user is None:
             print(f"signup failed: {email} (database unavailable or email taken)")
