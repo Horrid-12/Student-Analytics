@@ -205,6 +205,25 @@ class TestMonthlyRoute:
         body = client.get("/me", headers={"Accept": "text/html"}).text
         assert "Monthly Summary" not in body
 
+    def test_fallback_identity_row_matches_by_email(self, client):
+        """Account holder with no snapshot or roster still resolves: the
+        zeroed fallback row carries the Email address match key."""
+        from app import views
+
+        email = make_user(client, "student")
+        view = views.account_view(email)
+        assert view is not None
+        profile = views.own_profile_payload(view, email)
+        assert profile is not None
+        assert profile["name"] == "Test User"
+
+    def test_me_without_roster_shows_profile_and_monthly(self, client):
+        email = make_user(client, "student")
+        body = client.get("/me", headers={"Accept": "text/html"}).text
+        assert "No student record found" not in body
+        assert "Test User" in body
+        assert "Monthly Summary" in body
+
 
 class TestSidebarIdentity:
     def test_avatar_links_to_me_with_roster(self, client, monkeypatch):
