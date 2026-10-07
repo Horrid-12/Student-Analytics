@@ -151,10 +151,8 @@ class TestRBACGating:
         self._session(client, "student")
         assert client.get("/repositories").status_code == 200
         assert client.get("/settings").status_code == 200
-        # 4be7609 "Changed which tabs student account can see": students lost the
-        # Students tab 5.2 had opened up (fleet-backed, but
-        # faculty/admin-only pages in the current product decision).
-        assert client.get("/students", headers={"accept": "text/html"}, follow_redirects=False).status_code == 303
+        # 082512a restores student access to the Students page again.
+        assert client.get("/students", headers={"accept": "text/html"}, follow_redirects=False).status_code == 200
         # /history, /issues and /verification pages removed — unknown paths
         # fall through to 404, not a redirect.
         assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404

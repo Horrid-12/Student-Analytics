@@ -400,8 +400,7 @@ class TestFleetPages:
         # page itself was removed — unknown path falls through to 404.
         client, _ = self._fleet()
         r = self._get(client, "/students")
-        assert r.status_code == 303, "/students"
-        assert r.headers.get("location", "").rstrip("/") in ("", "/", "/overview"), "/students"
+        assert r.status_code == 200, "/students"  # restored for students
         assert self._get(client, "/history").status_code == 404
 
 
