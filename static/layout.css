@@ -1860,8 +1860,23 @@ button {
   color: #0a66c2;
 }
 .profile-icon-hackerrank:hover {
-  border-color: #2ec866;
-  color: #2ec866;
+    border-color: #2ec866;
+    color: #2ec866;
+}
+
+/* Monthly Summary percentile bar (profile panel). */
+.pct-track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border);
+    margin: 10px 0 4px;
+    overflow: hidden;
+}
+.pct-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--blue);
 }
 
 /* HackerRank hex badges (profile HackerRank tab): tier colors + gradients

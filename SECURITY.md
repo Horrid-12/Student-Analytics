@@ -10,7 +10,7 @@
 
 If you discover a security issue, **do not open a public GitHub issue**. Instead, email the maintainers directly:
 
-- **Swar:** [swar.horrid@gmail.com](mailto:swar.horrid@gmail.com)
+- [**Swar**](mailto:swarg1408@gmail.com)
 
 Include:
 - A description of the vulnerability

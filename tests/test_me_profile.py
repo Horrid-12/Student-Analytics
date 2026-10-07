@@ -158,6 +158,54 @@ class TestMyProfilePage:
         assert "No student record found" in body
 
 
+class TestMonthlyRoute:
+    def test_monthly_computed_for_own_profile(self, client, monkeypatch):
+        import app.main as main
+
+        from app import monthly as monthly_module
+
+        email = make_user(client, "student")
+        self_view = make_view(email=email)
+        monkeypatch.setattr(main, "_analysis_view", lambda roster_id: self_view)
+        seen = []
+        canned = {"month_id": "2026-09", "month_label": "September 2026",
+                  "github": {"commits": 5, "weeks": 2, "repos": 3},
+                  "hackerrank": {"available": False, "handle": "", "solved_month": None,
+                                 "solves": [], "points_month": None, "score_total": None,
+                                 "collecting": False},
+                  "peers": {"total": 0, "reporting": 0, "division": ""},
+                  "standing": {"ranked": False}}
+
+        def fake_summary(user_email, now=None):
+            seen.append(user_email)
+            return dict(canned)
+
+        monkeypatch.setattr(monthly_module, "get_monthly_summary", fake_summary)
+        body = client.get("/me?roster=r1", headers={"Accept": "text/html"}).text
+        assert seen == [email]
+        assert "My Profile" in body
+
+    def test_monthly_failure_still_renders_profile(self, client, monkeypatch):
+        import app.main as main
+
+        from app import monthly as monthly_module
+
+        email = make_user(client, "student")
+        monkeypatch.setattr(main, "_analysis_view", lambda roster_id: make_view(email=email))
+
+        def boom(user_email, now=None):
+            raise RuntimeError("hr down")
+
+        monkeypatch.setattr(monthly_module, "get_monthly_summary", boom)
+        body = client.get("/me?roster=r1", headers={"Accept": "text/html"}).text
+        assert "Stu Dent" in body  # profile survives a monthly outage
+
+    def test_empty_state_has_no_monthly(self, client):
+        make_user(client, "faculty")
+        body = client.get("/me", headers={"Accept": "text/html"}).text
+        assert "Monthly Summary" not in body
+
+
 class TestSidebarIdentity:
     def test_avatar_links_to_me_with_roster(self, client, monkeypatch):
         import app.main as main
