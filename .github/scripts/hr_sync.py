@@ -116,13 +116,7 @@ def fetch_snapshot(handle: str) -> tuple[dict | None, str]:
         except (TypeError, ValueError):
             solved = 0
         decoded.append((track, solved))
-    solved_total = 0
-    for track, solved in decoded:
-        if track.lower() == "problem solving":
-            solved_total = solved
-            break
-    else:
-        solved_total = sum(solved for _, solved in decoded)
+    solved_total = sum(solved for _, solved in decoded)
 
     model = profile["model"]
     return {

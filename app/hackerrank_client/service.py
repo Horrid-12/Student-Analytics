@@ -70,11 +70,7 @@ def decode_scores(scores: Any) -> tuple[int, dict[str, float]]:
 
 
 def decode_total_solved(badges: list[Badge]) -> int:
-    """Use the Problem Solving badge (avoids counting problems twice),
-    otherwise add up everything."""
-    for b in badges:
-        if b.track.lower() == "problem solving":
-            return b.solved
+    """Add up problems solved across all badge tracks."""
     return sum(b.solved for b in badges)
 
 
