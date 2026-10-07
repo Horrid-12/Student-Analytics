@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, hackerrank_client, monthly, services, storage, support, sync, views, view_cache, weekly
 from app.hackerrank_client.service import (
     decode_badges,
     decode_profile_model,
@@ -2357,14 +2357,21 @@ def my_profile_page(request: Request, roster: str = ""):
     (RBAC "My Profile"); non-roster users get a friendly empty state."""
     ctx = _base_context(request, "My Profile", roster)
     profile = None
+    monthly_payload = None
     view = _analysis_view(roster) if roster else (_account_view(request) or _fleet_view(request))
     if view is not None and _is_complete(view):
         user = getattr(request.state, "user", None) or {}
         profile = views.own_profile_payload(view, user.get("email", ""))
+        if profile is not None:
+            try:
+                monthly_payload = monthly.get_monthly_summary(user.get("email", ""))
+            except Exception as exc:
+                logger.warning("monthly summary failed: %s", exc)
+                monthly_payload = None
     return templates.TemplateResponse(
         request,
         "pages/me.html",
-        {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster)},
+        {**ctx, "profile": profile, "monthly": monthly_payload, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster)},
     )
 
 
