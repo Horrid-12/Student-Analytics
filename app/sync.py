@@ -223,6 +223,48 @@ def _carry_forward_profile_links(email: str, student: dict) -> dict:
     return student
 
 
+def _carry_forward_heavy_metrics(email: str, student: dict, team_repos: list, is_lightweight: bool) -> tuple[dict, list]:
+    """Preserve heavy analytics (commits, PRs, team repos) if the current fetch
+    was a lightweight login sync or if it hit a rate limit."""
+    try:
+        prev_snapshot = accounts.get_snapshot(email) or {}
+    except Exception:
+        prev_snapshot = {}
+    prev_student = prev_snapshot.get("student") or {}
+    prev_team_repos = prev_snapshot.get("team_repos") or []
+    
+    if not prev_student:
+        return student, team_repos
+
+    _contrib_cols = ["Pull_Requests", "Open_PRs", "Closed_PRs", "Issues_Opened", "Open_Issues", "External_PRs"]
+    _team_cols = ["Team_Commits", "Team_Push_Events", "Team_PR_Events", "Team_Total_Events", "Team_Commits_30d", "Team_Commits_90d", "Team_Total_Events_30d", "Team_Active_Dates", "Team_Active_Repos", "Contributed_Repos_Count", "Contributed_Repos", "Team_Last_Active_At"]
+    _commit_cols = ["Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d"]
+
+    if is_lightweight or student.get("Contrib_Fetch_Status") == "Unavailable":
+        for col in _contrib_cols:
+            if col in prev_student:
+                student[col] = prev_student[col]
+        if "Contrib_Fetch_Status" in prev_student:
+            student["Contrib_Fetch_Status"] = prev_student["Contrib_Fetch_Status"]
+
+    if is_lightweight or student.get("Team_Activity_Fetch_Status") == "Unavailable":
+        for col in _team_cols:
+            if col in prev_student:
+                student[col] = prev_student[col]
+        if "Team_Activity_Fetch_Status" in prev_student:
+            student["Team_Activity_Fetch_Status"] = prev_student["Team_Activity_Fetch_Status"]
+        team_repos = prev_team_repos
+
+    if is_lightweight or student.get("Commit_Fetch_Status") == "Unavailable":
+        for col in _commit_cols:
+            if col in prev_student:
+                student[col] = prev_student[col]
+        if "Commit_Fetch_Status" in prev_student:
+            student["Commit_Fetch_Status"] = prev_student["Commit_Fetch_Status"]
+            
+    return student, team_repos
+
+
 def _academic_year_for(value) -> str:
     """July-June academic-year label from an onboarding timestamp.
 
@@ -360,6 +402,7 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
         return False, err, err
     accounts.init_db()
     student = _carry_forward_profile_links(email, student)
+    student, team_repos = _carry_forward_heavy_metrics(email, student, team_repos, is_lightweight=True)
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
         repos=repos, team_repos=team_repos, synced_at=now, error="",
@@ -444,6 +487,7 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         my_team = [r for r in team_rows if str(r.get("Username")).lower() == username.lower()]
         
         student = _carry_forward_profile_links(email, student)
+        student, my_team = _carry_forward_heavy_metrics(email, student, my_team, is_lightweight=False)
         accounts.init_db()
         saved = accounts.save_snapshot(
             email,
