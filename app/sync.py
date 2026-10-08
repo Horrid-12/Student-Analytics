@@ -558,6 +558,24 @@ def sync_heavy_next(token: str | None = None) -> dict:
     logger.info("sync_heavy_next: picking %s (@%s)", email, username)
 
     ok, code, detail = sync_heavy_one(stalest_user, token)
+    if not ok and code != "rate_limited":
+        try:
+            import time
+            from app import accounts
+            now = time.strftime(_SYNC_TIME_FORMAT)
+            accounts.save_snapshot(
+                email=email,
+                username=username,
+                status="error",
+                student=None,
+                repos=None,
+                team_repos=None,
+                synced_at=now,
+                error=detail
+            )
+        except Exception as e:
+            logger.error("sync_heavy_next failed to save tombstone: %s", e)
+
     return {
         "status": "ok" if ok else "error",
         "email": email,
