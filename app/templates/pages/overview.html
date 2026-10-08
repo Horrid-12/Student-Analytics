@@ -335,7 +335,28 @@
   }
   @media (max-width: 720px) {
     .radar-compare-panel {
-      width: calc(100vw - 48px);
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      top: auto;
+      bottom: 12px;
+      width: auto;
+      max-width: none;
+      max-height: 60vh;
+      z-index: 200;
+    }
+    .radar-compare-batches {
+      flex-wrap: wrap;
+    }
+    .radar-compare-batch {
+      min-width: 36px;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    .radar-compare-divrow {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
     }
   }
   /* Inline legend container: sits between the title and the compare dropdown,

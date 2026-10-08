@@ -980,6 +980,30 @@ button {
     top: 60px;
     width: auto;
   }
+  .export-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
+  .blacklist-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
+  .radar-hint {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
   .notif-item {
     padding: 8px 10px;
   }
