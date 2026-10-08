@@ -732,9 +732,9 @@ window.__EC_THEME = (function () {
            series: [ { batch: "B1", values: [1.2, ...] }, ... ] }
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro multi_line(id, data) %}
-{% if data and data.weeks and data.series %}
 {{ _theme_bridge() }}
 <div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+{% if data and data.weeks and data.series and data.series|length > 0 %}
 <script>
 (function () {
   var el = document.getElementById('{{ id }}');
@@ -749,7 +749,7 @@ window.__EC_THEME = (function () {
     return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
   }
 
-  function buildSeries(seriesData, colorPalette) {
+  function buildSeries(seriesData, colorPalette, weeks, theme) {
     return seriesData.map(function (s, i) {
       var color = colorPalette[i % colorPalette.length];
       var displayName = s.division && s.batch ? (s.division + ' - ' + s.batch) : (s.batch || 'Series');
@@ -766,7 +766,7 @@ window.__EC_THEME = (function () {
         lineStyle: { color: color, width: 2 },
         itemStyle: {
           color: color,
-          borderColor: p.card,
+          borderColor: theme.card,
           borderWidth: 1.5
         },
         areaStyle: {
@@ -792,7 +792,7 @@ window.__EC_THEME = (function () {
 
   function build(weeks, seriesData) {
     var p = window.__EC_THEME.get();
-    var series = buildSeries(seriesData, p.series);
+    var series = buildSeries(seriesData, p.series, weeks, p);
 
     return {
       tooltip: {
@@ -872,8 +872,9 @@ window.__EC_THEME = (function () {
       var batMatch = batch === 'All' || s.batch === batch;
       return divMatch && batMatch;
     });
+    var p = window.__EC_THEME.get();
     chart.setOption({
-      series: buildSeries(filtered, window.__EC_THEME.get().series)
+      series: buildSeries(filtered, p.series, current.weeks, p)
     });
   }
 
@@ -894,5 +895,12 @@ window.__EC_THEME = (function () {
   window.addEventListener('resize', function () { chart.resize(); });
 })();
 </script>
+{% else %}
+<div class="empty-state" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:14px;">
+  <div style="text-align:center;">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px;opacity:0.5;"><path d="M3 3h18v18H3z"/><path d="m9 9 6 6"/><path d="M15 9l-6 6"/></svg>
+    <div>No activity data available for the selected filters.</div>
+  </div>
+</div>
 {% endif %}
 {% endmacro %}
