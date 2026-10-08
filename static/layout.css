@@ -778,26 +778,30 @@ button {
     padding: 0 16px;
   }
   .data-table {
-    min-width: 640px;
+    min-width: 700px;
     font-size: 12px;
   }
   .data-table th {
     padding: 8px 10px;
     font-size: 11px;
+    white-space: nowrap;
   }
   .data-table td {
     padding: 8px 10px;
   }
-  .student-table .col-student { width: 18%; }
-  .student-table .col-id { width: 10%; }
-  .student-table .col-div,
-  .student-table .col-batch { width: 6%; }
-  .student-table .col-sem { width: 9%; }
-  .student-table .col-gh { width: 12%; }
-  .student-table .col-li { width: 13%; }
-  .student-table .col-hr { width: 13%; }
+  .student-table {
+    table-layout: auto;
+    min-width: 700px;
+  }
+  .student-table th,
+  .student-table td {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
   .student-cell {
     gap: 6px;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .student-cell .table-avatar,
   .student-cell .avatar-fallback {
