@@ -641,7 +641,7 @@ button {
     grid-template-columns: 1fr;
   }
   .content {
-    padding: 72px 20px 80px;
+    padding: 72px 16px 60px;
   }
   .app-sidebar {
     position: fixed;
@@ -697,6 +697,152 @@ button {
   .nav-overlay.is-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+  .topbar-card {
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0;
+  }
+  .topbar-title {
+    font-size: 26px;
+  }
+  .topbar-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .panel {
+    padding: 16px;
+    margin-bottom: 14px;
+    border-radius: 12px;
+  }
+  .panel-title {
+    font-size: 19px;
+    margin-bottom: 12px;
+  }
+  .metric-card {
+    min-height: 120px;
+    padding: 14px;
+  }
+  .metric-value {
+    font-size: 34px;
+    margin-top: 10px;
+  }
+  .metric-label {
+    font-size: 14px;
+    margin-top: 5px;
+  }
+  .metric-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  .filter-bar {
+    gap: 8px;
+  }
+  .filter-field {
+    flex: 1 1 100%;
+  }
+  .filter-field.search-box-row {
+    flex: 1 1 100%;
+  }
+  .btn {
+    min-height: 40px;
+    font-size: 13px;
+    padding: 0 14px;
+  }
+  .hero h1 {
+    font-size: 28px;
+  }
+  .hero p {
+    font-size: 14px;
+  }
+  .auth-notice {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .empty-state {
+    min-height: 280px;
+    padding: 24px 16px;
+  }
+  .empty-state h2 {
+    font-size: 20px;
+  }
+  .empty-state p {
+    font-size: 14px;
+  }
+  .data-table-wrap {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px;
+  }
+  .profile-panel {
+    padding: 14px;
+  }
+  .profile-header {
+    gap: 10px;
+  }
+  .profile-avatar,
+  .profile-avatar-fallback {
+    width: 52px;
+    height: 52px;
+  }
+  .profile-name {
+    font-size: 16px;
+  }
+  .profile-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .stat-number {
+    font-size: 14px;
+  }
+  .stat-label {
+    font-size: 10px;
+  }
+  .repo-grid {
+    grid-template-columns: 1fr;
+  }
+  .leaderboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .notif-dropdown {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: 60px;
+    width: auto;
+  }
+  .student-modal-backdrop {
+    padding: 16px 12px;
+  }
+  .student-modal {
+    max-height: calc(100vh - 32px);
+    padding: 16px;
+  }
+  .blacklist-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  .radar-compare-panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 60vh;
+  }
+  .export-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
 }
 /* 3.6 page components */
