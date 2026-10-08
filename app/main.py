@@ -2678,8 +2678,12 @@ def leaderboards_page(
     active_window: str = "1m",
     commits_window: str = "1m",
     select: str = "",
+    platform: str = "github",
     mine: str = "1",
 ):
+    # Both platforms' boards render in one page; `platform` only decides
+    # which grid starts visible (the pill switcher toggles without a reload).
+    platform = "hackerrank" if str(platform).strip().lower() == "hackerrank" else "github"
     ctx = _base_context(request, "Leaderboards", roster)
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
@@ -2723,7 +2727,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 

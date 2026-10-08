@@ -46,6 +46,52 @@
     color: var(--blue);
     text-decoration: underline;
   }
+  /* Platform switcher: rounded pill container with a filled active state,
+     using the same theme tokens as the activity tabs so both light and dark
+     themes carry over. */
+  .platform-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-soft);
+  }
+  .platform-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1.35;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .platform-pill:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+  .platform-pill.is-active {
+    background: var(--blue-active-bg);
+    color: var(--blue);
+    border-color: var(--blue-active-border);
+  }
+  /* Author display rules beat the UA [hidden] rule for grid containers. */
+  .leaderboard-grid[hidden] {
+    display: none;
+  }
+  /* Room for the switcher beside the sync button and bell. */
+  .topbar {
+    flex-wrap: wrap;
+  }
   .student-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -94,15 +140,24 @@
 {% endblock %}
 {% block content %}
 
+{# base_qs carries every live filter; board_qs adds the platform a profile
+   popup should return to. The switcher pills swap only `platform`. #}
+{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+{% set board_qs = base_qs + "&platform=" + platform %}
+
 <div class="topbar-card">
   <div class="topbar">
     <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
       <div class="topbar-title">Leaderboards</div>
       <div class="topbar-meta" style="margin-top:3px; font-size:13px;">
-        <span>{{ payload.total }} students ranked</span>
+        <span id="topbar-meta-text" data-github="{{ payload.total }} students ranked" data-hackerrank="{{ payload.hr_total }} students ranked on HackerRank">{% if platform == "hackerrank" %}{{ payload.hr_total }} students ranked on HackerRank{% else %}{{ payload.total }} students ranked{% endif %}</span>
       </div>
     </div>
     <div class="topbar-actions">
+      <div class="platform-switcher" role="tablist" aria-label="Leaderboard platform">
+        <a class="platform-pill{% if platform == "github" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'github' else 'false' }}" data-platform="github" aria-controls="board-github" tabindex="{{ '0' if platform == 'github' else '-1' }}" href="/leaderboards?{{ base_qs }}&platform=github">GitHub</a>
+        <a class="platform-pill{% if platform == "hackerrank" %} is-active{% endif %}" role="tab" aria-selected="{{ 'true' if platform == 'hackerrank' else 'false' }}" data-platform="hackerrank" aria-controls="board-hackerrank" tabindex="{{ '0' if platform == 'hackerrank' else '-1' }}" href="/leaderboards?{{ base_qs }}&platform=hackerrank">HackerRank</a>
+      </div>
       {% if auth_role in ('Admin', 'Faculty') and payload.hr_total - payload.hr_synced > 0 %}
       <button type="button" class="btn" id="hr-sync-btn" data-roster="{{ roster_id }}">Sync HackerRank ({{ payload.hr_total - payload.hr_synced }} remaining)</button>
       <span id="hr-sync-label" style="font-size:13px;color:var(--muted);" hidden></span>
@@ -114,6 +169,7 @@
 
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
+  <input type="hidden" name="platform" value="{{ platform }}">
   <input type="hidden" name="mine" value="{{ mine }}">
   <input type="hidden" name="division" value="{{ division }}">
   <input type="hidden" name="batch" value="{{ batch }}">
@@ -127,16 +183,16 @@
     </select>
   </div>
   <button class="btn" type="submit">Apply</button>
-  <a class="btn" href="/leaderboards?roster={{ roster_id }}">Clear</a>
-  <span class="filter-count">{{ payload.total }} ranked</span>
+  <a class="btn" href="/leaderboards?roster={{ roster_id }}&platform={{ platform }}">Clear</a>
+  <span class="filter-count" id="filter-count" data-github="{{ payload.total }} ranked" data-hackerrank="{{ payload.hr_total }} on HackerRank">{% if platform == "hackerrank" %}{{ payload.hr_total }} on HackerRank{% else %}{{ payload.total }} ranked{% endif %}</span>
 </form>
 
-{% set board_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
-<div class="leaderboard-grid">
+<div class="leaderboard-grid" id="board-github"{% if platform != "github" %} hidden{% endif %}>
   <section class="panel leader-card">
     <div class="panel-title">Most Active Repositories</div>
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="platform" value="{{ platform }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">
@@ -163,6 +219,7 @@
     <div class="panel-title">Most Commits (All Projects)</div>
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
+      <input type="hidden" name="platform" value="{{ platform }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">
@@ -215,6 +272,11 @@
     <div class="leader-empty">No repositories yet.</div>
     {% endif %}
   </section>
+</div>
+
+{# HackerRank view: same grid and card structure, ranked server-side from
+   the progressive snapshot cache (synced via profile views / Sync button). #}
+<div class="leaderboard-grid" id="board-hackerrank"{% if platform != "hackerrank" %} hidden{% endif %}>
   <section class="panel leader-card">
     <div class="panel-title">Most Problems Solved</div>
     {% if payload.hr_solved_rows %}
@@ -262,6 +324,59 @@
     </div>
   </div>
 {% endif %}
+<script>
+  // Platform switcher: both grids are server-rendered; this only toggles
+  // which one is visible, swaps the pill/meta text, and keeps the URL
+  // shareable. No data fetching — HackerRank rows arrive with the render.
+  (function () {
+    var githubGrid = document.getElementById("board-github");
+    var hrGrid = document.getElementById("board-hackerrank");
+    if (!githubGrid || !hrGrid) return;
+    var pills = document.querySelectorAll(".platform-pill");
+    function swapText(id, platform) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = el.getAttribute("data-" + platform) || el.textContent;
+    }
+    function showPlatform(platform) {
+      var isHr = platform === "hackerrank";
+      githubGrid.hidden = isHr;
+      hrGrid.hidden = !isHr;
+      Array.prototype.forEach.call(pills, function (pill) {
+        var active = pill.getAttribute("data-platform") === platform;
+        pill.classList.toggle("is-active", active);
+        pill.setAttribute("aria-selected", active ? "true" : "false");
+        pill.tabIndex = active ? 0 : -1;
+      });
+      swapText("topbar-meta-text", platform);
+      swapText("filter-count", platform);
+      if (window.history && window.history.replaceState && window.URL) {
+        var url = new URL(window.location.href);
+        url.searchParams.set("platform", platform);
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+    var pillList = Array.prototype.slice.call(pills);
+    pillList.forEach(function (pill, index) {
+      pill.addEventListener("click", function (event) {
+        event.preventDefault();
+        showPlatform(pill.getAttribute("data-platform"));
+      });
+      // Same keyboard model as the Student Profile modal tabs: Left/Right
+      // arrows move focus and switch the selected platform.
+      pill.addEventListener("keydown", function (event) {
+        var next = null;
+        if (event.key === "ArrowRight") next = pillList[(index + 1) % pillList.length];
+        if (event.key === "ArrowLeft") next = pillList[(index - 1 + pillList.length) % pillList.length];
+        if (next) {
+          event.preventDefault();
+          next.focus();
+          showPlatform(next.getAttribute("data-platform"));
+        }
+      });
+    });
+  })();
+</script>
 <script>
   // HackerRank bulk sync (admin/faculty): one click walks every unsynced
   // profile 5 at a time via POST /sync/hackerrank until `remaining` hits 0,
