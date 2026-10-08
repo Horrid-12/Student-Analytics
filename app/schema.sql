@@ -313,8 +313,6 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_support_tickets_creator ON support_tickets (created_by);
-CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS student_attachment_name TEXT NOT NULL DEFAULT '';
@@ -325,22 +323,10 @@ ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS reply_attachment_name TEXT 
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS reply_attachment_data BYTEA;
 
 -- Useful indexes (created only once even under IF NOT EXISTS).
-CREATE INDEX IF NOT EXISTS idx_students_roster        ON students (roster_id);
-CREATE INDEX IF NOT EXISTS idx_analysis_results_roster ON analysis_results (roster_id);
-CREATE INDEX IF NOT EXISTS idx_roster_repos_roster     ON roster_repositories (roster_id);
-CREATE INDEX IF NOT EXISTS idx_roster_repos_user       ON roster_repositories (username);
-CREATE INDEX IF NOT EXISTS idx_team_repos_roster       ON roster_team_repos (roster_id);
-CREATE INDEX IF NOT EXISTS idx_team_repos_user         ON roster_team_repos (username);
-CREATE INDEX IF NOT EXISTS idx_roster_issues_roster    ON roster_issues (roster_id);
-CREATE INDEX IF NOT EXISTS idx_analysis_runs_timestamp ON analysis_runs (run_timestamp);
-CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type);
 -- Lag Fix phase 1: the hot read paths compare lower(...), so a plain btree on
 -- the raw column is never used. Function indexes match those predicates
 -- exactly (lower() is IMMUTABLE). users.onboarding_status is a plain column
 -- predicate ('approved' / 'none' / = ANY(...)).
-CREATE INDEX IF NOT EXISTS idx_notifications_user_lower   ON notifications (lower(user_id));
-CREATE INDEX IF NOT EXISTS idx_support_tickets_creator_lower ON support_tickets (lower(created_by));
-CREATE INDEX IF NOT EXISTS idx_users_onboarding          ON users (onboarding_status);
 
 -- Backfill columns for GitHub/LinkedIn OAuth (Phase 4.7 extension).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username TEXT NOT NULL DEFAULT '';
@@ -376,7 +362,6 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
     synced_at    TEXT NOT NULL DEFAULT '',
     error        TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
 ALTER TABLE account_snapshots ADD COLUMN IF NOT EXISTS team_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 13. (Removed: Verification page + reference_sheets table. Pre-existing
@@ -393,9 +378,6 @@ CREATE TABLE IF NOT EXISTS notifications (
     is_read     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
 
 -- 15. Fleet-mode fix: blacklist/hidden/workflow keys are TEXT ('fleet' + roster
 --     UUIDs), not UUID FKs. Fresh tables above are already TEXT; these migrate
@@ -470,3 +452,22 @@ CREATE TABLE IF NOT EXISTS faculty_invites (
     consumed_by   TEXT NOT NULL DEFAULT '',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_creator ON support_tickets (created_by);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
+CREATE INDEX IF NOT EXISTS idx_students_roster        ON students (roster_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_results_roster ON analysis_results (roster_id);
+CREATE INDEX IF NOT EXISTS idx_roster_repos_roster     ON roster_repositories (roster_id);
+CREATE INDEX IF NOT EXISTS idx_roster_repos_user       ON roster_repositories (username);
+CREATE INDEX IF NOT EXISTS idx_team_repos_roster       ON roster_team_repos (roster_id);
+CREATE INDEX IF NOT EXISTS idx_team_repos_user         ON roster_team_repos (username);
+CREATE INDEX IF NOT EXISTS idx_roster_issues_roster    ON roster_issues (roster_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_runs_timestamp ON analysis_runs (run_timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_log_type           ON audit_log (event_type);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_creator_lower ON support_tickets (lower(created_by));
+CREATE INDEX IF NOT EXISTS idx_users_onboarding          ON users (onboarding_status);
+CREATE INDEX IF NOT EXISTS idx_account_snapshots_synced ON account_snapshots (synced_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_lower   ON notifications (lower(user_id));
