@@ -33,6 +33,14 @@ button {
   background: transparent;
 }
 
+.nav-toggle {
+  display: none;
+}
+
+.nav-overlay {
+  display: none;
+}
+
 /* Sidebar — mirrors Streamlit stSidebar geometry (280px, bordered, own scroll). */
 .app-sidebar {
   position: fixed;
@@ -633,15 +641,24 @@ button {
     grid-template-columns: 1fr;
   }
   .content {
-    padding: 40px 24px 80px;
+    padding: 72px 16px 60px;
   }
   .app-sidebar {
-    position: static;
-    width: 100%;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
     max-height: none;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     padding-bottom: 1rem;
+    transform: translateX(-100%);
+    transition: transform 250ms ease;
+    z-index: 100;
+    overflow-y: auto;
+  }
+  .app-sidebar.is-open {
+    transform: translateX(0);
   }
   .sidebar-foot {
     position: static;
@@ -649,6 +666,1040 @@ button {
   }
   .main-content {
     margin-left: 0;
+  }
+  .nav-toggle {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 90;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 95;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms ease;
+  }
+  .nav-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .topbar-card {
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0;
+  }
+  .topbar-title {
+    font-size: 26px;
+  }
+  .topbar-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .panel {
+    padding: 16px;
+    margin-bottom: 14px;
+    border-radius: 12px;
+  }
+  .panel-title {
+    font-size: 19px;
+    margin-bottom: 12px;
+  }
+  .metric-card {
+    min-height: 120px;
+    padding: 14px;
+  }
+  .metric-value {
+    font-size: 34px;
+    margin-top: 10px;
+  }
+  .metric-label {
+    font-size: 14px;
+    margin-top: 5px;
+  }
+  .metric-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  .filter-bar {
+    gap: 8px;
+  }
+  .filter-field {
+    flex: 1 1 100%;
+  }
+  .filter-field.search-box-row {
+    flex: 1 1 100%;
+  }
+  .filter-select {
+    width: 100%;
+    font-size: 14px;
+    min-height: 42px;
+  }
+  .search-input {
+    font-size: 16px;
+    min-height: 42px;
+  }
+  .filter-count {
+    flex: 1 1 100%;
+    text-align: center;
+    padding: 4px 0;
+  }
+  .btn {
+    min-height: 40px;
+    font-size: 13px;
+    padding: 0 14px;
+  }
+  .data-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px;
+  }
+  .data-table {
+    min-width: 700px;
+    font-size: 12px;
+  }
+  .data-table th {
+    padding: 8px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 8px 10px;
+  }
+  .student-table {
+    table-layout: auto;
+    min-width: 700px;
+  }
+  .student-table th,
+  .student-table td {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  .student-cell {
+    gap: 6px;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .student-cell .table-avatar,
+  .student-cell .avatar-fallback {
+    width: 24px;
+    height: 24px;
+  }
+  .table-avatar {
+    width: 24px;
+    height: 24px;
+  }
+  .export-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .issues-table td {
+    white-space: normal;
+    word-break: break-word;
+  }
+  .hero h1 {
+    font-size: 28px;
+  }
+  .hero p {
+    font-size: 14px;
+  }
+  .auth-notice {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .empty-state {
+    min-height: 280px;
+    padding: 24px 16px;
+  }
+  .empty-state h2 {
+    font-size: 20px;
+  }
+  .repo-card,
+  .repo-card-v2 {
+    padding: 14px;
+  }
+  .repo-card-v2 .rc-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .repo-card-v2 .rc-footer {
+    gap: 8px;
+  }
+  .leader-card {
+    padding: 10px 12px;
+  }
+  .leader-row {
+    gap: 8px;
+    padding: 6px 2px;
+  }
+  .leader-rank {
+    min-width: 20px;
+    font-size: 12px;
+  }
+  .leader-title {
+    font-size: 13px;
+  }
+  .leader-score {
+    font-size: 13px;
+  }
+  .system-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .system-item {
+    padding: 10px 12px;
+  }
+  .system-value {
+    font-size: 15px;
+  }
+  .echart-box {
+    min-height: 220px;
+  }
+  .full-width .echart-box {
+    min-height: 240px;
+  }
+  .donut-chart {
+    min-height: 180px;
+  }
+  .bubble-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bubble-tooltip,
+  .ab-tooltip {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .ab-list {
+    max-height: 280px;
+  }
+  .ab-row {
+    grid-template-columns: 80px 1fr 36px;
+    gap: 6px;
+    padding: 4px 0;
+  }
+  .ab-label {
+    font-size: 11px;
+  }
+  .ab-total {
+    font-size: 11px;
+  }
+  .ab-legend {
+    gap: 8px;
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .ab-toggle {
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .lang-split {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .lang-divider {
+    display: none;
+  }
+  .lang-name {
+    width: 90px;
+    font-size: 12px;
+  }
+  .profile-tabs {
+    gap: 4px;
+    margin: 12px 0 8px;
+  }
+  .profile-tab {
+    padding: 8px 6px;
+    font-size: 14px;
+  }
+  .profile-links {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .profile-icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .hr-badges {
+    gap: 8px;
+  }
+  .hr-badge {
+    flex: 0 1 calc(50% - 4px);
+  }
+  .hr-badge-hex {
+    min-height: 110px;
+    padding: 8px 6px;
+  }
+  .hr-badge-label {
+    font-size: 10px;
+  }
+  .hr-badge-stat {
+    font-size: 10px;
+  }
+  .activity-tabs {
+    gap: 4px;
+  }
+  .activity-tab {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  .activity-number {
+    font-size: 18px;
+  }
+  .activity-label {
+    font-size: 11px;
+  }
+  .notif-dropdown {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: 60px;
+    width: auto;
+  }
+  .export-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
+  .blacklist-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
+  .radar-hint {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: auto;
+    bottom: 12px;
+  }
+  .notif-item {
+    padding: 8px 10px;
+  }
+  .notif-text {
+    font-size: 12px;
+  }
+  .notif-fix {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  .student-modal-backdrop {
+    padding: 16px 12px;
+  }
+  .student-modal {
+    max-height: calc(100vh - 32px);
+    padding: 16px;
+  }
+  .blacklist-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  .radar-compare-panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 60vh;
+  }
+  .export-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  .view-switcher {
+    width: 100%;
+  }
+  .vs-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 10px;
+  }
+  .repo-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .repo-panel-header .panel-title {
+    text-align: center;
+  }
+  .progress-shell {
+    height: 8px;
+    margin: 8px 0 6px;
+  }
+  .run-log-scroll {
+    max-height: 160px;
+  }
+  .run-log-live {
+    padding: 8px 10px;
+  }
+  .batch-log-item {
+    font-size: 12px;
+  }
+  .scroll-sentinel {
+    font-size: 12px;
+    padding: 8px 0 4px;
+  }
+  .chip {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  .badge {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .external-link-button {
+    min-height: 40px;
+    font-size: 13px;
+    padding: 0 14px;
+  }
+  .legal-row {
+    padding: 10px 6px;
+  }
+  .legal-title {
+    font-size: 14px;
+  }
+  .legal-sub {
+    font-size: 12px;
+  }
+  .breadcrumb {
+    font-size: 12px;
+    gap: 6px;
+  }
+  .privacy-body p {
+    font-size: 14px;
+  }
+  .privacy-body ul {
+    font-size: 14px;
+  }
+  .table-input {
+    min-height: 36px;
+    font-size: 14px;
+  }
+  .repo-dropdown-btn {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  .repo-dropdown-body {
+    padding: 4px 14px 10px;
+  }
+  .repo-hide-btn {
+    width: 24px;
+    height: 24px;
+  }
+  .repo-hide-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+  .blacklist-btn {
+    width: 28px;
+    height: 28px;
+  }
+  .blacklist-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+  .bl-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  .notif-bell-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .notif-bell-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .notif-badge {
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+  .radar-legend-box {
+    padding: 4px 10px;
+  }
+  .radar-pill {
+    font-size: 11px;
+    padding: 3px 5px 3px 8px;
+  }
+  .radar-compare-btn {
+    min-height: 38px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+  .radar-clear-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+  .radar-compare-row {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .radar-compare-div {
+    font-size: 14px;
+  }
+  .radar-compare-batch {
+    min-width: 36px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .radar-compare-section {
+    font-size: 12px;
+    padding: 10px 12px 4px;
+  }
+  .radar-compare-divrow {
+    padding: 8px 12px;
+  }
+  .radar-hint {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  .hr-section-title {
+    font-size: 15px;
+    margin: 10px 0 6px 10px;
+  }
+  .hr-active-box {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .hr-solve-row {
+    gap: 8px;
+  }
+  .hr-solve-date {
+    font-size: 12px;
+  }
+  .hr-more-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .ab-list {
+    max-height: 300px;
+  }
+  .ab-row {
+    grid-template-columns: 90px 1fr 40px;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .ab-label {
+    font-size: 11px;
+  }
+  .ab-total {
+    font-size: 11px;
+  }
+  .ab-legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+  .ab-toggle {
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .run-log-snapshot {
+    max-height: 180px;
+    padding: 10px 12px;
+  }
+  .metric-meta {
+    font-size: 11px;
+    margin-top: 10px;
+  }
+  .metric-pill {
+    font-size: 14px;
+    padding: 4px 10px;
+  }
+  .metric-trend {
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  .metric-top-spacer {
+    min-height: 20px;
+  }
+  .full-width .echart-box {
+    min-height: 220px;
+  }
+  .echart-box {
+    min-height: 200px;
+  }
+  .donut-chart {
+    min-height: 160px;
+  }
+  .bubble-tooltip,
+  .ab-tooltip {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .repo-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .repo-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .repo-commits {
+    font-size: 12px;
+  }
+  .repo-signal {
+    font-size: 11px;
+  }
+  .repo-hidden-note {
+    font-size: 11px;
+  }
+  .tab-empty {
+    font-size: 12px;
+    padding: 12px 4px;
+  }
+  .profile-repo {
+    padding: 6px 0;
+  }
+  .profile-stat {
+    padding: 4px 0;
+  }
+  .profile-sub {
+    font-size: 11px;
+  }
+  .profile-name-row {
+    gap: 6px;
+  }
+  .blacklist-dropdown {
+    flex-shrink: 0;
+  }
+  .bl-row {
+    padding: 6px 8px;
+  }
+  .bl-label {
+    font-size: 12px;
+  }
+  .bl-head {
+    font-size: 10px;
+    padding: 4px 8px 2px;
+  }
+  .notif-head {
+    padding: 10px 12px 6px;
+    font-size: 13px;
+  }
+  .notif-list {
+    max-height: 280px;
+    padding: 0 6px 6px;
+  }
+  .notif-meta {
+    margin-top: 4px;
+  }
+  .notif-time {
+    font-size: 11px;
+  }
+  .notif-mark-all-btn {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+  .notif-empty {
+    padding: 2px 12px 12px;
+    font-size: 12px;
+  }
+  .notif-unread-dot {
+    width: 6px;
+    height: 6px;
+    margin-top: 4px;
+  }
+  .student-modal-close {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+  .student-name-link {
+    font-size: 13px;
+  }
+  .handle {
+    font-size: 12px;
+  }
+  .avatar-fallback,
+  .profile-avatar-fallback {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+  .profile-avatar-fallback {
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
+  .table-empty {
+    padding: 16px 0;
+    font-size: 12px;
+  }
+  .history-link {
+    font-size: 12px;
+  }
+  .rc-name {
+    font-size: 13px;
+  }
+  .rc-handle {
+    font-size: 11px;
+  }
+  .rc-desc {
+    font-size: 12px;
+  }
+  .rc-footer {
+    font-size: 11px;
+  }
+  .rc-lang {
+    font-size: 11px;
+  }
+  .rc-score {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+  .rc-status {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+  .leader-sub {
+    font-size: 11px;
+  }
+  .leader-card .panel-title {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+  .system-label {
+    font-size: 12px;
+  }
+  .empty-illustration {
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+    margin-bottom: 14px;
+  }
+  .empty-illustration svg {
+    width: 32px;
+    height: 32px;
+  }
+  .topbar-meta {
+    font-size: 12px;
+    gap: 6px;
+  }
+  .topbar-account {
+    gap: 8px;
+  }
+  .faculty-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+  .user-avatar-pill {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+  }
+  .sidebar-avatar-img {
+    width: 36px;
+    height: 36px;
+  }
+  .sidebar-avatar-link .user-avatar-pill {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+  }
+  .sidebar-name-link {
+    font-size: 16px;
+  }
+  .user-role-line {
+    font-size: 12px;
+  }
+  .sidebar-gear-link {
+    width: 28px;
+    height: 28px;
+  }
+  .sidebar-gear-link svg {
+    width: 14px;
+    height: 14px;
+  }
+  .sidebar-section-label {
+    font-size: 10px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+  }
+  .sidebar-nav-item {
+    padding: 10px 10px;
+    font-size: 14px;
+    gap: 10px;
+  }
+  .sidebar-nav-item .nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .shadcn-brand-header {
+    padding: 10px 10px;
+  }
+  .brand-avatar-box {
+    width: 32px;
+    height: 32px;
+  }
+  .brand-team {
+    font-size: 12px;
+  }
+  .brand-edition {
+    font-size: 10px;
+  }
+  .sidebar-search-box {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .search-kbd {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+  .sidebar-user-footer {
+    padding: 10px 8px;
+    gap: 8px;
+  }
+  .status-dot-active,
+  .status-dot-warning {
+    width: 6px;
+    height: 6px;
+  }
+  .user-name {
+    font-size: 13px;
+  }
+  .sidebar-gear-link {
+    width: 28px;
+    height: 28px;
+  }
+  .sidebar-gear-link svg {
+    width: 14px;
+    height: 14px;
+  }
+  .auth-notice-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .auth-notice-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .roster-loaded-card {
+    padding: 10px 12px;
+    font-size: 13px;
+    gap: 8px;
+  }
+  .roster-load-title {
+    font-size: 13px;
+  }
+  .roster-load-meta {
+    font-size: 12px;
+  }
+  .roster-clear {
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+  .batch-progress-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .batch-progress {
+    margin-top: 12px;
+  }
+  .progress-bar.is-running {
+    background-size: 150% 100%;
+  }
+  .run-log-snapshot {
+    max-height: 180px;
+    padding: 10px 12px;
+  }
+  .run-log-live {
+    padding: 8px 10px;
+  }
+  .batch-log-item {
+    font-size: 12px;
+    padding: 2px 0;
+  }
+  .batch-log-item.error {
+    font-size: 12px;
+  }
+  .scroll-sentinel {
+    font-size: 12px;
+    padding: 8px 0 4px;
+  }
+  .chip {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  .filter-check {
+    font-size: 12px;
+    gap: 4px;
+  }
+  .filter-label {
+    font-size: 10px;
+  }
+  .search-placeholder {
+    font-size: 11px;
+  }
+  .search-kbd {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+  .sidebar-search-box {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .sidebar-user-footer {
+    padding: 10px 8px;
+    gap: 8px;
+  }
+  .status-dot-active,
+  .status-dot-warning {
+    width: 6px;
+    height: 6px;
+  }
+  .user-name {
+    font-size: 13px;
+  }
+  .sidebar-gear-link {
+    width: 28px;
+    height: 28px;
+  }
+  .sidebar-gear-link svg {
+    width: 14px;
+    height: 14px;
+  }
+  .auth-notice-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .auth-notice-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .roster-loaded-card {
+    padding: 10px 12px;
+    font-size: 13px;
+    gap: 8px;
+  }
+  .roster-load-title {
+    font-size: 13px;
+  }
+  .roster-load-meta {
+    font-size: 12px;
+  }
+  .roster-clear {
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+  .batch-progress-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .batch-progress {
+    margin-top: 12px;
+  }
+  .progress-bar.is-running {
+    background-size: 150% 100%;
+  }
+  }
+  .empty-state p {
+    font-size: 14px;
+  }
+  .data-table-wrap {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px;
+  }
+  .profile-panel {
+    padding: 14px;
+  }
+  .profile-header {
+    gap: 10px;
+  }
+  .profile-avatar,
+  .profile-avatar-fallback {
+    width: 52px;
+    height: 52px;
+  }
+  .profile-name {
+    font-size: 16px;
+  }
+  .profile-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .stat-number {
+    font-size: 14px;
+  }
+  .stat-label {
+    font-size: 10px;
+  }
+  .repo-grid {
+    grid-template-columns: 1fr;
+  }
+  .leaderboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .notif-dropdown {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: 60px;
+    width: auto;
+  }
+  .student-modal-backdrop {
+    padding: 16px 12px;
+  }
+  .student-modal {
+    max-height: calc(100vh - 32px);
+    padding: 16px;
+  }
+  .blacklist-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  .radar-compare-panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 60vh;
+  }
+  .export-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
 }
 /* 3.6 page components */

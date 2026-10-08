@@ -30,7 +30,11 @@
 </head>
 <body>
 <div class="app-shell">
-  <aside class="app-sidebar">
+  <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="sidebar">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <div class="nav-overlay" id="navOverlay"></div>
+  <aside class="app-sidebar" id="sidebar">
     <div class="sidebar-stack">
     <div class="sidebar-identity">
       <a class="sidebar-avatar-link" href="{{ profile_href }}" title="My profile" aria-label="Open my profile">
@@ -89,6 +93,43 @@
       link.href = href + sep + 'roster=' + encodeURIComponent(rosterId);
     });
   }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var toggle = document.getElementById('navToggle');
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('navOverlay');
+  if (!toggle || !sidebar || !overlay) return;
+
+  function openNav() {
+    sidebar.classList.add('is-open');
+    overlay.classList.add('is-visible');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeNav() {
+    sidebar.classList.remove('is-open');
+    overlay.classList.remove('is-visible');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+  function toggleNav() {
+    if (sidebar.classList.contains('is-open')) { closeNav(); } else { openNav(); }
+  }
+
+  toggle.addEventListener('click', toggleNav);
+  overlay.addEventListener('click', closeNav);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('is-open')) closeNav();
+  });
+  sidebar.querySelectorAll('a').forEach(function (link) {
+    link.addEventListener('click', closeNav);
+  });
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 700 && sidebar.classList.contains('is-open')) closeNav();
+  });
 })();
 </script>
 </body>

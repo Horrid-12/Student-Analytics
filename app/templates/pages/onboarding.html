@@ -1,6 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Academic Onboarding & Record Setup{% endblock %}
-
+{% block head %}
+<style>
+  @media (max-width: 700px) {
+    .onboarding-grid {
+      grid-template-columns: 1fr !important;
+      gap: 16px !important;
+    }
+    .onboarding-grid > div {
+      gap: 16px !important;
+    }
+    .onboarding-grid .panel {
+      padding: 16px !important;
+    }
+    .onboarding-grid .form-group input,
+    .onboarding-grid .form-group select {
+      height: 44px !important;
+      font-size: 16px !important;
+    }
+    .onboarding-grid .teaching-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .onboarding-grid .teaching-row .form-group {
+      min-width: 0 !important;
+    }
+    .onboarding-grid .teaching-remove {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="topbar-card" style="position: relative;">
     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -354,7 +384,7 @@
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px;">
+<div class="onboarding-grid" style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px;">
     <div style="display: flex; flex-direction: column; gap: 24px;">
         <form method="post" action="/onboarding" id="onboarding-form">
         <!-- Academic Info -->

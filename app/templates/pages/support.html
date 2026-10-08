@@ -343,6 +343,55 @@
   .ticket-table .col-ticket-category { width: 12%; }
   .ticket-table .col-ticket-status { width: 13%; }
   .ticket-table .col-ticket-created { width: 15%; }
+  @media (max-width: 700px) {
+    .ticket-table {
+      table-layout: auto;
+      min-width: 680px;
+    }
+    .ticket-table th,
+    .ticket-table td {
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }
+    .ticket-table .col-ticket-subject {
+      white-space: normal;
+      overflow-wrap: break-word;
+      min-width: 140px;
+    }
+    .ticket-stats {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .ticket-form .filter-field {
+      max-width: none !important;
+    }
+    .ticket-actions-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .ticket-actions-row .btn,
+    .ticket-actions-row .ticket-attach {
+      width: 100%;
+      justify-content: center;
+    }
+    .ticket-submit-right {
+      margin-left: 0;
+      width: 100%;
+    }
+    .ticket-submit-right .btn {
+      width: 100%;
+    }
+    .ticket-status-save {
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+    }
+    .ticket-status-save .filter-field {
+      width: 100%;
+    }
+    .ticket-update-form .filter-field {
+      width: 100%;
+    }
+  }
 </style>
 {% endblock %}
 {% block content %}
