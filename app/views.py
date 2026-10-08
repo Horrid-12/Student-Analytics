@@ -1662,6 +1662,28 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
         if all(value is not None for value in window_values)
         else None
     )
+    if activity_windows is None:
+        # Runs that predate commit history (or lightweight syncs) have no
+        # Owned_Commits columns — fall back to repo-update counts per window
+        # (same signal as contributions_30d) so the period switcher still
+        # renders instead of silently dropping to the legacy 30d label.
+        owned_windows = {"30d": 0, "90d": 0, "all": 0}
+        if owned is not None and not owned.empty and "Updated" in owned.columns:
+            updated = pd.to_datetime(owned["Updated"], errors="coerce", utc=True, format="mixed").dropna()
+            if not updated.empty:
+                now = pd.Timestamp.now(tz="UTC")
+                days_ago = (now - updated).dt.days
+                owned_windows["30d"] = int((days_ago <= 30).sum())
+                owned_windows["90d"] = int((days_ago <= 90).sum())
+                owned_windows["all"] = int(len(updated))
+        team_30d = _opt_int(row, "Team_Commits_30d") or 0
+        team_90d = _opt_int(row, "Team_Commits_90d") or 0
+        team_all = _opt_int(row, "Team_Commits") or 0
+        activity_windows = {
+            "30d": owned_windows["30d"] + int(team_30d),
+            "90d": owned_windows["90d"] + int(team_90d),
+            "all": owned_windows["all"] + int(team_all),
+        }
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
