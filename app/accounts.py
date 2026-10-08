@@ -280,3 +280,20 @@ def clear_snapshot(email: str) -> bool:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("clear_snapshot failed for %s: %s", email, exc)
         return False
+def list_snapshot_timestamps() -> list[dict]:
+    """Every snapshot timestamp (lightweight)."""
+    from app import database, db
+    if database.db_configured():
+        return db.list_snapshot_timestamps()
+    import sqlite3
+    from contextlib import closing
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute(_SCHEMA)
+            rows = conn.execute(
+                "SELECT email, status, synced_at FROM account_snapshots"
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []

@@ -2546,3 +2546,19 @@ def set_faculty_invite_used(email: str, consumed_by: str = "") -> bool:
         return False
 
 
+
+def list_snapshot_timestamps() -> list[dict]:
+    """Lightweight fetch of only timestamps and statuses to avoid heavy JSON transfer."""
+    try:
+        from app import database
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email, status, synced_at FROM account_snapshots"
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("list_snapshot_timestamps failed: %s", exc)
+        return []

@@ -529,7 +529,7 @@ def sync_heavy_next(token: str | None = None) -> dict:
     stalest_time = float("inf")
     try:
         from app import accounts
-        snapshots = accounts.list_snapshots()
+        snapshots = accounts.list_snapshot_timestamps()
         snapshots_by_email = {str(s.get("email") or "").strip().lower(): s for s in snapshots}
     except Exception:
         snapshots_by_email = {}
