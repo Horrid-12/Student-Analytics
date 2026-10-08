@@ -1,7 +1,7 @@
 # Automated heavy sync — fetches deep analytics (commits, PRs, team repos)
 # for every approved student, one at a time, via the Vercel API.
 #
-# Schedule: every 6 hours (4×/day).
+# Schedule: once a day (storage protection) (4×/day).
 # Budget:   1000 students × ~7s × 4 runs = ~470 min/month (Pro Student = 3000).
 #
 # Required repository secrets:
@@ -12,7 +12,7 @@ name: Heavy Sync
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # every 6 hours
+    - cron: '0 0 * * *'   # once a day (storage protection)
   workflow_dispatch:          # manual trigger from Actions tab
     inputs:
       start_at:
