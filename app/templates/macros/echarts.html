@@ -741,22 +741,22 @@ window.__EC_THEME = (function () {
   var raw = {{ data | tojson }};
   var chart = echarts.init(el);
 
-  function build(weeks, seriesData) {
-    var p = window.__EC_THEME.get();
+  function hexToRgba(hex, alpha) {
+    hex = hex.replace('#', '');
+    var r = parseInt(hex.substring(0, 2), 16);
+    var g = parseInt(hex.substring(2, 4), 16);
+    var b = parseInt(hex.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
 
-    /* Convert hex to rgba for translucent area fills. */
-    function hexToRgba(hex, alpha) {
-      hex = hex.replace('#', '');
-      var r = parseInt(hex.substring(0, 2), 16);
-      var g = parseInt(hex.substring(2, 4), 16);
-      var b = parseInt(hex.substring(4, 6), 16);
-      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-    }
-
-    var series = seriesData.map(function (s, i) {
-      var color = p.series[i % p.series.length];
+  function buildSeries(seriesData, colorPalette) {
+    return seriesData.map(function (s, i) {
+      var color = colorPalette[i % colorPalette.length];
+      var displayName = s.division && s.batch ? (s.division + ' - ' + s.batch) : (s.batch || 'Series');
       return {
-        name: s.batch,
+        name: displayName,
+        division: s.division,
+        batch: s.batch,
         type: 'line',
         data: s.values,
         smooth: 0.3,
@@ -788,46 +788,40 @@ window.__EC_THEME = (function () {
         animationEasing: 'cubicOut'
       };
     });
+  }
+
+  function build(weeks, seriesData) {
+    var p = window.__EC_THEME.get();
+    var series = buildSeries(seriesData, p.series);
 
     return {
-      tooltip: window.__EC_THEME.tooltip({
+      tooltip: {
         trigger: 'axis',
         axisPointer: {
-          type: 'cross',
-          lineStyle: { color: p.grid, width: 1 },
-          crossStyle: { color: p.grid },
-          label: { backgroundColor: p.tooltip_bg, color: p.tooltip_text, borderColor: p.tooltip_border }
+          type: 'line',
+          lineStyle: { color: p.grid, width: 1 }
         },
         formatter: function (params) {
           if (!params || !params.length) return '';
           var html = '<b>' + params[0].axisValue + '</b>';
           params.forEach(function (item) {
-            html += '<br/>' +
-              '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
-              item.color + ';margin-right:6px;"></span>' +
-              item.seriesName + ': <b>' + item.value + '</b>';
+            if (item.value != null) {
+              html += '<br/>' +
+                '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+                item.color + ';margin-right:6px;"></span>' +
+                item.seriesName + ': <b>' + item.value + '</b>';
+            }
           });
           return html;
-        }
-      }),
-      legend: {
-        data: seriesData.map(function (s) { return s.batch; }),
-        bottom: 0,
-        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
-        icon: 'roundRect',
-        itemWidth: 14,
-        itemHeight: 8,
-        itemGap: 12,
-        type: seriesData.length > 8 ? 'scroll' : 'plain',
-        pageTextStyle: { color: p.textSoft },
-        pageIconColor: p.accent,
-        pageIconInactiveColor: p.muted
+        },
+        show: false
       },
+      legend: { show: false },
       grid: {
         left: 12,
         right: 16,
         top: 16,
-        bottom: seriesData.length > 8 ? 50 : 36,
+        bottom: 24,
         containLabel: true
       },
       xAxis: {
@@ -859,27 +853,40 @@ window.__EC_THEME = (function () {
   }
 
   var current = { weeks: raw.weeks || [], series: raw.series || [] };
+  var allViews = {
+    weekly: { weeks: raw.weeks || [], series: raw.series || [] },
+    monthly: { weeks: raw.months || [], series: raw.monthly_series || [] },
+    semester: { weeks: raw.semesters || [], series: raw.semester_series || [] }
+  };
 
   function render(view) {
-    var next;
-    if (view === 'monthly' && raw.months && raw.monthly_series) {
-      next = { weeks: raw.months, series: raw.monthly_series };
-    } else if (view === 'semester' && raw.semesters && raw.semester_series) {
-      next = { weeks: raw.semesters, series: raw.semester_series };
-    } else {
-      next = { weeks: raw.weeks || [], series: raw.series || [] };
-    }
-    if (!next.weeks.length || !next.series.length) { return; }
+    var next = allViews[view];
+    if (!next || !next.weeks.length || !next.series.length) { return; }
     current = next;
     chart.setOption(build(current.weeks, current.series));
+  }
+
+  function filterSeries(division, batch) {
+    var filtered = current.series.filter(function (s) {
+      var divMatch = division === 'All' || s.division === division;
+      var batMatch = batch === 'All' || s.batch === batch;
+      return divMatch && batMatch;
+    });
+    chart.setOption({
+      series: buildSeries(filtered, window.__EC_THEME.get().series)
+    });
   }
 
   /* Initial (semester) render. */
   render('semester');
 
-  /* Page-level bridge so an Overview toggle can switch Weekly/Monthly. */
+  /* Page-level bridge for Overview toggle + client-side division/batch filter. */
   window.__chartBridge = window.__chartBridge || {};
-  window.__chartBridge['{{ id }}'] = { chart: chart, render: render };
+  window.__chartBridge['{{ id }}'] = {
+    chart: chart,
+    render: render,
+    filterSeries: filterSeries
+  };
 
   window.__EC_THEME.register(chart, function () {
     return build(current.weeks, current.series);

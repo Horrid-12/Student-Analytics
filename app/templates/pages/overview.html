@@ -34,6 +34,47 @@
   }
   .trend-header .panel-title {
     margin-bottom: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .trend-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .trend-filters .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .trend-filters .filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .trend-filters .filter-select,
+  .trend-filters .cf-btn {
+    min-height: 36px;
+    font-size: 13px;
+  }
+  .trend-filters .cf-btn {
+    padding: 0 16px;
+    border-width: 2px;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+  .trend-filters .btn {
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
   }
   .trend-header .activity-tabs {
     flex-wrap: wrap;
@@ -43,38 +84,19 @@
   .trend-header .activity-tabs .activity-tab {
     white-space: nowrap;
   }
-  .trend-clear-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 600;
-    font-family: Inter, system-ui, sans-serif;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 180ms ease;
-    flex-shrink: 0;
-  }
-  .trend-clear-btn:hover {
-    border-color: var(--blue-hover-border);
-    background: var(--hover-bg);
-    color: var(--text);
-  }
   @media (max-width: 1100px) {
     .trend-header {
       flex-direction: column;
       align-items: stretch;
     }
-    .trend-header .activity-tabs {
-      align-self: flex-end;
+    .trend-header .panel-title {
+      text-align: left;
     }
-    .trend-header .trend-clear-btn {
+    .trend-filters {
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .trend-header .activity-tabs {
       align-self: flex-end;
       margin-top: 8px;
     }
@@ -862,15 +884,24 @@
 <section class="panel">
   <div class="trend-header">
     <div class="panel-title">Commit & Activity Trend Across Classes</div>
+    <div class="trend-filters">
+      {% include "partials/class_filter_dropdown.html" %}
+      <div class="filter-field">
+        <label class="filter-label" for="trend-semester">Semester</label>
+        <select id="trend-semester" class="filter-select" name="semester">
+          {% for value in payload.semesters %}
+          <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="button" id="trend-apply">Apply</button>
+      <button class="btn btn-ghost" type="button" id="trend-clear">Clear</button>
+    </div>
     <div class="activity-tabs" role="group" aria-label="Trend period">
       <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="false">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
       <button type="button" class="activity-tab" data-trend="semester" aria-pressed="true">Semester</button>
     </div>
-    <button type="button" class="trend-clear-btn" id="trend-clear-btn" aria-label="Clear trend filters">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      Clear Filters
-    </button>
   </div>
   <div class="two-col-grid">
     <div class="full-width">
@@ -902,17 +933,93 @@
     });
   })();
   (function () {
-    // Clear Filters button for trend card - resets division/batch/semester to All
-    var clearBtn = document.getElementById('trend-clear-btn');
-    if (!clearBtn) return;
-    clearBtn.addEventListener('click', function () {
-      var params = new URLSearchParams(window.location.search);
-      params.set('division', 'All');
-      params.set('batch', 'All');
-      params.set('semester', 'All');
-      params.delete('offset');
-      window.location.search = params.toString();
-    });
+    // Trend card filter controls: Division/Batch (client-side), Semester (server-side via Apply)
+    var applyBtn = document.getElementById('trend-apply');
+    var clearBtn = document.getElementById('trend-clear');
+    var semesterSel = document.getElementById('trend-semester');
+    var cfBtn = document.getElementById('cf-btn');
+    var cfPanel = document.getElementById('cf-panel');
+    var bridge = null;
+
+    // Wait for chart bridge
+    var tries = 0;
+    (function waitForBridge() {
+      var b = window.__chartBridge && window.__chartBridge['weekly-trend'];
+      if (b) { bridge = b; return; }
+      if (tries++ < 200) setTimeout(waitForBridge, 50);
+    })();
+
+    // Apply: reload page with semester filter
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function () {
+        var params = new URLSearchParams(window.location.search);
+        params.set('semester', semesterSel.value || 'All');
+        params.set('division', 'All');
+        params.set('batch', 'All');
+        params.delete('offset');
+        window.location.search = params.toString();
+      });
+    }
+
+    // Clear: reset division/batch client-side, semester via reload
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        // Reset class filter dropdown UI
+        if (cfPanel) {
+          cfPanel.querySelectorAll('[data-mine]').forEach(function (row) {
+            row.removeAttribute('data-active');
+          });
+          cfPanel.querySelectorAll('.cf-div').forEach(function (d) {
+            d.removeAttribute('data-active');
+          });
+          cfPanel.querySelectorAll('.cf-batch').forEach(function (b) {
+            b.removeAttribute('data-active');
+          });
+          // Activate "All students" if present
+          var allStudentsRow = cfPanel.querySelector('[data-mine="0"]');
+          if (allStudentsRow) allStudentsRow.setAttribute('data-active', 'true');
+        }
+        // Reset chart series filter
+        if (bridge && bridge.filterSeries) {
+          bridge.filterSeries('All', 'All');
+        }
+        // Reload page to reset semester filter
+        var params = new URLSearchParams(window.location.search);
+        params.set('division', 'All');
+        params.set('batch', 'All');
+        params.set('semester', 'All');
+        params.delete('offset');
+        window.location.search = params.toString();
+      });
+    }
+
+    // Class filter dropdown: filter chart series client-side on selection
+    if (cfPanel) {
+      cfPanel.querySelectorAll('.cf-div').forEach(function (d) {
+        d.addEventListener('click', function () {
+          var div = d.getAttribute('data-division');
+          if (bridge && bridge.filterSeries) {
+            bridge.filterSeries(div, 'All');
+          }
+        });
+      });
+      cfPanel.querySelectorAll('.cf-batch').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var div = b.getAttribute('data-division');
+          var bat = b.getAttribute('data-batch');
+          if (bridge && bridge.filterSeries) {
+            bridge.filterSeries(div, bat);
+          }
+        });
+      });
+      cfPanel.querySelectorAll('[data-mine]').forEach(function (row) {
+        row.addEventListener('click', function () {
+          if (bridge && bridge.filterSeries) {
+            bridge.filterSeries('All', 'All');
+          }
+        });
+      });
+    }
   })();
 </script>
 
