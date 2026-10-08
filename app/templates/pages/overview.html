@@ -43,6 +43,42 @@
   .trend-header .activity-tabs .activity-tab {
     white-space: nowrap;
   }
+  .trend-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 180ms ease;
+    flex-shrink: 0;
+  }
+  .trend-clear-btn:hover {
+    border-color: var(--blue-hover-border);
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+  @media (max-width: 1100px) {
+    .trend-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .trend-header .activity-tabs {
+      align-self: flex-end;
+    }
+    .trend-header .trend-clear-btn {
+      align-self: flex-end;
+      margin-top: 8px;
+    }
+  }
 
   /* Class Metrics Radar: bigger canvas (7fr) + an always-symmetric card grid
      in the right rail. Cards are driven by the compared cohorts: 0 or 1 class
@@ -481,38 +517,28 @@
 </div>
 {% endif %}
 {% if complete and payload %}
-<form class="filter-bar" method="get">
+<form class="filter-bar" method="get" id="overview-filter-form">
   <input type="hidden" name="roster" value="{{ roster_id }}">
-  {% if show_my_classes %}
+  <input type="hidden" name="q" value="{{ q }}">
   <input type="hidden" name="mine" value="{{ mine }}">
-  <a id="my-classes-btn" href="/overview?roster={{ roster_id }}&amp;q={{ q|urlencode }}&amp;division={{ division|urlencode }}&amp;batch={{ batch|urlencode }}&amp;semester={{ semester|urlencode }}&amp;mine={{ "0" if my_classes_on else "1" }}" aria-pressed="{{ "true" if my_classes_on else "false" }}" title="Toggle your taught classes" style="display:inline-flex;align-items:center;min-height:42px;padding:0 24px;border:3px solid #8b5cf6;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;white-space:nowrap;{% if my_classes_on %}background:#8b5cf6;color:#fff;{% else %}background:transparent;color:#8b5cf6;{% endif %}">{% if my_classes_on %}My Classes{% else %}All students{% endif %}</a>
-  {% endif %}
-  <div class="filter-field">
-    <label class="filter-label" for="division-filter">Division</label>
-    <select id="division-filter" class="filter-select" name="division">
-      {% for value in payload.divisions %}
-      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
+  <input type="hidden" name="division" value="{{ division }}">
+  <input type="hidden" name="batch" value="{{ batch }}">
+  <input type="hidden" name="semester" value="{{ semester }}">
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="overview-search">Search</label>
+    <input id="overview-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search students, repos, PRN, usernames&hellip;">
   </div>
+  {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
-    <label class="filter-label" for="batch-filter">Batch</label>
-    <select id="batch-filter" class="filter-select" name="batch">
-      {% for value in payload.batches %}
-      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="filter-field">
-    <label class="filter-label" for="semester-filter">Semester</label>
-    <select id="semester-filter" class="filter-select" name="semester">
+    <label class="filter-label" for="overview-semester">Semester</label>
+    <select id="overview-semester" class="filter-select" name="semester">
       {% for value in payload.semesters %}
       <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
       {% endfor %}
     </select>
   </div>
-  <button class="btn" type="submit">Apply</button>
-  <a class="btn" href="/overview?roster={{ roster_id }}">Clear</a>
+  <button class="btn" type="submit" id="overview-apply">Apply</button>
+  <button class="btn" type="button" id="overview-clear">Clear Filters</button>
 </form>
 <div id="previous-results">
 <section class="panel">
@@ -560,6 +586,24 @@
       });
       var number = card.querySelector('[data-active-number]');
       if (number) number.textContent = btn.getAttribute('data-active-value');
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    // Overview filter bar: Clear Filters button resets all filters and navigates.
+    var form = document.getElementById('overview-filter-form');
+    var clearBtn = document.getElementById('overview-clear');
+    if (!form || !clearBtn) return;
+    clearBtn.addEventListener('click', function () {
+      var params = new URLSearchParams(window.location.search);
+      params.set('division', 'All');
+      params.set('batch', 'All');
+      params.set('semester', 'All');
+      params.delete('q');
+      params.delete('offset');
+      window.location.search = params.toString();
     });
   })();
 </script>
@@ -817,12 +861,16 @@
 
 <section class="panel">
   <div class="trend-header">
-    <div class="panel-title">Weekly Commit &amp; Activity Trend Across Batches</div>
+    <div class="panel-title">Commit & Activity Trend Across Classes</div>
     <div class="activity-tabs" role="group" aria-label="Trend period">
       <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="false">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
       <button type="button" class="activity-tab" data-trend="semester" aria-pressed="true">Semester</button>
     </div>
+    <button type="button" class="trend-clear-btn" id="trend-clear-btn" aria-label="Clear trend filters">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      Clear Filters
+    </button>
   </div>
   <div class="two-col-grid">
     <div class="full-width">
@@ -840,7 +888,7 @@
 </section>
 <script>
   (function () {
-    // Weekly / Monthly trend switcher for the Commit & Activity Trend graph.
+    // Trend period switcher for the Commit & Activity Trend graph.
     document.addEventListener('click', function (event) {
       var btn = event.target.closest ? event.target.closest('[data-trend]') : null;
       if (!btn) return;
@@ -851,6 +899,19 @@
       });
       var bridge = window.__chartBridge && window.__chartBridge['weekly-trend'];
       if (bridge) bridge.render(btn.getAttribute('data-trend'));
+    });
+  })();
+  (function () {
+    // Clear Filters button for trend card - resets division/batch/semester to All
+    var clearBtn = document.getElementById('trend-clear-btn');
+    if (!clearBtn) return;
+    clearBtn.addEventListener('click', function () {
+      var params = new URLSearchParams(window.location.search);
+      params.set('division', 'All');
+      params.set('batch', 'All');
+      params.set('semester', 'All');
+      params.delete('offset');
+      window.location.search = params.toString();
     });
   })();
 </script>
