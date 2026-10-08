@@ -527,11 +527,18 @@ def sync_heavy_next(token: str | None = None) -> dict:
     # Find the stalest: no snapshot → epoch 0, otherwise parse synced_at
     stalest_user = None
     stalest_time = float("inf")
+    try:
+        from app import accounts
+        snapshots = accounts.list_snapshots()
+        snapshots_by_email = {str(s.get("email") or "").strip().lower(): s for s in snapshots}
+    except Exception:
+        snapshots_by_email = {}
+        
     for user_row in approved:
         email = _clean_text(user_row.get("email"))
         if not email or not _clean_text(user_row.get("github_username")):
             continue
-        snapshot = accounts.get_snapshot(email)
+        snapshot = snapshots_by_email.get(email)
         if snapshot is None or snapshot.get("status") != "ok":
             # Never synced or errored — top priority
             stalest_user = user_row

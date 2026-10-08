@@ -63,16 +63,15 @@ jobs:
           TOTAL_WAITED=0
 
           while [ $i -lt $TOTAL ]; do
-            EMAIL=$(echo "$USERS" | jq -r ".[$i].email")
-            NAME=$(echo "$USERS" | jq -r ".[$i].name // .[$i].email")
-            ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$EMAIL', safe=''))")
-
-            echo "[$((i+1))/$TOTAL] Syncing $NAME ($EMAIL)..."
+            echo "[$((i+1))/$TOTAL] Fetching next stalest student..."
 
             HTTP_CODE=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
               -X POST \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-              "${{ secrets.APP_URL }}/api/sync/single/$ENCODED" || echo "000")
+              "${{ secrets.APP_URL }}/api/sync/heavy/next" || echo "000")
+              
+            EMAIL=$(jq -r '.email // "unknown"' /tmp/sync_response.json 2>/dev/null || echo "unknown")
+            echo "  > Synced $EMAIL" 
 
             if [ "$HTTP_CODE" = "200" ]; then
               DETAIL=$(jq -r '.detail // "ok"' /tmp/sync_response.json 2>/dev/null || echo "ok")

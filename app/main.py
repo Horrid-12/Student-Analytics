@@ -2104,6 +2104,24 @@ async def hr_snapshot_ingest(request: Request):
     _save_hr_snapshot(handle, snapshot)
     return JSONResponse(content={"status": "ok", "handle": handle})
 
+@app.post("/api/sync/heavy/next")
+async def sync_heavy_next_endpoint(request: Request):
+    user = getattr(request.state, "user", None)
+    authorized = bool(user and user.get("role") in ("admin", "faculty"))
+    if not authorized:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            if token == os.environ.get("CRON_SECRET"):
+                authorized = True
+    if not authorized:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    
+    tokens = github_client.load_all_tokens()
+    summary = await asyncio.to_thread(sync.sync_heavy_next, tokens[0] if tokens else None)
+    status_code = 429 if summary.get("code") == "rate_limited" else (500 if summary.get("status") == "error" else 200)
+    return JSONResponse(status_code=status_code, content=summary)
+
 @app.post("/api/sync/single/{email:path}")
 async def sync_single_student(email: str, request: Request):
     """Client-orchestrated heavy sync for a single student.
