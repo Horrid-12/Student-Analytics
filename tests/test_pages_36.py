@@ -277,18 +277,13 @@ class TestPageRenderingWithData:
         assert "Total Forks" in body
         assert "data-active-number" in body
         assert "data-active-value" in body
-        # Filter bar now uses Repositories-style controls:
-        # search input, class filter dropdown (division/batch), semester select
-        assert 'name="q"' in body
-        assert 'id="overview-search"' in body
-        assert 'id="cf-btn"' in body  # class filter dropdown button
-        assert 'name="mine"' in body
+        # Division/Batch/Semester filters (no search on Overview).
+        assert 'name="q"' not in body
+        assert 'student-search' not in body
         assert 'name="division"' in body
         assert 'name="batch"' in body
         assert 'name="semester"' in body
-        assert 'id="overview-semester"' in body
-        assert 'id="overview-apply"' in body
-        assert 'id="overview-clear"' in body
+        assert 'id="division-filter"' in body
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in body
         assert '<span class="badge-blue">Students</span>' not in body
@@ -311,9 +306,6 @@ class TestPageRenderingWithData:
         assert "echarts" in body
         assert "plotly" not in body.lower()
         assert "htmx" not in body.lower()
-        # Trend card: updated title and clear button
-        assert "Commit & Activity Trend Across Classes" in body
-        assert 'id="trend-clear-btn"' in body
 
     def test_overview_filters_match_students_page(self, tmp_path):
         roster_id = self._setup(tmp_path)

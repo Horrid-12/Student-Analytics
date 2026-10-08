@@ -1474,7 +1474,6 @@ def overview(
     ctx["teaching_empty"] = False
     ctx["taught_map"] = {}
     ctx["show_my_classes"] = False
-    ctx["teaching_active"] = False
     ctx["my_classes_on"] = True
     ctx["mine"] = "1"
     if (user or {}).get("role") == "faculty" and not roster:
@@ -1485,7 +1484,6 @@ def overview(
         ctx["taught_map"] = teaching or {}
         if teaching:
             ctx["show_my_classes"] = True
-            ctx["teaching_active"] = True
             ctx["my_classes_on"] = (mine or "1") != "0"
             ctx["mine"] = "1" if ctx["my_classes_on"] else "0"
             _full_view = view

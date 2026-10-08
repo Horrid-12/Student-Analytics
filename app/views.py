@@ -821,7 +821,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     else:
         language_counts = pd.DataFrame(columns=["Language", "Repositories"])
 
-    weekly_trend_data = _weekly_activity_trend(repos, team_repos, students, division, batch)
+    weekly_trend_data = _weekly_activity_trend(repos, team_repos, students)
 
     heatmap_rows = (
         students.groupby(["Division", "Batch"], dropna=False)["Combined_Repos"].sum().reset_index()
@@ -1127,63 +1127,39 @@ def _weekly_activity_trend(
     repos: pd.DataFrame,
     team_repos: pd.DataFrame | None,
     students: pd.DataFrame,
-    division: str = "All",
-    batch: str = "All",
 ) -> list:
     """Build weekly, monthly and semester activity trend data for the overview chart.
 
     Groups repo activity (Updated timestamps) by ISO week, calendar month,
-    and semester period, each across student Division and Batch. Semester periods are
+    and semester period, each across student Batch. Semester periods are
     derived from each activity timestamp (July–December = Semester 1 of
     YY-(YY+1); January–June = Semester 2 of (YY-1)-YY) so the semester view is
-    a true time bucketing that stays populated after a division/batch filter.
-    For each (period, division, batch) pair, computes the average number of repo
-    updates per student in that division+batch (i.e. total repos updated in that
-    period by students in the division+batch, divided by the number of students
-    in the division+batch — for semesters the denominator is the students in
-    that semester+division+batch cell).
+    a true time bucketing that stays populated after a batch filter. For each
+    (period, batch) pair, computes the average number of repo updates per
+    student in that batch (i.e. total repos updated in that period by students
+    in the batch, divided by the number of students in the batch — for
+    semesters the denominator is the students in that semester+batch cell).
 
     Returns a JSON-serialisable structure with the three aggregations so the
     overview can switch between Weekly, Monthly and Semester views:
         { "weeks": ["2026-W35", ...],
-          "series": [ { "division": "Div 1", "batch": "B1", "values": [1.2, 0.8, ...] }, ... ],
+          "series": [ { "batch": "B1", "values": [1.2, 0.8, ...] }, ... ],
           "months": ["2026-08", ...],
-          "monthly_series": [ { "division": "Div 1", "batch": "B1", "values": [3.1, ...] }, ... ],
+          "monthly_series": [ { "batch": "B1", "values": [3.1, ...] }, ... ],
           "semesters": ["2026-27 · Semester 1", ...],
-          "semester_series": [ { "division": "Div 1", "batch": "B1", "values": [4.2, ...] }, ... ] }
+          "semester_series": [ { "batch": "B1", "values": [4.2, ...] }, ... ] }
     """
     if students is None or students.empty:
         return {"weeks": [], "series": []}
     if "Batch" not in students.columns or "GitHub_Username" not in students.columns:
         return {"weeks": [], "series": []}
 
-    # Filter students by division and batch if specified
-    filtered_students = students.copy()
-    if division != "All" and "Division" in filtered_students.columns:
-        filtered_students = filtered_students[filtered_students["Division"].astype(str) == str(division)]
-    if batch != "All" and "Batch" in filtered_students.columns:
-        filtered_students = filtered_students[filtered_students["Batch"].astype(str) == str(batch)]
-
-    if filtered_students.empty:
-        return {"weeks": [], "series": []}
-
-    # Build username → (division, batch) mapping and (division, batch) → student count
-    div_col = "Division" if "Division" in filtered_students.columns else None
-    if div_col:
-        stu = filtered_students[["GitHub_Username", "Division", "Batch"]].dropna(subset=["GitHub_Username"]).copy()
-        stu["GitHub_Username"] = stu["GitHub_Username"].astype(str)
-        stu["Division"] = stu["Division"].fillna("Unknown").astype(str)
-        stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
-        user_div_batch = dict(zip(stu["GitHub_Username"], zip(stu["Division"], stu["Batch"])))
-        div_batch_student_count = stu.groupby(["Division", "Batch"])["GitHub_Username"].nunique().to_dict()
-    else:
-        stu = filtered_students[["GitHub_Username", "Batch"]].dropna(subset=["GitHub_Username"]).copy()
-        stu["GitHub_Username"] = stu["GitHub_Username"].astype(str)
-        stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
-        user_div_batch = dict(zip(stu["GitHub_Username"], [("Unknown", b) for b in stu["Batch"]]))
-        div_batch_student_count = stu.groupby("Batch")["GitHub_Username"].nunique().to_dict()
-        # Convert to (division, batch) keys for consistency
-        div_batch_student_count = {("Unknown", k): v for k, v in div_batch_student_count.items()}
+    # Build username → batch mapping and batch → student count
+    stu = students[["GitHub_Username", "Batch"]].dropna(subset=["GitHub_Username"]).copy()
+    stu["GitHub_Username"] = stu["GitHub_Username"].astype(str)
+    stu["Batch"] = stu["Batch"].fillna("Unknown").astype(str)
+    user_batch = dict(zip(stu["GitHub_Username"], stu["Batch"]))
+    batch_student_count = stu.groupby("Batch")["GitHub_Username"].nunique().to_dict()
 
     # Build username → semester label mapping. Label = Academic_Year + the
     # roster Semester (e.g. "2026-27 · Semester 1"); drops "Unknown"/blank
@@ -1230,14 +1206,9 @@ def _weekly_activity_trend(
     if combined.empty:
         return {"weeks": [], "series": []}
 
-    # Map each repo row to its owner's (division, batch)
-    def _map_div_batch(username):
-        return user_div_batch.get(username, ("Unknown", "Unknown"))
-
-    combined[["Division", "Batch"]] = combined["Username"].apply(
-        lambda u: pd.Series(_map_div_batch(u))
-    )
-    combined = combined.dropna(subset=["Division", "Batch"])
+    # Map each repo row to its owner's batch.
+    combined["Batch"] = combined["Username"].map(user_batch)
+    combined = combined.dropna(subset=["Batch"])
     if combined.empty:
         return {"weeks": [], "series": []}
 
@@ -1245,24 +1216,7 @@ def _weekly_activity_trend(
     # semester period from each ACTIVITY timestamp (July–December = Semester 1
     # of YY-(YY+1); January–June = Semester 2 of (YY-1)-YY — the same calendar
     # convention as add_academic_periods). Bucketing by the activity time keeps
-    # multiple semester categories across a division/batch filter, so the line renders.
-    combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
-    # Map each repo row to its owner's (division, batch)
-    def _map_div_batch(username):
-        return user_div_batch.get(username, ("Unknown", "Unknown"))
-
-    combined[["Division", "Batch"]] = combined["Username"].apply(
-        lambda u: pd.Series(_map_div_batch(u))
-    )
-    combined = combined.dropna(subset=["Division", "Batch"])
-    if combined.empty:
-        return {"weeks": [], "series": []}
-
-    # Compute ISO year-week and calendar-month labels, then derive the
-    # semester period from each ACTIVITY timestamp (July–December = Semester 1
-    # of YY-(YY+1); January–June = Semester 2 of (YY-1)-YY — the same calendar
-    # convention as add_academic_periods). Bucketing by the activity time keeps
-    # multiple semester categories across a division/batch filter, so the line renders.
+    # multiple semester categories across a batch filter, so the line renders.
     combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
     combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
 
@@ -1275,42 +1229,35 @@ def _weekly_activity_trend(
 
     combined["Semester"] = combined["Updated"].apply(_sem_period)
 
-    # Unique (division, batch) pairs
-    div_batches = sorted(combined[["Division", "Batch"]].drop_duplicates().apply(tuple, axis=1).unique())
+    batches = sorted(combined["Batch"].unique())
 
     def _aggregate(period: str, count_lookup) -> tuple[list[str], list[dict]]:
         labels = sorted(combined[period].dropna().unique())
-        counts = combined.groupby([period, "Division", "Batch"]).size().reset_index(name="count")
-        # Average per student (division+batch, or semester+division+batch, whichever the lookup keyed on)
+        counts = combined.groupby([period, "Batch"]).size().reset_index(name="count")
+        # Average per student (batch, or semester+batch, whichever the lookup keyed on)
         counts["avg"] = counts.apply(
             lambda r: round(r["count"] / max(count_lookup(r), 1), 2),
             axis=1,
         )
-        pivot = counts.pivot_table(index=period, columns=["Division", "Batch"], values="avg", fill_value=0)
+        pivot = counts.pivot_table(index=period, columns="Batch", values="avg", fill_value=0)
         series = []
-        for div, bat in div_batches:
-            vals = []
-            for lab in labels:
-                if lab in pivot.index and (div, bat) in pivot.columns:
-                    vals.append(float(pivot.loc[lab, (div, bat)]))
-                else:
-                    vals.append(0.0)
-            series.append({"division": div, "batch": bat, "values": vals})
+        for b in batches:
+            vals = [float(pivot.loc[lab, b]) if lab in pivot.index and b in pivot.columns else 0.0 for lab in labels]
+            series.append({"batch": b, "values": vals})
         return labels, series
 
     weeks, weekly_series = _aggregate(
         "Week",
-        lambda r: div_batch_student_count.get((r["Division"], r["Batch"]), 1),
+        lambda r: batch_student_count.get(r["Batch"], 1),
     )
     months, monthly_series = _aggregate(
         "Month",
-        lambda r: div_batch_student_count.get((r["Division"], r["Batch"]), 1),
+        lambda r: batch_student_count.get(r["Batch"], 1),
     )
     semesters, semester_series = _aggregate(
         "Semester",
         lambda r: semester_batch_student_count.get(
-            (r["Semester"], r["Division"], r["Batch"]),
-            div_batch_student_count.get((r["Division"], r["Batch"]), 1)
+            (r["Semester"], r["Batch"]), batch_student_count.get(r["Batch"], 1)
         ),
     )
 
