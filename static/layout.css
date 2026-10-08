@@ -33,6 +33,14 @@ button {
   background: transparent;
 }
 
+.nav-toggle {
+  display: none;
+}
+
+.nav-overlay {
+  display: none;
+}
+
 /* Sidebar — mirrors Streamlit stSidebar geometry (280px, bordered, own scroll). */
 .app-sidebar {
   position: fixed;
@@ -633,15 +641,24 @@ button {
     grid-template-columns: 1fr;
   }
   .content {
-    padding: 40px 24px 80px;
+    padding: 72px 20px 80px;
   }
   .app-sidebar {
-    position: static;
-    width: 100%;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
     max-height: none;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     padding-bottom: 1rem;
+    transform: translateX(-100%);
+    transition: transform 250ms ease;
+    z-index: 100;
+    overflow-y: auto;
+  }
+  .app-sidebar.is-open {
+    transform: translateX(0);
   }
   .sidebar-foot {
     position: static;
@@ -649,6 +666,37 @@ button {
   }
   .main-content {
     margin-left: 0;
+  }
+  .nav-toggle {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 90;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 95;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms ease;
+  }
+  .nav-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 /* 3.6 page components */
