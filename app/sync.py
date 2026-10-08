@@ -359,7 +359,7 @@ def _parse_synced(synced_at: str):
 
 def _is_fresh(email: str) -> bool:
     snapshot = accounts.get_snapshot(email)
-    if snapshot is None or snapshot.get("status") != "ok":
+    if snapshot is None:
         return False
     parsed = _parse_synced(snapshot.get("synced_at", ""))
     if parsed is None:
@@ -539,7 +539,7 @@ def sync_heavy_next(token: str | None = None) -> dict:
         if not email or not _clean_text(user_row.get("github_username")):
             continue
         snapshot = snapshots_by_email.get(email)
-        if snapshot is None or snapshot.get("status") != "ok":
+        if snapshot is None:
             # Never synced or errored — top priority
             stalest_user = user_row
             stalest_time = 0
