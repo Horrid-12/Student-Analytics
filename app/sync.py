@@ -479,6 +479,11 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         student_rows = { s.get("Email address") or s.get("Roster_Email") or s.get("Student_ID"): s for s in result.get("students", []) }
         student = student_rows.get(email) or student_rows.get(record["Student_ID"])
         if not student:
+            accounts.init_db()
+            accounts.save_snapshot(
+                email, username=username, status="error", student={"Roster_Email": email, "GitHub_Username": username},
+                repos=[], team_repos=[], synced_at=now, error="Failed to fetch student data"
+            )
             return False, "api_error", f"Failed to fetch student data. Result students: {result.get('students')}"
 
         repo_rows = result.get("repos", [])
@@ -508,6 +513,16 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
             detail = f"{detail} (reset_at={e.reset_epoch})"
         return False, "rate_limited", detail
     except Exception as e:
+        now = time.strftime(_SYNC_TIME_FORMAT)
+        try:
+            from app import accounts
+            accounts.init_db()
+            accounts.save_snapshot(
+                email, username=username, status="error", student={"Roster_Email": email, "GitHub_Username": username},
+                repos=[], team_repos=[], synced_at=now, error=str(e)
+            )
+        except Exception:
+            pass
         return False, "api_error", str(e)
 
 
@@ -539,8 +554,8 @@ def sync_heavy_next(token: str | None = None) -> dict:
         if not email or not _clean_text(user_row.get("github_username")):
             continue
         snapshot = snapshots_by_email.get(email)
-        if snapshot is None or snapshot.get("status") != "ok":
-            # Never synced or errored — top priority
+        if snapshot is None:
+            # Never synced - top priority
             stalest_user = user_row
             stalest_time = 0
             break
