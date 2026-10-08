@@ -1,8 +1,8 @@
 """Student issue alerts removed with the Issues page: students get no bell.
 
-Staff keep ticket alerts on Overview + Leaderboards topbars. Students are
-RBAC-gated off /verification (303 home) and have no Issues nav tab; the
-/issues page and /issues/workflow endpoint are gone (404).
+Staff keep ticket alerts on Overview + Leaderboards topbars. Students have
+no Issues nav tab; the /issues page, /issues/workflow endpoint and the
+/verification page/routes are gone (404).
 """
 
 import pandas as pd
@@ -162,9 +162,9 @@ class TestStudentIssuesBlocked:
         resp = client.post("/issues/workflow?roster=r1", json={})
         assert resp.status_code == 404  # endpoint removed
 
-    def test_student_verification_still_blocked(self, client):
+    def test_verification_page_is_gone(self, client):
         self._login(client, "student", OWN_EMAIL)
-        assert client.get("/verification", headers={"Accept": "text/html"}, follow_redirects=False).status_code == 303
+        assert client.get("/verification", headers={"Accept": "text/html"}, follow_redirects=False).status_code == 404
 
 
 class TestNotificationBell:

@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, crosscheck, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
 from app.hackerrank_client.service import (
     decode_badges,
     decode_profile_model,
@@ -344,7 +344,7 @@ def _db_log_event(event_type: str, detail: str = "") -> bool:
     return storage.log_event(event_type, detail)
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Verification", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings"]
 
 # Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -353,7 +353,6 @@ NAV_SVG = {
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
-    "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 }
@@ -367,7 +366,6 @@ def slug_for(page: str) -> str:
         "Students": "students",
         "Repositories": "repositories",
         "Leaderboards": "leaderboards",
-        "Verification": "verification",
         "Support": "support",
         "Settings": "settings",
     }
@@ -399,7 +397,6 @@ PAGE_PLACEHOLDERS = {
     "Repositories": ("repositories", "Repositories", "Browse every public repository in the fleet with language and activity details.", True),
     "Leaderboards": ("leaderboards", "Leaderboards", "Compare recent activity, public repository counts, and follower counts across students.", True),
     "Onboarding": ("onboarding", "Onboarding", "Complete your academic identity verification.", False),
-    "Verification": ("verification", "Verification", "Confirm each GitHub account against the uploaded reference sheet, review validation results, and export per-student status.", True),
 }
 
 
@@ -881,10 +878,10 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
             samesite="lax",
         )
         return response
-    # A known invite address that failed verification means wrong password (unused
-    # invite) or a spent key (consumed invite) — either way it is "invalid email
-    # or password", never a domain error (invites like faculty1@dashboard.local
-    # are intentionally non-college).
+    # A known invite address that failed invite authentication means wrong
+    # password (unused invite) or a spent key (consumed invite) — either way it
+    # is "invalid email or password", never a domain error (invites like
+    # faculty1@dashboard.local are intentionally non-college).
     if auth.get_faculty_invite(email) is not None:
         _db_log_event("login_failed", email)
         return RedirectResponse("/login?error=1", status_code=302)
@@ -1022,7 +1019,9 @@ async def faculty_setup_submit(
             return RedirectResponse("/faculty-setup?error=storage_unavailable", status_code=302)
         return RedirectResponse(f"/faculty-setup?error={code}", status_code=302)
     _db_log_event("faculty_setup_complete", user.get("email", ""))
-    response = RedirectResponse("/", status_code=302)
+    # Fresh faculty accounts land on their own onboarding step (divisions +
+    # batches they teach) before the Overview.
+    response = RedirectResponse("/onboarding", status_code=302)
     response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -1455,6 +1454,7 @@ def overview(
     division: str = "All",
     batch: str = "All",
     semester: str = "All",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
@@ -1464,10 +1464,51 @@ def overview(
     ctx["batch"] = batch or "All"
     ctx["semester"] = semester or "All"
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
+    # Faculty "My Classes" toggle (fleet views only — an explicitly attached
+    # roster is its own dataset): ON by default, restricts the dashboard to
+    # the taught (division, batch) pairs. The memoised fleet frame is never
+    # mutated; the filter returns a per-request copy. No teaching saved yet ->
+    # full fleet + nudge (no toggle to show).
+    user = getattr(request.state, "user", None)
+    ctx["teaching_scope"] = ""
+    ctx["teaching_empty"] = False
+    ctx["taught_map"] = {}
+    ctx["show_my_classes"] = False
+    ctx["my_classes_on"] = True
+    ctx["mine"] = "1"
+    if (user or {}).get("role") == "faculty" and not roster:
+        try:
+            teaching = auth.get_faculty_teaching(user.get("email", ""))
+        except Exception:
+            teaching = {}
+        ctx["taught_map"] = teaching or {}
+        if teaching:
+            ctx["show_my_classes"] = True
+            ctx["my_classes_on"] = (mine or "1") != "0"
+            ctx["mine"] = "1" if ctx["my_classes_on"] else "0"
+            _full_view = view
+            if view is not None and _is_complete(view):
+                _taught_view = views.filter_view_by_teaching(view, teaching)
+            if ctx["my_classes_on"]:
+                if view is not None and _is_complete(view):
+                    view = _taught_view
+            if ctx["my_classes_on"]:
+                ctx["teaching_scope"] = "; ".join(
+                    f"Division {div} (Batch {', '.join(batches)})"
+                    for div, batches in sorted(teaching.items(), key=lambda kv: int(kv[0]))
+                )
+        else:
+            ctx["teaching_empty"] = True
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
-            ctx["payload"] = views.overview_payload(view, query=q or "", division=division or "All", batch=batch or "All", semester=semester or "All")
+            _overall_view = _full_view if "_full_view" in locals() else None
+            _taught_view_for_radar = _taught_view if "_taught_view" in locals() else None
+            ctx["payload"] = views.overview_payload(
+                view, query=q or "", division=division or "All", batch=batch or "All",
+                semester=semester or "All", overall_view=_overall_view,
+                my_classes_view=_taught_view_for_radar,
+            )
         except Exception:
             ctx["view"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
@@ -1477,15 +1518,25 @@ def overview(
 @app.get("/onboarding", response_class=HTMLResponse)
 def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = ""):
     """Onboarding page. Students see their own submission form + status;
-    faculty/admin see the registrar ledger with approve/reject actions."""
+    faculty see their teaching-assignment form (divisions + batches taught);
+    admins see the registrar ledger with approve/reject actions."""
     ctx = _base_context(request, "Onboarding")
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
     ctx["manager"] = role in ("admin", "faculty")
     ctx["is_admin"] = role == "admin"
+    ctx["is_faculty"] = role == "faculty"
     ctx["auth_email"] = (user or {}).get("email", "")
     ctx["submission"] = {}
-    if ctx["manager"]:
+    ctx["teaching"] = {}
+    ctx["teaching_divisions"] = list(auth.DIVISIONS)
+    ctx["teaching_batches"] = list(auth.TEACHING_BATCHES)
+    if role == "faculty" and user:
+        try:
+            ctx["teaching"] = auth.get_faculty_teaching(user.get("email", ""))
+        except Exception:
+            ctx["teaching"] = {}
+    elif ctx["manager"]:
         ctx["onboarding_users"] = auth.get_onboarding_users()
     elif user:
         try:
@@ -1498,6 +1549,42 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["action_email"] = email
     ctx["oauth"] = oauth
     return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
+
+
+@app.post("/onboarding/faculty", response_class=HTMLResponse)
+async def onboarding_faculty_submit(request: Request):
+    """Faculty teaching-assignment submission. Accepts repeated
+    ``division``/``batch`` row pairs, validates them server-side, and stores
+    the ``{division: [batches]}`` mapping on the faculty account."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") != "faculty":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    try:
+        form = await request.form()
+        divisions = [str(v or "").strip() for v in form.getlist("division")]
+        batches = [str(v or "").strip() for v in form.getlist("batch")]
+    except Exception:
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    pairs = [(d, b) for d, b in zip(divisions, batches) if d or b][:50]
+    if not pairs:
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    mapping: dict[str, list[str]] = {}
+    for division, batch in pairs:
+        if not division or not batch:
+            return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+        mapping.setdefault(division, [])
+        if batch not in mapping[division]:
+            mapping[division].append(batch)
+    ok, err = auth.set_faculty_teaching(user["email"], mapping)
+    if ok:
+        _db_log_event("faculty_teaching_saved", user["email"])
+        return RedirectResponse("/", status_code=303)
+    _db_log_event("faculty_teaching_rejected", f"{user['email']}; {err}")
+    if err in ("bad_division", "bad_batch", "empty"):
+        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
+    return RedirectResponse("/onboarding?error=storage_unavailable", status_code=303)
 
 
 @app.post("/onboarding", response_class=HTMLResponse)
@@ -2280,12 +2367,29 @@ def students_page(
     semester: str = "All",
     rows: int = 0,
     select: str = "",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Students", roster)
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return response
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        ctx["taught_map"] = taught_map
+        if teaching_active and (mine or "1") != "0" and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     payload = views.students_payload(view, q, division, batch, year, semester, rows, select or None)
+    payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
         "pages/students.html",
@@ -2317,6 +2421,7 @@ def students_rows(
     semester: str = "All",
     offset: int = 0,
     limit: int = 30,
+    mine: str = "1",
 ):
     """One batch of student rows for the infinite-scroll table.
 
@@ -2329,6 +2434,14 @@ def students_rows(
     view, response = _guard_page(request, ctx, "Students", roster)
     if response is not None:
         return HTMLResponse("")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.students_payload(view, q, division, batch, year, semester)
     total = int(payload.get("total") or 0)
     if not total:
@@ -2345,6 +2458,7 @@ def students_rows(
         division=division,
         batch=batch,
         semester=semester,
+        mine=mine,
         page_size=payload["page_size"],
     )
     return HTMLResponse(html)
@@ -2378,10 +2492,19 @@ def students_export(
     batch: str = "All",
     year: str = "All",
     semester: str = "All",
+    mine: str = "1",
 ):
     view, response = _guard_page(request, {}, "Students", roster)
     if response is not None:
         raise HTTPException(status_code=404, detail="No completed analysis to export")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.students_payload(view, q, division, batch, year, semester)
     df = views.student_export_df(payload)
     return _export_response(df, format, "students")
@@ -2400,6 +2523,7 @@ def repositories_page(
     semester: str = "All",
     sort: str = "top",
     recency: str = "all",
+    mine: str = "1",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -2419,7 +2543,22 @@ def repositories_page(
         view = "grid"
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        if teaching_active and (mine or "1") != "0" and data is not None and _is_complete(data):
+            data = views.filter_view_by_teaching(data, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort, recency)
+    payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
@@ -2440,6 +2579,7 @@ def repositories_rows(
     recency: str = "all",
     offset: int = 0,
     limit: int = 30,
+    mine: str = "1",
 ):
     """One batch of repository cards + rows for the infinite-scroll list.
 
@@ -2454,6 +2594,14 @@ def repositories_rows(
         return HTMLResponse("")
     if sort not in ("top", "recent", "name", "stars"):
         sort = "top"
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.repositories_payload(
         view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort, recency
     )
@@ -2484,10 +2632,19 @@ def repositories_export(
     semester: str = "All",
     sort: str = "top",
     recency: str = "all",
+    mine: str = "1",
 ):
     view, response = _guard_page(request, {}, "Repositories", roster)
     if response is not None:
         raise HTTPException(status_code=404, detail="No completed analysis to export")
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster and (mine or "1") != "0":
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if taught_map and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
     payload = views.repositories_payload(view, q, "All", 30, division, batch, semester, sort, recency)
     df = views.repository_export_df(payload)
     return _export_response(df, format, "repositories")
@@ -2504,6 +2661,7 @@ def leaderboards_page(
     commits_window: str = "1m",
     select: str = "",
     platform: str = "github",
+    mine: str = "1",
 ):
     # Both platforms' boards render in one page; `platform` only decides
     # which grid starts visible (the pill switcher toggles without a reload).
@@ -2512,6 +2670,20 @@ def leaderboards_page(
     view, response = _guard_page(request, ctx, "Leaderboards", roster)
     if response is not None:
         return response
+    taught_map = {}
+    teaching_active = False
+    user = getattr(request.state, "user", None) or {}
+    if user.get("role") == "faculty" and not roster:
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        teaching_active = bool(taught_map)
+        if teaching_active and (mine or "1") != "0" and view is not None and _is_complete(view):
+            view = views.filter_view_by_teaching(view, taught_map)
+    ctx["teaching_active"] = teaching_active
+    ctx["taught_map"] = taught_map
+    ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     # Fetched once: the payload and the template both need them, and each
     # lookup is a network round trip (Lag Fix — was 2 calls x 2 consumers).
     blacklist = _blacklist_state(roster)
@@ -2619,97 +2791,6 @@ async def leaderboards_hidden_repos_save(request: Request, roster: str = ""):
         db.put_hidden_repos(roster, state)
     view_cache.invalidate()
     return {"status": "ok", "hidden": hidden}
-
-
-# ── Account verification (cross-check against uploaded reference sheet) ─────
-
-@app.get("/verification", response_class=HTMLResponse)
-def verification_page(
-    request: Request, roster: str = "", q: str = "", status: str = "All", rows: int = 50
-):
-    """Faculty/admin cross-check of analyzed students vs. an uploaded
-    "Student Details" reference workbook. The reference card always renders;
-    the audit table appears once a completed roster analysis is attached."""
-    ctx = _base_context(request, "Verification", roster)
-    reference = crosscheck.get_reference()
-    ref_rows = (reference or {}).get("rows") or []
-    view = _analysis_view(roster) if roster else _fleet_view(request, roster)
-    complete = view is not None and _is_complete(view)
-    payload = views.verification_payload(view, ref_rows, q, status, rows) if complete else None
-    export_query = views.export_query_str(
-        roster_id=roster, q=q, division="All", batch="All", year="All", semester="All", status=status
-    )
-    return templates.TemplateResponse(
-        request,
-        "pages/verification.html",
-        {
-            **ctx,
-            "view": view,
-            "payload": payload,
-            "reference": reference,
-            "reference_count": len(ref_rows) if ref_rows else 0,
-            "complete": complete,
-            "roster_id": roster,
-            "q": q,
-            "status": status,
-            "rows": rows,
-            "export_query": export_query,
-            "error": request.query_params.get("error", ""),
-        },
-    )
-
-
-@app.post("/verification/reference")
-async def verification_reference_upload(request: Request, roster: str = "", file: UploadFile = File(...)):
-    """Faculty/admin upload of a "Student Details" reference workbook. Parses
-    and normalizes it, then stores it as the single active reference sheet."""
-    user = getattr(request.state, "user", None) or {}
-    if user.get("role") not in ("admin", "faculty"):
-        raise HTTPException(status_code=403, detail="Faculty or admin required")
-    data = await file.read()
-    records, warnings = crosscheck.parse_reference_workbook(data, file.filename or "reference.xlsx")
-    if not records:
-        detail = "; ".join(warnings) if warnings else "No valid rows found"
-        raise HTTPException(status_code=400, detail=detail)
-    crosscheck.init_db()
-    from datetime import datetime, timezone
-    uploaded_at = datetime.now(timezone.utc).isoformat()
-    saved = crosscheck.save_reference(records, filename=file.filename or "", uploaded_at=uploaded_at)
-    if not saved:
-        raise HTTPException(status_code=500, detail="Could not store the reference sheet")
-    crosscheck.REFERENCES = records
-    if database.db_configured():
-        _db_log_event("reference_uploaded", f"filename={file.filename}, rows={len(records)}")
-    else:
-        storage.log_event("reference_uploaded", f"filename={file.filename}, rows={len(records)}")
-    return RedirectResponse(f"/verification?roster={roster}", status_code=303)
-
-
-@app.post("/verification/reference/clear")
-async def verification_reference_clear(request: Request, roster: str = ""):
-    """Drop the active reference sheet."""
-    user = getattr(request.state, "user", None) or {}
-    if user.get("role") not in ("admin", "faculty"):
-        raise HTTPException(status_code=403, detail="Faculty or admin required")
-    crosscheck.init_db()
-    crosscheck.clear_reference()
-    crosscheck.REFERENCES = []
-    return RedirectResponse(f"/verification?roster={roster}", status_code=303)
-
-
-@app.get("/verification/export")
-def verification_export(
-    request: Request, roster: str = "", format: str = "csv", q: str = "", status: str = "All", rows: int = 50
-):
-    """CSV/XLSX export of the cross-check audit (filters applied)."""
-    reference = crosscheck.get_reference()
-    ref_rows = (reference or {}).get("rows") or []
-    view, response = _guard_page(request, {}, "Verification", roster)
-    if response is not None:
-        raise HTTPException(status_code=404, detail="No completed analysis to export")
-    payload = views.verification_payload(view, ref_rows, q, status, rows)
-    df = payload["filtered"].copy()
-    return _export_response(df, format, "verification")
 
 
 # ── Support tickets ──────────────────────────────────────────────────────────

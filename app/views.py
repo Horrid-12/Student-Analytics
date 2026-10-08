@@ -703,12 +703,26 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All") -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
     # cohort in the Class Metrics Radar are measured against the whole roster.
-    _all_students = students.copy() if students is not None else students
+    # When My Classes scopes the page, callers pass the unscoped `overall_view`
+    # so the radar baseline stays college-wide while the rest of the page
+    # continues to use the scoped data.
+    if overall_view is not None and overall_view.get("students") is not None:
+        _overall_students = _with_combined_metrics(overall_view["students"].copy())
+        _overall_score_repos = _merged_repos_frame(overall_view)
+        # My Classes scopes the cards/graphs but must NOT hide other
+        # divisions/batches from the compare dropdown and cohort radar.
+        _all_students = _overall_students.copy()
+    else:
+        _overall_students = students.copy() if students is not None else students
+        _overall_score_repos = None
+        _all_students = students.copy() if students is not None else students
+    # Unfiltered copy: the "Overall Average" benchmark and every selectable
+    # cohort in the Class Metrics Radar are measured against the whole roster.
     # Same filters as the Students page: text search + Division/Batch/Semester.
     try:
         students = filter_text(
@@ -752,7 +766,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     # Unfiltered merged repo frame: the Overall Average radar benchmark and the
     # per-cohort series sample from this, while the filtered _score_repos below
     # still drives the "Average Quality Score" card + Repositories page.
-    _all_score_repos = _merged_repos_frame(view)
+    _all_score_repos = _merged_repos_frame(overall_view) if overall_view is not None else _merged_repos_frame(view)
     _score_repos = _all_score_repos
     try:
         if _score_repos is not None and not _score_repos.empty and "Username" in _score_repos.columns and _cohort:
@@ -921,7 +935,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                 "key": f"{_batch_raw or '?'}|{_div_raw or '?'}",
                 "group": _group,
                 "name": _name,
-                "label": f"{_group} · {_name}",
+                "label": f"{_name} · {_group}",
                 "batch": _batch,
                 "div": _div,
                 "students": _slice,
@@ -932,26 +946,68 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         fall back to lowercase text for non-numeric divisions."""
         m = re.search(r'\d+', name)
         return (0, int(m.group(0)), name.lower()) if m else (1, 0, name.lower())
+
+    def _sem_sort_key(name: str):
+        """Same numeric sort for semester labels ("Semester 3" -> 3)."""
+        m = re.search(r'\d+', str(name))
+        return (0, int(m.group(0)), str(name).lower()) if m else (1, 0, str(name).lower())
     _cohort_rows.sort(key=lambda c: (1 if _batch_year_key(c["batch"]) is None else 0, _batch_year_key(c["batch"]) or 0, _div_sort_key(c["name"])))
 
+    # The radar's "My Classes" series ALWAYS reflects the faculty's taught
+    # classes (my_classes_view), regardless of the page mode toggle; the
+    # "All students" baseline and every compare-dropdown cohort stay
+    # college-wide via _all_students/_overall_*.
+    if my_classes_view is not None and my_classes_view.get("students") is not None:
+        _mc_students = _with_combined_metrics(my_classes_view["students"].copy())
+        radar_students = _mc_students
+        try:
+            radar_students = filter_text(
+                radar_students,
+                query or "",
+                [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
+            )
+        except Exception:
+            pass
+        for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
+            try:
+                radar_students = apply_value_filter(radar_students, _col, _val or "All")
+            except Exception:
+                pass
+        try:
+            _mc_cohort = set(radar_students["GitHub_Username"].dropna().astype(str)) if radar_students is not None and not radar_students.empty and "GitHub_Username" in radar_students.columns else set()
+        except Exception:
+            _mc_cohort = set()
+        _mc_score = _merged_repos_frame(my_classes_view)
+        radar_score_repos = _mc_score
+        try:
+            if radar_score_repos is not None and not radar_score_repos.empty and "Username" in radar_score_repos.columns and _mc_cohort:
+                radar_score_repos = radar_score_repos[radar_score_repos["Username"].astype(str).isin(_mc_cohort)].copy()
+            elif radar_score_repos is not None and radar_students is not None and radar_students.empty:
+                radar_score_repos = radar_score_repos.iloc[0:0].copy()
+        except Exception:
+            pass
+    else:
+        radar_students = students
+        radar_score_repos = _score_repos
     _radar_series = []
     _radar_active = []
     _has_current = False
     _current_label = ""
     _filtered = division != "All" or batch != "All" or semester != "All"
-    if students is not None and not students.empty:
-        # 1. "Your class": the student set the page filters are showing.
-        _current_label = "Your class"
+    if radar_students is not None and not radar_students.empty:
+        # 1. "My Classes": the faculty's taught classes (page filters apply).
+        _current_label = "My Classes"
         if _filtered:
             _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
             _current_label += " · " + " · ".join(_bits)
-        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(students, _score_repos)})
+        _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
         _has_current = True
     # 2. "All students": the whole-roster baseline. Always pre-applied so the
     #    radar opens with a visible shape; users can clear it via the Clear
     #    Filters button.
-    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_all_students, _all_score_repos)})
+    _overall_score = _overall_score_repos if _overall_score_repos is not None else _all_score_repos
+    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_overall_students, _overall_score)})
     _radar_active.append("overall")
     # 3. Every selectable cohort, measured with the same formulas.
     for _c in _cohort_rows:
@@ -961,14 +1017,53 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         except Exception:
             continue
 
-    # Dropdown groups for the picker (one <optgroup> per batch).
-    _cohort_groups = []
-    _last_group = None
+    # Semester cohorts: one comparable series per semester present, measured
+    # with the same formulas. Keys are namespaced so they never collide with
+    # the batch|division cohort keys.
+    _sem_cohorts = []
+    if _all_students is not None and not _all_students.empty and "Semester" in _all_students.columns:
+        try:
+            _sem_vals = sorted(
+                {str(v).strip() for v in _all_students["Semester"].dropna().astype(str).tolist()},
+                key=_sem_sort_key,
+            )
+        except Exception:
+            _sem_vals = []
+        for _sem in _sem_vals:
+            if not _sem or _sem.lower() in {"nan", "none", "unknown"}:
+                continue
+            try:
+                _sem_slice = _all_students[_all_students["Semester"].astype(str).str.strip() == _sem]
+                _sem_users = _cohort_usernames(_sem_slice)
+                _sem_key = f"semester|{_sem}"
+                _sem_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_sem_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+                _radar_series.append({"key": _sem_key, "kind": "cohort", "group": "Semester", "name": _sem, "label": _sem, "values": _radar_metric_values(_sem_slice, _sem_score)})
+                _sem_cohorts.append({"key": _sem_key, "name": _sem})
+            except Exception:
+                continue
+
+    # Picker model for the custom Compare dropdown: divisions (clean values
+    # only) with the batch buttons offered per division, plus the semester
+    # filters. Every offered key is guaranteed a series above.
+    def _batch_sort_key(label: str):
+        m = re.search(r"\d+", str(label))
+        return (0, int(m.group(0)), str(label).lower()) if m else (1, 0, str(label).lower())
+
+    _compare_divisions = []
+    _compare_index: dict[str, dict] = {}
     for _c in _cohort_rows:
-        if _c["group"] != _last_group:
-            _cohort_groups.append({"label": _c["group"], "options": []})
-            _last_group = _c["group"]
-        _cohort_groups[-1]["options"].append({"key": _c["key"], "name": _c["name"]})
+        if not _c.get("div") or not _c.get("batch"):
+            continue
+        entry = _compare_index.get(_c["div"])
+        if entry is None:
+            entry = {"division": f"Division {_c['div']}", "batches": []}
+            _compare_index[_c["div"]] = entry
+            _compare_divisions.append(entry)
+        if not any(b["batch"] == _c["batch"] for b in entry["batches"]):
+            entry["batches"].append({"batch": _c["batch"], "key": _c["key"]})
+    _compare_divisions.sort(key=lambda e: _div_sort_key(e["division"]))
+    for entry in _compare_divisions:
+        entry["batches"].sort(key=lambda b: _batch_sort_key(b["batch"]))
 
     # Axis normalization: percentage axes are exact 0–100; count axes scale to
     # 1.5× the largest value seen across all series (with a readable floor).
@@ -987,7 +1082,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         ],
         "series": _radar_series,
         "active": _radar_active,
-        "cohort_groups": _cohort_groups,
+        "compare_divisions": _compare_divisions,
+        "compare_semesters": _sem_cohorts,
         "has_current": _has_current,
         "current_label": _current_label,
     }
@@ -1229,6 +1325,35 @@ def dist_options(values) -> list[str]:
     )
 
 
+def division_batch_groups(students) -> list[dict]:
+    """Division -> taught batches structure for the compare-style class
+    filter dropdown (raw values kept for filtering, display labels added)."""
+    if students is None or students.empty or not {"Division", "Batch"}.issubset(students.columns):
+        return []
+    try:
+        pairs = students.groupby(["Division", "Batch"], dropna=False).size().reset_index()
+    except Exception:
+        return []
+    index: dict[str, dict] = {}
+    for _, row in pairs.iterrows():
+        div = str(row["Division"]) if pd.notna(row["Division"]) else ""
+        bat = str(row["Batch"]) if pd.notna(row["Batch"]) else ""
+        if not div or div.lower() in {"nan", "none"}:
+            continue
+        entry = index.setdefault(div, {"division": div, "label": "", "key": _clean_division_text(div), "batches": [], "batch_keys": []})
+        if bat and bat not in entry["batches"]:
+            entry["batches"].append(bat)
+            entry["batch_keys"].append(_clean_batch_text(bat))
+    groups = list(index.values())
+    for g in groups:
+        g["label"] = g["key"] if g["key"].lower().startswith(("div", "division")) else f"Division {g['key']}"
+        _sorted = sorted(zip(g["batches"], g["batch_keys"]), key=lambda pair: _dist_sort_key(pair[0]))
+        g["batches"] = [p[0] for p in _sorted]
+        g["batch_keys"] = [p[1] for p in _sorted]
+    groups.sort(key=lambda g: _dist_sort_key(g["key"]))
+    return groups
+
+
 def linkedin_display_name(slug) -> str:
     """Shorten a LinkedIn /in/ slug for display by dropping the trailing
     auto-generated ID segment (e.g. "anshuman-kulkarni-b27b0142a" becomes
@@ -1353,8 +1478,56 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "batches": dist_options(students["Batch"].dropna().astype(str).unique().tolist()),
         "years": dist_options(students["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(students["Semester"].dropna().astype(str).unique().tolist()),
+        "division_groups": division_batch_groups(students),
         "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester),
     }
+
+
+def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | None:
+    """Restrict a fleet-shaped view to a faculty member's taught classes.
+
+    Keeps students (and raw records) whose Division is taught AND whose Batch
+    is taught in that Division. Returns a NEW dict — the input is never
+    mutated (fleet/analysis views are memoised and shared across roles, and
+    the repo/team frames are re-derived from the kept cohort downstream).
+    Empty teaching, missing Division/Batch columns, or any error passes the
+    view through untouched: fail open to the full fleet, never a blank page.
+    """
+    if not view or not teaching or not isinstance(teaching, dict):
+        return view
+    try:
+        scope = {
+            str(div or "").strip(): {str(b or "").strip() for b in batches}
+            for div, batches in teaching.items()
+            if isinstance(batches, (list, tuple))
+        }
+        scope = {div: batches for div, batches in scope.items() if div and batches}
+        if not scope:
+            return view
+        students = view.get("students")
+        if students is None or students.empty:
+            return view
+        if "Division" not in students.columns or "Batch" not in students.columns:
+            return view
+        divisions = students["Division"].astype(str).str.strip()
+        batches = students["Batch"].astype(str).str.strip()
+        mask = pd.Series(False, index=students.index)
+        for taught_div, taught_batches in scope.items():
+            mask = mask | (divisions.eq(taught_div) & batches.isin(taught_batches))
+        kept = students[mask].copy()
+        records = view.get("records")
+        kept_records = [
+            row for row in (records or [])
+            if str((row or {}).get("Division") or "").strip() in scope
+            and str((row or {}).get("Batch") or "").strip() in scope.get(
+                str((row or {}).get("Division") or "").strip(), set())
+        ] if isinstance(records, list) else records
+        state = dict(view.get("state") or {})
+        state.update({"valid": len(kept), "invalid": 0, "errors": 0})
+        state.setdefault("status", "complete")
+        return {**view, "students": kept, "records": kept_records, "state": state}
+    except Exception:
+        return view
 
 
 def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="") -> str:
@@ -1368,62 +1541,6 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     from urllib.parse import urlencode
 
     return urlencode(pairs)
-
-
-AUDIT_COLS = [
-    STUDENT_ID_COL, "Student Name", "Division", "GitHub_Username", "GitHub Profile",
-    "Reference_Username", "Validation Status", "Repositories Found",
-    "Followers", "Following",
-]
-
-
-def verification_payload(view: dict, references: list[dict], query: str = "", status: str = "All", rows: int = 50) -> dict:
-    """Cross-check audit table for the Verification page.
-
-    Each analyzed student is matched to the uploaded "Student Details"
-    reference (email-first, PRN-fallback via ``crosscheck.cross_check_status``)
-    and tagged Verified / Mismatch / Missing / Unreferenced. Returns the same
-    ``{total, showing, display, filtered, statuses}`` contract every page
-    payload uses so the template/filter/export helpers work unchanged.
-    """
-    from app import crosscheck
-
-    students = view["students"]
-    records = view["records"]
-    stats = {
-        str(row.get(STUDENT_ID_COL, "")): row for row in students.to_dict("records")
-    }
-    audit_rows = []
-    for record in records:
-        sid = str(record.get(STUDENT_ID_COL, "") or "")
-        username = str(record.get("GitHub_Username") or "").strip()
-        status_label, ref_username = crosscheck.cross_check_status(record, references or [])
-        stat = stats.get(sid, {})
-        audit_rows.append({
-            STUDENT_ID_COL: sid,
-            "Student Name": record.get("Student Name", ""),
-            "Division": record.get("Division", ""),
-            "GitHub_Username": username,
-            "GitHub Profile": github_profile_url(username),
-            "Reference_Username": ref_username,
-            "Validation Status": status_label,
-            "Repositories Found": int(stat.get("Repository_Count", 0) or 0),
-            "Followers": int(stat.get("Followers", 0) or 0),
-            "Following": int(stat.get("Following", 0) or 0),
-        })
-
-    audit = pd.DataFrame(audit_rows, columns=AUDIT_COLS) if audit_rows else pd.DataFrame(columns=AUDIT_COLS)
-    filtered = filter_text(
-        audit, query, [STUDENT_ID_COL, "Student Name", "GitHub_Username", "Reference_Username", "Division"]
-    )
-    filtered = apply_value_filter(filtered, "Validation Status", status)
-    return {
-        "total": len(filtered),
-        "showing": min(int(rows), len(filtered)) if not filtered.empty else 0,
-        "display": filtered.head(int(rows)),
-        "filtered": filtered,
-        "statuses": ["All"] + sorted(str(value) for value in audit["Validation Status"].dropna().unique().tolist()),
-    }
 
 
 def _recent_activity(
@@ -1981,6 +2098,10 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
     repos = _merge_student_fields(repos, view.get("students"))
+    # Hide repos whose owner isn't in the current student scope — in My
+    # Classes mode those render as "Unknown student" noise cards.
+    if not repos.empty and "Student Name" in repos.columns:
+        repos = repos[repos["Student Name"].fillna("").astype(str).str.strip() != ""].copy()
     # Text search spans GitHub handles, repo/language names AND the student
     # identity columns the merge attached — so professors can look a student
     # up by real name or PRN without opening their profile.
@@ -2040,6 +2161,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
+        "division_groups": division_batch_groups(view.get("students")),
         "export_query": repositories_export_query(
             view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
         ),
@@ -2475,6 +2597,7 @@ def leaderboards_payload(
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
+        "division_groups": division_batch_groups(view["students"]),
         "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
         "active_window": active_window,
         "commits_window": commits_window,

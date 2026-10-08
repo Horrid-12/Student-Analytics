@@ -1488,7 +1488,25 @@ def upsert_user(
                 "linkedin_sub = COALESCE(NULLIF(EXCLUDED.linkedin_sub,''), users.linkedin_sub)",
                 (email, password_hash, role, name, auth_source, google_sub, github_username, linkedin_sub),
             )
-            return get_user_by_email(email)
+            # Same-connection read-back: get_user_by_email() opens a SEPARATE
+            # pooled connection which cannot see this still-uncommitted row
+            # (READ COMMITTED) — reading through it always misses, the caller
+            # reports failure, and the row commits anyway ("error shown, but
+            # the account was created"). Never read-your-write across
+            # connections here.
+            cur = c.execute(
+                "SELECT id, email, password_hash, role, name, created_at, auth_source, google_sub, "
+                "github_username, linkedin_sub, "
+                "linked_github_username, linked_github_avatar, linked_linkedin_name, "
+                "linked_linkedin_avatar, profile_source, "
+                "prn, degree_branch, division, onboarding_status, "
+                "onboarding_submitted_at, github_verified_at, "
+                "main_batch, practical_batch, semester, hackerrank_username "
+                "FROM users WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
     except (psycopg.errors.DatabaseError, OSError) as exc:
         logger.warning("upsert_user failed: %s", exc)
         return None
@@ -1790,69 +1808,6 @@ def clear_account_snapshot(email: str) -> bool:
         return False
 
 
-# ── Verification reference sheet ─────────────────────────────────────────────
-
-def save_reference_sheet(filename: str, rows: list, uploaded_at: str = "") -> bool:
-    """Upsert the single active Verification reference sheet (id = 1). Rows is
-    the parsed list of normalized reference records (no workbook bytes)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "INSERT INTO reference_sheets (id, filename, uploaded_at, rows_json) "
-                "VALUES (1, %s, %s, %s) "
-                "ON CONFLICT (id) DO UPDATE SET "
-                "filename = EXCLUDED.filename, uploaded_at = EXCLUDED.uploaded_at, "
-                "rows_json = EXCLUDED.rows_json",
-                (
-                    (filename or "").strip(),
-                    uploaded_at or "",
-                    Jsonb(rows or []),
-                ),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("save_reference_sheet failed: %s", exc)
-        return False
-
-
-def get_reference_sheet() -> Optional[dict]:
-    """The active reference sheet dict ``{filename, uploaded_at, rows}``, or
-    None when none has been uploaded yet (Postgres leg)."""
-    try:
-        with database.read_conn() as c:
-            if c is None:
-                return None
-            cur = c.execute(
-                "SELECT filename, uploaded_at, rows_json FROM reference_sheets WHERE id = 1"
-            )
-            row = cur.fetchone()
-            if row is None:
-                return None
-            return {
-                "filename": row["filename"],
-                "uploaded_at": row["uploaded_at"],
-                "rows": row["rows_json"] if isinstance(row["rows_json"], list) else [],
-            }
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("get_reference_sheet failed: %s", exc)
-        return None
-
-
-def clear_reference_sheet() -> bool:
-    """Drop the active reference sheet (Postgres leg)."""
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute("DELETE FROM reference_sheets WHERE id = 1")
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("clear_reference_sheet failed: %s", exc)
-        return False
-
-
 # ── retention ──────────────────────────────────────────────────────────────────
 
 def prune_old_results(keep_n: int = 10) -> int:
@@ -2139,7 +2094,7 @@ def list_user_emails() -> list[str]:
 _FACULTY_COLUMNS = (
     "id, email, password_hash, name, created_at, auth_source, google_sub, "
     "github_username, linkedin_sub, linked_github_username, linked_github_avatar, "
-    "linked_linkedin_name, linked_linkedin_avatar, profile_source"
+    "linked_linkedin_name, linked_linkedin_avatar, profile_source, teaching_json"
 )
 
 
@@ -2181,7 +2136,19 @@ def create_faculty(email: str, password_hash: str, name: str = "") -> Optional[d
                 "VALUES (%s, %s, %s, 'password')",
                 (email, password_hash, (name or "").strip()),
             )
-            return get_faculty_by_email(email)
+            # Same-connection read-back (see upsert_user): a cross-connection
+            # read here would miss the uncommitted row and falsely report
+            # failure while the row still commits.
+            cur = c.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["role"] = "faculty"
+            return data
     except Exception as exc:
         logger.warning("create_faculty failed: %s", exc)
         return None
@@ -2213,7 +2180,17 @@ def upsert_faculty(
                 "google_sub = COALESCE(NULLIF(EXCLUDED.google_sub, ''), faculty.google_sub)",
                 (email, password_hash, (name or "").strip(), auth_source, google_sub or ""),
             )
-            return get_faculty_by_email(email)
+            # Same-connection read-back (see upsert_user).
+            cur = c.execute(
+                f"SELECT {_FACULTY_COLUMNS} FROM faculty WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["role"] = "faculty"
+            return data
     except Exception as exc:
         logger.warning("upsert_faculty failed: %s", exc)
         return None
@@ -2235,6 +2212,26 @@ def set_faculty_password(email: str, password_hash: str) -> bool:
             return (cur.rowcount or 0) > 0
     except Exception as exc:
         logger.warning("set_faculty_password failed: %s", exc)
+        return False
+
+
+def set_faculty_teaching(email: str, teaching_json: str) -> bool:
+    """Store a faculty row's teaching-assignments blob (validated JSON string
+    built by ``auth.set_faculty_teaching``). Returns True when the row updated."""
+    email = (email or "").strip().lower()
+    if not email or not teaching_json:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE faculty SET teaching_json = %s WHERE email = %s",
+                (teaching_json, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except Exception as exc:
+        logger.warning("set_faculty_teaching failed: %s", exc)
         return False
 
 

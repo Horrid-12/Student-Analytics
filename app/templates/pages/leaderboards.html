@@ -142,7 +142,7 @@
 
 {# base_qs carries every live filter; board_qs adds the platform a profile
    popup should return to. The switcher pills swap only `platform`. #}
-{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
 {% set board_qs = base_qs + "&platform=" + platform %}
 
 <div class="topbar-card">
@@ -170,22 +170,10 @@
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="platform" value="{{ platform }}">
-  <div class="filter-field">
-    <label class="filter-label" for="division-filter">Division</label>
-    <select id="division-filter" class="filter-select" name="division">
-      {% for value in payload.divisions %}
-      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="filter-field">
-    <label class="filter-label" for="batch-filter">Batch</label>
-    <select id="batch-filter" class="filter-select" name="batch">
-      {% for value in payload.batches %}
-      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  <input type="hidden" name="mine" value="{{ mine }}">
+  <input type="hidden" name="division" value="{{ division }}">
+  <input type="hidden" name="batch" value="{{ batch }}">
+  {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="semester-filter">Semester</label>
     <select id="semester-filter" class="filter-select" name="semester">

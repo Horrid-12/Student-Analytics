@@ -4,17 +4,18 @@ Every analytics page renders for students AND faculty/admins straight from the
 synced account fleet (approved accounts' snapshots) — no roster upload needed.
 A student who walked the onboarding → approval flow sees their own snapshot on
 Overview / My Profile plus the whole fleet on Students / Repositories /
-Leaderboards; Issues and Verification stay faculty/admin-only.
+Leaderboards; the Issues and Verification pages are removed.
 The ``POST /sync/accounts`` endpoint enforces its RBAC + cron-secret gate and
 runs the sweep. The sync engine itself is covered in tests/test_accounts.py.
 """
 
 import uuid
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import accounts, auth, sync
+from app import accounts, auth, sync, views
 from app.main import app
 import app.services as psvc
 
@@ -383,9 +384,9 @@ class TestFleetPages:
         assert me.iloc[0]["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
         assert me.iloc[0]["LinkedIn_Username"] == "alice-li"
 
-    def test_student_redirected_from_verification(self):
+    def test_verification_page_is_gone(self):
         client, _ = self._fleet()
-        assert self._get(client, "/verification").status_code == 303  # 5.5: Verification is faculty/admin-only again
+        assert self._get(client, "/verification").status_code == 404  # page removed
 
     def test_issues_page_is_gone(self):
         client, _ = self._fleet()
@@ -399,6 +400,179 @@ class TestFleetPages:
         # page itself was removed — unknown path falls through to 404.
         client, _ = self._fleet()
         r = self._get(client, "/students")
-        assert r.status_code == 303, "/students"
-        assert r.headers.get("location", "").rstrip("/") in ("", "/", "/overview"), "/students"
+        assert r.status_code == 200, "/students"  # restored for students
         assert self._get(client, "/history").status_code == 404
+
+
+def _seed_approved_student(email, name, prn, division, batch, hackerrank):
+    """Approved fleet member without a sync snapshot (zeroed fallback row
+    carries the onboarding Division/Batch straight onto the fleet)."""
+    assert auth.create_user(email, "secret123", "student", name)
+    ok, err = auth.submit_onboarding(
+        email, prn, "Core", division,
+        main_batch="Batch 2022", practical_batch=batch, semester="Semester 3",
+        hackerrank_username=hackerrank,
+    )
+    assert ok, err
+    ok, reason = auth.set_onboarding_status(email, "approved")
+    assert ok, reason
+
+
+class TestFacultyOverviewPersonalization:
+    """Faculty Overview is scoped to the taught (division, batch) pairs."""
+
+    @pytest.fixture
+    def class_fleet(self):
+        _seed_approved_student("teach-a@college.edu", "Teach A", "3000000001", "3", "1", "hr_ta")
+        _seed_approved_student("teach-b@college.edu", "Teach B", "3000000002", "3", "2", "hr_tb")
+        _seed_approved_student("teach-c@college.edu", "Teach C", "3000000003", "5", "1", "hr_tc")
+
+    def _faculty_client(self, teaching=None, email="prof-t@college.edu"):
+        client = TestClient(app)
+        assert auth.create_faculty(email, "secret123", "Prof T")
+        if teaching:
+            assert auth.set_faculty_teaching(email, teaching) == (True, "")
+        r = client.post("/login", data={"email": email, "password": "secret123"})
+        assert r.status_code in (200, 302)
+        return client
+
+    def _overview(self, client):
+        r = client.get("/", headers={"accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 200
+        return r.text
+
+    def test_helper_scopes_and_never_mutates(self):
+        students = pd.DataFrame([
+            {"Student_ID": "1", "Student Name": "A", "Division": "3", "Batch": "1", "GitHub_Username": "a-dev"},
+            {"Student_ID": "2", "Student Name": "B", "Division": "3", "Batch": "2", "GitHub_Username": "b-dev"},
+            {"Student_ID": "3", "Student Name": "C", "Division": "5", "Batch": "1", "GitHub_Username": "c-dev"},
+        ])
+        records = [
+            {"Student_ID": "1", "Division": "3", "Batch": "1"},
+            {"Student_ID": "2", "Division": "3", "Batch": "2"},
+            {"Student_ID": "3", "Division": "5", "Batch": "1"},
+        ]
+        view = {
+            "roster_id": "", "records": records,
+            "state": {"status": "complete", "valid": 3, "invalid": 0, "errors": 0},
+            "students": students,
+            "repos": pd.DataFrame(columns=["Username"]),
+            "team_repos": pd.DataFrame(columns=["Username"]),
+            "issues": pd.DataFrame(),
+        }
+        filtered = views.filter_view_by_teaching(view, {"3": ["1"]})
+        assert filtered is not view
+        assert len(filtered["students"]) == 1
+        assert filtered["students"].iloc[0]["Student Name"] == "A"
+        assert [r["Student_ID"] for r in filtered["records"]] == ["1"]
+        assert filtered["state"]["valid"] == 1
+        assert len(view["students"]) == 3  # input untouched (memoised views are shared)
+        assert len(view["records"]) == 3
+        assert views.filter_view_by_teaching(view, {}) is view
+        assert views.filter_view_by_teaching(view, None) is view
+        assert views.filter_view_by_teaching(None, {"3": ["1"]}) is None
+
+    def test_faculty_overview_scoped_to_taught_classes(self, class_fleet):
+        body = self._overview(self._faculty_client({"3": ["1"]}))
+        assert "Showing your classes" in body
+        assert "Division 3 (Batch 1)" in body
+        assert 'value="3"' in body
+        assert 'value="5"' not in body  # untaught division gone from filters
+        assert 'value="2"' not in body  # untaught batch gone from filters
+
+    def test_admin_sees_whole_fleet(self, class_fleet):
+        client, _ = make_client("admin")
+        body = self._overview(client)
+        assert "Showing your classes" not in body
+        assert 'value="3"' in body and 'value="5"' in body and 'value="2"' in body
+
+    def test_faculty_without_teaching_sees_all_plus_nudge(self, class_fleet):
+        body = self._overview(self._faculty_client())
+        assert 'value="5"' in body
+        assert "set the divisions and batches you teach" in body
+
+    def test_explicit_filters_still_apply_within_scope(self, class_fleet):
+        client = self._faculty_client({"3": ["1", "2"]})
+        body = client.get("/?batch=2", headers={"accept": "text/html"}).text
+        assert "Division 3 (Batch 1, 2)" in body
+
+    def test_my_classes_toggle_off_shows_whole_fleet(self, class_fleet):
+        client = self._faculty_client({"3": ["1"]})
+        on = client.get("/", headers={"accept": "text/html"}).text
+        assert 'id="my-classes-btn"' in on
+        assert "mine=0" in on  # button flips the toggle off
+        assert 'aria-pressed="true"' in on
+        body = client.get("/?mine=0", headers={"accept": "text/html"}).text
+        assert 'value="5"' in body  # full fleet back
+        assert "Showing your classes" not in body
+        assert 'id="my-classes-btn"' in body
+        assert "mine=1" in body  # button flips back on
+        assert 'aria-pressed="false"' in body
+
+    def test_my_classes_hidden_without_teaching_and_for_other_roles(self, class_fleet):
+        body = self._overview(self._faculty_client())
+        assert 'id="my-classes-btn"' not in body  # nothing taught yet -> nudge instead
+        admin, _ = make_client("admin")
+        assert 'id="my-classes-btn"' not in self._overview(admin)
+
+
+class TestRadarComparePicker:
+    """Overview radar Compare control: custom dropdown (no native select),
+    semester filters, division rows with batch buttons."""
+
+    @pytest.fixture
+    def radar_fleet(self):
+        _seed_approved_student("radar-a@college.edu", "Radar A", "4000000001", "3", "1", "hr_ra")
+        _seed_approved_student("radar-b@college.edu", "Radar B", "4000000002", "3", "2", "hr_rb")
+        _seed_approved_student("radar-c@college.edu", "Radar C", "4000000003", "5", "1", "hr_rc")
+        assert auth.create_user("radar-d@college.edu", "secret123", "student", "Radar D")
+        ok, err = auth.submit_onboarding(
+            "radar-d@college.edu", "4000000004", "Core", "5",
+            main_batch="Batch 2022", practical_batch="1", semester="Semester 4",
+            hackerrank_username="hr_rd",
+        )
+        assert ok, err
+        assert auth.set_onboarding_status("radar-d@college.edu", "approved")[0]
+
+    def _overview(self, client):
+        r = client.get("/", headers={"accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 200
+        return r.text
+
+    def test_compare_markup(self, radar_fleet):
+        client, _ = make_client("admin")
+        body = self._overview(client)
+        assert 'id="radar-compare-btn"' in body
+        assert "radar-cohort-select" not in body  # native select gone
+        assert "<optgroup" not in body
+        assert "Compare class" not in body  # ghost header gone
+        assert "whole roster" not in body
+        assert "Dashed line = average" not in body  # caption gone
+        assert "Semester-wise filters" not in body  # removed by design
+        assert "Division 3" in body and "Division 5" in body
+        for key in ("current", "overall", "1|3", "2|3", "1|5"):
+            assert f'data-compare-key="{key}"' in body, key
+
+    def test_every_offered_key_has_a_series(self, radar_fleet):
+        view = views.fleet_view()
+        payload = views.overview_payload(view, query="", division="All", batch="All", semester="All")
+        rd = payload["radar_data"]
+        assert "cohort_groups" not in rd
+        series = {s["key"]: s for s in rd["series"]}
+        assert series["semester|Semester 3"]["kind"] == "cohort"
+        offered = ["current", "overall"]
+        offered += [s["key"] for s in rd["compare_semesters"]]
+        for div in rd["compare_divisions"]:
+            offered += [b["key"] for b in div["batches"]]
+        assert [k for k in offered if k not in series] == []
+        assert {d["division"] for d in rd["compare_divisions"]} == {"Division 3", "Division 5"}
+        assert {s["name"] for s in rd["compare_semesters"]} == {"Semester 3", "Semester 4"}
+
+    def test_panel_follows_faculty_scope(self, radar_fleet):
+        client = TestClient(app)
+        assert auth.create_faculty("radar-pf@college.edu", "secret123", "Prof")
+        assert auth.set_faculty_teaching("radar-pf@college.edu", {"3": ["1", "2"]}) == (True, "")
+        client.post("/login", data={"email": "radar-pf@college.edu", "password": "secret123"})
+        panel = self._overview(client).split('id="radar-compare-panel"')[1].split("radar-clear-btn")[0]
+        assert "Division 3" in panel
+        assert "Division 5" in panel  # compare dropdown stays college-wide; only stats/graphs are scoped

@@ -99,26 +99,14 @@
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="view" value="{{ view_mode }}">
   <input type="hidden" name="recency" value="{{ payload.recency }}">
+  <input type="hidden" name="mine" value="{{ mine }}">
+  <input type="hidden" name="division" value="{{ division }}">
+  <input type="hidden" name="batch" value="{{ batch }}">
   <div class="filter-field search-box-row">
     <label class="filter-label" for="repo-search">Search</label>
     <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repos, owners, languages, students or PRN&hellip;">
   </div>
-  <div class="filter-field">
-    <label class="filter-label" for="repo-division">Division</label>
-    <select id="repo-division" class="filter-select" name="division">
-      {% for value in payload.divisions %}
-      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="filter-field">
-    <label class="filter-label" for="repo-batch">Batch</label>
-    <select id="repo-batch" class="filter-select" name="batch">
-      {% for value in payload.batches %}
-      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="repo-semester">Semester</label>
     <select id="repo-semester" class="filter-select" name="semester">
@@ -211,8 +199,6 @@
 
   var form = document.getElementById('repo-filter-form');
   var viewInput = form.querySelector('input[name="view"]');
-  var divSel = document.getElementById('repo-division');
-  var batchSel = document.getElementById('repo-batch');
   var semSel = document.getElementById('repo-semester');
   var sortSel = document.getElementById('repo-sort');
   var clearBtn = document.getElementById('repo-clear');
@@ -239,8 +225,6 @@
       function pick(key, sel) {
         if (typeof p[key] === 'string' && optionsOf(sel).indexOf(p[key]) !== -1) { out[key] = p[key]; }
       }
-      pick('division', divSel);
-      pick('batch', batchSel);
       pick('semester', semSel);
       if (VALID_SORTS.indexOf(p.sort) !== -1) { out.sort = p.sort; }
       if (isValidView(p.view)) { out.view = p.view; }
@@ -251,8 +235,6 @@
   function savePrefs() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        division: divSel.value,
-        batch: batchSel.value,
         semester: semSel.value,
         sort: sortSel.value,
         view: viewInput.value
@@ -288,8 +270,6 @@
   clearBtn.addEventListener('click', function () {
     var p = readPrefs() || {};
     searchInput.value = '';
-    divSel.value = 'All';
-    batchSel.value = 'All';
     semSel.value = 'All';
     sortSel.value = 'top';
     recencyInput.value = 'all';
@@ -298,13 +278,16 @@
     });
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        division: 'All',
-        batch: 'All',
         semester: 'All',
         sort: 'top',
         view: isValidView(p.view) ? p.view : 'grid'
       }));
     } catch (e) { /* private mode — ignore */ }
+    var clearParams = new URLSearchParams(window.location.search);
+    clearParams.delete('division');
+    clearParams.delete('batch');
+    clearParams.delete('q');
+    window.location.search = clearParams.toString();
   });
 
   // Recency chips (Active / Not updated 30d / Archived): one click stages the
@@ -334,7 +317,7 @@
   if (saved) {
     var needSubmit = false;
     if (saved.view) { applyView(saved.view); }
-    [['division', divSel], ['batch', batchSel], ['semester', semSel], ['sort', sortSel]].forEach(function (pair) {
+    [['semester', semSel], ['sort', sortSel]].forEach(function (pair) {
       var key = pair[0], sel = pair[1];
       if (saved[key] && sel.value !== saved[key]) { sel.value = saved[key]; needSubmit = true; }
     });

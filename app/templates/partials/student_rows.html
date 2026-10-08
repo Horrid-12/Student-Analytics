@@ -10,7 +10,7 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
 `semester`, `page_size`.
 #}
 {% for row in rows.to_dict('records') %}
-{% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
+{% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + ((mine or '1')|string) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
 <tr class="student-row" data-student-id="{{ row.Student_ID }}">
   <td>
     <div class="student-cell">
