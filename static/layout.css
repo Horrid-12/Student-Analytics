@@ -751,10 +751,70 @@ button {
   .filter-field.search-box-row {
     flex: 1 1 100%;
   }
+  .filter-select {
+    width: 100%;
+    font-size: 14px;
+    min-height: 42px;
+  }
+  .search-input {
+    font-size: 16px;
+    min-height: 42px;
+  }
+  .filter-count {
+    flex: 1 1 100%;
+    text-align: center;
+    padding: 4px 0;
+  }
   .btn {
     min-height: 40px;
     font-size: 13px;
     padding: 0 14px;
+  }
+  .data-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px;
+  }
+  .data-table {
+    min-width: 640px;
+    font-size: 12px;
+  }
+  .data-table th {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+  .data-table td {
+    padding: 8px 10px;
+  }
+  .student-table .col-student { width: 18%; }
+  .student-table .col-id { width: 10%; }
+  .student-table .col-div,
+  .student-table .col-batch { width: 6%; }
+  .student-table .col-sem { width: 9%; }
+  .student-table .col-gh { width: 12%; }
+  .student-table .col-li { width: 13%; }
+  .student-table .col-hr { width: 13%; }
+  .student-cell {
+    gap: 6px;
+  }
+  .student-cell .table-avatar,
+  .student-cell .avatar-fallback {
+    width: 24px;
+    height: 24px;
+  }
+  .table-avatar {
+    width: 24px;
+    height: 24px;
+  }
+  .export-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .issues-table td {
+    white-space: normal;
+    word-break: break-word;
   }
   .hero h1 {
     font-size: 28px;
