@@ -43,6 +43,45 @@
   .trend-header .activity-tabs .activity-tab {
     white-space: nowrap;
   }
+<<<<<<< HEAD
+=======
+  .trend-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 180ms ease;
+    flex-shrink: 0;
+  }
+  .trend-clear-btn:hover {
+    border-color: var(--blue-hover-border);
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+  @media (max-width: 1100px) {
+    .trend-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .trend-header .activity-tabs {
+      align-self: flex-end;
+    }
+    .trend-header .trend-clear-btn {
+      align-self: flex-end;
+      margin-top: 8px;
+    }
+  }
+>>>>>>> parent of eca7411 (Overview trend card: Students-page style filters, remove legend & hover tooltip)
 
   /* Class Metrics Radar: bigger canvas (7fr) + an always-symmetric card grid
      in the right rail. Cards are driven by the compared cohorts: 0 or 1 class
@@ -817,12 +856,20 @@
 
 <section class="panel">
   <div class="trend-header">
+<<<<<<< HEAD
     <div class="panel-title">Weekly Commit &amp; Activity Trend Across Batches</div>
+=======
+    <div class="panel-title">Commit & Activity Trend Across Classes</div>
+>>>>>>> parent of eca7411 (Overview trend card: Students-page style filters, remove legend & hover tooltip)
     <div class="activity-tabs" role="group" aria-label="Trend period">
       <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="false">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
       <button type="button" class="activity-tab" data-trend="semester" aria-pressed="true">Semester</button>
     </div>
+    <button type="button" class="trend-clear-btn" id="trend-clear-btn" aria-label="Clear trend filters">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      Clear Filters
+    </button>
   </div>
   <div class="two-col-grid">
     <div class="full-width">
@@ -853,6 +900,22 @@
       if (bridge) bridge.render(btn.getAttribute('data-trend'));
     });
   })();
+<<<<<<< HEAD
+=======
+  (function () {
+    // Clear Filters button for trend card - resets division/batch/semester to All
+    var clearBtn = document.getElementById('trend-clear-btn');
+    if (!clearBtn) return;
+    clearBtn.addEventListener('click', function () {
+      var params = new URLSearchParams(window.location.search);
+      params.set('division', 'All');
+      params.set('batch', 'All');
+      params.set('semester', 'All');
+      params.delete('offset');
+      window.location.search = params.toString();
+    });
+  })();
+>>>>>>> parent of eca7411 (Overview trend card: Students-page style filters, remove legend & hover tooltip)
 </script>
 
 </div>

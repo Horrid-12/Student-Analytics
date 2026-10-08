@@ -306,6 +306,12 @@ class TestPageRenderingWithData:
         assert "echarts" in body
         assert "plotly" not in body.lower()
         assert "htmx" not in body.lower()
+<<<<<<< HEAD
+=======
+        # Trend card: updated title and clear button
+        assert "Commit & Activity Trend Across Classes" in body
+        assert 'id="trend-clear-btn"' in body
+>>>>>>> parent of eca7411 (Overview trend card: Students-page style filters, remove legend & hover tooltip)
 
     def test_overview_filters_match_students_page(self, tmp_path):
         roster_id = self._setup(tmp_path)
