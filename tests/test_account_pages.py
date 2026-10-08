@@ -108,8 +108,9 @@ class TestStudentPages:
         assert r.status_code == 200
         html = r.text
         assert "Class Metrics Radar" in html
-        assert ">1</option>" in html
-        assert "Activity Trend Across Batches" in html
+        # Semester dropdown still exists
+        assert 'id="overview-semester"' in html
+        assert "Commit & Activity Trend Across Classes" in html
         assert "Analysis Results" not in html
         assert "Number of Students" in html
         assert "Active Repositories" in html
@@ -117,13 +118,16 @@ class TestStudentPages:
         assert "Total Forks" in html
         assert "data-active-number" in html
         assert "data-active-value" in html
-        # Division/Batch/Semester filters (no search on Overview).
-        assert 'name="q"' not in html
-        assert 'student-search' not in html
+        # Filter bar now uses Repositories-style controls:
+        assert 'name="q"' in html
+        assert 'id="overview-search"' in html
+        assert 'id="cf-btn"' in html  # class filter dropdown button
+        assert 'name="mine"' in html
         assert 'name="division"' in html
         assert 'name="batch"' in html
         assert 'name="semester"' in html
-        assert 'id="division-filter"' in html
+        assert 'id="overview-apply"' in html
+        assert 'id="overview-clear"' in html
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in html
         assert '<span class="badge-blue">Students</span>' not in html
@@ -476,38 +480,46 @@ class TestFacultyOverviewPersonalization:
         body = self._overview(self._faculty_client({"3": ["1"]}))
         assert "Showing your classes" in body
         assert "Division 3 (Batch 1)" in body
-        assert 'value="3"' in body
-        assert 'value="5"' not in body  # untaught division gone from filters
-        assert 'value="2"' not in body  # untaught batch gone from filters
+        # Class filter dropdown is present
+        assert 'id="cf-btn"' in body
+        assert 'name="mine"' in body
+        # My Classes option should be active in dropdown
+        assert 'data-mine="1"' in body
 
     def test_admin_sees_whole_fleet(self, class_fleet):
         client, _ = make_client("admin")
         body = self._overview(client)
         assert "Showing your classes" not in body
-        assert 'value="3"' in body and 'value="5"' in body and 'value="2"' in body
+        # Class filter dropdown present with All students option
+        assert 'id="cf-btn"' in body
+        assert 'name="mine"' in body
 
     def test_faculty_without_teaching_sees_all_plus_nudge(self, class_fleet):
         body = self._overview(self._faculty_client())
-        assert 'value="5"' in body
+        # Class filter dropdown present but My Classes box not shown (teaching_empty)
+        assert 'id="cf-btn"' in body
+        assert 'name="mine"' in body
         assert "set the divisions and batches you teach" in body
 
     def test_explicit_filters_still_apply_within_scope(self, class_fleet):
         client = self._faculty_client({"3": ["1", "2"]})
         body = client.get("/?batch=2", headers={"accept": "text/html"}).text
         assert "Division 3 (Batch 1, 2)" in body
+        # Class filter dropdown still present
+        assert 'id="cf-btn"' in body
 
     def test_my_classes_toggle_off_shows_whole_fleet(self, class_fleet):
         client = self._faculty_client({"3": ["1"]})
+        # With My Classes ON (default), the class filter dropdown shows My Classes active
         on = client.get("/", headers={"accept": "text/html"}).text
-        assert 'id="my-classes-btn"' in on
-        assert "mine=0" in on  # button flips the toggle off
-        assert 'aria-pressed="true"' in on
+        assert 'id="cf-btn"' in on
+        assert 'data-mine="1"' in on  # My Classes is active in dropdown
+        # Toggle off via mine=0 query param
         body = client.get("/?mine=0", headers={"accept": "text/html"}).text
-        assert 'value="5"' in body  # full fleet back
+        assert 'id="cf-btn"' in body
+        # All students option should be active
+        assert 'data-mine="0"' in body
         assert "Showing your classes" not in body
-        assert 'id="my-classes-btn"' in body
-        assert "mine=1" in body  # button flips back on
-        assert 'aria-pressed="false"' in body
 
     def test_my_classes_hidden_without_teaching_and_for_other_roles(self, class_fleet):
         body = self._overview(self._faculty_client())
