@@ -872,6 +872,47 @@ button {
   .system-value {
     font-size: 15px;
   }
+  .echart-box {
+    min-height: 220px;
+  }
+  .full-width .echart-box {
+    min-height: 240px;
+  }
+  .donut-chart {
+    min-height: 180px;
+  }
+  .bubble-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bubble-tooltip,
+  .ab-tooltip {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .ab-list {
+    max-height: 280px;
+  }
+  .ab-row {
+    grid-template-columns: 80px 1fr 36px;
+    gap: 6px;
+    padding: 4px 0;
+  }
+  .ab-label {
+    font-size: 11px;
+  }
+  .ab-total {
+    font-size: 11px;
+  }
+  .ab-legend {
+    gap: 8px;
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .ab-toggle {
+    padding: 4px 0;
+    font-size: 11px;
+  }
   .lang-split {
     flex-direction: column;
     gap: 12px;
