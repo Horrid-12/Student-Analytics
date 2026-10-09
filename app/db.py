@@ -1362,7 +1362,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1501,7 +1501,7 @@ def upsert_user(
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1628,7 +1628,7 @@ def get_approved_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
             return [dict(row) for row in cur.fetchall()]

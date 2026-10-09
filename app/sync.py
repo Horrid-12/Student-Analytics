@@ -178,9 +178,9 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
         "Primary_Language": _primary_language(repos),
         "Avatar_URL": _clean_text(payload.get("avatar_url")),
         "Profile_URL": _clean_text(payload.get("html_url")),
-        "LinkedIn_Username": "",
+        "LinkedIn_Username": user_row.get("linked_linkedin_name") or "",
         "LinkedIn_URL": "",
-        "HackerRank_Username": "",
+        "HackerRank_Username": user_row.get("hackerrank_username") or "",
         "HackerRank_URL": "",
     }
 
@@ -466,9 +466,9 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         "GitHub_Username": username,
         "Submitted_GitHub_Username": username,
         "Academic_Year": "2026-2027",
-        "LinkedIn_Username": "",
+        "LinkedIn_Username": user_row.get("linked_linkedin_name") or "",
         "LinkedIn_URL": "",
-        "HackerRank_Username": "",
+        "HackerRank_Username": user_row.get("hackerrank_username") or "",
         "HackerRank_URL": ""
     }
 

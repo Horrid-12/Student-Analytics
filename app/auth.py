@@ -1779,7 +1779,7 @@ def get_approved_accounts() -> list[dict]:
             rows = conn.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester FROM users "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub FROM users "
                 "WHERE onboarding_status = 'approved' ORDER BY email ASC"
             ).fetchall()
         return [dict(row) for row in rows]
