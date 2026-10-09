@@ -526,7 +526,7 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         return False, "api_error", str(e)
 
 
-def sync_heavy_next(token: str | None = None) -> dict:
+def sync_heavy_next(tokens: list[str] | str | None = None) -> dict:
     """Round-robin heavy sync: pick the single approved student whose snapshot
     is oldest (or missing) and run ``sync_heavy_one`` for just them.
 
@@ -572,11 +572,26 @@ def sync_heavy_next(token: str | None = None) -> dict:
     username = _clean_text(stalest_user.get("github_username"))
     logger.info("sync_heavy_next: picking %s (@%s)", email, username)
 
-    ok, code, detail = sync_heavy_one(stalest_user, token)
-    return {
-        "status": "ok" if ok else "error",
-        "email": email,
-        "username": username,
-        "code": code,
-        "detail": detail,
-    }
+    import random
+    if isinstance(tokens, str):
+        tokens = [tokens]
+    elif not tokens:
+        tokens = [None]
+        
+    tokens_to_try = list(tokens)
+    random.shuffle(tokens_to_try)
+    
+    last_summary = None
+    for t in tokens_to_try:
+        ok, code, detail = sync_heavy_one(stalest_user, t)
+        last_summary = {
+            "status": "ok" if ok else "error",
+            "email": email,
+            "username": username,
+            "code": code,
+            "detail": detail,
+        }
+        if ok or code != "rate_limited":
+            return last_summary
+            
+    return last_summary

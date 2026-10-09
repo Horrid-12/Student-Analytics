@@ -2163,7 +2163,7 @@ async def sync_heavy_next_endpoint(request: Request):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
     tokens = github_client.load_all_tokens()
-    summary = await asyncio.to_thread(sync.sync_heavy_next, tokens[0] if tokens else None)
+    summary = await asyncio.to_thread(sync.sync_heavy_next, tokens if tokens else None)
     status_code = 429 if summary.get("code") == "rate_limited" else (500 if summary.get("status") == "error" else 200)
     return JSONResponse(status_code=status_code, content=summary)
 
