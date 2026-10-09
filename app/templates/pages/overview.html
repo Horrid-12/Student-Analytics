@@ -502,26 +502,11 @@
 {% if complete and payload %}
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
-  {% if show_my_classes %}
   <input type="hidden" name="mine" value="{{ mine }}">
+  {% if show_my_classes %}
   <a id="my-classes-btn" href="/overview?roster={{ roster_id }}&amp;q={{ q|urlencode }}&amp;division={{ division|urlencode }}&amp;batch={{ batch|urlencode }}&amp;semester={{ semester|urlencode }}&amp;mine={{ "0" if my_classes_on else "1" }}" aria-pressed="{{ "true" if my_classes_on else "false" }}" title="Toggle your taught classes" style="display:inline-flex;align-items:center;min-height:42px;padding:0 24px;border:3px solid #8b5cf6;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;white-space:nowrap;{% if my_classes_on %}background:#8b5cf6;color:#fff;{% else %}background:transparent;color:#8b5cf6;{% endif %}">{% if my_classes_on %}My Classes{% else %}All students{% endif %}</a>
   {% endif %}
-  <div class="filter-field">
-    <label class="filter-label" for="division-filter">Division</label>
-    <select id="division-filter" class="filter-select" name="division">
-      {% for value in payload.divisions %}
-      <option value="{{ value }}" {% if value == division %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="filter-field">
-    <label class="filter-label" for="batch-filter">Batch</label>
-    <select id="batch-filter" class="filter-select" name="batch">
-      {% for value in payload.batches %}
-      <option value="{{ value }}" {% if value == batch %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="semester-filter">Semester</label>
     <select id="semester-filter" class="filter-select" name="semester">

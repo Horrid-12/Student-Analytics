@@ -283,7 +283,8 @@ class TestPageRenderingWithData:
         assert 'name="division"' in body
         assert 'name="batch"' in body
         assert 'name="semester"' in body
-        assert 'id="division-filter"' in body
+        assert 'id="ms-div-btn"' in body
+        assert 'id="ms-batch-btn"' in body
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in body
         assert '<span class="badge-blue">Students</span>' not in body

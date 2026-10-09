@@ -108,7 +108,7 @@ class TestStudentPages:
         assert r.status_code == 200
         html = r.text
         assert "Class Metrics Radar" in html
-        assert ">1</option>" in html
+        assert 'value="1"' in html
         assert "Activity Trend Across Batches" in html
         assert "Analysis Results" not in html
         assert "Number of Students" in html
@@ -123,7 +123,8 @@ class TestStudentPages:
         assert 'name="division"' in html
         assert 'name="batch"' in html
         assert 'name="semester"' in html
-        assert 'id="division-filter"' in html
+        assert 'id="ms-div-btn"' in html
+        assert 'id="ms-batch-btn"' in html
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in html
         assert '<span class="badge-blue">Students</span>' not in html

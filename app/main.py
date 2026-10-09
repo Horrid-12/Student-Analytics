@@ -787,6 +787,50 @@ def _guard_page(request: Request, ctx: dict, page_name: str, roster: str):
     return view, None
 
 
+def _multi_filter(request: Request, name: str, single: str = "All") -> list[str]:
+    """Parse a Division/Batch filter supporting multi-select.
+
+    Accepts repeated params (?division=1&division=2) and comma-joined
+    (?division=1,2); "All"/missing/empty means no filtering (returns []).
+    The ``single`` FastAPI arg is the fallback for docs/back-compat."""
+    try:
+        raw_list = request.query_params.getlist(name)
+    except Exception:
+        raw_list = []
+    vals: list[str] = []
+    for raw in raw_list or []:
+        for part in str(raw or "").split(","):
+            text = part.strip()
+            if text and text.lower() != "all" and text not in vals:
+                vals.append(text)
+    if not raw_list and single and str(single).strip() and str(single).strip().lower() != "all":
+        for part in str(single).split(","):
+            text = part.strip()
+            if text and text.lower() != "all" and text not in vals:
+                vals.append(text)
+    return vals
+
+
+def _filter_param(values: list[str]) -> str:
+    """Outward query value for templates/URLs: comma-joined or "All"."""
+    return ",".join(values) if values else "All"
+
+
+def _filter_context(request: Request, division_single: str = "All", batch_single: str = "All") -> dict:
+    """Template context for the staged multi-select class filter.
+
+    Returns {divisions, batches} (selected lists, [] = All) plus
+    {division, batch} (comma-joined strings for URL building/back-compat)."""
+    divs = _multi_filter(request, "division", division_single)
+    bats = _multi_filter(request, "batch", batch_single)
+    return {
+        "divisions": divs,
+        "batches": bats,
+        "division": _filter_param(divs),
+        "batch": _filter_param(bats),
+    }
+
+
 def _export_response(df, format: str, name: str):
     import io
 
@@ -1460,8 +1504,9 @@ def overview(
     ctx["view"] = None
     ctx["payload"] = None
     ctx["q"] = q or ""
-    ctx["division"] = division or "All"
-    ctx["batch"] = batch or "All"
+    _fc = _filter_context(request, division, batch)
+    ctx.update(_fc)
+    ctx["teaching_active"] = False
     ctx["semester"] = semester or "All"
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     # Faculty "My Classes" toggle (fleet views only — an explicitly attached
@@ -1505,7 +1550,7 @@ def overview(
             _overall_view = _full_view if "_full_view" in locals() else None
             _taught_view_for_radar = _taught_view if "_taught_view" in locals() else None
             ctx["payload"] = views.overview_payload(
-                view, query=q or "", division=division or "All", batch=batch or "All",
+                view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar,
             )
@@ -2406,7 +2451,9 @@ def students_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    payload = views.students_payload(view, q, division, batch, year, semester, rows, select or None)
+    _fc = _filter_context(request, division, batch)
+    ctx.update(_fc)
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None)
     payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
@@ -2420,8 +2467,6 @@ def students_page(
             "roster_id": roster,
             "bl_roster": _bl_roster(roster),
             "q": q,
-            "division": division,
-            "batch": batch,
             "year": year,
             "semester": semester,
         },
@@ -2460,7 +2505,8 @@ def students_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    payload = views.students_payload(view, q, division, batch, year, semester)
+    _fc = _filter_context(request, division, batch)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester)
     total = int(payload.get("total") or 0)
     if not total:
         return HTMLResponse("")
@@ -2473,8 +2519,8 @@ def students_rows(
         rows=rows,
         roster_id=roster,
         q=q,
-        division=division,
-        batch=batch,
+        division=_fc["division"],
+        batch=_fc["batch"],
         semester=semester,
         mine=mine,
         page_size=payload["page_size"],
@@ -2523,7 +2569,8 @@ def students_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    payload = views.students_payload(view, q, division, batch, year, semester)
+    _fc = _filter_context(request, division, batch)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester)
     df = views.student_export_df(payload)
     return _export_response(df, format, "students")
 
@@ -2575,12 +2622,14 @@ def repositories_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    payload = views.repositories_payload(data, q, language, rows, division, batch, semester, sort, recency)
+    _fc = _filter_context(request, division, batch)
+    ctx.update(_fc)
+    payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency)
     payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "division": division, "batch": batch, "semester": semester, "sort": sort, "recency": recency},
+        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "semester": semester, "sort": sort, "recency": recency},
     )
 
 
@@ -2620,8 +2669,9 @@ def repositories_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
+    _fc = _filter_context(request, division, batch)
     payload = views.repositories_payload(
-        view, q, language, views.STUDENT_BATCH_SIZE, division, batch, semester, sort, recency
+        view, q, language, views.STUDENT_BATCH_SIZE, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency
     )
     total = int(payload.get("total") or 0)
     if not total:
@@ -2663,7 +2713,8 @@ def repositories_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    payload = views.repositories_payload(view, q, "All", 30, division, batch, semester, sort, recency)
+    _fc = _filter_context(request, division, batch)
+    payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency)
     df = views.repository_export_df(payload)
     return _export_response(df, format, "repositories")
 
@@ -2707,8 +2758,10 @@ def leaderboards_page(
     blacklist = _blacklist_state(roster)
     hidden_repos = _hidden_repos_state(roster)
     hr_snapshots = _hr_snapshots_state()
+    _fc = _filter_context(request, division, batch)
+    ctx.update(_fc)
     payload = views.leaderboards_payload(
-        view, division, batch, semester, active_window, commits_window,
+        view, _fc["divisions"] or "All", _fc["batches"] or "All", semester, active_window, commits_window,
         blacklist=blacklist,
         hidden_repos=hidden_repos,
         hr_snapshots=hr_snapshots,
@@ -2727,7 +2780,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "division": division, "batch": batch, "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 
