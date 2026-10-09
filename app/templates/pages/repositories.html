@@ -99,9 +99,6 @@
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="view" value="{{ view_mode }}">
   <input type="hidden" name="recency" value="{{ payload.recency }}">
-  <input type="hidden" name="mine" value="{{ mine }}">
-  <input type="hidden" name="division" value="{{ division }}">
-  <input type="hidden" name="batch" value="{{ batch }}">
   <div class="filter-field search-box-row">
     <label class="filter-label" for="repo-search">Search</label>
     <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repos, owners, languages, students or PRN&hellip;">
@@ -287,6 +284,9 @@
     clearParams.delete('division');
     clearParams.delete('batch');
     clearParams.delete('q');
+    clearParams.delete('semester');
+    clearParams.delete('sort');
+    clearParams.delete('recency');
     window.location.search = clearParams.toString();
   });
 

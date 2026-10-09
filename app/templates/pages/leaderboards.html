@@ -241,9 +241,6 @@
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="platform" value="{{ platform }}">
-  <input type="hidden" name="mine" value="{{ mine }}">
-  <input type="hidden" name="division" value="{{ division }}">
-  <input type="hidden" name="batch" value="{{ batch }}">
   {% include "partials/class_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="semester-filter">Semester</label>
@@ -264,6 +261,7 @@
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
       <input type="hidden" name="platform" value="{{ platform }}">
+      <input type="hidden" name="mine" value="{{ mine }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">
@@ -291,6 +289,7 @@
     <form class="board-select-form" method="get">
       <input type="hidden" name="roster" value="{{ roster_id }}">
       <input type="hidden" name="platform" value="{{ platform }}">
+      <input type="hidden" name="mine" value="{{ mine }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <input type="hidden" name="semester" value="{{ semester }}">

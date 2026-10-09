@@ -993,12 +993,12 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _radar_active = []
     _has_current = False
     _current_label = ""
-    _filtered = division != "All" or batch != "All" or semester != "All"
+    _filtered = _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
     if radar_students is not None and not radar_students.empty:
         # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
         if _filtered:
-            _bits = [b for b in (division if division != "All" else None, batch if batch != "All" else None, semester if semester != "All" else None) if b]
+            _bits = _filter_bits(division, batch) + ([str(semester)] if str(semester or "All") != "All" else [])
             _current_label += " · " + " · ".join(_bits)
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
@@ -1094,6 +1094,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "divisions": _div_opts,
         "batches": _batch_opts,
         "semesters": _sem_opts,
+        "selected_divisions": _filter_list(division),
+        "selected_batches": _filter_list(batch),
         "valid": valid,
         "invalid": invalid,
         "errors": errors,
@@ -1325,6 +1327,44 @@ def dist_options(values) -> list[str]:
     )
 
 
+def _filter_list(value) -> list[str]:
+    """Normalize a Division/Batch/Semester filter to a list of selected values.
+
+    Accepts "All", a single value, a comma-joined string ("1,2") or a
+    list/tuple/set (repeated query params). Empty list means "All"."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        out: list[str] = []
+        for item in value:
+            for part in str(item or "").split(","):
+                text = part.strip()
+                if text and text.lower() != "all" and text not in out:
+                    out.append(text)
+        return out
+    text = str(value or "").strip()
+    if not text or text.lower() == "all":
+        return []
+    return [p.strip() for p in text.split(",") if p.strip() and p.strip().lower() != "all"]
+
+
+def _filter_active(value) -> bool:
+    return bool(_filter_list(value))
+
+
+def _filter_query_value(value) -> str:
+    """Outward query value: comma-joined selections or "All"."""
+    items = _filter_list(value)
+    return ",".join(items) if items else "All"
+
+
+def _filter_bits(*values) -> list[str]:
+    bits: list[str] = []
+    for value in values:
+        bits.extend(_filter_list(value))
+    return bits
+
+
 def division_batch_groups(students) -> list[dict]:
     """Division -> taught batches structure for the compare-style class
     filter dropdown (raw values kept for filtering, display labels added)."""
@@ -1478,6 +1518,8 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "batches": dist_options(students["Batch"].dropna().astype(str).unique().tolist()),
         "years": dist_options(students["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(students["Semester"].dropna().astype(str).unique().tolist()),
+        "selected_divisions": _filter_list(division),
+        "selected_batches": _filter_list(batch),
         "division_groups": division_batch_groups(students),
         "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester),
     }
@@ -1536,7 +1578,11 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
         pairs.append(("roster", roster_id))
     pairs.append(("format", "csv"))
     for key, value in (("q", q), ("division", division), ("batch", batch), ("year", year), ("semester", semester), ("status", status)):
-        if value not in (None, "", "All"):
+        if key in ("division", "batch", "semester", "year"):
+            qv = _filter_query_value(value) if key in ("division", "batch") else (str(value or "").strip())
+            if qv not in (None, "", "All", "all"):
+                pairs.append((key, qv))
+        elif value not in (None, "", "All"):
             pairs.append((key, str(value)))
     from urllib.parse import urlencode
 
@@ -2183,6 +2229,8 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
+        "selected_divisions": _filter_list(division),
+        "selected_batches": _filter_list(batch),
         "division_groups": division_batch_groups(view.get("students")),
         "export_query": repositories_export_query(
             view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
@@ -2198,7 +2246,11 @@ def repositories_export_query(roster_id="", q="", division="All", batch="All", s
         pairs.append(("roster", roster_id))
     pairs.append(("format", "csv"))
     for key, value in (("q", q), ("division", division), ("batch", batch), ("semester", semester), ("sort", sort), ("recency", recency)):
-        if value not in (None, "", "All", "all"):
+        if key in ("division", "batch"):
+            qv = _filter_query_value(value)
+            if qv not in (None, "", "All", "all"):
+                pairs.append((key, qv))
+        elif value not in (None, "", "All", "all"):
             pairs.append((key, str(value)))
     from urllib.parse import urlencode
 
@@ -2619,6 +2671,8 @@ def leaderboards_payload(
         "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
+        "selected_divisions": _filter_list(division),
+        "selected_batches": _filter_list(batch),
         "division_groups": division_batch_groups(view["students"]),
         "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
         "active_window": active_window,

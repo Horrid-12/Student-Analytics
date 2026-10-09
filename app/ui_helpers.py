@@ -56,10 +56,32 @@ def filter_text(df: pd.DataFrame, query: str, columns: list[str]) -> pd.DataFram
     return df[mask]
 
 
-def apply_value_filter(df: pd.DataFrame, column: str, value: str) -> pd.DataFrame:
-    if value == "All" or column not in df.columns:
+def apply_value_filter(df: pd.DataFrame, column: str, value) -> pd.DataFrame:
+    if column not in df.columns:
         return df
-    return df[df[column].astype(str) == value]
+    if value is None:
+        return df
+    # Multi-select: list/tuple/set of values (empty or containing "All" = no filter).
+    if isinstance(value, (list, tuple, set)):
+        vals: list[str] = []
+        for item in value:
+            for part in str(item or "").split(","):
+                text = part.strip()
+                if text and text.lower() != "all":
+                    vals.append(text)
+        if not vals:
+            return df
+        return df[df[column].astype(str).isin(vals)]
+    text = str(value or "").strip()
+    if text == "" or text.lower() == "all":
+        return df
+    # Comma-joined multi value passed as a single string ("1,2").
+    if "," in text:
+        vals = [p.strip() for p in text.split(",") if p.strip() and p.strip().lower() != "all"]
+        if not vals:
+            return df
+        return df[df[column].astype(str).isin(vals)]
+    return df[df[column].astype(str) == text]
 
 
 def format_number(value) -> str:

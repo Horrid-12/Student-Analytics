@@ -1,131 +1,170 @@
-{# Compare-style class filter dropdown: My Classes / All students scope
-   toggle + Division rows with Batch buttons. Clicking any option replaces
-   the page's division/batch/mine query params and reloads, so the Students,
-   Repositories and Leaderboards pages all filter identically. #}
+{# Staged multi-select class filter: Division + Batch checkbox dropdowns.
+   Selections are staged locally — nothing reloads until the parent form's
+   Apply button submits. Used identically on Students, Repositories,
+   Leaderboards and Overview (beside My Classes). Back-compat: "All" means
+   no filtering; repeated params (?division=1&division=2) and comma-joined
+   (?division=1,2) both parse server-side. #}
+{% set div_sel = divisions if divisions is defined and divisions is not none else (payload.selected_divisions if payload and payload.selected_divisions is defined else []) %}
+{% set bat_sel = batches if batches is defined and batches is not none else (payload.selected_batches if payload and payload.selected_batches is defined else []) %}
 <style>
-  .cf-wrap { position: relative; }
-  .cf-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    min-height: 42px; padding: 0 24px;
-    border: 3px solid #8b5cf6; border-radius: 10px;
-    background: transparent; color: #8b5cf6;
-    font-weight: 800; font-size: 15px;
-    font-family: Inter, system-ui, sans-serif;
-    cursor: pointer; white-space: nowrap; transition: all 180ms ease;
+  .ms-wrap { position: relative; }
+  .ms-btn {
+    display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-height: 42px; min-width: 130px; padding: 0 14px;
+    cursor: pointer; white-space: nowrap;
   }
-  .cf-btn:hover { background: rgba(139, 92, 246, 0.12); }
-  .cf-btn[aria-expanded="true"] { background: #8b5cf6; color: #fff; }
-  .cf-panel {
+  .ms-btn svg { flex: none; }
+  .ms-panel {
     position: absolute; top: calc(100% + 8px); left: 0;
-    width: 460px; max-width: calc(100vw - 48px); max-height: 440px;
+    min-width: 200px; max-width: calc(100vw - 48px); max-height: 320px;
     overflow-y: auto; background: var(--card);
     border: 1px solid var(--border); border-radius: 12px;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-    padding: 10px; z-index: 40;
+    padding: 8px; z-index: 40;
   }
-  .cf-row {
-    display: flex; align-items: center; width: 100%; text-align: left;
-    padding: 12px 14px; font-size: 15px; font-weight: 600;
+  .ms-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; font-size: 14px; font-weight: 500;
     font-family: Inter, system-ui, sans-serif;
-    background: transparent; border: 2px solid transparent; border-radius: 8px; color: var(--text);
-    cursor: pointer;
+    border-radius: 8px; color: var(--text);
+    cursor: pointer; white-space: nowrap;
   }
-  .cf-row:hover { background: var(--hover-bg); }
-  .cf-row[data-active="true"] { border-color: #7c3aed; }
-  .cf-box {
+  .ms-opt:hover { background: var(--hover-bg); }
+  .ms-opt input { width: 16px; height: 16px; accent-color: #8b5cf6; flex: none; }
+  .ms-scope-box {
     border: 1px solid var(--border); border-radius: 10px;
     background: var(--card-soft, rgba(128, 128, 128, 0.04));
     margin: 0 0 8px; padding: 4px;
   }
-  .cf-divrow {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; padding: 10px 14px; border-radius: 8px;
+  .ms-scope-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; font-size: 14px; font-weight: 600;
+    border-radius: 8px; cursor: pointer; color: var(--text);
   }
-  .cf-divrow:hover { background: var(--hover-bg); }
-  .cf-div {
-    font-size: 16px; font-weight: 700; color: var(--text);
-    background: transparent; border: 0; padding: 0; cursor: pointer;
-    font-family: Inter, system-ui, sans-serif; text-align: left;
-  }
-  .cf-div:hover { color: #8b5cf6; }
-  .cf-div[data-active="true"] { color: #8b5cf6; }
-  .cf-batches { display: flex; gap: 8px; flex: none; }
-  .cf-batch {
-    min-width: 42px; padding: 7px 12px; font-size: 14px; font-weight: 700;
-    font-family: Inter, system-ui, sans-serif; border-radius: 8px;
-    border: 1px solid var(--border); background: transparent; color: var(--text);
-    cursor: pointer; transition: all 180ms ease;
-  }
-  .cf-batch:hover { border-color: #8b5cf6; color: #8b5cf6; }
-  .cf-batch[data-active="true"] { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
-  .cf-divrow.taught { background: rgba(139, 92, 246, 0.10); }
-  .cf-divrow.taught .cf-div { color: #8b5cf6; }
-  .cf-batch.taught { background: transparent; border-color: #7c3aed; color: #7c3aed; }
-  .cf-batch.taught[data-active="true"] { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  .ms-scope-opt:hover { background: var(--hover-bg); }
+  .ms-scope-opt input { width: 16px; height: 16px; accent-color: #8b5cf6; flex: none; }
 </style>
 
-<div class="filter-field cf-wrap">
-  <label class="filter-label" id="cf-label">Division / Batch</label>
-  <button type="button" class="cf-btn" id="cf-btn" aria-haspopup="true" aria-expanded="false">
-    Division &amp; Batch
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+<div class="filter-field ms-wrap">
+  <label class="filter-label" for="ms-div-btn">Division</label>
+  <button type="button" class="filter-select ms-btn" id="ms-div-btn" aria-haspopup="true" aria-expanded="false">
+    <span id="ms-div-label">All</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
   </button>
-  <div id="cf-panel" class="cf-panel" hidden>
+  <div id="ms-div-panel" class="ms-panel" hidden>
     {% if teaching_active %}
-    <div class="cf-box">
-      <button type="button" class="cf-row" data-mine="1" {% if mine != '0' %}data-active="true"{% endif %}>My Classes</button>
-      <button type="button" class="cf-row" data-mine="0" {% if mine == '0' %}data-active="true"{% endif %}>All students</button>
+    <div class="ms-scope-box" role="radiogroup" aria-label="Scope">
+      <label class="ms-scope-opt"><input type="radio" name="mine" value="1" {% if mine != '0' %}checked{% endif %}> My Classes</label>
+      <label class="ms-scope-opt"><input type="radio" name="mine" value="0" {% if mine == '0' %}checked{% endif %}> All students</label>
     </div>
     {% endif %}
-    {% for g in payload.division_groups %}
-    {% set div_key = g.key %}
-    <div class="cf-divrow{% if teaching_active and taught_map and div_key in taught_map %} taught{% endif %}">
-      <button type="button" class="cf-div" data-division="{{ g.division }}" {% if division == g.division %}data-active="true"{% endif %}>{{ g.label }}</button>
-      <span class="cf-batches">
-        {% for b in g.batches %}
-        {% set bk = g.batch_keys[loop.index0] %}
-        <button type="button" class="cf-batch{% if teaching_active and taught_map and div_key in taught_map and bk in taught_map[div_key] %} taught{% endif %}" data-division="{{ g.division }}" data-batch="{{ b }}" {% if division == g.division and batch == b %}data-active="true"{% endif %}>{{ b }}</button>
-        {% endfor %}
-      </span>
-    </div>
+    <label class="ms-opt"><input type="checkbox" name="division" value="All" data-ms-all> All</label>
+    {% for value in payload.divisions if value != "All" %}
+    <label class="ms-opt"><input type="checkbox" name="division" value="{{ value }}" data-ms-opt {% if value in div_sel %}checked{% endif %}> {{ value }}</label>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="filter-field ms-wrap">
+  <label class="filter-label" for="ms-batch-btn">Batch</label>
+  <button type="button" class="filter-select ms-btn" id="ms-batch-btn" aria-haspopup="true" aria-expanded="false">
+    <span id="ms-batch-label">All</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div id="ms-batch-panel" class="ms-panel" hidden>
+    <label class="ms-opt"><input type="checkbox" name="batch" value="All" data-ms-all> All</label>
+    {% for value in payload.batches if value != "All" %}
+    <label class="ms-opt"><input type="checkbox" name="batch" value="{{ value }}" data-ms-opt {% if value in bat_sel %}checked{% endif %}> {{ value }}</label>
     {% endfor %}
   </div>
 </div>
 
 <script>
   (function () {
-    var btn = document.getElementById('cf-btn');
-    var panel = document.getElementById('cf-panel');
-    if (!btn || !panel) return;
-    function setPanel(open) {
-      panel.hidden = !open;
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    function setup(btnId, panelId, labelId) {
+      var btn = document.getElementById(btnId);
+      var panel = document.getElementById(panelId);
+      var label = document.getElementById(labelId);
+      if (!btn || !panel || !label) return null;
+      var allBox = panel.querySelector('[data-ms-all]');
+      var opts = Array.prototype.slice.call(panel.querySelectorAll('[data-ms-opt]'));
+      function refresh() {
+        var checked = opts.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        if (!checked.length) {
+          if (allBox) allBox.checked = true;
+          label.textContent = 'All';
+        } else if (checked.length === 1) {
+          if (allBox) allBox.checked = false;
+          label.textContent = checked[0];
+        } else {
+          if (allBox) allBox.checked = false;
+          label.textContent = checked.length + ' selected';
+        }
+        btn.title = checked.length ? checked.join(', ') : 'All';
+      }
+      function setPanel(open) {
+        panel.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var willOpen = panel.hidden;
+        document.querySelectorAll('.ms-panel').forEach(function (p) { p.hidden = true; });
+        document.querySelectorAll('.ms-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+        setPanel(willOpen);
+      });
+      if (allBox) {
+        allBox.addEventListener('change', function () {
+          if (allBox.checked) opts.forEach(function (c) { c.checked = false; });
+          refresh();
+        });
+      }
+      opts.forEach(function (c) {
+        c.addEventListener('change', function () {
+          if (c.checked && allBox) allBox.checked = false;
+          refresh();
+        });
+      });
+      // Form reset (Clear link reloads the page, but in-page resets need it).
+      var form = btn.closest('form');
+      if (form) form.addEventListener('reset', function () { setTimeout(refresh, 0); });
+      refresh();
+      return { btn: btn, panel: panel, setPanel: setPanel };
     }
-    btn.addEventListener('click', function (e) { e.stopPropagation(); setPanel(panel.hidden); });
+    var div = setup('ms-div-btn', 'ms-div-panel', 'ms-div-label');
+    var bat = setup('ms-batch-btn', 'ms-batch-panel', 'ms-batch-label');
     document.addEventListener('click', function (e) {
-      if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) setPanel(false);
-    });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setPanel(false); });
-    function go(changes) {
-      var params = new URLSearchParams(window.location.search);
-      Object.keys(changes).forEach(function (key) {
-        if (changes[key] === null || changes[key] === '') { params.delete(key); } else { params.set(key, changes[key]); }
-      });
-      params.delete('offset');
-      window.location.search = params.toString();
-    }
-    panel.querySelectorAll('[data-mine]').forEach(function (row) {
-      row.addEventListener('click', function () {
-        // Switching scope resets the division/batch refinement to avoid
-        // landing on a cohort that is no longer in scope.
-        go({ mine: row.getAttribute('data-mine'), division: 'All', batch: 'All' });
+      [['ms-div-btn', 'ms-div-panel'], ['ms-batch-btn', 'ms-batch-panel']].forEach(function (pair) {
+        var b = document.getElementById(pair[0]);
+        var p = document.getElementById(pair[1]);
+        if (b && p && !p.hidden && !p.contains(e.target) && e.target !== b && !b.contains(e.target)) {
+          p.hidden = true;
+          b.setAttribute('aria-expanded', 'false');
+        }
       });
     });
-    panel.querySelectorAll('.cf-div').forEach(function (d) {
-      d.addEventListener('click', function () { go({ division: d.getAttribute('data-division'), batch: 'All' }); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        ['ms-div-panel', 'ms-batch-panel'].forEach(function (id) {
+          var p = document.getElementById(id);
+          if (p) p.hidden = true;
+        });
+        ['ms-div-btn', 'ms-batch-btn'].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.setAttribute('aria-expanded', 'false');
+        });
+      }
     });
-    panel.querySelectorAll('.cf-batch').forEach(function (b) {
-      b.addEventListener('click', function () { go({ division: b.getAttribute('data-division'), batch: b.getAttribute('data-batch') }); });
+    // Staged model: checking boxes never navigates — the parent form's Apply
+    // submits all checked division/batch values together. Strip the synthetic
+    // "All" checkbox on submit so ?division=All never filters; no selection
+    // also means All (backend treats missing as unfiltered).
+    document.querySelectorAll('form').forEach(function (form) {
+      if (form.querySelector('[data-ms-all]')) {
+        form.addEventListener('submit', function () {
+          form.querySelectorAll('[data-ms-all]').forEach(function (c) { c.checked = false; c.disabled = true; });
+        });
+      }
     });
   })();
 </script>
