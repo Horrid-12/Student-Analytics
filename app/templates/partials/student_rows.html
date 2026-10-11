@@ -7,10 +7,10 @@ the server-rendered ones (Lag Fix phase 2 - the table used to ship every row
 hidden and reveal them client-side, so the page grew with the fleet).
 
 Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
-`semester`, `page_size`.
+`semester`, `page_size`, `pair` (explicit DIV|BATCH picks, "All" when none).
 #}
 {% for row in rows.to_dict('records') %}
-{% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + ((mine or '1')|string) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
+{% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + ((mine or '1')|string) + "&pair=" + ((pair or 'All')|urlencode) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
 <tr class="student-row" data-student-id="{{ row.Student_ID }}">
   <td>
     <div class="student-cell">

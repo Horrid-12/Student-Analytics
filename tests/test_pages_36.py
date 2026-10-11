@@ -280,11 +280,10 @@ class TestPageRenderingWithData:
         # Division/Batch/Semester filters (no search on Overview).
         assert 'name="q"' not in body
         assert 'student-search' not in body
-        assert 'name="division"' in body
-        assert 'name="batch"' in body
+        assert 'name="pair"' in body
         assert 'name="semester"' in body
-        assert 'id="ms-div-btn"' in body
-        assert 'id="ms-batch-btn"' in body
+        assert 'id="cf-btn"' in body
+        assert 'id="cf-panel"' in body
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in body
         assert '<span class="badge-blue">Students</span>' not in body

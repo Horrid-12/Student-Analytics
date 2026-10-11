@@ -13,6 +13,7 @@ import pandas as pd
 from app import storage
 from app.services import extract_hackerrank_username
 from app.ui_helpers import (
+    apply_pair_filter,
     apply_value_filter,
     filter_text,
     format_number,
@@ -703,7 +704,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None) -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All") -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -723,7 +724,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         _all_students = students.copy() if students is not None else students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
     # cohort in the Class Metrics Radar are measured against the whole roster.
-    # Same filters as the Students page: text search + Division/Batch/Semester.
+    # Same filters as the Students page: text search + pair (Division, Batch)
+    # multi-select (or legacy Division/Batch/Semester when no pairs picked).
     try:
         students = filter_text(
             students,
@@ -732,11 +734,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         )
     except Exception:
         pass
-    for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
-        try:
-            students = apply_value_filter(students, _col, _val or "All")
-        except Exception:
-            pass
+    students = _apply_cohort_filters(students, division, batch, semester, pairs)
     # Restrict repos/team to the filtered cohort so every headline number and
     # chart below respects the same filters.
     try:
@@ -968,11 +966,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
             )
         except Exception:
             pass
-        for _col, _val in (("Division", division), ("Batch", batch), ("Semester", semester)):
-            try:
-                radar_students = apply_value_filter(radar_students, _col, _val or "All")
-            except Exception:
-                pass
+        radar_students = _apply_cohort_filters(radar_students, division, batch, semester, pairs)
         try:
             _mc_cohort = set(radar_students["GitHub_Username"].dropna().astype(str)) if radar_students is not None and not radar_students.empty and "GitHub_Username" in radar_students.columns else set()
         except Exception:
@@ -993,12 +987,14 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _radar_active = []
     _has_current = False
     _current_label = ""
-    _filtered = _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
+    _filtered = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
     if radar_students is not None and not radar_students.empty:
         # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
         if _filtered:
-            _bits = _filter_bits(division, batch) + ([str(semester)] if str(semester or "All") != "All" else [])
+            _pair_bits = [f"Div {d} · Batch {b}" for d, _, b in (p.partition("|") for p in _pairs_list(pairs))]
+            _bits = _pair_bits or _filter_bits(division, batch)
+            _bits = _bits + ([str(semester)] if str(semester or "All") != "All" else [])
             _current_label += " · " + " · ".join(_bits)
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
@@ -1096,6 +1092,8 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "semesters": _sem_opts,
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
+        "selected_pairs": _pairs_list(pairs),
+        "division_groups": division_batch_groups(_orig_students),
         "valid": valid,
         "invalid": invalid,
         "errors": errors,
@@ -1365,6 +1363,61 @@ def _filter_bits(*values) -> list[str]:
     return bits
 
 
+def _pairs_list(value) -> list[str]:
+    """Normalize an explicit (Division, Batch) pair selection to a list of
+    ``"DIV|BATCH"`` strings. Accepts None/"All", a single string, a
+    comma-joined string or a list/tuple (repeated ``?pair=`` params).
+    Malformed entries (no ``|``) are dropped. Empty list means no pair
+    filtering — callers fall back to the independent division/batch filters."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items: list[str] = []
+        for entry in value:
+            if isinstance(entry, (list, tuple)) and len(entry) == 2:
+                div, bat = str(entry[0] or "").strip(), str(entry[1] or "").strip()
+                if div and bat and f"{div}|{bat}" not in items:
+                    items.append(f"{div}|{bat}")
+                continue
+            for part in str(entry or "").split(","):
+                text = part.strip()
+                if text and text.lower() != "all" and "|" in text and text not in items:
+                    items.append(text)
+        return items
+    text = str(value or "").strip()
+    if not text or text.lower() == "all":
+        return []
+    return [p.strip() for p in text.split(",") if p.strip() and p.strip().lower() != "all" and "|" in p.strip()]
+
+
+def _pairs_query_value(value) -> str:
+    """Outward query value for pairs: comma-joined ``DIV|BATCH`` or "All"."""
+    items = _pairs_list(value)
+    return ",".join(items) if items else "All"
+
+
+def _apply_cohort_filters(students, division="All", batch="All", semester="All", pairs="All"):
+    """Apply Semester + EITHER explicit pairs (OR semantics, precedence) OR
+    the independent Division/Batch filters (AND semantics, back-compat)."""
+    pair_items = _pairs_list(pairs)
+    if pair_items:
+        try:
+            students = apply_pair_filter(students, pair_items)
+        except Exception:
+            pass
+    else:
+        for _col, _val in (("Division", division), ("Batch", batch)):
+            try:
+                students = apply_value_filter(students, _col, _val or "All")
+            except Exception:
+                pass
+    try:
+        students = apply_value_filter(students, "Semester", semester or "All")
+    except Exception:
+        pass
+    return students
+
+
 def division_batch_groups(students) -> list[dict]:
     """Division -> taught batches structure for the compare-style class
     filter dropdown (raw values kept for filtering, display labels added)."""
@@ -1415,7 +1468,7 @@ def linkedin_display_name(slug) -> str:
 STUDENT_BATCH_SIZE = 30
 
 
-def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None) -> dict:
+def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None, pairs="All") -> dict:
     students = view["students"].copy()
     # Guarantee the 8 table columns + 4 URL helpers even for legacy runs.
     for _col in STUDENT_TABLE_COLS + STUDENT_URL_COLS:
@@ -1426,8 +1479,12 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         query,
         [STUDENT_ID_COL, "Student Name", "GitHub_Username", "LinkedIn_Username", "HackerRank_Username"],
     )
-    filtered = apply_value_filter(filtered, "Division", division)
-    filtered = apply_value_filter(filtered, "Batch", batch)
+    _pair_items = _pairs_list(pairs)
+    if _pair_items:
+        filtered = apply_pair_filter(filtered, _pair_items)
+    else:
+        filtered = apply_value_filter(filtered, "Division", division)
+        filtered = apply_value_filter(filtered, "Batch", batch)
     filtered = apply_value_filter(filtered, "Academic_Year", year)
     filtered = apply_value_filter(filtered, "Semester", semester)
 
@@ -1520,8 +1577,9 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "semesters": dist_options(students["Semester"].dropna().astype(str).unique().tolist()),
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
+        "selected_pairs": _pairs_list(pairs),
         "division_groups": division_batch_groups(students),
-        "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester),
+        "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester, pairs=pairs),
     }
 
 
@@ -1572,21 +1630,26 @@ def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | 
         return view
 
 
-def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="") -> str:
-    pairs = []
+def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="", pairs="All") -> str:
+    items: list[tuple[str, str]] = []
     if roster_id:
-        pairs.append(("roster", roster_id))
-    pairs.append(("format", "csv"))
+        items.append(("roster", roster_id))
+    items.append(("format", "csv"))
+    _pq = _pairs_query_value(pairs)
+    if _pq not in (None, "", "All", "all"):
+        items.append(("pair", _pq))
     for key, value in (("q", q), ("division", division), ("batch", batch), ("year", year), ("semester", semester), ("status", status)):
+        if _pq not in (None, "", "All", "all") and key in ("division", "batch"):
+            continue
         if key in ("division", "batch", "semester", "year"):
             qv = _filter_query_value(value) if key in ("division", "batch") else (str(value or "").strip())
             if qv not in (None, "", "All", "all"):
-                pairs.append((key, qv))
+                items.append((key, qv))
         elif value not in (None, "", "All"):
-            pairs.append((key, str(value)))
+            items.append((key, str(value)))
     from urllib.parse import urlencode
 
-    return urlencode(pairs)
+    return urlencode(items)
 
 
 def _recent_activity(
@@ -2161,7 +2224,7 @@ def _merged_repos_frame(view) -> pd.DataFrame:
     return repos
 
 
-def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top", recency="all") -> dict:
+def repositories_payload(view, query="", language="All", rows=30, division="All", batch="All", semester="All", sort="top", recency="all", pairs="All") -> dict:
     repos = _merged_repos_frame(view)
     if not repos.empty:
         repos["Language"] = repos["Language"].fillna("Unknown")
@@ -2175,8 +2238,12 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     # up by real name or PRN without opening their profile.
     filtered = filter_text(repos, query, ["Username", "Repository", "Language", "Student Name", "Student_ID"])
     filtered = apply_value_filter(filtered, "Language", language)
-    filtered = apply_value_filter(filtered, "Division", division)
-    filtered = apply_value_filter(filtered, "Batch", batch)
+    _repo_pairs = _pairs_list(pairs)
+    if _repo_pairs:
+        filtered = apply_pair_filter(filtered, _repo_pairs)
+    else:
+        filtered = apply_value_filter(filtered, "Division", division)
+        filtered = apply_value_filter(filtered, "Batch", batch)
     filtered = apply_value_filter(filtered, "Semester", semester)
     # Recency chips (E): counts reflect the current scope — every other filter
     # applied, but not this one — so each pill shows how many repos would fall
@@ -2231,30 +2298,36 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "semesters": _opts("Semester"),
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
+        "selected_pairs": _pairs_list(pairs),
         "division_groups": division_batch_groups(view.get("students")),
         "export_query": repositories_export_query(
-            view.get("roster_id", ""), query, division, batch, semester, sort, recency_key
+            view.get("roster_id", ""), query, division, batch, semester, sort, recency_key, pairs=pairs
         ),
     }
 
 
-def repositories_export_query(roster_id="", q="", division="All", batch="All", semester="All", sort="top", recency="all") -> str:
+def repositories_export_query(roster_id="", q="", division="All", batch="All", semester="All", sort="top", recency="all", pairs="All") -> str:
     """Filter-preserving query string for /repositories/export, mirroring the
     students page's export links (CSV/Excel toggled via format)."""
-    pairs = []
+    items: list[tuple[str, str]] = []
     if roster_id:
-        pairs.append(("roster", roster_id))
-    pairs.append(("format", "csv"))
+        items.append(("roster", roster_id))
+    items.append(("format", "csv"))
+    _pq = _pairs_query_value(pairs)
+    if _pq not in (None, "", "All", "all"):
+        items.append(("pair", _pq))
     for key, value in (("q", q), ("division", division), ("batch", batch), ("semester", semester), ("sort", sort), ("recency", recency)):
+        if _pq not in (None, "", "All", "all") and key in ("division", "batch"):
+            continue
         if key in ("division", "batch"):
             qv = _filter_query_value(value)
             if qv not in (None, "", "All", "all"):
-                pairs.append((key, qv))
+                items.append((key, qv))
         elif value not in (None, "", "All", "all"):
-            pairs.append((key, str(value)))
+            items.append((key, str(value)))
     from urllib.parse import urlencode
 
-    return urlencode(pairs)
+    return urlencode(items)
 
 
 def repository_export_df(payload: dict) -> pd.DataFrame:
@@ -2454,14 +2527,14 @@ def leaderboards_payload(
     blacklist=None,
     hidden_repos=None,
     hr_snapshots=None,
+    pairs="All",
 ) -> dict:
     if active_window not in WINDOW_DAYS and active_window != "all":
         active_window = "1m"
     if commits_window not in WINDOW_DAYS and commits_window != "all":
         commits_window = "1m"
     students = _with_combined_metrics(view["students"].copy())
-    for column, value in (("Division", division), ("Batch", batch), ("Semester", semester)):
-        students = apply_value_filter(students, column, value)
+    students = _apply_cohort_filters(students, division, batch, semester, pairs)
     cohort = _cohort_usernames(students)
     names = _student_names(view)
     ids = _student_ids(view)
@@ -2673,6 +2746,7 @@ def leaderboards_payload(
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
+        "selected_pairs": _pairs_list(pairs),
         "division_groups": division_batch_groups(view["students"]),
         "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
         "active_window": active_window,

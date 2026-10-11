@@ -108,7 +108,7 @@ class TestStudentPages:
         assert r.status_code == 200
         html = r.text
         assert "Class Metrics Radar" in html
-        assert 'value="1"' in html
+        assert 'value="1|1"' in html
         assert "Activity Trend Across Batches" in html
         assert "Analysis Results" not in html
         assert "Number of Students" in html
@@ -120,11 +120,10 @@ class TestStudentPages:
         # Division/Batch/Semester filters (no search on Overview).
         assert 'name="q"' not in html
         assert 'student-search' not in html
-        assert 'name="division"' in html
-        assert 'name="batch"' in html
+        assert 'name="pair"' in html
         assert 'name="semester"' in html
-        assert 'id="ms-div-btn"' in html
-        assert 'id="ms-batch-btn"' in html
+        assert 'id="cf-btn"' in html
+        assert 'id="cf-panel"' in html
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in html
         assert '<span class="badge-blue">Students</span>' not in html
@@ -477,19 +476,19 @@ class TestFacultyOverviewPersonalization:
         body = self._overview(self._faculty_client({"3": ["1"]}))
         assert "Showing your classes" in body
         assert "Division 3 (Batch 1)" in body
-        assert 'value="3"' in body
-        assert 'value="5"' not in body  # untaught division gone from filters
-        assert 'value="2"' not in body  # untaught batch gone from filters
+        assert 'value="3|1"' in body
+        assert 'value="5|1"' not in body  # untaught division gone from filters
+        assert 'value="3|2"' not in body  # untaught batch gone from filters
 
     def test_admin_sees_whole_fleet(self, class_fleet):
         client, _ = make_client("admin")
         body = self._overview(client)
         assert "Showing your classes" not in body
-        assert 'value="3"' in body and 'value="5"' in body and 'value="2"' in body
+        assert 'value="3|1"' in body and 'value="5|1"' in body and 'value="3|2"' in body
 
     def test_faculty_without_teaching_sees_all_plus_nudge(self, class_fleet):
         body = self._overview(self._faculty_client())
-        assert 'value="5"' in body
+        assert 'value="5|1"' in body
         assert "set the divisions and batches you teach" in body
 
     def test_explicit_filters_still_apply_within_scope(self, class_fleet):
@@ -504,7 +503,7 @@ class TestFacultyOverviewPersonalization:
         assert "mine=0" in on  # button flips the toggle off
         assert 'aria-pressed="true"' in on
         body = client.get("/?mine=0", headers={"accept": "text/html"}).text
-        assert 'value="5"' in body  # full fleet back
+        assert 'value="5|1"' in body  # full fleet back
         assert "Showing your classes" not in body
         assert 'id="my-classes-btn"' in body
         assert "mine=1" in body  # button flips back on
@@ -515,6 +514,99 @@ class TestFacultyOverviewPersonalization:
         assert 'id="my-classes-btn"' not in body  # nothing taught yet -> nudge instead
         admin, _ = make_client("admin")
         assert 'id="my-classes-btn"' not in self._overview(admin)
+
+
+class TestPairFilter:
+    """Explicit (Division, Batch) multi-select: staged ?pair=D|B picks.
+
+    The combined Division & Batch button stages Compare-style toggles and
+    Apply submits them; the server keeps rows matching ANY picked pair
+    (diagonal picks must NOT pull in the cross combos an independent
+    division×batch AND would include). Legacy ?division=/ ?batch= keep
+    working underneath.
+    """
+
+    @pytest.fixture
+    def pair_fleet(self):
+        _seed_approved_student("pair-a@college.edu", "Pair A", "5000000001", "3", "1", "hr_pa")
+        _seed_approved_student("pair-b@college.edu", "Pair B", "5000000002", "3", "2", "hr_pb")
+        _seed_approved_student("pair-c@college.edu", "Pair C", "5000000003", "5", "1", "hr_pc")
+
+    def _students_total(self, client, qs):
+        import re
+
+        text = client.get(f"/{qs}", headers={"accept": "text/html"}).text
+        compact = " ".join(text.split())
+        m = re.search(
+            r'<div class="metric-value">(\d+)</div> '
+            r'<div class="metric-label"><span class="badge-blue metric-pill">Number of Students</span></div>',
+            compact,
+        )
+        assert m, qs
+        return int(m.group(1))
+
+    def test_pair_picks_filter_overview(self, pair_fleet):
+        client, _ = make_client("admin")
+        assert self._students_total(client, "") == 3
+        assert self._students_total(client, "?pair=3|1") == 1
+        assert self._students_total(client, "?pair=3|1&pair=5|1") == 2
+        # Diagonal: only the two picked pairs — (3,1) stays out even though
+        # division 3 and batch 1 are both "selected" across the two picks.
+        assert self._students_total(client, "?pair=3|2&pair=5|1") == 2
+        # Comma-joined single param parses the same way.
+        assert self._students_total(client, "?pair=3|1,5|1") == 2
+
+    def test_legacy_division_batch_still_work(self, pair_fleet):
+        client, _ = make_client("admin")
+        assert self._students_total(client, "?division=3") == 2
+        assert self._students_total(client, "?batch=1") == 2
+        assert self._students_total(client, "?division=3&batch=1") == 1
+
+    def test_pair_picks_filter_students_page(self, pair_fleet):
+        client, _ = make_client("admin")
+        body = client.get("/students?pair=3|1", headers={"accept": "text/html"}).text
+        assert "Pair A" in body
+        assert "Pair B" not in body and "Pair C" not in body
+        body = client.get("/students?pair=3|2&pair=5|1", headers={"accept": "text/html"}).text
+        assert "Pair A" not in body
+        assert "Pair B" in body and "Pair C" in body
+
+    def test_filter_panel_stages_pairs_for_apply(self, pair_fleet):
+        client, _ = make_client("admin")
+        body = client.get("/", headers={"accept": "text/html"}).text
+        # Single purple combined button (no separate Division/Batch selects).
+        assert 'id="cf-btn"' in body
+        assert 'id="cf-panel"' in body
+        assert 'name="pair"' in body
+        assert ">Apply</button>" in body
+        # Every offered pair toggles without navigating (no instant go()).
+        assert "data-cf-pair" in body
+
+    def test_payload_pair_precedence_over_division_batch(self):
+        # Full dashboard columns: overview_payload sums Pull_Requests etc.
+        # with no missing-column guard, so the frame must carry them.
+        students = pd.DataFrame([
+            {"Student_ID": "1", "Student Name": "A", "Division": "3", "Batch": "1", "GitHub_Username": "a-dev"},
+            {"Student_ID": "2", "Student Name": "B", "Division": "3", "Batch": "2", "GitHub_Username": "b-dev"},
+            {"Student_ID": "3", "Student Name": "C", "Division": "5", "Batch": "1", "GitHub_Username": "c-dev"},
+        ])
+        for col in ("Pull_Requests", "Issues_Opened", "Team_Commits",
+                    "Contributed_Repos_Count", "Followers", "Repository_Count"):
+            students[col] = 0
+        students["Semester"] = "Semester 3"
+        students["Academic_Year"] = "2024"
+        view = {
+            "roster_id": "", "records": [],
+            "state": {"status": "complete", "valid": 3, "invalid": 0, "errors": 0},
+            "students": students,
+            "repos": pd.DataFrame(columns=["Username"]),
+            "team_repos": pd.DataFrame(columns=["Username"]),
+            "issues": pd.DataFrame(),
+        }
+        assert views.overview_payload(view, pairs=["3|1"])["total"] == 1
+        assert views.overview_payload(view, pairs="3|2,5|1")["total"] == 2
+        assert views.students_payload(view, pairs=["3|1", "5|1"])["total"] == 2
+        assert views.leaderboards_payload(view, pairs=["5|1"])["total"] == 1
 
 
 class TestRadarComparePicker:

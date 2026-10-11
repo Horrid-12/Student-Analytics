@@ -213,7 +213,7 @@
 
 {# base_qs carries every live filter; board_qs adds the platform a profile
    popup should return to. The switcher pills swap only `platform`. #}
-{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
+{% set base_qs = "roster=" + roster_id + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&pair=" + ((pair or 'All')|urlencode) + "&active_window=" + active_window + "&commits_window=" + commits_window %}
 {% set board_qs = base_qs + "&platform=" + platform %}
 
 <div class="topbar-card">
@@ -264,6 +264,7 @@
       <input type="hidden" name="mine" value="{{ mine }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
+      <input type="hidden" name="pair" value="{{ pair }}">
       <input type="hidden" name="semester" value="{{ semester }}">
       <input type="hidden" name="commits_window" value="{{ commits_window }}">
       <select class="filter-select board-select" name="active_window" title="Time period" onchange="this.form.submit()">
@@ -292,6 +293,7 @@
       <input type="hidden" name="mine" value="{{ mine }}">
       <input type="hidden" name="division" value="{{ division }}">
       <input type="hidden" name="batch" value="{{ batch }}">
+      <input type="hidden" name="pair" value="{{ pair }}">
       <input type="hidden" name="semester" value="{{ semester }}">
       <input type="hidden" name="active_window" value="{{ active_window }}">
       <select class="filter-select board-select" name="commits_window" title="Time period" onchange="this.form.submit()">

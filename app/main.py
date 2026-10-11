@@ -816,18 +816,37 @@ def _filter_param(values: list[str]) -> str:
     return ",".join(values) if values else "All"
 
 
-def _filter_context(request: Request, division_single: str = "All", batch_single: str = "All") -> dict:
+def _filter_context(request: Request, division_single: str = "All", batch_single: str = "All", pair_single: str = "All") -> dict:
     """Template context for the staged multi-select class filter.
 
-    Returns {divisions, batches} (selected lists, [] = All) plus
-    {division, batch} (comma-joined strings for URL building/back-compat)."""
+    Returns {divisions, batches} (legacy independent selections, [] = All),
+    {pairs} (explicit ``DIV|BATCH`` selections, [] = none) plus {division,
+    batch, pair} (comma-joined strings for URL building/back-compat). When
+    pairs are present they take precedence over division/batch everywhere."""
     divs = _multi_filter(request, "division", division_single)
     bats = _multi_filter(request, "batch", batch_single)
+    try:
+        raw_pairs = request.query_params.getlist("pair")
+    except Exception:
+        raw_pairs = []
+    prs: list[str] = []
+    for raw in raw_pairs or []:
+        for part in str(raw or "").split(","):
+            text = part.strip()
+            if text and text.lower() != "all" and "|" in text and text not in prs:
+                prs.append(text)
+    if not raw_pairs and pair_single and str(pair_single).strip() and str(pair_single).strip().lower() != "all":
+        for part in str(pair_single).split(","):
+            text = part.strip()
+            if text and text.lower() != "all" and "|" in text and text not in prs:
+                prs.append(text)
     return {
         "divisions": divs,
         "batches": bats,
         "division": _filter_param(divs),
         "batch": _filter_param(bats),
+        "pairs": prs,
+        "pair": ",".join(prs) if prs else "All",
     }
 
 
@@ -1499,12 +1518,13 @@ def overview(
     batch: str = "All",
     semester: str = "All",
     mine: str = "1",
+    pair: str = "All",
 ):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
     ctx["payload"] = None
     ctx["q"] = q or ""
-    _fc = _filter_context(request, division, batch)
+    _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
     ctx["teaching_active"] = False
     ctx["semester"] = semester or "All"
@@ -1552,7 +1572,7 @@ def overview(
             ctx["payload"] = views.overview_payload(
                 view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
                 semester=semester or "All", overall_view=_overall_view,
-                my_classes_view=_taught_view_for_radar,
+                my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
             )
         except Exception:
             ctx["view"] = None
@@ -2431,6 +2451,7 @@ def students_page(
     rows: int = 0,
     select: str = "",
     mine: str = "1",
+    pair: str = "All",
 ):
     ctx = _base_context(request, "Students", roster)
     view, response = _guard_page(request, ctx, "Students", roster)
@@ -2451,9 +2472,9 @@ def students_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    _fc = _filter_context(request, division, batch)
+    _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
-    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None)
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None, pairs=ctx["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
@@ -2485,6 +2506,7 @@ def students_rows(
     offset: int = 0,
     limit: int = 30,
     mine: str = "1",
+    pair: str = "All",
 ):
     """One batch of student rows for the infinite-scroll table.
 
@@ -2505,8 +2527,8 @@ def students_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch)
-    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester)
+    _fc = _filter_context(request, division, batch, pair)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester, pairs=_fc["pairs"] or "All")
     total = int(payload.get("total") or 0)
     if not total:
         return HTMLResponse("")
@@ -2523,6 +2545,7 @@ def students_rows(
         batch=_fc["batch"],
         semester=semester,
         mine=mine,
+        pair=_fc["pair"],
         page_size=payload["page_size"],
     )
     return HTMLResponse(html)
@@ -2557,6 +2580,7 @@ def students_export(
     year: str = "All",
     semester: str = "All",
     mine: str = "1",
+    pair: str = "All",
 ):
     view, response = _guard_page(request, {}, "Students", roster)
     if response is not None:
@@ -2569,8 +2593,8 @@ def students_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch)
-    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester)
+    _fc = _filter_context(request, division, batch, pair)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester, pairs=_fc["pairs"] or "All")
     df = views.student_export_df(payload)
     return _export_response(df, format, "students")
 
@@ -2589,6 +2613,7 @@ def repositories_page(
     sort: str = "top",
     recency: str = "all",
     mine: str = "1",
+    pair: str = "All",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -2622,9 +2647,9 @@ def repositories_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    _fc = _filter_context(request, division, batch)
+    _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
-    payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency)
+    payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
@@ -2647,6 +2672,7 @@ def repositories_rows(
     offset: int = 0,
     limit: int = 30,
     mine: str = "1",
+    pair: str = "All",
 ):
     """One batch of repository cards + rows for the infinite-scroll list.
 
@@ -2669,9 +2695,9 @@ def repositories_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch)
+    _fc = _filter_context(request, division, batch, pair)
     payload = views.repositories_payload(
-        view, q, language, views.STUDENT_BATCH_SIZE, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency
+        view, q, language, views.STUDENT_BATCH_SIZE, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All"
     )
     total = int(payload.get("total") or 0)
     if not total:
@@ -2701,6 +2727,7 @@ def repositories_export(
     sort: str = "top",
     recency: str = "all",
     mine: str = "1",
+    pair: str = "All",
 ):
     view, response = _guard_page(request, {}, "Repositories", roster)
     if response is not None:
@@ -2713,8 +2740,8 @@ def repositories_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch)
-    payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency)
+    _fc = _filter_context(request, division, batch, pair)
+    payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
     df = views.repository_export_df(payload)
     return _export_response(df, format, "repositories")
 
@@ -2731,6 +2758,7 @@ def leaderboards_page(
     select: str = "",
     platform: str = "github",
     mine: str = "1",
+    pair: str = "All",
 ):
     # Both platforms' boards render in one page; `platform` only decides
     # which grid starts visible (the pill switcher toggles without a reload).
@@ -2758,13 +2786,14 @@ def leaderboards_page(
     blacklist = _blacklist_state(roster)
     hidden_repos = _hidden_repos_state(roster)
     hr_snapshots = _hr_snapshots_state()
-    _fc = _filter_context(request, division, batch)
+    _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
     payload = views.leaderboards_payload(
         view, _fc["divisions"] or "All", _fc["batches"] or "All", semester, active_window, commits_window,
         blacklist=blacklist,
         hidden_repos=hidden_repos,
         hr_snapshots=hr_snapshots,
+        pairs=_fc["pairs"] or "All",
     )
     # Same profile popup as the Students tab: opened from a leaderboard name,
     # closed back to this exact leaderboard view.
