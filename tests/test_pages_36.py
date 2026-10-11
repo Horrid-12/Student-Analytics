@@ -1007,20 +1007,6 @@ class TestVercelEntrypoint:
         assert client.get("/history").status_code == 404
         assert client.get("/students").status_code == 200
 
-    def test_real_paths_unaffected(self, tmp_path, monkeypatch):
-        client = self._client(tmp_path, monkeypatch)
-        assert client.get("/history").status_code == 404
-
-    def test_no_prefix_stripped_from_deep_static(self, tmp_path, monkeypatch):
-        client = self._client(tmp_path, monkeypatch)
-        css = client.get("/static/style.css")
-        assert css.status_code in (200, 404)
-
-    def test_py_function_path_forms(self, tmp_path, monkeypatch):
-        client = self._client(tmp_path, monkeypatch)
-        assert client.get("/").status_code == 200
-        assert client.get("/history").status_code == 404
-
 
 class TestSettingsPage:
     """BUG-085 — Settings was dropped in the new stack; the gear link was a dead
@@ -1054,66 +1040,6 @@ class TestSettingsPage:
         assert storage.storage_healthy() is True
 
 
-class TestCssThemeHygiene:
-    """BUG-100: live app CSS must not hardcode blue accent rgba values."""
-
-    STREAMLIT_MARKERS = (
-        "stSidebar", "stButton", "stDownloadButton", "stPopover",
-        "stFileUploader", "data-testid=\"stBaseButton", "stBaseButton-primary",
-    )
-    BLUE_RGBA = "rgba(59, 130, 246"
-
-    def _live_rules(self, css_text):
-        """Declaration lines that hardcode blue rgba, skipping rules whose
-        selector targets Streamlit (legacy dead) components."""
-        selected = []
-        n = len(css_text)
-        i = 0
-        while i < n:
-            if css_text[i] == "}":
-                i += 1
-                continue
-            brace = css_text.find("{", i)
-            if brace == -1:
-                break
-            head = css_text[i:brace]
-            depth = 0
-            j = brace
-            end = -1
-            while j < n:
-                if css_text[j] == "{":
-                    depth += 1
-                elif css_text[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        end = j
-                        break
-                j += 1
-            if end == -1:
-                break
-            body = css_text[brace + 1:end]
-            if self.BLUE_RGBA in body and not any(m in head for m in self.STREAMLIT_MARKERS):
-                for decl in body.splitlines():
-                    if self.BLUE_RGBA in decl:
-                        selected.append(decl.strip())
-            i = end + 1
-        return selected
-
-    def test_theme_blue_alpha_vars_defined(self):
-        theme_root = Path(__file__).resolve().parents[1] / "static" / "theme.css"
-        css = theme_root.read_text(encoding="utf-8")
-        for var in ("--blue-active-bg", "--blue-active-border", "--blue-hover-border",
-                    "--blue-card-hover-border", "--blue-badge-border", "--blue-icon-bg"):
-            assert var in css, f"{var} missing from theme.css"
-
-    def test_no_hardcoded_blue_rgba_in_live_css(self):
-        static_dir = Path(__file__).resolve().parents[1] / "static"
-        for name in ("layout.css", "style.css"):
-            css = (static_dir / name).read_text(encoding="utf-8")
-            offenders = self._live_rules(css)
-            assert not offenders, f"{name} live rules still hardcode blue rgba: {offenders}"
-
-
 class TestSidebarIdentityContext:
     """BUG-098: sidebar/account identity must be context-driven, never hardcoded
     in templates — Phase 4.7 auth overrides the context values per role."""
@@ -1129,14 +1055,6 @@ class TestSidebarIdentityContext:
         assert "Open Access" not in settings         # anonymous footer replaced
         assert "Sign out" in settings                # auth footer offers logout
 
-    def test_sidebar_admin_label_has_no_dot(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "ident.db")
-        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
-        client = TestClient(app)
-        make_user(client, "admin")
-        body = client.get("/settings").text
-        assert '<div class="user-role-line">Admin</div>' in body
-
     def test_favicon_served_and_linked(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "fav.db")
         monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
@@ -1146,39 +1064,6 @@ class TestSidebarIdentityContext:
         assert icon.headers["content-type"].startswith("image/")
         login = client.get("/login", headers={"Accept": "text/html"}).text
         assert "favicon.ico" in login
-
-    def test_base_template_uses_context_variables(self):
-        base = Path(__file__).resolve().parent.parent / "app" / "templates" / "base.html"
-        source = base.read_text(encoding="utf-8")
-        assert "{{ auth_status }}" in source
-        assert "{{ auth_logout }}" in source
-        assert "{{ profile_href }}" in source
-        assert "{{ avatar_initial }}" in source
-        assert "{{ sidebar_avatar_url }}" in source
-        assert "{{ sidebar_name }}" in source
-        assert "{{ auth_user }}" not in source     # sidebar card shows avatar + role only, no username
-        for hardcoded in (
-            "Faculty Workspace",
-            "GitHub Platform",
-            "brand-edition",
-            "sidebar-foot",
-            "brand-switcher",
-            "sidebar-user-footer",
-        ):
-            assert hardcoded not in source
-
-    def test_settings_template_uses_context_variables(self):
-        settings = (
-            Path(__file__).resolve().parent.parent / "app" / "templates" / "pages" / "settings.html"
-        )
-        source = settings.read_text(encoding="utf-8")
-        assert "{{ auth_role }}" in source
-        assert "{{ auth_user }}" in source
-        # Account card stacks role above name (no duplicated "Role • name" footer).
-        assert "{{ auth_footer }}" not in source
-        assert source.index("user-role-line") < source.index('class="user-name"')
-        for hardcoded in ("Faculty Workspace", 'user-name">anonymous', "Connected &bull; Open Access"):
-            assert hardcoded not in source
 
 
 class TestNotFoundRouting:

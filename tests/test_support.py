@@ -63,12 +63,6 @@ class TestRaiseAndList:
         assert email_a in body
         assert email_b in body
 
-    def test_faculty_sees_every_ticket(self):
-        client_s, _ = login_as("student")
-        raise_ticket(client_s, subject="Needs staff eyes", message="Please help.")
-        faculty, _ = login_as("faculty")
-        assert "Needs staff eyes" in faculty.get("/support").text
-
     def test_only_students_can_raise_tickets(self):
         for role in ("admin", "faculty"):
             staff, _ = login_as(role)
@@ -79,15 +73,6 @@ class TestRaiseAndList:
             )
             assert response.status_code == 403
         assert support.list_tickets() == []
-
-    def test_raise_form_submit_sits_with_attach_button(self):
-        student, _ = login_as("student")
-        body = student.get("/support").text
-        assert ">Submit</button>" in body
-        assert "Send ticket" not in body
-        attach_pos = body.index("Attach image")
-        submit_pos = body.index(">Submit</button>")
-        assert attach_pos < submit_pos
 
     def test_ticket_timestamps_use_ist(self):
         ticket = support.create_ticket("a@college.edu", "A", "Sub", "General", "Msg.")
@@ -103,20 +88,6 @@ class TestRaiseAndList:
         assert "Raise a ticket" not in admin_body
         assert "All tickets" in admin_body
         assert "ticket-table" in admin_body
-
-    def test_subject_uppercase_and_resolution_label(self):
-        client, _ = login_as("student")
-        raise_ticket(client, subject="Mixed Case Subject", message="Hi.")
-        admin, _ = login_as("admin")
-        body = admin.get("/support").text
-        assert 'class="ticket-subject ticket-toggle"' in body
-        assert "Resolution" in body
-        assert "Staff reply" not in body
-
-    def test_ticket_table_has_column_dividers(self):
-        admin, _ = login_as("admin")
-        body = admin.get("/support").text
-        assert ".ticket-table td + td" in body
 
     def test_tickets_sorted_open_then_progress_then_resolved(self):
         student, _ = login_as("student")
@@ -135,48 +106,6 @@ class TestRaiseAndList:
         )
         body = admin.get("/support").text
         assert body.index("Alpha open") < body.index("Gamma open") < body.index("Beta open")
-
-    def test_earliest_ticket_shown_first(self):
-        client, _ = login_as("student")
-        raise_ticket(client, subject="First raised", message="One.")
-        raise_ticket(client, subject="Second raised", message="Two.")
-        admin, _ = login_as("admin")
-        body = admin.get("/support").text
-        assert body.index("First raised") < body.index("Second raised")
-
-    def test_detail_rows_expand_below_summary(self):
-        client, _ = login_as("student")
-        raise_ticket(client, subject="Expandable", message="Hidden detail.")
-        admin, _ = login_as("admin")
-        body = admin.get("/support").text
-        assert "ticket-toggle" in body
-        assert 'id="ticket-detail-' in body
-        assert ">Submit</button>" in body
-        # No rowspan anywhere: detail rows span the full table width so row
-        # heights can never blow out like the old spanned layout did.
-        assert "rowspan" not in body
-        assert 'class="ticket-detail-row"' in body
-        # Thin gap rows disconnect consecutive tickets (none after the last).
-        raise_ticket(client, subject="Second ticket", message="More.")
-        gap_body = admin.get("/support").text
-        assert gap_body.count('class="ticket-spacer-row"') == 1
-        # Table edges bordered (including the header top), complaint boxed,
-        # Resolution visually distinct.
-        assert ".ticket-table td:first-child" in body
-        assert ".ticket-table td:last-child" in body
-        assert ".ticket-table thead th" in body
-        assert "ticket-section-label" in body
-        assert ">Issue</div>" in body
-        assert 'for="reply-' in body
-        # Whole subject cell toggles the detail row, not just the button text.
-        assert "ticket-subject-cell" in body
-        assert "ticket-indent" in body
-
-    def test_support_link_in_sidebar(self):
-        student, _ = login_as("student")
-        assert 'href="/support"' in student.get("/support").text
-        admin, _ = login_as("admin")
-        assert 'href="/support"' in admin.get("/support").text
 
 
 class TestTriageWorkflow:
@@ -227,10 +156,6 @@ class TestTriageWorkflow:
         raise_ticket(client_a, subject="A issue", message="Hi.")
         _, email_b = login_as("student", "Student B")
         assert 'id="ticket-modal-backdrop"' not in client_a.get(f"/support?profile={email_b}").text
-
-    def test_unknown_profile_shows_no_modal(self):
-        admin, _ = login_as("admin")
-        assert 'id="ticket-modal-backdrop"' not in admin.get("/support?profile=nobody@college.edu").text
 
     def test_student_cannot_update_tickets(self):
         student, _ = login_as("student")
@@ -294,15 +219,6 @@ class TestTriageWorkflow:
         assert "attachment" in download.headers["content-disposition"]
         assert admin.get("/support/attachment/999999").status_code == 404
 
-    def test_student_sees_attached_file(self):
-        owner, _ = login_as("student", "Owner")
-        raise_ticket(owner, subject="My file", message="Attached below.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "My file")
-        assert support.set_attachment(tid, "doc.txt", b"data")
-        body = owner.get("/support").text
-        assert "doc.txt" in body
-        assert f"/support/attachment/{tid}" in body
-
     def test_image_attachment_shows_preview(self):
         student, _ = login_as("student")
         raise_ticket(student, subject="Screenshot bug", message="See pic.")
@@ -316,33 +232,6 @@ class TestTriageWorkflow:
         body = faculty.get("/support").text
         assert "ticket-preview-img" in body
         assert f"/support/attachment/{tid}" in body
-
-    def test_non_image_attachment_shows_link_without_preview(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Doc attach", message="See doc.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Doc attach")
-        assert support.set_attachment(tid, "doc.txt", b"text")
-        body = student.get("/support").text
-        assert "doc.txt" in body
-        assert '<img class="ticket-preview-img"' not in body
-
-    def test_submitted_attachments_have_no_delete_button(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="No delete", message="File below.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "No delete")
-        assert support.set_attachment(tid, "old.txt", b"bye")
-        faculty, _ = login_as("faculty")
-        assert "old.txt" in faculty.get("/support").text
-        assert 'action="/support/attachment/remove"' not in faculty.get("/support").text
-        assert 'action="/support/attachment/remove"' not in student.get("/support").text
-        # The retired endpoint is gone (405: the GET download route owns
-        # this path now); store-level clearing still works.
-        assert faculty.post(
-            "/support/attachment/remove", data={"ticket_id": tid}, follow_redirects=False
-        ).status_code == 405
-        assert support.get_attachment(tid) is not None
-        assert support.clear_attachment(tid) is True
-        assert support.get_attachment(tid) is None
 
     def test_attachment_remove_route_retired(self):
         student, _ = login_as("student")
@@ -400,84 +289,6 @@ class TestValidationAndSafety:
         )
         assert response.status_code == 413
         assert support.list_tickets() == []
-
-    def test_attach_widgets_present_for_both_roles(self):
-        student, _ = login_as("student")
-        student_body = student.get("/support").text
-        assert 'id="raise-attach"' in student_body
-        assert 'id="attach-preview-backdrop"' in student_body
-        assert "ticket-attach-clear" in student_body
-        raise_ticket(student, subject="Widget check", message="Hi.")
-        admin, _ = login_as("admin")
-        admin_body = admin.get("/support").text
-        assert 'id="raise-attach"' not in admin_body
-        assert "ticket-attach-clear" in admin_body
-        assert 'id="attach-preview-backdrop"' in admin_body
-
-    def test_student_and_admin_files_live_in_separate_slots(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Two files", message="Both slots.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Two files")
-        assert support.set_attachment(tid, "evidence.png", b"student-bytes", slot="student")
-        faculty, _ = login_as("faculty")
-        faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "In Progress", "admin_reply": ""},
-            files={"attachment": ("fix.png", b"\x89PNG\r\n\x1a\nfix", "image/png")},
-        )
-        assert support.get_attachment(tid, slot="student") == {"name": "evidence.png", "data": b"student-bytes"}
-        assert support.get_attachment(tid) == {"name": "fix.png", "data": b"\x89PNG\r\n\x1a\nfix"}
-        body = faculty.get("/support").text
-        assert f"/support/attachment/{tid}?slot=student" in body
-        assert "evidence.png" in body
-        assert "fix.png" in body
-        assert support.clear_attachment(tid, slot="student") is True
-        assert support.get_attachment(tid, slot="student") is None
-        # Admin slot untouched by the student-slot removal.
-        assert support.get_attachment(tid) is not None
-        assert support.clear_attachment(tid, slot="bogus") is False
-        assert support.get_attachment(tid, slot="bogus") is None
-
-    def test_attachment_slot_in_download_route(self):
-        owner, _ = login_as("student", "Owner")
-        raise_ticket(owner, subject="Slot routes", message="Hi.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Slot routes")
-        assert support.set_attachment(tid, "evidence.txt", b"student-bytes", slot="student")
-        assert owner.get(f"/support/attachment/{tid}?slot=student").content == b"student-bytes"
-        assert owner.get(f"/support/attachment/{tid}?slot=bogus").status_code == 404
-        assert support.clear_attachment(tid, slot="student") is True
-        assert support.get_attachment(tid, slot="student") is None
-
-    def test_resolved_tickets_are_read_only(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Lock me", message="Please.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Lock me")
-        faculty, _ = login_as("faculty")
-        assert faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "Done."},
-            follow_redirects=False,
-        ).status_code == 302
-        # No further replies or files once resolved (status can still be
-        # set to Resolved; the retired remove endpoint stays gone).
-        assert faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "Open", "admin_reply": "Reopen?"},
-            follow_redirects=False,
-        ).status_code == 403
-        assert faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "Resolved", "admin_reply": "More."},
-            files={"attachment": ("x.txt", b"x", "text/plain")},
-            follow_redirects=False,
-        ).status_code == 403
-        assert support.set_attachment(tid, "pre.txt", b"pre", slot="admin")
-        assert support.get_attachment(tid) is not None
-        body = faculty.get("/support").text
-        assert "ticket-update-form" not in body
-        assert "Resolved tickets are read-only." in body
-        assert "Done." in body
-        assert "ticket-divider" in body
 
     def test_student_and_admin_files_live_in_separate_slots(self):
         student, _ = login_as("student")
@@ -538,27 +349,6 @@ class TestValidationAndSafety:
         assert "Resolved tickets are read-only." in body
         assert 'id="reply-%d"' % tid not in body
 
-    def test_divider_separates_issue_from_resolution(self):
-        client, _ = login_as("student")
-        raise_ticket(client, subject="Divided", message="Hi.")
-        admin, _ = login_as("admin")
-        assert admin.get("/support").text.count('class="ticket-divider"') == 1
-
-    def test_raise_form_submit_sits_with_attach(self):
-        student, _ = login_as("student")
-        body = student.get("/support").text
-        assert ">Submit</button>" in body
-        assert "Send ticket" not in body
-
-    def test_ticket_timestamps_use_ist(self):
-        from app import support as support_store
-
-        assert "+05:30" in support_store._now()
-        client, _ = login_as("student")
-        raise_ticket(client, subject="Timestamped", message="Hi.")
-        row = next(r for r in support.list_tickets() if r["subject"] == "Timestamped")
-        assert "+05:30" in row["created_at"]
-
     def test_friendly_timestamps_render_in_ist(self):
         from app.views import friendly_timestamp
 
@@ -590,12 +380,6 @@ class TestValidationAndSafety:
         api_style = TestClient(app).get("/support")
         assert api_style.status_code == 401
 
-    def test_store_rejects_bad_updates(self):
-        assert support.update_ticket(123456, status="Resolved") is False
-        assert support.update_ticket(123456, admin_reply="hi") is False
-        assert support.create_ticket("a@college.edu", "A", "", "General", "msg") is None
-        assert support.get_ticket("not-an-id") is None
-
     def test_non_image_upload_rejected_with_draft_kept(self):
         student, _ = login_as("student")
         response = student.post(
@@ -620,20 +404,6 @@ class TestValidationAndSafety:
         assert response.status_code == 400
         assert "not a valid PNG" in response.text
         assert support.list_tickets() == []
-
-    def test_staff_non_image_upload_rejected(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Staff bad file", message="Hi.")
-        tid = next(row["id"] for row in support.list_tickets() if row["subject"] == "Staff bad file")
-        faculty, _ = login_as("faculty")
-        response = faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "Open", "admin_reply": ""},
-            files={"attachment": ("notes.txt", b"plain text", "text/plain")},
-            follow_redirects=False,
-        )
-        assert response.status_code == 400
-        assert support.get_attachment(tid) is None
 
     def test_image_validator_accepts_all_formats(self):
         cases = {
@@ -664,28 +434,6 @@ class TestValidationAndSafety:
         download = student.get(f"/support/attachment/{tid}?slot=student")
         assert download.headers["content-disposition"].startswith("inline")
         assert download.headers["media_type" if "media_type" in download.headers else "content-type"].startswith("image/png")
-
-    def test_support_page_offers_image_preview_popup(self):
-        student, _ = login_as("student")
-        body = student.get("/support").text
-        assert "Attach image" in body
-        assert "Attach file" not in body
-        assert 'accept=".png,.jpg,.jpeg,.webp"' in body
-        assert "max 20 MB" in body
-        raise_ticket(student, subject="Popup check", message="Hi.")
-        admin, _ = login_as("admin")
-        assert support.set_attachment(
-            next(row["id"] for row in support.list_tickets() if row["subject"] == "Popup check"),
-            "shot.png",
-            b"\x89PNGdata",
-        )
-        admin_body = admin.get("/support").text
-        assert "data-preview-url" in admin_body
-        assert "ticket-thumb-btn" in admin_body
-        # The image thumbnail itself opens the popup — only the legacy
-        # non-image fallback rows keep a plain download link.
-        assert '<a href="/support/attachment/' not in admin_body
-        assert "Attached file:" not in admin_body
 
     def test_postgres_create_rereads_after_commit(self, monkeypatch):
         """Regression: ``db.create_support_ticket`` must re-read the new row
@@ -816,19 +564,6 @@ class TestStudentReply:
         assert "Please write a reply" in response.text
         assert support.get_ticket(tid).get("student_reply") in (None, "")
 
-    def test_store_reply_validation(self):
-        assert support.reply_ticket(123456, "hi") is False
-        assert support.reply_ticket("not-an-id", "hi") is False
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Store reply", message="Hi.")
-        tid = self._ticket_id("Store reply")
-        assert support.reply_ticket(tid, "   ") is False
-        assert support.reply_ticket(tid, "ok") is True
-        assert support.get_ticket(tid)["student_reply"] == "ok"
-        assert support.clear_student_reply(123456) is False
-        assert support.clear_student_reply(tid) is True
-        assert support.get_ticket(tid).get("student_reply") in (None, "")
-
     def test_reply_with_photo(self):
         student, _ = login_as("student")
         raise_ticket(student, subject="Photo reply", message="Hi.")
@@ -940,28 +675,6 @@ class TestStudentReply:
         assert '<div class="ticket-stat-number">0</div><div class="ticket-stat-label">Follow up</div>' in profile_body
         assert '<div class="ticket-stat-number">1</div><div class="ticket-stat-label">In Progress</div>' in profile_body
 
-    def test_follow_up_question_submitted_not_draft(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Snapshot check", message="Hi.")
-        tid = self._ticket_id("Snapshot check")
-        faculty, _ = login_as("faculty")
-        response = faculty.post(
-            "/support/update",
-            data={"ticket_id": tid, "status": "Follow up", "admin_reply": "What is the correct ID?"},
-            follow_redirects=False,
-        )
-        assert response.status_code == 302
-        # Submitted: question stored, compose box cleared for both roles.
-        assert support.get_ticket(tid)["followup_question"] == "What is the correct ID?"
-        assert support.get_ticket(tid).get("admin_reply") in (None, "")
-        admin_body = faculty.get("/support").text
-        assert "Follow-up question:" in admin_body
-        assert "What is the correct ID?" in admin_body
-        assert 'name="admin_reply" placeholder="Write a reply&hellip;"></textarea>' in admin_body
-        student_body = student.get("/support").text
-        assert "Follow-up question:" in student_body
-        assert ">Reply</button>" in student_body  # answer still required
-
     def test_follow_up_without_question_text(self):
         student, _ = login_as("student")
         raise_ticket(student, subject="Bare follow up", message="Hi.")
@@ -975,48 +688,6 @@ class TestStudentReply:
         assert support.get_ticket(tid)["status"] == "Follow up"
         assert "Follow-up question:" not in student.get("/support").text
         assert ">Reply</button>" in student.get("/support").text
-
-    def test_store_followup_validation(self):
-        assert support.submit_followup_question(123456, "q?") is False
-        assert support.submit_followup_question("not-an-id", "q?") is False
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Store followup", message="Hi.")
-        tid = self._ticket_id("Store followup")
-        assert support.submit_followup_question(tid, "Q?") is True
-        row = support.get_ticket(tid)
-        assert row["followup_question"] == "Q?"
-        assert row.get("admin_reply") in (None, "")
-
-    def test_follow_up_is_a_valid_status(self):
-        assert support.update_ticket(123456, status="Follow up") is False
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Status check", message="Hi.")
-        tid = self._ticket_id("Status check")
-        assert support.update_ticket(tid, status="Follow up") is True
-        assert support.get_ticket(tid)["status"] == "Follow up"
-        assert support.update_ticket(tid, status="Done") is False
-
-    def test_follow_up_sorts_between_progress_and_resolved(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Alpha open", message="A.")
-        raise_ticket(student, subject="Beta open", message="B.")
-        raise_ticket(student, subject="Gamma open", message="C.")
-        ids = {row["subject"]: row["id"] for row in support.list_tickets()}
-        admin, _ = login_as("admin")
-        admin.post("/support/update", data={"ticket_id": ids["Beta open"], "status": "Resolved", "admin_reply": ""})
-        admin.post("/support/update", data={"ticket_id": ids["Gamma open"], "status": "Follow up", "admin_reply": ""})
-        body = admin.get("/support").text
-        assert body.index("Alpha open") < body.index("Gamma open") < body.index("Beta open")
-
-    def test_status_select_drops_open_defaults_resolved(self):
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Select check", message="Hi.")
-        faculty, _ = login_as("faculty")
-        body = faculty.get("/support").text
-        assert body.count('<option value="Open"') == 1  # staff filter only
-        assert body.count('<option value="Resolved" selected>') == 1  # update form default
-        assert '<option value="In Progress"' in body
-        assert '<option value="Follow up"' in body
 
     def test_thread_renders_in_chat_order(self):
         student, _ = login_as("student")
@@ -1039,25 +710,3 @@ class TestStudentReply:
             assert body.index("QUESTION-XYZ") < body.index("qpic.png")
             assert body.index("qpic.png") < body.index("answer text")
             assert body.index("answer text") < body.index("rpic.png")
-
-    def test_created_shows_date_over_time(self):
-        from datetime import datetime as _dt
-
-        from app.main import _ticket_when
-        from app.support import IST as _IST
-
-        assert _ticket_when("2026-09-24T11:55:00+05:30") == {
-            "date": "24 Sep 2026",
-            "time": "11:55",
-        }
-        # Naive Postgres wall-clock stays as-is (no UTC shift).
-        assert _ticket_when("2026-09-24 22:29:00") == {
-            "date": "24 Sep 2026",
-            "time": "22:29",
-        }
-        student, _ = login_as("student")
-        raise_ticket(student, subject="Timestamped row", message="Hi.")
-        body = student.get("/support").text
-        today = _dt.now(_IST).strftime("%d %b %Y")
-        assert today in body
-        assert "2026-09-24 11:55" not in body

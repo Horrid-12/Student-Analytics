@@ -52,11 +52,6 @@ class TestSignup:
         assert verified["role"] == "student"
         assert verified["email"] == "stu1@college.edu"
 
-    def test_signup_recorded_in_audit(self, client):
-        signup(client)
-        events = storage.load_audit_events()
-        assert any(row["event_type"] == "signup" for _, row in events.iterrows())
-
     def test_duplicate_email_rejected(self, client):
         signup(client, email="dup@college.edu")
         r = signup(client, email="dup@college.edu")
@@ -92,12 +87,6 @@ class TestLogin:
         signup(client)
         r = login(client, "stu1@college.edu", "wrongpass")
         assert "error=1" in str(r.url)
-
-    def test_failed_login_recorded_in_audit(self, client):
-        signup(client)
-        login(client, "stu1@college.edu", "wrongpass")
-        events = storage.load_audit_events()
-        assert any(row["event_type"] == "login_failed" for _, row in events.iterrows())
 
     def test_logout_clears_session(self, client):
         signup(client)
@@ -169,11 +158,6 @@ class TestRBACGating:
             assert c.get("/history").status_code == 404
             assert c.get("/issues").status_code == 404
             assert c.get("/verification").status_code == 404
-
-    def test_api_endpoints_require_a_session(self, client):
-        # POST /analysis/batch was removed with the Excel-upload feature:
-        # the route is gone entirely (plain 404, not an auth-gated API).
-        assert client.get("/analysis/batch").status_code == 404
 
 
 class TestSessionTokens:

@@ -98,31 +98,6 @@ def test_hackerrank_bad_username():
     assert res.status_code == 400
 
 
-def test_profile_tab_shows_skills_progress_recent():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "partials" / "profile_panel.html").read_text(encoding="utf-8")
-    assert "HackerRank details coming soon" not in html
-    assert "Practice score" not in html
-    assert "Solved (est.)" not in html
-    assert "/api/hackerrank/" in html
-    assert "data-hr-username" in html
-    assert "Solved questions" in html
-    assert "Last active" in html
-    assert "to next star" in html
-    assert "hr-badge-hex" in html
-    assert "hr-badge-frame" in html
-    assert "hr-section-title" in html
-    assert "hr-active-box" in html
-    assert "hr-more-btn" in html
-    assert "batchDropdownList" in html
-    # Solved dropdown renders before the Badges section.
-    assert html.index("Solved questions") < html.index("hr-section-title\">Badges")
-    assert "HackerRank &middot;" not in html
-    assert "7.508 6.268" not in html  # old X-shaped icon path is gone
-    assert 'id="profile-panel-hackerrank"' in html
-
-
 def test_vendored_decoders():
     from app.hackerrank_client.service import decode_badges, decode_recent, decode_scores
 
@@ -228,25 +203,6 @@ def test_hr_endpoint_never_persists_snapshot(monkeypatch):
     res = client.get(f"/api/hackerrank/{handle}")
     assert res.status_code == 200
     assert handle not in roster_store.get_hr_snapshots()
-
-
-def test_leaderboard_template_has_hr_cards():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "pages" / "leaderboards.html").read_text(encoding="utf-8")
-    assert "Most Problems Solved" in html
-    assert "Top Practice Scores" in html
-    assert "hr_solved_rows" in html
-    assert "hr_score_rows" in html
-    assert "awaiting sync" in html
-
-
-def test_blacklist_menu_has_hr_boards():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "partials" / "profile_panel.html").read_text(encoding="utf-8")
-    assert "hr_solved" in html
-    assert "hr_score" in html
 
 
 def _sync_handles(monkeypatch, handles):

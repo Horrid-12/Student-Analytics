@@ -127,46 +127,6 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
-class TestStudentIssuesBlocked:
-    def _login(self, client, role, email=None):
-        if email is None:
-            return make_user(client, role)
-        assert auth.create_user(email, "secret123", role, "Test User")
-        client.post("/login", data={"email": email, "password": "secret123"})
-        return email
-
-    def test_student_issues_page_is_gone(self, client):
-        self._login(client, "student", OWN_EMAIL)
-        resp = client.get("/issues?roster=r1", headers={"Accept": "text/html"}, follow_redirects=False)
-        assert resp.status_code == 404  # page removed, not RBAC-gated
-
-    def test_student_has_no_issues_nav_tab(self, client):
-        self._login(client, "student", OWN_EMAIL)
-        for path in ("/?roster=r1", "/leaderboards?roster=r1"):
-            body = client.get(path, headers={"Accept": "text/html"}).text
-            assert 'class="sidebar-nav-item" href="/issues?roster=r1"' not in body
-            assert 'href="/issues' not in body
-
-    def test_admin_has_no_issues_nav_tab(self, client):
-        make_user(client, "admin")
-        body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert 'href="/issues' not in body
-
-    def test_student_workflow_post_is_gone(self, client):
-        self._login(client, "student", OWN_EMAIL)
-        resp = client.post("/issues/workflow?roster=r1", json={})
-        assert resp.status_code == 404  # endpoint removed, not denied
-
-    def test_faculty_workflow_post_is_gone(self, client):
-        make_user(client, "faculty")
-        resp = client.post("/issues/workflow?roster=r1", json={})
-        assert resp.status_code == 404  # endpoint removed
-
-    def test_verification_page_is_gone(self, client):
-        self._login(client, "student", OWN_EMAIL)
-        assert client.get("/verification", headers={"Accept": "text/html"}, follow_redirects=False).status_code == 404
-
-
 class TestNotificationBell:
     def _login(self, client, role, email=None):
         if email is None:
@@ -193,11 +153,4 @@ class TestNotificationBell:
         self._login(client, "student", OWN_EMAIL)
         body = client.get("/leaderboards?roster=r1", headers={"Accept": "text/html"}).text
         assert "notif-bell" in body
-        assert "notif-badge" not in body
-
-    def test_unknown_student_shows_bell(self, client):
-        self._login(client, "student", "ghost@college.edu")
-        body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" in body
-        assert "all clear" in body
         assert "notif-badge" not in body

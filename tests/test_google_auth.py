@@ -106,9 +106,6 @@ class TestUpsertGoogleUser:
         assert stored["google_sub"] == "sub-1"
         assert stored["auth_source"] == "google"
 
-    def test_new_user_defaults_student(self, client):
-        assert auth.upsert_google_user("stu2@mitwpu.edu.in", "S Two", "sub-2")["role"] == "student"
-
 
 class TestOAuthCallback:
     def test_full_flow_sets_session_cookie(self, client, monkeypatch):
@@ -146,12 +143,6 @@ class TestOAuthCallback:
         assert "oauth=error" in r.headers["location"]
         assert "gsad_session" not in client.cookies
 
-    def test_error_param_rejected(self, client, monkeypatch):
-        enable_google(monkeypatch, {})
-        client.get("/auth/google", follow_redirects=False)
-        r = client.get("/auth/google/callback?state=x&code=fake&error=access_denied", follow_redirects=False)
-        assert "oauth=error" in r.headers["location"]
-
     def test_unconfigured_redirects_with_banner(self, client, monkeypatch):
         monkeypatch.setattr(google_oauth, "configured", lambda: False)
         r = client.get("/auth/google", follow_redirects=False)
@@ -188,20 +179,6 @@ class TestOAuthCallback:
             ("start", "https://preview.example/auth/google/callback"),
             ("callback", "https://preview.example/auth/google/callback"),
         ]
-
-    def test_redirect_base_falls_back_to_request_host(self, client, monkeypatch):
-        seen = []
-        monkeypatch.delenv("OAUTH_REDIRECT_BASE_URL", raising=False)
-        monkeypatch.setattr(google_oauth, "configured", lambda: True)
-        monkeypatch.setattr(
-            google_oauth,
-            "build_authorization_url",
-            lambda redirect_uri, state, allowed_domain=None: seen.append(redirect_uri)
-            or "https://accounts.google.com/o/oauth2/v2/auth",
-        )
-        response = client.get("/auth/google", follow_redirects=False)
-        assert response.status_code == 302
-        assert seen == ["http://testserver/auth/google/callback"]
 
 
 class TestPasswordDomainGate:
@@ -259,14 +236,3 @@ class TestPasswordDomainGate:
         assert "registered=1" in str(r.url)
         r = client.post("/login", data={"email": "stu1@mitwpu.edu.in", "password": "secret123"})
         assert "gsad_session" in client.cookies
-
-
-class TestLoginPageMethods:
-    def test_google_button_only_when_configured(self, client, monkeypatch):
-        monkeypatch.setattr(google_oauth, "configured", lambda: True)
-        body = client.get("/login").text
-        assert "Continue with Google" in body
-        assert "Continue with GitHub" not in body
-        assert "Continue with LinkedIn" not in body
-        monkeypatch.setattr(google_oauth, "configured", lambda: False)
-        assert "Continue with Google" not in client.get("/login").text

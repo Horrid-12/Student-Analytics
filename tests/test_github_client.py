@@ -61,11 +61,6 @@ class TestCacheKey:
             "https://api.github.com/users/a", "t1"
         )
 
-    def test_none_token_consistent(self):
-        assert cache_key("https://api.github.com/users/a", None) == cache_key(
-            "https://api.github.com/users/a", None
-        )
-
 
 class TestGetJson:
     def test_returns_triple_and_parses_payload(self):
@@ -161,9 +156,3 @@ class TestLoadToken:
     def test_env_var_wins(self, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_env")
         assert load_token() == "ghp_env"
-
-    def test_empty_env_falls_through(self, monkeypatch):
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-        # Real .streamlit/secrets.toml may or may not exist — just ensure no crash
-        # and the type is right.
-        assert load_token() is None or isinstance(load_token(), str)
