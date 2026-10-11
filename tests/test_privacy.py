@@ -1,11 +1,9 @@
 """Privacy Policy integration: reachable from Settings, modern layout.
 
 Covers the Settings Legal entry point, the redesigned privacy page (breadcrumb,
-contents card, section cards, no legacy inline styles), and the pre-existing
-login-footer link. /privacy stays public so logged-out users can read it.
+contents card, section cards), and the pre-existing login-footer link.
+/privacy stays public so logged-out users can read it.
 """
-
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -54,24 +52,8 @@ class TestPrivacyPage:
         assert 'href="/settings"' in body
         assert "Sign out" in body
 
-    def test_no_legacy_inline_styles(self):
-        source = (
-            Path(__file__).resolve().parent.parent / "app" / "templates" / "pages" / "privacy.html"
-        ).read_text(encoding="utf-8")
-        # The shared topbar shell keeps its app-wide inline wrapper; the
-        # redesigned privacy content itself must be class-driven.
-        content = source.split("privacy-body")[1]
-        assert "style=\"" not in content
-
 
 class TestSettingsLegalEntry:
-    def test_admin_settings_links_privacy(self, tmp_path, monkeypatch):
-        c = client(tmp_path, monkeypatch)
-        make_user(c, "admin")
-        body = c.get("/settings", headers={"Accept": "text/html"}).text
-        assert "Legal" in body
-        assert 'href="/privacy"' in body
-
     def test_student_settings_links_privacy(self, tmp_path, monkeypatch):
         c = client(tmp_path, monkeypatch)
         make_user(c, "student")

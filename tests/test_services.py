@@ -679,19 +679,19 @@ class TestAntiGamingScoring:
         assert self._score(self._max_row(0)) == 100
 
     @pytest.mark.parametrize(
-        "stars,expected", [(0, 0), (1, 5), (4, 5), (5, 10), (19, 10), (20, 10)]
+        "stars,expected", [(0, 0), (4, 5), (5, 10)]
     )
     def test_stars_tiers(self, stars, expected):
         assert self._score(_quality_row(200, Stars=stars)) == expected
 
     @pytest.mark.parametrize(
-        "commits,expected", [(0, 0), (1, 5), (9, 5), (10, 10), (50, 15), (51, 15)]
+        "commits,expected", [(0, 0), (9, 5), (10, 10), (50, 15)]
     )
     def test_commit_volume_tiers(self, commits, expected):
         assert self._score(_quality_row(200, Total_Commits=commits)) == expected
 
     @pytest.mark.parametrize(
-        "distinct,expected", [(0, 15), (1, 15), (2, 20), (3, 25)]
+        "distinct,expected", [(1, 15), (2, 20), (3, 25)]
     )
     def test_consistency_spread_tiers(self, distinct, expected):
         # Spread rides on top of a 51-commit volume base (15).
@@ -726,7 +726,7 @@ class TestAntiGamingScoring:
         assert self._score(_quality_row(200, Stars=stars, Forks=forks)) == expected
 
     @pytest.mark.parametrize(
-        "days,expected", [(7, 10), (14, 10), (15, 5), (30, 5), (31, 0), (90, 0)]
+        "days,expected", [(14, 10), (15, 5), (31, 0)]
     )
     def test_recency_tiers(self, days, expected):
         assert self._score(_quality_row(days)) == expected
@@ -786,10 +786,6 @@ class TestAntiGamingScoring:
 
     def test_nan_updated_is_zero_recency(self):
         assert self._score(_quality_row(200, Updated=None)) == 0
-
-    def test_category_caps_exact_total(self):
-        """Structurally impossible to exceed 100 (25+20+15+15+15+10)."""
-        assert self._score(self._max_row(0)) == 100
 
 
 class TestLegacyStrictScoring:

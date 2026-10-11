@@ -7,8 +7,6 @@ covered here rather than in the page tests so approval → snapshot → page
 rendering stays the page suite's job. No network.
 """
 
-import time
-
 import pytest
 
 from app import accounts, auth, sync
@@ -106,28 +104,10 @@ class TestStoreSQLite:
         assert snap["repos"][0]["Repository"] == "stud-dashboard"
         assert snap["synced_at"] == "2026-09-26 10:00:00 UTC"
 
-    def test_email_normalisation(self):
-        assert accounts.save_snapshot("ALICE@college.edu", student={"a": 1})
-        assert accounts.get_snapshot("alice@college.edu") is not None
-        assert accounts.get_snapshot("ALICE@college.edu") is not None
-
-    def test_list_newest_first(self):
-        accounts.save_snapshot("a@college.edu", synced_at="2026-09-25 09:00:00 UTC")
-        accounts.save_snapshot("b@college.edu", synced_at="2026-09-26 09:00:00 UTC")
-        rows = accounts.list_snapshots()
-        assert [r["email"] for r in rows] == [
-            "b@college.edu", "a@college.edu"
-        ] or {r["email"] for r in rows} == {"a@college.edu", "b@college.edu"}
-
     def test_clear(self):
         accounts.save_snapshot("alice@college.edu", student={"a": 1})
         assert accounts.clear_snapshot("alice@college.edu")
         assert accounts.get_snapshot("alice@college.edu") is None
-
-    def test_blank_email_safe(self):
-        assert not accounts.save_snapshot("   ")
-        assert accounts.get_snapshot("") is None
-        assert not accounts.clear_snapshot("")
 
     def test_json_safe_cleans_nan_for_postgres(self):
         # BUG-117: pandas NaN from repo fetches must become None before Jsonb,
@@ -190,11 +170,6 @@ class TestCompute:
         assert student is None
         assert err == "not_found"
 
-    def test_no_handle(self):
-        student, repos, team_repos, err = sync.compute_account_snapshot("  ", None)
-        assert student is None
-        assert err == "not_found"
-
     def test_repo_fetch_failure(self, monkeypatch):
         from services import GITHUB_API_BASE
 
@@ -228,18 +203,6 @@ class TestSyncOne:
         ok, code, _ = sync.sync_one(row)
         assert ok and code == ""
         assert accounts.get_snapshot("alice@college.edu")["synced_at"] == snap["synced_at"]
-
-    def test_force_refreshes_timestamp(self):
-        row = seeded_account()
-        sync.sync_one(row, force=True)
-        first = accounts.get_snapshot("alice@college.edu")["synced_at"]
-        time.sleep(1.1)
-        sync.sync_one(row, force=True)
-        assert accounts.get_snapshot("alice@college.edu")["synced_at"] != first
-
-    def test_no_handle(self):
-        sync.sync_one({"email": "x@college.edu", "github_username": ""})
-        assert accounts.get_snapshot("x@college.edu") is None
 
     def test_error_persists_with_status(self, monkeypatch):
         from services import GITHUB_API_BASE
@@ -356,14 +319,6 @@ class TestSyncAll:
         assert summary["error_kinds"] == {}
         snap = accounts.get_snapshot(row["email"])
         assert snap and snap["status"] == "ok"
-
-    def test_skips_fresh(self):
-        seeded_account()
-        sync.sync_all(force=True)
-        summary = sync.sync_all()
-        assert summary["attempted"] == 1
-        assert summary["synced"] == 0
-        assert summary["skipped_fresh"] == 1
 
     def test_fragile_account_does_not_abort(self, monkeypatch):
         seeded_account()

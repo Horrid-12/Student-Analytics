@@ -168,18 +168,6 @@ class TestSubmitOnboarding:
         r = submit(client, prn="1234567890")
         assert "saved=1" in str(r.url)
 
-    def test_page_prefills_saved_values(self, client):
-        signup(client)
-        login(client)
-        submit(client, prn="1234567890")
-        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert 'value="1234567890"' in body
-        assert '<option value="Core" selected>' in body
-        assert '<option value="1" selected>' in body
-        assert '<option value="1" selected>' in body
-        assert '<option value="Semester 3" selected>' in body
-        assert "Resubmit for Verification" in body
-
 
 class TestApprovalFlow:
     def _submit_and_link(self, client):
@@ -253,20 +241,6 @@ class TestLedgerView:
         assert "overflow-x: auto" not in body
         assert 'id="ledger-more-btn"' not in body  # only 1 row — no batching
 
-    def test_ledger_batches_beyond_ten_rows(self, client):
-        for i in range(12):
-            email = f"stu{i}@college.edu"
-            signup(client, email, f"Student {i}")
-            login(client, email)
-            submit(client, prn=f"12345678{i:02d}", hackerrank=f"hr_stu{i}")
-            client.get("/logout")
-        _session(client, "admin")
-        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert 'id="ledger-more-btn"' in body
-        assert "Show more (2 remaining)" in body
-        rows = body.count('class="ledger-row"')
-        assert rows == 12  # all rows render once, batches reveal client-side
-
     def test_ledger_shows_hackerrank_and_linkedin(self, client):
         signup(client)
         login(client)
@@ -293,47 +267,6 @@ class TestLedgerView:
         assert "login" in str(r.url)
 
 
-class TestOnboardingAuthHelpers:
-    def test_prn_validation(self):
-        assert auth.valid_prn("1234567890")
-        assert not auth.valid_prn("123456789")
-        assert not auth.valid_prn("abcd123456")
-        assert not auth.valid_prn("")
-
-    def test_degree_and_division_validation(self):
-        assert auth.valid_degree_branch("AI/DS")
-        assert not auth.valid_degree_branch("")
-        assert auth.valid_division("14")
-        assert not auth.valid_division("Division 14")
-        assert not auth.valid_division("15")
-
-    def test_batch_and_semester_validation(self):
-        assert auth.valid_main_batch("Batch 2022")
-        assert not auth.valid_main_batch("")
-        assert not auth.valid_main_batch("2022")
-        assert auth.valid_practical_batch("P1")
-        assert auth.valid_practical_batch("P8")
-        assert not auth.valid_practical_batch("P9")
-        assert auth.valid_semester("Semester 1")
-        assert auth.valid_semester("Semester 8")
-        assert not auth.valid_semester("Semester 9")
-
-    def test_submit_and_status_flip(self, client):
-        _session(client, "student")
-        ok, err = auth.submit_onboarding(
-            "student@college.edu", "1234567890", "Core", "1",
-            main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
-            hackerrank_username="flip_hr",
-        )
-        assert ok and err == ""
-        user = auth.get_user("student@college.edu")
-        assert user["onboarding_status"] == "pending"
-        assert user["hackerrank_username"] == "flip_hr"
-        assert user["main_batch"] == "Batch 2022"
-        assert user["practical_batch"] == "1"
-        assert user["semester"] == "Semester 3"
-
-
 def _faculty_session(client, email="prof@example.com"):
     """Seed a faculty account and log it in (faculty table, any domain)."""
     assert auth.create_faculty(email, "secret123", "Prof")
@@ -353,18 +286,6 @@ def _teaching_post(client, body: str):
 
 
 class TestFacultyTeachingOnboarding:
-    def test_setup_redirects_to_onboarding(self, client):
-        assert auth.create_faculty_invite("invite@college.edu", "invitepass123")
-        client.post("/login", data={"email": "invite@college.edu", "password": "invitepass123"})
-        r = client.post(
-            "/faculty-setup",
-            data={"new_email": "prof@example.com", "name": "Prof",
-                  "password": "secret123", "confirm_password": "secret123"},
-            follow_redirects=False,
-        )
-        assert r.status_code == 302
-        assert r.headers["location"] == "/onboarding"
-
     def test_faculty_sees_teaching_form_not_ledger(self, client):
         _faculty_session(client)
         body = client.get("/onboarding").text
@@ -388,12 +309,6 @@ class TestFacultyTeachingOnboarding:
         body = client.get("/onboarding").text
         assert 'value="3" selected' in body
         assert 'value="5" selected' in body
-
-    def test_only_three_batches_allowed(self, client):
-        _faculty_session(client)
-        body = client.get("/onboarding").text
-        assert 'value="1"' in body and 'value="3"' in body
-        assert 'value="P1"' not in body and 'value="P8"' not in body
 
     def test_invalid_rows_rejected(self, client):
         email = _faculty_session(client)

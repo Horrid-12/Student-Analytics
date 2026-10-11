@@ -84,6 +84,47 @@ def apply_value_filter(df: pd.DataFrame, column: str, value) -> pd.DataFrame:
     return df[df[column].astype(str) == text]
 
 
+def apply_pair_filter(df: pd.DataFrame, pairs) -> pd.DataFrame:
+    """Restrict ``df`` to an explicit set of (Division, Batch) pairs.
+
+    ``pairs`` is an iterable of ``"DIV|BATCH"`` strings (repeated
+    ``?pair=`` params or comma-joined) or ``(division, batch)`` tuples.
+    Empty / None / ["All"] means no filtering. A row is kept when its
+    (Division, Batch) matches ANY pair (OR of pairs — the same primitive
+    the Compare picker and faculty teaching scope use).
+    """
+    if pairs is None:
+        return df
+    if isinstance(pairs, str):
+        pairs = [pairs]
+    wanted: list[tuple[str, str]] = []
+    for item in pairs:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            div, bat = str(item[0] or "").strip(), str(item[1] or "").strip()
+            if div and bat and div.lower() != "all" and bat.lower() != "all":
+                wanted.append((div, bat))
+            continue
+        for part in str(item or "").split(","):
+            text = part.strip()
+            if not text or text.lower() == "all" or "|" not in text:
+                continue
+            div, _, bat = text.partition("|")
+            div, bat = div.strip(), bat.strip()
+            if div and bat:
+                wanted.append((div, bat))
+    if not wanted or "Division" not in df.columns or "Batch" not in df.columns:
+        return df
+    try:
+        divs = df["Division"].astype(str)
+        bats = df["Batch"].astype(str)
+        mask = pd.Series(False, index=df.index)
+        for div, bat in wanted:
+            mask = mask | (divs.eq(div) & bats.eq(bat))
+        return df[mask]
+    except Exception:
+        return df
+
+
 def format_number(value) -> str:
     try:
         numeric = float(value)
