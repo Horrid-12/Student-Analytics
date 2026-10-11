@@ -1391,16 +1391,34 @@ def _self_sync_on_login(user: dict | None) -> None:
         return
     email = str(user.get("email") or "").strip().lower()
     github = str(user.get("github_username") or "").strip()
-    if not email or not github:
-        return
+    full_user = user
+    if email and github:
+        try:
+            full_user = auth.get_user(user.get("email", "")) or user
+            tokens = github_client.load_all_tokens()
+            import random
+            token = random.choice(tokens) if tokens else None
+            sync.sync_one(full_user, token)
+        except Exception:
+            logger.exception("Self-sync on login failed for %s", email)
+    # Also refresh HackerRank snapshot if linked and older than 1 hour (3600s)
     try:
-        full_user = auth.get_user(user.get("email", "")) or user
-        tokens = github_client.load_all_tokens()
-        import random
-        token = random.choice(tokens) if tokens else None
-        sync.sync_one(full_user, token)
+        hr_username = str((full_user or {}).get("hackerrank_username") or "").strip().lower()
+        if hr_username:
+            hr_snapshots = _hr_snapshots_state()
+            snap = hr_snapshots.get(hr_username)
+            if not snap or (time.time() - _hr_snapshot_epoch(snap) >= 3600):
+                async def _fetch():
+                    api = hackerrank_client.HackerRankAPI()
+                    try:
+                        return await _fetch_hr_snapshot_light(hr_username, api)
+                    finally:
+                        await api.close()
+                hr_snap = asyncio.run(_fetch())
+                if hr_snap and not hr_snap.get("invalid"):
+                    _save_hr_snapshot(hr_username, hr_snap)
     except Exception:
-        logger.exception("Self-sync on login failed for %s", email)
+        logger.warning("Self-sync HackerRank on login failed for %s", email)
 
 
 @app.get("/debug/force_sync_all")
@@ -1858,7 +1876,7 @@ HR_SYNC_BATCH_MAX = 20
 HR_SYNC_BUDGET_SECONDS = 25.0
 HR_SYNC_SLEEP_SECONDS = 1.0
 #: Snapshots fresher than this are skipped (profile views refresh them anyway).
-HR_SYNC_TTL_SECONDS = 7 * 24 * 3600
+HR_SYNC_TTL_SECONDS = 24 * 3600
 
 
 def _save_hr_snapshot(handle: str, snapshot: dict) -> None:
@@ -1870,6 +1888,7 @@ def _save_hr_snapshot(handle: str, snapshot: dict) -> None:
         roster_store.put_hr_snapshot(handle, snapshot)
         if database.db_configured():
             db.put_hackerrank_snapshot(handle, snapshot)
+        view_cache.invalidate("hr:snapshots")
     except Exception:
         logger.warning("HackerRank snapshot save failed for %s", handle)
 
@@ -1918,14 +1937,14 @@ def _hr_tombstone(handle: str) -> dict:
     }
 
 
-def _hr_stale_queue(handles: dict, snapshots: dict) -> list:
+def _hr_stale_queue(handles: dict, snapshots: dict, force: bool = False) -> list:
     """Stale-first [(handle, sid)]: never-synced first, then oldest sync."""
     now = time.time()
     return sorted(
         (
             (handle, sid)
             for handle, sid in handles.items()
-            if now - _hr_snapshot_epoch(snapshots.get(handle)) >= HR_SYNC_TTL_SECONDS
+            if force or now - _hr_snapshot_epoch(snapshots.get(handle)) >= HR_SYNC_TTL_SECONDS
         ),
         key=lambda item: _hr_snapshot_epoch(snapshots.get(item[0])),
     )
@@ -1995,6 +2014,7 @@ async def sync_hackerrank(
     roster: str = "",
     batch: int = HR_SYNC_BATCH_DEFAULT,
     budget: float = HR_SYNC_BUDGET_SECONDS,
+    force: bool = False,
 ):
     """Backfill HackerRank snapshots a few profiles at a time.
 
@@ -2030,7 +2050,7 @@ async def sync_hackerrank(
     if handles is None:
         return JSONResponse(status_code=404, content={"detail": "No completed analysis for this roster"})
     snapshots = _hr_snapshots_state()
-    queue = _hr_stale_queue(handles, snapshots)
+    queue = _hr_stale_queue(handles, snapshots, force=force)
     total, pending = len(handles), len(queue)
     synced: list[str] = []
     failed: dict[str, str] = {}
@@ -2224,6 +2244,20 @@ async def sync_single_student(email: str, request: Request):
             break  # Success, or a failure no other token can fix.
         # Otherwise (rate_limited / api_error / dead token) try the next token
         # so one bad token can never block the rotation.
+
+    # Also refresh HackerRank if user has linked HackerRank handle
+    hr_handle = (target_user.get("hackerrank_username") or "").strip().lower()
+    if hr_handle:
+        try:
+            api = hackerrank_client.HackerRankAPI()
+            try:
+                hr_snap = await _fetch_hr_snapshot_light(hr_handle, api)
+                if hr_snap and not hr_snap.get("invalid"):
+                    _save_hr_snapshot(hr_handle, hr_snap)
+            finally:
+                await api.close()
+        except Exception:
+            logger.warning("Single student HackerRank sync failed for %s", hr_handle)
 
     if ok:
         return JSONResponse(content={"status": "ok", "detail": detail})
@@ -2439,6 +2473,21 @@ async def api_hackerrank_profile(username: str, request: Request):
     data = profile.to_dict()
     data["heatmap"] = [d.to_dict() for d in (heatmap or [])]
     data["profile_url"] = services.hackerrank_profile_url(data.get("username") or handle)
+    try:
+        known_snapshots = _hr_snapshots_state()
+        own_handle = str((user or {}).get("hackerrank_username") or "").strip().lower()
+        if handle in known_snapshots or handle == own_handle:
+            snapshot = {
+                "username": profile.username or handle,
+                "display_name": profile.display_name or handle,
+                "practice_score": int(profile.practice_score),
+                "total_solved": int(profile.total_solved),
+                "badges": len(profile.badges),
+                "synced_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _save_hr_snapshot(handle, snapshot)
+    except Exception:
+        logger.warning("Failed to refresh HackerRank snapshot for %s", handle)
     return JSONResponse(content=data)
 
 
