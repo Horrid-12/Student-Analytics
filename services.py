@@ -663,6 +663,9 @@ def get_repo_author_commits(
             timeout=15,
         )
         check_rate_limit_parts(status_code, response_headers)
+        if status_code == 409:
+            # Empty repository: GitHub returns 409 Conflict with 'Git Repository is empty.'
+            return [], True
         if status_code != 200 or not isinstance(payload, list):
             return [], False
         commits.extend(payload)

@@ -242,24 +242,28 @@ def _carry_forward_heavy_metrics(email: str, student: dict, team_repos: list, is
 
     if is_lightweight or student.get("Contrib_Fetch_Status") == "Unavailable":
         for col in _contrib_cols:
-            if col in prev_student:
-                student[col] = prev_student[col]
-        if "Contrib_Fetch_Status" in prev_student:
+            if prev_student.get(col) is not None:
+                if is_lightweight or student.get(col) is None:
+                    student[col] = prev_student[col]
+        if prev_student.get("Contrib_Fetch_Status") and prev_student.get("Contrib_Fetch_Status") != "Unavailable":
             student["Contrib_Fetch_Status"] = prev_student["Contrib_Fetch_Status"]
 
     if is_lightweight or student.get("Team_Activity_Fetch_Status") == "Unavailable":
         for col in _team_cols:
-            if col in prev_student:
-                student[col] = prev_student[col]
-        if "Team_Activity_Fetch_Status" in prev_student:
+            if prev_student.get(col) is not None:
+                if is_lightweight or student.get(col) is None:
+                    student[col] = prev_student[col]
+        if prev_student.get("Team_Activity_Fetch_Status") and prev_student.get("Team_Activity_Fetch_Status") != "Unavailable":
             student["Team_Activity_Fetch_Status"] = prev_student["Team_Activity_Fetch_Status"]
-        team_repos = prev_team_repos
+        if prev_team_repos:
+            team_repos = prev_team_repos
 
     if is_lightweight or student.get("Commit_Fetch_Status") == "Unavailable":
         for col in _commit_cols:
-            if col in prev_student:
-                student[col] = prev_student[col]
-        if "Commit_Fetch_Status" in prev_student:
+            if prev_student.get(col) is not None:
+                if is_lightweight or student.get(col) is None:
+                    student[col] = prev_student[col]
+        if prev_student.get("Commit_Fetch_Status") and prev_student.get("Commit_Fetch_Status") != "Unavailable":
             student["Commit_Fetch_Status"] = prev_student["Commit_Fetch_Status"]
             
     return student, team_repos
@@ -389,6 +393,10 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
         team_repos = []
     now = time.strftime(_SYNC_TIME_FORMAT)
     if err:
+        existing = accounts.get_snapshot(email)
+        if existing and existing.get("status") == "ok":
+            logger.warning("sync_one encountered error '%s' for %s, but keeping existing ok snapshot", err, email)
+            return False, err, err
         accounts.init_db()
         # Status=error hides the snapshot from both views (they render the
         # zeroed fallback row), but the profile links must outlive a failed
