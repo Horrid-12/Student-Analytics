@@ -45,29 +45,25 @@
 
 ### Onboarding and registrar review
 
-- Students submit PRN, degree, and division from the **Onboarding** page; faculty/admin approve, reject, or remove entries from a pending ledger.
+- Students submit PRN, degree, division, practical batch (lab section), semester, and main batch from the **Onboarding** page; faculty/admin approve, reject, edit, or remove entries from a pending ledger.
 - Approval promotes the student's linked GitHub handle into their account identity — that handle is what every later sync reads.
 
 ### Self-updating GitHub data
 
-- Nightly Vercel cron against `/sync/accounts`, a Sunday `/sync/weekly` announcement run, and a GitHub Actions **Heavy Sync** every 6 hours (deep commits/PRs/team repos, one student at a time, resumable and rate-limit aware).
+- Nightly Vercel cron against `/sync/accounts`, a Sunday `/sync/weekly` announcement run, and a GitHub Actions **Heavy Sync** daily at 00:00 UTC (deep commits/PRs/team repos, one student at a time, resumable and rate-limit aware).
 - Students also self-sync on login, and admins can force a fleet refresh from `/debug/force_sync_all`.
 - Rate-limit aware: GitHub token rotation (`GITHUB_TOKEN` + extra `GITHUB_TOKEN_*` vars), waits for the published reset epoch, and surfaces friendly errors instead of tracebacks.
 
 ### Eight dashboards, one sidebar
 
-- **Overview** headline metrics, **Students** profile cards, **Repositories** browser, **Leaderboards**, **Verification**, **Support**, **Settings**, **Onboarding** — plus a personal `/me` panel behind the avatar.
-- Pages render from the synced account fleet — no upload required — and the Students, Repositories, and Verification tables export CSV or XLSX.
+- Eight tabs for every role: **Overview**, **Onboarding**, **Students**, **Repositories**, **Leaderboards**, **Support**, **Settings**, **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. (The old Verification and Issues pages no longer exist.)
+- Pages render from the synced account fleet — no upload required — and the Students and Repositories tables export CSV or XLSX.
 - Repos and followers are also reported per year of account age (`Repos_Per_Account_Year`, `Followers_Per_Account_Year`) so newer accounts are not punished.
 
 ### Leaderboards with moderation
 
-- Compare recent activity, public repo counts, stars, and language mix across a filtered cohort (division, batch, semester, time window).
+- Six boards — most active repositories, most commits, most stars, top starred repositories, HackerRank problems solved, and top practice scores — across a filtered cohort (division, batch, semester, time window), with a GitHub/HackerRank platform switcher.
 - Faculty/admin can blacklist students or hide repositories from a board; the moderation state persists for the whole fleet.
-
-### Verification cross-check
-
-- Admins upload a reference workbook (`.xlsx` / `.xls` / `.csv`); each analyzed student resolves to **Verified / Mismatch / Missing / Unreferenced** with clickable profile links and per-status export.
 
 ### Support tickets
 
@@ -93,7 +89,7 @@
 
 ## Architecture
 
-Server-rendered, deliberately thin: FastAPI routes in `app/main.py` handle HTTP, page payload builders live in `app/views.py`, and everything that talks to the internet or does math stays in `app/services.py` + `app/sync.py`. Jinja2 templates render HTML; HTMX drives partials and streaming; Plotly charts are built server-side.
+Server-rendered, deliberately thin: FastAPI routes in `app/main.py` handle HTTP, page payload builders live in `app/views.py`, and everything that talks to the internet or does math stays in `app/services.py` + `app/sync.py`. Jinja2 templates render HTML; ECharts option objects are composed server-side and drawn client-side (Overview only); live updates arrive over Server-Sent Events.
 
 ```
 sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
@@ -102,7 +98,7 @@ sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
 
 - Migration rationale and stack trade-offs: [`documentation/Bridge.md`](./documentation/Bridge.md)
 - Feature inventory: [`documentation/Features List.md`](./documentation/Features%20List.md)
-- Roadmap and bug log: [`documentation/Taskflow.md`](./documentation/Taskflow.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
+- Roadmap and bug log: [`documentation/Features List.md`](./documentation/Features%20List.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
 
 ```
 app/            FastAPI application
@@ -110,14 +106,14 @@ app/            FastAPI application
   services.py     GitHub API + aggregation (ported, logic frozen)
   sync.py         snapshot compute + fleet sweep
   views.py        page payload builders
-  charts.py       Plotly helpers
+  charts.py       legacy Plotly builders (unused — charts are ECharts)
   auth.py         sessions, roles, domain gate
   db.py           Postgres query layer (SQLite fallback)
-  templates/      Jinja2 pages + HTMX partials
+  templates/      Jinja2 pages + partials
 static/         CSS, JS, logo (Favicon.png)
 tests/          pytest suite (two-mode parity harness)
-scripts/        perf_loop.py, verify_readme.py
-documentation/  Taskflow, Bug Tracker, Features List, Bridge
+scripts/        perf_loop.py (page-timing harness)
+documentation/  Bug Tracker, Features List, Bridge, Red Suite Fix, Lag Fix
 vercel.json     ASGI entry + cron schedule
 ```
 
@@ -130,8 +126,8 @@ vercel.json     ASGI entry + cron schedule
 | Language | ![Python](https://img.shields.io/badge/Python-3.11%2B-be342b?logo=python&logoColor=142235&labelColor=eee9df) |
 | Web framework | ![FastAPI](https://img.shields.io/badge/FastAPI-be342b?logo=fastapi&logoColor=142235&labelColor=eee9df) ![Uvicorn](https://img.shields.io/badge/Uvicorn-be342b?labelColor=eee9df) |
 | Templating | ![Jinja](https://img.shields.io/badge/Jinja-be342b?logo=jinja&logoColor=142235&labelColor=eee9df) |
-| Interactivity | ![HTMX](https://img.shields.io/badge/HTMX-be342b?logo=htmx&logoColor=142235&labelColor=eee9df) |
-| Charts | ![Plotly](https://img.shields.io/badge/Plotly-be342b?logo=plotly&logoColor=142235&labelColor=eee9df) |
+| Interactivity | ![SSE](https://img.shields.io/badge/SSE-be342b?labelColor=eee9df) |
+| Charts | ![ECharts](https://img.shields.io/badge/ECharts-be342b?logo=apacheecharts&logoColor=142235&labelColor=eee9df) |
 | Data | ![pandas](https://img.shields.io/badge/pandas-be342b?logo=pandas&logoColor=142235&labelColor=eee9df) ![openpyxl](https://img.shields.io/badge/openpyxl-be342b?labelColor=eee9df) |
 | OAuth | ![Authlib](https://img.shields.io/badge/Authlib-OAuth%20clients-be342b?labelColor=eee9df) |
 | Cache | ![Upstash](https://img.shields.io/badge/Upstash-be342b?logo=upstash&logoColor=142235&labelColor=eee9df) |
@@ -214,7 +210,7 @@ Everything goes in **`.env.local`** (gitignored, auto-loaded at startup by `app/
 | `LINKEDIN_CLIENT_ID` + `LINKEDIN_CLIENT_SECRET` | Optional | LinkedIn profile linking. |
 | `ALLOWED_OAUTH_DOMAINS` | Optional (default `mitwpu.edu.in`) | College-domain allowlist for signup and OAuth, comma- or space-separated. |
 | `OAUTH_REDIRECT_BASE_URL` | Optional (defaults to the request origin) | Canonical origin for OAuth callbacks — set it to the deployed origin in production. |
-| `CRON_SECRET` | Required for automation | Authorizes `POST /sync/accounts`, `/sync/weekly`, `POST /api/sync/student/{email}`, and `GET /api/users/approved` when no admin session is present; absent → 403 for Vercel Cron and the GitHub Action. |
+| `CRON_SECRET` | Required for automation | Authorizes `POST /sync/accounts`, `/sync/weekly`, `POST /api/sync/single/{email}`, and `GET /api/users/approved` when no admin session is present; absent → 403 for Vercel Cron and the GitHub Action. |
 | `DATABASE_URL` | Optional (aliases `POSTGRES_URL`, `TEST_DATABASE_URL`) | Neon Postgres storage; absent → bundled SQLite files (`analytics_history.db`, `users.db`, …). |
 | `DATABASE_URL_UNPOOLED` / `UNPOOLED` | Optional | Direct (non-pooled) connection used for schema DDL. |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Optional | Cross-instance GitHub response cache; absent → in-process cache. |
@@ -274,21 +270,6 @@ Open **http://localhost:8001**.
 
 Without `DATABASE_URL` everything transparently falls back to SQLite — skip this section for local dev.
 
-### Reference workbook format (Verification page)
-
-Header matching tolerates messy exports, but the canonical columns are:
-
-| Column | Notes |
-|---|---|
-| `Email address` | Matches against signed-up accounts |
-| `Student Name` | Display name |
-| `PRN No` | Student PRN / roll number |
-| `Actual Github Account Link` | Full GitHub profile URL (e.g. `https://github.com/octocat`) |
-
-A missing GitHub column is allowed — those students resolve to *Unreferenced* with a warning instead of a failure.
-
----
-
 ## Installation
 
 | Platform | Prerequisites | Install | Run |
@@ -313,7 +294,6 @@ Every platform serves the same thing: `uvicorn app.main:app --port 8001`. Prefer
 | Works locally but not on Vercel | Push the same values as Vercel project env vars — secret values download as empty stubs, so `vercel env pull` alone never restores them |
 | Port 8001 already in use | `uvicorn app.main:app --port 8002` |
 | App breaks after pulling changes | Re-run `pip install -r requirements.txt` — dependencies may have changed |
-| Reference upload warns "No GitHub account column" | Add an account link column to the sheet — see the format table above |
 
 ---
 
@@ -334,12 +314,6 @@ $env:MODULE_UNDER_TEST="app.services"; .\.venv\Scripts\python.exe -m pytest test
 
 # Postgres path (skipped unless set)
 $env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_db_layer.py -q; Remove-Item Env:\TEST_DATABASE_URL
-```
-
-README self-check (paths, badges, markdown hygiene):
-
-```powershell
-.\.venv\Scripts\python.exe scripts\verify_readme.py
 ```
 
 ---
@@ -363,16 +337,16 @@ The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel
 |---|---|
 | Production | Live at https://student-analytics-iota.vercel.app |
 | CI | CodeQL on push/PR to `main` plus a weekly run; Dependabot weekly for pip and GitHub Actions |
-| Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync every 6 h |
-| Test suite | Present but currently red — the baseline is tracked as `BUG-125` with a cluster-by-cluster plan in [`documentation/Red Suite Fix.md`](./documentation/Red%20Suite%20Fix.md) |
+| Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync daily (00:00 UTC) and HackerRank sync daily (00:00 IST) |
+| Test suite | Present but currently red — **15 failed / 531 passed / 10 skipped** (2026-10-11, default mode), tracked as `BUG-125` with a cluster-by-cluster plan in [`documentation/Red Suite Fix.md`](./documentation/Red%20Suite%20Fix.md) |
 
 ---
 
 ## Contributing
 
-1. Open [`documentation/Taskflow.md`](./documentation/Taskflow.md), pick an unchecked item, and claim it.
+1. Pick an open item from [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md), or an unbuilt row in [`documentation/Features List.md`](./documentation/Features%20List.md), and claim it.
 2. Work on a branch, not straight on `main`.
-3. After every change: update `documentation/Taskflow.md`, and log any fixed bug in [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md).
+3. After every change: keep [`documentation/Features List.md`](./documentation/Features%20List.md) in sync with what shipped, and log any fixed bug in [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md).
 4. Never commit student data files, tokens, or `.streamlit/secrets.toml` — rosters (`*.xlsx`) and env files are gitignored on purpose.
 5. Report security issues per [`SECURITY.md`](./SECURITY.md) — not through public issues.
 

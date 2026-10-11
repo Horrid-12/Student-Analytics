@@ -1,94 +1,117 @@
-# Bridge.md — Streamlit → FastAPI Switch Brief
+# Bridge.md — Streamlit → FastAPI switch (decision record, as executed)
 
-One-page brief for the stack switch (**Taskflow Phase 2**). Constraints locked 2026-08-23.
+The original one-page brief was written 2026-08-23 for Taskflow Phase 2.
+**Rewritten 2026-10-11 to describe what actually shipped.** The cutover
+happened on 2026-08-29: `app.py`, `.streamlit/` and `runtime.txt` were deleted,
+the Streamlit/Altair pins left `requirements.txt`, and every phase since (4.x
+account redesign, 5.x fleet pages, BUG-124 performance work) has been built on
+this stack. Anything marked ✗ below was planned but replaced by something else.
 
-## Why we're switching
+## Why we switched
 
-- Team verdict: Streamlit feels limiting / unwanted bloatware (2026-08-22).
-- Hard constraint: the project must stay **Python-primary** — college assignment grades depend on it. This killed the original Next.js/React plan (that would have made us a JavaScript project).
-- Hosting relaxed: **any free host** works; Vercel preferred where the stack allows.
+- Team verdict (2026-08-22): Streamlit felt limiting / unwanted bloatware.
+- Hard constraint: the project must stay **Python-primary** — college assignment
+  grades depend on it. That killed the original Next.js/React plan (it would
+  have made us a JavaScript project).
+- Hosting relaxed to **any free host**; Vercel ended up being the host.
 
-## The stack (presumptive — lock at Phase 2 start)
+## The stack, as shipped
 
-| Concern | Choice |
-|---|---|
-| Routes/backend | **FastAPI** — industry-standard Python API framework |
-| Pages | **Jinja2** server-rendered HTML, autoescaped (kills the `unsafe_allow_html` XSS class) |
-| Interactivity | **HTMX** — plain HTML attributes, ~zero hand-written JS |
-| Charts | **Plotly.js** via CDN; Python builds the config JSON — we own no chart JS |
-| Styling | Our existing ~600-line theme CSS moves to `static/style.css` near-verbatim |
-| Cache/sessions | **Upstash Redis** (free tier) — serverless keeps no memory between requests |
-| Auth | `authlib` Google OAuth + college-domain gate |
+| Concern | What shipped | Originally planned |
+|---|---|---|
+| Routes/backend | **FastAPI** — all routes on one app object in `app/main.py`, plus an `auth_gate` middleware | FastAPI ✓ |
+| Pages | **Jinja2** server-rendered HTML, autoescaped (kills the `unsafe_allow_html` XSS class) | Jinja2 ✓ |
+| Interactivity | **Server-Sent Events + vanilla JS.** htmx was removed during the Lag Fix — a grep found zero `hx-*` attributes anywhere, so it was 50 KB of dead weight (`base.html:26-28`) | HTMX ✗ |
+| Charts | **ECharts 5.5.1** from the CDN, loaded only on Overview; Python composes the option objects (`views.py`, `templates/macros/echarts.html`). The planned Plotly layer — `app/charts.py` + `macros/charts.html` — is orphaned dead code, though `plotly` is still pinned in `requirements.txt` | Plotly.js ✗ |
+| Styling | The existing theme CSS moved to `static/style.css` (+ `layout.css`, `theme.css`) near-verbatim | ✓ |
+| Cache/sessions | **Upstash Redis** when configured, in-process otherwise; GitHub responses keyed on URL+token, TTL 3600; plus a 120 s view cache with write-time invalidation | Upstash ✓ |
+| Auth | `authlib` OAuth — Google for sign-in, GitHub/LinkedIn link-only — plus email/password (PBKDF2), a college-domain gate, three roles, and an onboarding registrar workflow | Google OAuth ✓ (expanded) |
+| Database | **Neon Postgres** via psycopg3 pool with an automatic SQLite fallback, idempotent DDL in `app/schema.sql` | not in the original plan (added later) |
 
-Alternatives considered: **NiceGUI** (viable — least rewriting, Streamlit-like DX, but needs Railway/Render and brings its own framework magic), **Reflex** (pure-Python reactive UI, but debugging means reading its compiled JS output). FastAPI wins on control, hosting fit, and resume value.
+Alternatives considered: **NiceGUI** (viable — least rewriting, but needs
+Railway/Render and brings its own framework magic), **Reflex** (pure-Python
+reactive UI, but debugging means reading its compiled JS output). FastAPI won
+on control, hosting fit, and resume value.
 
-## Structure: current → target
+## Structure: planned → built
 
 ```
-NOW                                AFTER
-Github-website-/                   Github-website-/
-├── app.py        ← 1,555 lines   ├── app/
-│   (theme CSS ~600, sidebar,      │   ├── main.py       # ~100 ln: routes only
-│    topbar, 7 pages, HTML-card    │   ├── services.py   # SAME logic, ported near-verbatim
-│    f-strings, Altair charts,     │   ├── github_client.py
-│    exports)                      │   ├── charts.py     # Plotly builders
-├── services.py   ← 338 lines      │   ├── auth.py
-│   (logic — untouched)            │   └── templates/    # base + 7 pages + partials/
-├── .streamlit/                    ├── static/style.css  # existing theme CSS
-├── requirements.txt               ├── tests/test_services.py
-└── runtime.txt                    └── requirements.txt  # fastapi jinja2 httpx pandas
-                                                         #  openpyxl authlib upstash
-DELETED at cutover: app.py, .streamlit/, runtime.txt, streamlit/altair/pyarrow deps
+PLANNED (2026-08-23)                      BUILT (2026-10-11)
+app/                                      app/
+  main.py     # routes only                 main.py      # 3,093 ln: routes + auth gate + SSE + exports
+  services.py # SAME logic, ported          services.py  # frozen port (logic unchanged)
+  github_client.py                          github_client.py  # httpx + cache + retry/backoff
+  charts.py    # Plotly builders            charts.py    # DEAD (never wired up)
+  auth.py                                 auth.py       # sessions, roles, domain gate, OAuth
+  templates/   # base + 7 pages             views.py     # page payload builders  (2,468 ln)
+                                       sync.py  # snapshot compute + fleet sweep
+                                       db.py / database.py / schema.sql   # Postgres + SQLite
+                                       hackerrank_client/  weekly.py  support.py  batch.py
+                                       accounts.py  view_cache.py  env.py  init_db.py  seed_users.py
+                                      templates/  # 25 files: 15 pages + partials/ + macros/
+tests/test_services.py                   tests/  # 21 files, 546 tests, two-mode parity
+requirements.txt (fastapi jinja2 …)      requirements.txt  # pinned; no streamlit/altair/pyarrow
 ```
 
-**Is it still mainly Python? Yes.** All logic, auth, parsing, and chart configs stay Python
-(~800–1,000 lines and growing). The bulky "UI" parts already exist today as HTML/CSS *strings
-inside* `app.py` — they don't disappear, they move into `.html`/`.css` files where they belong.
-Hand-written JS ≈ 50–100 lines of glue; HTMX interactions are HTML attributes, not script.
+Deleted at cutover: `app.py`, `.streamlit/`, `runtime.txt`, the
+Streamlit/Altair/pyarrow deps. Also gone since: the Mangum `api/index.py`
+wrapper (Vercel serves `app/main.py` natively now), the Excel upload UI
+(Phase 5.2 — pages read the synced account fleet), and the Verification /
+Issues / History pages.
 
-## Contracts that carry over UNCHANGED
+**Is it still mainly Python? Yes.** All logic, auth, parsing, and chart configs
+stay Python — ~15,000 lines in `app/` today. The bulky "UI" parts that used to
+live as HTML/CSS strings inside `app.py` are now `.html`/`.css` files where they
+belong.
+
+## Contracts that carried over unchanged
 
 - `extract_username` — exactly as-is (profile URLs, bare usernames, malformed input).
-- Aggregation semantics — `Repository_Count` = repos grouped by username; `Primary_Language` =
-  mode of non-null languages, fallback `"Unknown"`; duplicate usernames dropped after merging.
-- Excel schema — `EXCEL_COLUMNS` headers byte-exact, including the trailing space in
-  `"GitHub : Repository 3 Link : "`; only `REQUIRED_EXCEL_COLUMNS` (six non-repo columns) are
-  enforced. The three "Repository N Link" columns are legacy: tolerated + header-normalized if
-  present, never used (BUG-015). Port note: Postgres `students` stores profile username only —
-  no submitted repo links, no schema columns for them.
-- GitHub API — validate via `GET /users/{username}`; repos via
-  `GET /users/{username}/repos?per_page=100` **paginated until a short page** (loop-guard ceiling
-  ~2000 repos, 0.1 s pacing between pages) with `timeout=15`, skipping non-200/non-list;
-  rate-limit problems surface as friendly errors using `X-RateLimit-*` headers.
-- Docs workflow — Bug Tracker `BUG-###` ids with ✅ convention; Taskflow ticking rules.
+- Aggregation semantics — `Repository_Count` = repos grouped by username;
+  `Primary_Language` = mode of non-null languages, fallback `"Unknown"`;
+  duplicate usernames dropped after merging.
+- Excel schema — `EXCEL_COLUMNS` headers byte-exact, including the trailing
+  space in `"GitHub : Repository 3 Link : "`. **Note:** since Phase 5.2 there is
+  no upload UI, so this contract is now enforced only by the test suite and the
+  frozen root `services.py` reference; Postgres `students` stores profile
+  username only.
+- GitHub API — `GET /users/{username}`; repos via
+  `GET /users/{username}/repos?per_page=100` paginated until a short page
+  (loop-guard ceiling, 0.1 s pacing, `timeout=15`), skipping non-200/non-list;
+  rate-limit problems surface as friendly errors from `X-RateLimit-*` headers.
+- Docs workflow — Bug Tracker `BUG-###` ids with the ✅ convention.
 
-## The two hard problems (and their fixes)
+## The two hard problems → what actually solved them
 
-1. **Serverless timeouts** — a full-roster run (~735 students × 2 calls ≈ 150 s+) cannot be one
-   request. Fix: the upload endpoint returns the parsed roster; the browser fires batched requests
-   (~25 students each) rendered through HTMX with a progress bar. Concurrency
-   (`httpx.AsyncClient` + `asyncio.Semaphore(8)`) *replaces* the serial `time.sleep(0.1)` loop —
-   faster than today, gentler on the API than naive parallelism.
-2. **No process memory** — `st.cache_data(ttl=3600)` dies with Streamlit's process model; serverless
-   functions are stateless. Fix: Upstash Redis keyed by a session cookie, TTL 3600 (mirrors the old
-   cache semantics). Pages navigate and cold starts happen without re-fetching the world.
+1. **Serverless timeouts.** *Planned:* the upload endpoint returns the parsed
+   roster and the browser fires HTMX batches of ~25 students.
+   *Shipped:* snapshots are computed by **scheduled syncs** — Vercel cron
+   (`/sync/accounts` nightly), GitHub Actions (`heavy-sync.yml` daily,
+   `hackerrank-sync.yml` daily), and self-sync on login — and stored per
+   account, so a page render reads a row instead of calling GitHub at all. The
+   roster-era batch worker survives as `app/batch.py`.
+2. **No process memory.** *Planned:* Upstash keyed by a session cookie.
+   *Shipped:* Upstash keyed on URL+token with TTL 3600 (mirrors the old
+   `st.cache_data` semantics), an in-process fallback, and a 120 s view cache
+   invalidated on write — so navigation and cold starts never re-fetch the
+   world.
 
-## How we work during the switch
+## How the switch was run
 
-1. **Tests first** (Taskflow 2.1): a pytest characterization suite against current `services.py`
-   proves the port preserves behavior — write it before touching anything.
-2. **Freeze rule**: `app.py` accepts bug-fixes only once Phase 2 starts (keeps the live deployed
-   app healthy until cutover). Zero restructuring.
-3. **Reference pattern**: `app.py` is read-only source material; each person ports FROM it INTO
-   separate destination files (templates/routes) — no shared-file merge conflicts, which is the
-   parallelism the old file-split plan tried to buy us.
-4. **Section map** (one-time, 30 min): index `app.py`'s line ranges → logical sections so nobody
-   scrolls 1,555 lines blind.
-5. **Parity pass before cutover** (2.9): real roster, Custom Value mode, click through every page,
-   chart, and export — side-by-side against the legacy app. Only then delete Streamlit code.
+1. **Tests first** — a pytest characterization suite against the current
+   `services.py` was written before the port; it still runs in two modes
+   (frozen legacy module vs `app/services.py`) as the parity harness.
+2. **Freeze rule** — legacy files accepted bug fixes only until cutover; the
+   root `services.py` / `storage.py` / `ui_helpers.py` survive as read-only
+   references.
+3. **Reference pattern** — each person ported *from* the legacy file *into*
+   separate destination files (templates/routes), so there were no shared-file
+   merge conflicts.
+4. **Parity pass, then cutover** (2026-08-29) — only then was Streamlit code
+   deleted.
 
 ## Fallback
 
-If the M1 spike or deploy hits blockers, or the timeline collapses (< ~3 weeks left): stop,
-keep improving the legacy Streamlit app (then revisit a minimal `ui/` split), and re-decide.
-With ~2.5 months of runway this shouldn't trigger.
+Not needed — the switch shipped. The one live risk today is **BUG-134**: an
+undefined `user_row` in `sync._student_row` breaks every snapshot build, so the
+self-updating half of this design is currently a no-op (see `Bug Tracker.md`).

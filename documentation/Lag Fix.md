@@ -1,7 +1,7 @@
 # Lag Fix — Performance Remediation Plan
 
 Branch: `Backend` (on top of `f3589d1` — merge of `main`)
-Status: **Phase 0/1/2 done (harness GREEN, weight −95%)** — Phase 3 (final verification + deploy) pending
+Status: **Phase 0/1/2 done (harness GREEN, weight −95%); BUG-124 is marked ✅ Fixed in `Bug Tracker.md`** — Phase 3 (final verification + deploy) pending, and its verification table needed correcting on 2026-10-11 (the green counts, the manual step, and the `/verification` page references below were stale).
 
 ## Measured results (local uvicorn + Neon, `scripts/perf_loop.py`)
 
@@ -13,7 +13,7 @@ Median TTFB ms, threshold 1500 ms:
 | `/students` | **timeout (120 s)** | **73** (first hit 1130) | **39** | was 636 KB / 462 imgs → **52 KB / 30 imgs** (server-side pagination) |
 | `/repositories` | **timeout (120 s)** | **154** | **97** | was 1251 KB / 1458 imgs → **65 KB / 60 imgs** |
 | `/leaderboards` | **timeout (120 s)** | **82** | **67** | was also paying blacklist/hidden ×4 |
-| `/verification` | **timeout (120 s)** | **585** | **554** | |
+| `/verification` | **timeout (120 s)** | **585** | **554** | page removed from the app after this run |
 | `/support` | 2883 | **318** | **300** | ticket list now fetched once |
 | `/settings` | 2615 | **649** (first hit 1178) | **520** | user row fetched once |
 | `/me` | 885 | **14** | **23** | |
@@ -63,7 +63,6 @@ Per-page query counts today (Postgres mode, nothing cached):
 | `/students` | N + 4 | 9 |
 | `/repositories` | N + 2 | 7 |
 | `/leaderboards` | N + 7 | 12 |
-| `/verification` | N + 3 | 8 |
 | `/support` | 3–4 | 3–4 |
 | `/settings` | 3 | 3 |
 
@@ -74,9 +73,10 @@ N = approved accounts (~474 in the live database).
 ## Phase 0 — Measure first (no fixes yet)
 
 - [x] Server timing harness `scripts/perf_loop.py`: session cookie login, hits
-  `/`, `/students`, `/repositories`, `/leaderboards`, `/verification`,
-  `/support`, `/settings`, `/me` ×3, reports median/min/max TTFB, status,
-  response bytes; exit 1 when any page > 1500 ms.
+  `/`, `/students`, `/repositories`, `/leaderboards`, `/support`, `/settings`,
+  `/me` ×3 (the `PAGES` list at `scripts/perf_loop.py:32-40` — `/verification`
+  was dropped when that page was removed from the app), reports median/min/max
+  TTFB, status, response bytes; exit 1 when any page > 1500 ms.
 - [x] Page-weight audit: HTML bytes, DOM row counts, `<img>` count, JS bytes
   per page from the harness response bodies.
 - [ ] Production baseline: read-only `curl` timings against the deployed URL
@@ -89,7 +89,9 @@ N = approved accounts (~474 in the live database).
 Gate: harness must be red on current code before any fix starts.
 **Met:** baseline run `baseline_run1.json` — 5 of 8 pages timed out at 120 s
 (`/`, `/students`, `/repositories`, `/leaderboards`, `/verification`),
-`/support` 2883 ms, `/settings` 2615 ms.
+`/support` 2883 ms, `/settings` 2615 ms. *(Recorded as measured — the
+`/verification` page no longer exists, so only 7 pages are harness-relevant
+today.)*
 
 ## Phase 1 — Server query path
 
@@ -166,8 +168,11 @@ Gate: harness must be red on current code before any fix starts.
 - [x] **Cheap wins**: repositories reveal now fetches one batch at a time
   (was two O(rows) selector sweeps per tick); `Cache-Control` for `/static`
   (`static_cache_control` middleware + `vercel.json` header — Starlette's
-  `StaticFiles(headers=)` is unsupported in this version); de-`fixed` the body
-  texture; font `@import` chain replaced with `preconnect` + `<link>`.
+  `StaticFiles(headers=)` is unsupported in this version); ~~de-`fixed` the
+  body texture~~ *(reverted by BUG-127 — with `scroll` the `cover` texture
+  re-scaled against the whole document and smeared; all five declarations are
+  `background-attachment: fixed` again)*; font `@import` chain replaced with
+  `preconnect` + `<link>`.
 
 ## Phase 3 — Verify
 
@@ -178,9 +183,9 @@ Gate: harness must be red on current code before any fix starts.
 | Page weight | Harness bytes + parsed row/`<img>` counts | Repos < 500 KB (was ~15 MB); no page downloads Plotly/htmx |
 | Browser feel | DevTools network + Performance locally: DOM nodes, transferred bytes, LCP, scroll FPS on `/repositories` | DOM nodes down ~10×; no 5.6 MB blocking JS; smooth scroll |
 | Production | Read-only `curl` timings against the deployed URL after deploy, same 8 URLs | Same direction/magnitude as local |
-| Regressions | `pytest tests\ -q` **both modes** (legacy 129 green / `MODULE_UNDER_TEST="app.services"` 126 green) + `test_pages_36.py` | All green |
-| Manual pass (AGENTS.md bug-fix rule) | Upload bundled roster xlsx, Sample mode → Run Analysis → click every changed page + exports + charts | Original repro gone, not just different |
-| Docs | `Taskflow.md` ticks + `Bug Tracker.md` `BUG-###` ✅ with root cause + before/after numbers | Recorded |
+| Regressions | `pytest tests\ -q` **both modes** — measured 2026-10-11: **15 failed / 531 passed / 10 skipped** default, **18 failed / 525 passed / 13 skipped** port, all traceable to BUG-134 (`sync._student_row` NameError). The old "129 legacy / 126 port green" figures are long stale. | **0 failed in both modes** |
+| Manual pass (AGENTS.md bug-fix rule) | Sign in → approve an onboarding submission → trigger a sync (`POST /sync/accounts` or `/debug/force_sync_all`) → click every changed page + its exports/charts. *(The old "upload the bundled roster xlsx in Sample mode" step is impossible — the roster upload UI was removed in Phase 5.2 and the xlsx is not in this checkout.)* | Original repro gone, not just different |
+| Docs | `Bug Tracker.md` `BUG-###` ✅ with root cause + before/after numbers, plus `Features List.md` when a user-visible feature moved | Recorded |
 
 ## Sequencing & risks
 

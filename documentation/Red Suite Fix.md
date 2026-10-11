@@ -1,10 +1,31 @@
-# Red Suite Fix — plan for the 73 failing tests
+# Red Suite Fix — plan for the red test suite
 
 Branch: `Backend` (after `961e5ac` — merge of `main`). Tracked under `BUG-125`
 (the red suite) with the individual defects as `BUG-126`+ in `Bug Tracker.md`.
 
-The 73 failures are **9 root causes**, not 73 bugs. This doc is the fix plan:
-cluster → root cause → does the *code* or the *test* move → acceptance check.
+The original **73 failures were 9 root causes**, not 73 bugs. This doc is the
+fix plan: cluster → root cause → does the *code* or the *test* move →
+acceptance check.
+
+> **Status 2026-10-11 — the picture changed.** The suite is down to
+> **15 failed / 531 passed / 10 skipped** (default mode) and
+> **18 failed / 525 passed / 13 skipped** (`MODULE_UNDER_TEST="app.services"`),
+> and the remaining failures are no longer spread across nine clusters: every
+> one of them traces to a *single new defect*, **BUG-134** —
+> `sync._student_row` references an undefined `user_row` (`app/sync.py:181,183`)
+> and raises `NameError` on every snapshot build, so sync produces nothing and
+> every test that expects synced data fails downstream. Fix BUG-134 first; then
+> re-measure before touching any cluster below.
+>
+> Clusters with **zero failing tests** as of that run: 2 (scorer, `test_services`
+> green in default mode), 3 (RBAC, `test_auth` green), 4 (empty overview), 5
+> (bell — `test_notifications`/`test_staff_bell` green), 6 (Vercel entrypoint),
+> 8 (CSS) and 9 (ticket ordering). Cluster 1 (division) and 7
+> (`Primary_Language`) are still represented inside the BUG-134 blast radius
+> and must be re-checked *after* that fix rather than treated as separate work.
+>
+> Note the two modes disagree slightly (15 vs 18): the 3 extra port-mode
+> failures are `TestLegacyStrictScoring` in `tests/test_services.py`.
 
 | # | Cluster | Tests | Severity | Owner bug |
 |---|---|---|---|---|
@@ -18,8 +39,9 @@ cluster → root cause → does the *code* or the *test* move → acceptance che
 | 8 | Hardcoded blue `rgba` in `layout.css` | 1 | Low (cosmetic) | this doc |
 | 9 | Flaky ticket ordering | 1 | None (test defect) | this doc |
 
-Baseline for every check: `.\.venv\Scripts\python.exe -m pytest tests\ -q`
-currently **73 failed / 480 passed / 11 skipped**; the failure-id set lives in
+Baseline for every check: `.\.venv\Scripts\python.exe -m pytest tests\ -q`.
+**Current: 15 failed / 531 passed / 10 skipped** (2026-10-11) — originally
+73 failed / 480 passed / 11 skipped, failure-id set in
 `%TEMP%\opencode\after_merge_tests.txt`. A fix is done when the cluster's tests
 are green **and** the count of *other* failures does not change.
 
@@ -28,8 +50,8 @@ are green **and** the count of *other* failures does not change.
 ## 1. Onboarding division contract — 39 tests — HIGH (BUG-126)
 
 **Root cause.** `auth.DIVISIONS = tuple(str(n) for n in range(1, 15))`
-(`app/auth.py:83`) — the validator only accepts `"1"`…"`14`", and the onboarding
-form posts exactly those values (`pages/onboarding.html:212-214`). The test
+(`app/auth.py:91`) — the validator only accepts `"1"`…"`14`", and the onboarding
+form posts exactly those values (`pages/onboarding.html:120,144,174,420`). The test
 suite (and the older product language) uses `"Division 1"`…`"Division 14"`.
 Both landed in the same commit (`6caf269`), so the contract has been split
 since. `valid_division("Division 1")` → `False` → `error=invalid_division` →
@@ -125,7 +147,8 @@ green; manually visit `/` with an empty fleet and see the guidance copy.
 ## 5. Bell always visible to students — 4 tests — LOW (BUG-130)
 
 **Root cause.** `_bell_context()` returns a truthy `notif_empty` string for
-students **even with zero notifications** (`app/main.py:1151`), so
+students **even with zero notifications** (`app/main.py:1419`, keys built at
+`main.py:1407-1489`), so
 `<details class="notif-bell">` always renders; `WEEKLY_TOP_STUDENT` wiring
 from `main` also targets all roles.
 
@@ -139,21 +162,17 @@ the four tests instead.
 
 **Accept:** the 4 tests green under whichever branch is chosen.
 
-## 6. Vercel entrypoint — 5 tests — LOW (BUG-121)
+## 6. Vercel entrypoint — 5 tests — LOW (BUG-121) — ✅ resolved 2026-10-11
 
-**Root cause.** `api/index.py` was deleted on `main` (Vercel now serves
+**Then.** `api/index.py` was deleted on `main` (Vercel now serves
 `app/main.py` natively; `vercel.json` has no `api/` route) but the tests still
-import it.
+imported it, so 5 tests failed on `ModuleNotFoundError`.
 
-**Why it matters.** No production impact today; we silently lost coverage of
-the `X-Forwarded-Prefix` stripping logic.
-
-**Fix.** Delete `TestVercelEntrypoint` (the wrapper is not part of the
-supported path — README already dropped the reference) or restore a thin
-`api/index.py`. Prefer deletion + a comment pointing at `vercel.json`.
-
-**Accept:** `tests/test_pages_36.py::TestVercelEntrypoint` no longer reported;
-`vercel.json` still routes `/(.*)` → `/app/main.py`.
+**Now.** No test imports `api.index` any more — the only mention left is the
+`TestVercelEntrypoint` docstring itself (`tests/test_pages_36.py:990`), which
+now asserts the live routing table "instead of the removed wrapper", and
+`test_pages_36.py` has **zero failures** in both modes. Acceptance met:
+`vercel.json` still routes `/(.*)` → `/app/main.py`. Ready to close BUG-121.
 
 ## 7. `Primary_Language` tie-break — 1 test — LOW
 
@@ -187,6 +206,11 @@ stably). **Accept:** 10 consecutive full runs without it appearing.
 
 ## Sequencing
 
+0. **BUG-134 first** (2026-10-11) — the undefined `user_row` in
+   `sync._student_row` (`app/sync.py:181,183`) breaks every snapshot build and
+   currently accounts for all 15 red tests. It is a two-name fix; re-run the
+   suite afterwards and re-assess which of the clusters below still exist
+   before starting any of them.
 1. **#1 division** — unblocks 39 tests, single constant + normaliser.
 2. **#2 scorer** — unblocks 20; decide code-vs-test authority first (BUG-120).
 3. **#3 RBAC** — one-line decision, then one-line fix.

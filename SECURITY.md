@@ -21,7 +21,7 @@ We will acknowledge within 48 hours and provide a fix timeline within one week.
 
 ## Architecture overview (security-relevant)
 
-This application is a **FastAPI + Jinja2 + HTMX + Plotly** dashboard deployed on **Vercel** with a **Neon Postgres** database. It validates student GitHub accounts and fetches repo stats from an uploaded Excel roster.
+This application is a **FastAPI + Jinja2 + ECharts** dashboard deployed on **Vercel** with a **Neon Postgres** database. It validates student GitHub accounts and builds their analytics from synced profile data — accounts are linked through OAuth during onboarding and refreshed by scheduled syncs (there is no spreadsheet upload step).
 
 ### Authentication
 
@@ -44,14 +44,14 @@ All secrets are loaded from environment variables or `.env.local` (gitignored). 
 | `CRON_SECRET` | Authenticates Vercel cron triggers (constant-time HMAC comparison) |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | API response cache |
 
-**Never** hardcode secrets in any tracked file. All secret files (`.env.local`, `.streamlit/secrets.toml`) are in `.gitignore`.
+**Never** hardcode secrets in any tracked file. The secrets file (`.env.local`) is in `.gitignore`.
 
 ### Data protection
 
 - All SQL queries use parameterized placeholders (psycopg3 `%s` for Postgres, SQLite `?`).
 - User input IDs (ticket IDs, limits) are cast to `int()` before use; limits are clamped to `max(1, min(limit, 1000))`.
 - HTML output is escaped via the `escape()` helper (`app/ui_helpers.py`).
-- File uploads are validated for size (20 MB limit) and type.
+- File uploads (support-ticket attachments, profile images) are validated for size (20 MB limit) and type by magic bytes, not just the file extension.
 - GitHub API responses are cached with SHA-256 keyed on URL + token; the token is never stored in plaintext.
 - Database connection URLs are redacted before logging (only hostname is shown).
 
