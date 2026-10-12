@@ -727,6 +727,103 @@ window.__EC_THEME = (function () {
 
 
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART 4b — PIE  (Student Consistency Statistics)
+   data: [ { name: "Consistent", value: 12 }, ... ]
+   Theme-aware pie with fixed semantic colours:
+     Consistent → success, Doing Good → warning, Need Attention → danger.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro pie(id, data) %}
+{% if data %}
+{{ _theme_bridge() }}
+<div id="{{ id }}" class="echart-box" style="height:340px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var colorMap = {
+      'Consistent': p.success,
+      'Doing Good': p.warning,
+      'Need Attention': p.danger
+    };
+    var total = 0;
+    raw.forEach(function (d) { total += (Number(d.value) || 0); });
+
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'item',
+        formatter: function (info) {
+          var pct = total > 0 ? (info.value / total * 100).toFixed(1) : '0';
+          return '<b>' + info.name + '</b><br/>' +
+                 'Students: ' + info.value + '<br/>' +
+                 'Share: ' + pct + '%';
+        }
+      }),
+      legend: {
+        bottom: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 16
+      },
+      series: [{
+        type: 'pie',
+        radius: '62%',
+        center: ['50%', '46%'],
+        data: raw.map(function (d, i) {
+          return {
+            name: d.name,
+            value: d.value,
+            itemStyle: {
+              color: colorMap[d.name] || p.series[i % p.series.length],
+              borderColor: p.card,
+              borderWidth: 2
+            }
+          };
+        }),
+        label: {
+          color: p.text,
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: 600,
+          formatter: function (info) {
+            var pct = total > 0 ? (info.value / total * 100).toFixed(0) : '0';
+            return info.name + '\n' + info.value + '  (' + pct + '%)';
+          },
+          lineHeight: 18
+        },
+        labelLine: {
+          lineStyle: { color: p.muted }
+        },
+        emphasis: {
+          scale: true,
+          scaleSize: 6,
+          itemStyle: {
+            shadowBlur: 12,
+            shadowColor: 'rgba(0,0,0,0.25)'
+          }
+        },
+        animationDuration: 600,
+        animationEasing: 'cubicOut'
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% endif %}
+{% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    CHART 5 — MULTI-LINE AREA  (Weekly Activity Trend Across Batches)
    data: { weeks: ["2026-W35", ...],
            series: [ { batch: "B1", values: [1.2, ...] }, ... ] }
