@@ -220,6 +220,40 @@ class TestApprovalFlow:
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "approved"
 
 
+class TestLinkProfilesPanel:
+    """Student-side Link Profiles card: the saved handle links to the public
+    HackerRank profile, and a pasted profile URL resolves to that same
+    canonical link instead of doubling up the path."""
+
+    def _panel(self, client):
+        return client.get("/onboarding", headers={"Accept": "text/html"}).text
+
+    def test_no_card_before_a_handle_is_saved(self, client):
+        signup(client)
+        login(client)
+        body = self._panel(client)
+        assert 'id="hackerrank-card-link"' not in body
+        assert 'id="hackerrank-username-input"' in body  # input still rendered
+
+    def test_saved_handle_links_to_public_profile(self, client):
+        signup(client)
+        login(client)
+        submit(client, hackerrank="hr_stu1")
+        body = self._panel(client)
+        assert '<a id="hackerrank-card-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
+        assert 'target="_blank"' in body and 'rel="noopener"' in body
+        # Live preview link under the input points at the same profile.
+        assert '<a id="hackerrank-open-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
+
+    def test_pasted_profile_url_normalizes_to_handle(self, client):
+        signup(client)
+        login(client)
+        submit(client, hackerrank="https://www.hackerrank.com/profile/hr_stu1/")
+        body = self._panel(client)
+        assert '<a id="hackerrank-card-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
+        assert "hackerrank.com/profile/https" not in body  # no doubled path
+
+
 class TestLedgerView:
     def test_ledger_lists_submissions_for_admin(self, client):
         signup(client, "1234567890.s@college.edu")

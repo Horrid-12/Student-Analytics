@@ -1629,6 +1629,15 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
         except Exception:
             ctx["submission"] = {}
+    # Link Profiles panel: normalise the saved handle (tolerates a pasted
+    # profile URL or an "@handle", like the roster importer does) and build the
+    # canonical public profile URL so the HackerRank card always opens
+    # https://www.hackerrank.com/profile/<handle>.
+    _hr_handle = services.extract_hackerrank_username(
+        (ctx["submission"] or {}).get("hackerrank_username") or ""
+    ) or ""
+    ctx["hackerrank_handle"] = _hr_handle
+    ctx["hackerrank_url"] = services.hackerrank_profile_url(_hr_handle)
     ctx["saved"] = saved
     ctx["error"] = error
     ctx["action"] = action
