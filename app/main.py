@@ -2610,10 +2610,27 @@ def my_profile_page(request: Request, roster: str = ""):
     (RBAC "My Profile"); non-roster users get a friendly empty state."""
     ctx = _base_context(request, "My Profile", roster)
     profile = None
-    view = _analysis_view(roster) if roster else (_account_view(request) or _fleet_view(request))
+    view = _analysis_view(roster) if roster else _account_view(request)
+    user = getattr(request.state, "user", None) or {}
+    email = user.get("email", "")
     if view is not None and _is_complete(view):
-        user = getattr(request.state, "user", None) or {}
-        profile = views.own_profile_payload(view, user.get("email", ""))
+        profile = views.own_profile_payload(view, email)
+    if profile is None and not roster:
+        fleet = _fleet_view(request)
+        if fleet is not None and _is_complete(fleet):
+            profile = views.own_profile_payload(fleet, email)
+            if profile is not None:
+                view = fleet
+    if profile is None and view is not None and _is_complete(view):
+        user_row = getattr(request.state, "user_row", None)
+        if user_row:
+            prn = str(user_row.get("prn") or "").strip()
+            if prn:
+                profile = views.own_profile_payload(view, prn)
+            if profile is None:
+                gh = str(user_row.get("github_username") or "").strip()
+                if gh:
+                    profile = views.own_profile_payload(view, gh)
     return templates.TemplateResponse(
         request,
         "pages/me.html",

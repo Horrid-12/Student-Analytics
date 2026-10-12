@@ -111,6 +111,18 @@ class TestFindOwnStudentRow:
     def test_own_profile_payload_unknown_email(self):
         assert views.own_profile_payload(make_view(), "ghost@college.edu") is None
 
+    def test_matches_by_prn_digits_in_email(self):
+        view = make_view(email="other@college.edu", sid="1272261921")
+        row = views.find_own_student_row(view["students"], "1272261921.s@college.edu")
+        assert row is not None
+        assert row["Student_ID"] == "1272261921"
+
+    def test_matches_by_github_handle(self):
+        view = make_view(email="other@college.edu", sid="101")
+        row = views.find_own_student_row(view["students"], "stuhandle")
+        assert row is not None
+        assert row["GitHub_Username"] == "stuhandle"
+
 
 class TestMyProfilePage:
     def _view(self, monkeypatch, view):

@@ -394,7 +394,7 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
     now = time.strftime(_SYNC_TIME_FORMAT)
     if err:
         existing = accounts.get_snapshot(email)
-        if existing and existing.get("status") == "ok":
+        if not force and existing and existing.get("status") == "ok":
             logger.warning("sync_one encountered error '%s' for %s, but keeping existing ok snapshot", err, email)
             return False, err, err
         accounts.init_db()

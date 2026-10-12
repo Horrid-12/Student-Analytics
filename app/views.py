@@ -408,6 +408,7 @@ def account_view(email: str):
             "GitHub_Username": user_row.get("github_username"),
             "Submitted_GitHub_Username": user_row.get("github_username"),
             "Roster_Email": user_row.get("email"),
+            ROSTER_EMAIL_COL: user_row.get("email"),
             "Repository_Count": 0,
             "Active_Repositories": 0,
             "Primary_Language": "Unknown",
@@ -421,9 +422,11 @@ def account_view(email: str):
         }
         snapshot = {"student": student, "repos": [], "team_repos": []}
     
-    student = snapshot.get("student") or {}
+    student = dict(snapshot.get("student") or {})
     if not student:
         return None
+    student[ROSTER_EMAIL_COL] = email
+    student["Roster_Email"] = email
     records = [student]
     columns = DASHBOARD_COLS + [ROSTER_EMAIL_COL]
     students = pd.DataFrame(records)
@@ -502,6 +505,7 @@ def fleet_view():
                 "GitHub_Username": user_row.get("github_username"),
                 "Submitted_GitHub_Username": user_row.get("github_username"),
                 "Roster_Email": user_row.get("email"),
+                ROSTER_EMAIL_COL: user_row.get("email"),
                 "Repository_Count": 0,
                 "Active_Repositories": 0,
                 "Primary_Language": "Unknown",
@@ -515,9 +519,11 @@ def fleet_view():
             }
             all_rows.append(student)
             continue
-        student = snapshot.get("student") or {}
+        student = dict(snapshot.get("student") or {})
         if not student:
             continue
+        student[ROSTER_EMAIL_COL] = email
+        student["Roster_Email"] = email
         all_rows.append(student)
         repo_rows.extend(snapshot.get("repos") or [])
         # Old snapshots (pre-team persistence) lack the key: default to [].
@@ -1892,15 +1898,56 @@ def find_own_student_row(students: pd.DataFrame, email: str):
     if students is None or email is None:
         return None
     needle = normalize_email(email)
-    if not needle or ROSTER_EMAIL_COL not in getattr(students, "columns", []):
-        return None
-    try:
-        matches = students[students[ROSTER_EMAIL_COL].apply(normalize_email) == needle]
-    except (KeyError, TypeError, ValueError):
-        return None
-    if matches.empty:
-        return None
-    return matches.iloc[0].to_dict()
+    raw_ident = str(email).strip().lower()
+    cols = getattr(students, "columns", [])
+
+    # 1. Direct match on ROSTER_EMAIL_COL ("Email address")
+    if needle and ROSTER_EMAIL_COL in cols:
+        try:
+            matches = students[students[ROSTER_EMAIL_COL].apply(normalize_email) == needle]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    # 2. Match on Roster_Email column if present
+    if needle and "Roster_Email" in cols:
+        try:
+            matches = students[students["Roster_Email"].apply(normalize_email) == needle]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    # 3. Match by Student_ID (PRN digits from email, e.g. 1272261921 from 1272261921.s@mitwpu.edu.in)
+    digits = "".join(ch for ch in raw_ident.split("@")[0] if ch.isdigit())
+    if len(digits) >= 8 and STUDENT_ID_COL in cols:
+        try:
+            matches = students[students[STUDENT_ID_COL].astype(str).str.strip() == digits]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    # 4. Direct match on Student_ID if email itself is a PRN
+    if raw_ident and STUDENT_ID_COL in cols:
+        try:
+            matches = students[students[STUDENT_ID_COL].astype(str).str.strip().str.lower() == raw_ident]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    # 5. Match by GitHub Username if raw_ident matches
+    if raw_ident and "GitHub_Username" in cols:
+        try:
+            matches = students[students["GitHub_Username"].astype(str).str.strip().str.lower() == raw_ident]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    return None
 
 
 def own_profile_payload(view: dict, email: str) -> dict | None:
