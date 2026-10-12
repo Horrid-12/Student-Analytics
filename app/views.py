@@ -393,6 +393,7 @@ def account_view(email: str):
     """
     from app import accounts
 
+    user_row = None
     snapshot = accounts.get_snapshot(email)
     if snapshot is None or snapshot.get("status") != "ok":
         from app import auth
@@ -404,7 +405,7 @@ def account_view(email: str):
             "Student Name": user_row.get("name"),
             "Division": user_row.get("division"),
             "Batch": user_row.get("practical_batch"),
-            "Semester": user_row.get("semester"),
+            "Semester": user_row.get("semester") or "Semester 1",
             "GitHub_Username": user_row.get("github_username"),
             "Submitted_GitHub_Username": user_row.get("github_username"),
             "Roster_Email": user_row.get("email"),
@@ -425,6 +426,11 @@ def account_view(email: str):
     student = dict(snapshot.get("student") or {})
     if not student:
         return None
+    if not student.get("Semester"):
+        if user_row is None:
+            from app import auth
+            user_row = auth.get_user(email)
+        student["Semester"] = (user_row or {}).get("semester") or "Semester 1"
     student[ROSTER_EMAIL_COL] = email
     student["Roster_Email"] = email
     records = [student]
@@ -501,7 +507,7 @@ def fleet_view():
                 "Student Name": user_row.get("name"),
                 "Division": user_row.get("division"),
                 "Batch": user_row.get("practical_batch"),
-                "Semester": user_row.get("semester"),
+                "Semester": user_row.get("semester") or "Semester 1",
                 "GitHub_Username": user_row.get("github_username"),
                 "Submitted_GitHub_Username": user_row.get("github_username"),
                 "Roster_Email": user_row.get("email"),
@@ -522,6 +528,8 @@ def fleet_view():
         student = dict(snapshot.get("student") or {})
         if not student:
             continue
+        if not student.get("Semester"):
+            student["Semester"] = user_row.get("semester") or "Semester 1"
         student[ROSTER_EMAIL_COL] = email
         student["Roster_Email"] = email
         all_rows.append(student)
