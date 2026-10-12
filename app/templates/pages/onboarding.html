@@ -484,9 +484,48 @@
 
                 <div class="form-group" style="margin: 0 0 16px 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">HackerRank Username *</label>
-                    <input type="text" name="hackerrank_username" form="onboarding-form" value="{{ submission.hackerrank_username }}" placeholder="e.g. 1272261921_s" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} required />
-                    <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.</div>
+                    <input type="text" name="hackerrank_username" form="onboarding-form" id="hackerrank-username-input" value="{{ submission.hackerrank_username }}" placeholder="e.g. 1272261921_s" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} required />
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.<a id="hackerrank-open-link" href="{{ hackerrank_url }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none; margin-left: 6px;{% if not hackerrank_url %} display: none;{% endif %}">Open profile &#8599;</a></div>
                 </div>
+
+                {% if submission.hackerrank_username %}
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
+                    <span style="color: var(--text); font-size: 13px; font-weight: 500;">HackerRank · {% if hackerrank_url %}<a id="hackerrank-card-link" href="{{ hackerrank_url }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">{{ hackerrank_handle }}</a>{% else %}<span id="hackerrank-card-link" style="color: var(--blue);">{{ submission.hackerrank_username }}</span>{% endif %}</span>
+                    {% if submission.onboarding_status == 'approved' %}
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #22c55e;">Verified</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <script>
+                (function () {
+                    var input = document.getElementById('hackerrank-username-input');
+                    var openLink = document.getElementById('hackerrank-open-link');
+                    var cardLink = document.getElementById('hackerrank-card-link');
+                    if (!input || !openLink) return;
+                    // Mirrors services.extract_hackerrank_username(): a pasted
+                    // profile URL, "@handle" or bare handle all resolve to the
+                    // one canonical https://www.hackerrank.com/profile/<handle>.
+                    function handleOf(value) {
+                        var raw = (value || '').trim();
+                        if (!raw || raw === '-' || raw === '--') return '';
+                        var fromUrl = raw.match(/hackerrank\.com\/profile\/([^/?#\s]+)/i);
+                        if (fromUrl) return fromUrl[1].replace(/^@+/, '').replace(/[.,;:!\/]+$/, '');
+                        var bare = raw.replace(/^@+/, '').replace(/[.,;:!]+$/, '');
+                        return (/^[A-Za-z0-9_.@-]+$/.test(bare)) ? bare : '';
+                    }
+                    function refresh() {
+                        var handle = handleOf(input.value);
+                        if (!handle) { openLink.style.display = 'none'; return; }
+                        var url = 'https://www.hackerrank.com/profile/' + encodeURIComponent(handle);
+                        openLink.href = url;
+                        openLink.style.display = '';
+                        if (cardLink) { cardLink.href = url; cardLink.textContent = handle; }
+                    }
+                    input.addEventListener('input', refresh);
+                    refresh();
+                })();
+                </script>
 
                 {% if submission.linked_github_username %}
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">

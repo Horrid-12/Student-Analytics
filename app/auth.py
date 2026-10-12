@@ -1595,7 +1595,7 @@ def submit_onboarding(
     division = (division or "").strip()
     main_batch = (main_batch or "").strip()
     practical_batch = (practical_batch or "").strip()
-    semester = (semester or "").strip()
+    semester = (semester or "").strip() or "Semester 1"
     if not valid_prn(prn):
         return False, "prn_format"
     if not valid_degree_branch(degree_branch):
@@ -1642,7 +1642,7 @@ def admin_edit_onboarding(
     division = (division or "").strip()
     main_batch = (main_batch or "").strip()
     practical_batch = (practical_batch or "").strip()
-    semester = (semester or "").strip()
+    semester = (semester or "").strip() or "Semester 1"
     hackerrank_username = (hackerrank_username or "").strip()
     github_username = (github_username or "").strip()
     
