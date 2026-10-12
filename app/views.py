@@ -1736,7 +1736,11 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     if "Commits" in student_repos.columns:
         # Exact per-repo author commits; None on runs predating commit history
         # (and never NaN, so the template can test `is not none`).
-        student_repos["Commits"] = student_repos["Commits"].apply(_clean_repo_commits)
+        student_repos["Commits"] = pd.Series(
+            [_clean_repo_commits(v) for v in student_repos["Commits"]],
+            dtype=object,
+            index=student_repos.index,
+        )
     lang_counts = (
         student_repos["Language"].value_counts()
         if not student_repos.empty and "Language" in student_repos.columns

@@ -269,6 +269,41 @@ def _carry_forward_heavy_metrics(email: str, student: dict, team_repos: list, is
     return student, team_repos
 
 
+def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "", token: str | None = None) -> list[dict]:
+    """Preserve per-repo author commits (Commits, Commits_30d, Commits_90d) from
+    the previous heavy snapshot so lightweight login syncs don't reset them to None.
+    If a repo's commits are still missing and a token is available, fetch them."""
+    if not repos:
+        return repos
+    try:
+        prev_snapshot = accounts.get_snapshot(email) or {}
+    except Exception:
+        prev_snapshot = {}
+    prev_repos = prev_snapshot.get("repos") or []
+    prev_by_name = {
+        str(r.get("Repository") or r.get("name") or "").strip().lower(): r
+        for r in prev_repos
+    }
+    for repo in repos:
+        name = str(repo.get("Repository") or repo.get("name") or "").strip()
+        prev_r = prev_by_name.get(name.lower())
+        if prev_r:
+            for col in ("Commits", "Commits_30d", "Commits_90d"):
+                if repo.get(col) is None and prev_r.get(col) is not None:
+                    repo[col] = prev_r[col]
+        if repo.get("Commits") is None and username and name and token:
+            try:
+                commits, ok = services.get_repo_author_commits(f"{username}/{name}", username, token)
+                if ok:
+                    n_all, n_30, n_90 = services._windowed_commit_counts(commits)
+                    repo["Commits"] = int(n_all)
+                    repo["Commits_30d"] = int(n_30)
+                    repo["Commits_90d"] = int(n_90)
+            except Exception:
+                pass
+    return repos
+
+
 def _academic_year_for(value) -> str:
     """July-June academic-year label from an onboarding timestamp.
 
@@ -411,6 +446,7 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
     accounts.init_db()
     student = _carry_forward_profile_links(email, student)
     student, team_repos = _carry_forward_heavy_metrics(email, student, team_repos, is_lightweight=True)
+    repos = _carry_forward_repo_commits(email, repos, username=username, token=token)
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
         repos=repos, team_repos=team_repos, synced_at=now, error="",

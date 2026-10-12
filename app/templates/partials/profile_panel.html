@@ -80,8 +80,8 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
                   </button>
                   {% endif %}
-                  {% if repo.Commits is not none %}
-                  <span class="repo-commits">{{ repo.Commits }} commit{% if repo.Commits != 1 %}s{% endif %}</span>
+                  {% if repo.Commits is not none and repo.Commits == repo.Commits %}
+                  <span class="repo-commits">{{ repo.Commits|int if repo.Commits is number else repo.Commits }} commit{% if repo.Commits != 1 and repo.Commits != 1.0 %}s{% endif %}</span>
                   {% else %}
                   <span class="repo-commits is-missing">&ndash;</span>
                   {% endif %}
