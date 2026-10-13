@@ -576,6 +576,11 @@
 </script>
 
 <section class="panel">
+  <div class="panel-title">Statistics</div>
+  {{ ec.pie('statistics-pie', payload.statistics_data) }}
+</section>
+
+<section class="panel">
   <div class="radar-header">
     <div class="panel-title">Class Metrics Radar</div>
     <div id="radar-legend-box" class="radar-legend-box">
