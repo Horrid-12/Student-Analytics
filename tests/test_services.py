@@ -647,25 +647,30 @@ def _quality_score(scorer, row) -> int:
 
 
 class TestAntiGamingScoring:
-    """Boundary matrix for the live anti-gaming 100-point scoring system
+    """Boundary matrix for the live strict 100-point scoring system
     (``app_services`` — the pipeline that actually runs).
 
-    Six fixed categories — Commit Volume & Consistency (25), Direct Team
-    Collaboration (20), Originality & Fork Guard (15), Code Density & File
-    Quality (15), Community & Popularity (15), Recent Maintenance (10) — use
-    hard, mutually exclusive tiers and are structurally capped, so the best
-    repo scores exactly 100 and the worst 0. Missing columns (old runs, team
-    rows) read as 0. The frozen legacy copy keeps its own (older, strict)
-    rubric — see TestLegacyStrictScoring — so this matrix is app-only.
+    Nine fixed categories — Commit Volume (15), Commit Spread (10), Team
+    Collaboration (12), PR / Issue Activity (8), Originality & Fork Guard
+    (10), Code Density & File Quality (15), Documentation & Hygiene (10),
+    Community & Popularity (10), Recent Maintenance (10) — use hard,
+    mutually exclusive tiers and are structurally capped, so the best repo
+    scores exactly 100 and the worst 0. Top tiers are deliberately hard:
+    90+ needs a near-sweep, so only a handful of repos per thousand ever
+    reach Exceptional. Missing columns (old runs, team rows) read as 0.
+    The frozen legacy copy keeps its own (older, strict) rubric — see
+    TestLegacyStrictScoring — so this matrix is app-only.
     """
 
     @staticmethod
     def _max_row(days_ago=0):
         return _quality_row(
             days_ago,
-            Total_Commits=51, Commit_Distinct_Days=3, Human_Contributors=3,
-            Is_Fork=0, Source_Code_Count=8, Total_File_Count=10,
-            Stars=20, Forks=1,
+            Total_Commits=120, Commit_Distinct_Days=12, Human_Contributors=6,
+            Pull_Requests=6, Issues=5,
+            Is_Fork=0, Source_Code_Count=7, Total_File_Count=10,
+            Has_README=1, Topics_Count=3, Description="x",
+            Stars=12, Forks=1,
         )
 
     @staticmethod
@@ -679,33 +684,39 @@ class TestAntiGamingScoring:
         assert self._score(self._max_row(0)) == 100
 
     @pytest.mark.parametrize(
-        "stars,expected", [(0, 0), (4, 5), (5, 10)]
+        "stars,expected", [(0, 0), (4, 2), (5, 5), (10, 7)]
     )
     def test_stars_tiers(self, stars, expected):
         assert self._score(_quality_row(200, Stars=stars)) == expected
 
     @pytest.mark.parametrize(
-        "commits,expected", [(0, 0), (9, 5), (10, 10), (50, 15)]
+        "commits,expected", [(0, 0), (1, 2), (5, 5), (20, 8), (50, 12), (100, 15)]
     )
     def test_commit_volume_tiers(self, commits, expected):
         assert self._score(_quality_row(200, Total_Commits=commits)) == expected
 
     @pytest.mark.parametrize(
-        "distinct,expected", [(1, 15), (2, 20), (3, 25)]
+        "distinct,expected", [(1, 12), (2, 14), (3, 17), (5, 19), (10, 22)]
     )
     def test_consistency_spread_tiers(self, distinct, expected):
-        # Spread rides on top of a 51-commit volume base (15).
-        assert self._score(_quality_row(200, Total_Commits=51, Commit_Distinct_Days=distinct)) == expected
+        # Spread rides on top of a 60-commit volume base (12).
+        assert self._score(_quality_row(200, Total_Commits=60, Commit_Distinct_Days=distinct)) == expected
 
     @pytest.mark.parametrize(
-        "humans,expected", [(1, 0), (2, 10), (3, 20)]
+        "humans,expected", [(1, 0), (2, 4), (3, 8), (5, 12)]
     )
     def test_human_contributors_tiers(self, humans, expected):
         assert self._score(_quality_row(200, Human_Contributors=humans)) == expected
 
     @pytest.mark.parametrize(
+        "activity,expected", [(0, 0), (1, 2), (5, 5), (10, 8)]
+    )
+    def test_pr_issue_activity_tiers(self, activity, expected):
+        assert self._score(_quality_row(200, Pull_Requests=activity)) == expected
+
+    @pytest.mark.parametrize(
         "is_fork,post_fork,expected",
-        [(None, 0, 0), (0, 0, 15), (1, 0, 0), (1, 5, 5), (1, 25, 10)],
+        [(None, 0, 0), (0, 0, 10), (1, 0, 0), (1, 5, 2), (1, 25, 6)],
     )
     def test_fork_guard_tiers(self, is_fork, post_fork, expected):
         row = _quality_row(200, Post_Fork_Commits=post_fork)
@@ -714,13 +725,20 @@ class TestAntiGamingScoring:
         assert self._score(row) == expected
 
     @pytest.mark.parametrize(
-        "source,total,expected", [(0, 0, 0), (1, 10, 5), (3, 10, 10), (8, 10, 15)]
+        "source,total,expected", [(0, 0, 0), (1, 10, 2), (3, 10, 5), (4, 10, 10), (7, 10, 15)]
     )
     def test_density_tiers(self, source, total, expected):
         assert self._score(_quality_row(200, Source_Code_Count=source, Total_File_Count=total)) == expected
 
     @pytest.mark.parametrize(
-        "stars,forks,expected", [(0, 0, 0), (0, 1, 5), (5, 0, 10), (5, 1, 15)]
+        "readme,topics,desc,expected",
+        [(0, 0, None, 0), (1, 0, None, 6), (0, 2, "x", 3), (1, 3, "x", 10)],
+    )
+    def test_hygiene_tiers(self, readme, topics, desc, expected):
+        assert self._score(_quality_row(200, Has_README=readme, Topics_Count=topics, Description=desc)) == expected
+
+    @pytest.mark.parametrize(
+        "stars,forks,expected", [(0, 0, 0), (0, 1, 3), (1, 0, 2), (5, 0, 5), (10, 0, 7), (10, 1, 10)]
     )
     def test_community_tiers(self, stars, forks, expected):
         assert self._score(_quality_row(200, Stars=stars, Forks=forks)) == expected
@@ -731,12 +749,13 @@ class TestAntiGamingScoring:
     def test_recency_tiers(self, days, expected):
         assert self._score(_quality_row(days)) == expected
 
-    def test_legacy_signal_columns_are_ignored(self):
-        """PRs/issues/raw-contributors/readme/topics/description/license fed
-        the old strict rubric; the live pipeline ignores them all."""
+    def test_hygiene_and_activity_signals_score(self):
+        """PRs/issues/readme/topics/description now score; raw contributor
+        count and license are still ignored (humans-only collaboration)."""
         row = _quality_row(200, Pull_Requests=5, Issues=5, Contributors=9,
                            Has_README=1, Topics_Count=3, Description="x", License="MIT")
-        assert self._score(row) == 0
+        # Activity 10 → 8, hygiene full → 10; everything else zero.
+        assert self._score(row) == 18
 
     @pytest.mark.parametrize(
         "row,expected_band",
@@ -751,19 +770,24 @@ class TestAntiGamingScoring:
         if row == "max":
             input_row = self._max_row(0)
         elif row == "strong":
-            input_row = _quality_row(7, Human_Contributors=3, Stars=5,
-                                     Total_Commits=10, Is_Fork=0)
+            input_row = _quality_row(7, Total_Commits=60, Commit_Distinct_Days=4,
+                                     Human_Contributors=3, Pull_Requests=2, Is_Fork=0,
+                                     Source_Code_Count=8, Total_File_Count=10,
+                                     Has_README=1, Topics_Count=2, Description="x",
+                                     Stars=5, Forks=0)
         elif row == "developing":
-            input_row = _quality_row(7, Stars=5, Total_Commits=10)
+            input_row = _quality_row(7, Total_Commits=25, Stars=5, Is_Fork=0,
+                                     Source_Code_Count=3, Total_File_Count=10,
+                                     Has_README=1)
         else:
             input_row = _quality_row(200)
         out = app_services.add_repository_quality_metrics(pd.DataFrame([input_row])).iloc[0]
         score = int(out["Repository_Quality_Score"])
         assert out["Quality_Band"] == expected_band
-        assert (score >= 80) == (expected_band == "Exceptional / Open Source Ready")
-        assert (80 > score >= 55) == (expected_band == "Strong Signals")
-        assert (55 > score >= 30) == (expected_band == "Developing")
-        assert (score < 30) == (expected_band == "Needs Attention")
+        assert (score >= 90) == (expected_band == "Exceptional / Open Source Ready")
+        assert (90 > score >= 70) == (expected_band == "Strong Signals")
+        assert (70 > score >= 40) == (expected_band == "Developing")
+        assert (score < 40) == (expected_band == "Needs Attention")
 
     def test_missing_columns_stay_zero_old_runs(self):
         """Pre-Phase-2B states lack the collaboration/hygiene columns."""

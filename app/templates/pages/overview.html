@@ -480,6 +480,143 @@
     display: inline-flex;
   }
 
+  /* Statistics: scrollable Need Attention list (left) + pie (right). */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .stats-list-wrap {
+    min-width: 0;
+  }
+  .stats-list-title {
+    margin: 0 0 8px;
+  }
+  .stats-pills {
+    margin: 0 0 10px;
+    flex-wrap: wrap;
+  }
+  .stats-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 4px 0 0;
+    max-height: 340px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stats-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: var(--card);
+    min-width: 0;
+  }
+  .stats-name {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stats-sub {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stats-reason {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+  .stats-empty {
+    color: var(--muted);
+    font-size: 13px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stats-chart-wrap {
+    min-width: 0;
+  }
+  .stats-name-link {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-decoration: none;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stats-name-link:hover {
+    color: var(--blue);
+    text-decoration: underline;
+  }
+  .student-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow: hidden;
+    z-index: 100;
+  }
+  .student-modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 720px;
+    width: 100%;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  }
+  .student-modal .profile-panel {
+    position: static;
+  }
+  .student-modal-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .student-modal-close:hover {
+    border-color: var(--blue);
+  }
+  @media (max-width: 1100px) {
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
+    .stats-list {
+      max-height: 260px;
+    }
+  }
+
 </style>
 {% endblock %}
 {% block content %}
@@ -572,6 +709,147 @@
       var number = card.querySelector('[data-active-number]');
       if (number) number.textContent = btn.getAttribute('data-active-value');
     });
+  })();
+</script>
+
+<section class="panel">
+  <div class="panel-title">Statistics</div>
+  <div class="stats-grid">
+    <div class="stats-list-wrap">
+      <div class="panel-minor-title stats-list-title" id="stats-list-title">Need Attention ({{ payload.need_attention_students|length }})</div>
+      <div class="activity-tabs stats-pills" id="stats-pills" role="group" aria-label="Statistics category">
+        <button type="button" class="activity-tab" data-stats-cat="Consistent" aria-pressed="false">Consistent ({{ payload.statistics_lists['Consistent']|length }})</button>
+        <button type="button" class="activity-tab" data-stats-cat="Doing Good" aria-pressed="false">Doing Good ({{ payload.statistics_lists['Doing Good']|length }})</button>
+        <button type="button" class="activity-tab" data-stats-cat="Need Attention" aria-pressed="true">Need Attention ({{ payload.need_attention_students|length }})</button>
+      </div>
+      <div id="stats-list-box">
+      {% if payload.need_attention_students %}
+      <ul class="stats-list" aria-live="polite">
+        {% for s in payload.need_attention_students %}
+        <li class="stats-item">
+          {% if s.student_id %}
+          <a class="stats-name-link" href="/overview?roster={{ roster_id }}&q={{ q|urlencode }}&division={{ division|urlencode }}&batch={{ batch|urlencode }}&semester={{ semester|urlencode }}&mine={{ mine }}&pair={{ (pair or 'All')|urlencode }}&select={{ s.student_id|urlencode }}">{{ s.name }}</a>
+          {% else %}
+          <div class="stats-name">{{ s.name }}</div>
+          {% endif %}
+          {% if s.detail %}<div class="stats-sub">{{ s.detail }}</div>{% endif %}
+          <div class="stats-reason">{{ s.reason }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="stats-empty">All clear — no students need attention.</div>
+      {% endif %}
+      </div>
+    </div>
+    <div class="stats-chart-wrap">
+      {{ ec.pie('statistics-pie', payload.statistics_data) }}
+    </div>
+  </div>
+</section>
+<script>
+  (function () {
+    // Statistics: a pie-slice click (or pill) switches the left list to that
+    // category. Server-rendered default is Need Attention; every switch
+    // re-renders from the embedded per-category data (DOM-built, so student
+    // names are never injected as HTML).
+    var box = document.getElementById('stats-list-box');
+    var title = document.getElementById('stats-list-title');
+    var pills = document.getElementById('stats-pills');
+    if (!box || !title) return;
+    var lists = {{ payload.statistics_lists | tojson }};
+    var pieChart = null;
+
+    function profileUrl(id) {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        params.set('select', id);
+        return '/overview?' + params.toString();
+      } catch (e) { return '/overview?select=' + encodeURIComponent(id); }
+    }
+
+    function render(cat) {
+      if (!lists[cat]) return;
+      var items = lists[cat];
+      title.textContent = cat + ' (' + items.length + ')';
+      if (pills) {
+        pills.querySelectorAll('[data-stats-cat]').forEach(function (btn) {
+          btn.setAttribute('aria-pressed', btn.getAttribute('data-stats-cat') === cat ? 'true' : 'false');
+        });
+      }
+      box.innerHTML = '';
+      if (!items.length) {
+        var empty = document.createElement('div');
+        empty.className = 'stats-empty';
+        empty.textContent = 'No students in this category.';
+        box.appendChild(empty);
+      } else {
+        var ul = document.createElement('ul');
+        ul.className = 'stats-list';
+        ul.setAttribute('aria-live', 'polite');
+        items.forEach(function (s) {
+          var li = document.createElement('li');
+          li.className = 'stats-item';
+          if (s.student_id) {
+            var a = document.createElement('a');
+            a.className = 'stats-name-link';
+            a.href = profileUrl(s.student_id);
+            a.textContent = s.name || 'Unknown';
+            li.appendChild(a);
+          } else {
+            var nm = document.createElement('div');
+            nm.className = 'stats-name';
+            nm.textContent = s.name || 'Unknown';
+            li.appendChild(nm);
+          }
+          if (s.detail) {
+            var sub = document.createElement('div');
+            sub.className = 'stats-sub';
+            sub.textContent = s.detail;
+            li.appendChild(sub);
+          }
+          var reason = document.createElement('div');
+          reason.className = 'stats-reason';
+          reason.textContent = s.reason || '';
+          li.appendChild(reason);
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      }
+      try {
+        if (pieChart && !pieChart.isDisposed()) {
+          pieChart.dispatchAction({ type: 'downplay', seriesIndex: 0 });
+          pieChart.dispatchAction({ type: 'highlight', seriesIndex: 0, name: cat });
+        }
+      } catch (e) { /* decorative only */ }
+    }
+
+    if (pills) {
+      pills.addEventListener('click', function (event) {
+        var btn = event.target.closest ? event.target.closest('[data-stats-cat]') : null;
+        if (!btn) return;
+        render(btn.getAttribute('data-stats-cat'));
+      });
+    }
+
+    // Hook the pie instance created by the macro above: slice click switches
+    // the list to that slice's category.
+    var tries = 0;
+    (function link() {
+      try {
+        if (window.echarts) {
+          var inst = echarts.getInstanceByDom(document.getElementById('statistics-pie'));
+          if (inst) {
+            pieChart = inst;
+            inst.on('click', function (info) {
+              if (info && info.name && lists[info.name]) render(info.name);
+            });
+            return;
+          }
+        }
+      } catch (e) { /* retry below */ }
+      if (tries++ < 200) setTimeout(link, 60);
+    })();
   })();
 </script>
 
@@ -865,6 +1143,20 @@
     });
   })();
 </script>
+
+{% if profile %}
+  {% set p = profile %}
+  {% set close_url = "/overview?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + (mine|string) + "&pair=" + ((pair or 'All')|urlencode) %}
+  <div class="student-modal-backdrop" id="student-modal-backdrop" data-close-url="{{ close_url }}">
+    <div class="student-modal" role="dialog" aria-modal="true" aria-label="Student details for {{ p.name }}">
+      <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
+        <div class="panel-title" style="margin-bottom:0;">Student Profile</div>
+        <a class="student-modal-close" href="{{ close_url }}" aria-label="Close student details">&times;</a>
+      </div>
+      {% include "partials/profile_panel.html" %}
+    </div>
+  </div>
+{% endif %}
 
 </div>
 

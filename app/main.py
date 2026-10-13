@@ -1540,10 +1540,12 @@ def overview(
     semester: str = "All",
     mine: str = "1",
     pair: str = "All",
+    select: str = "",
 ):
     ctx = _base_context(request, "Overview", roster)
     ctx["view"] = None
     ctx["payload"] = None
+    ctx["profile"] = None
     ctx["q"] = q or ""
     _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
@@ -1597,6 +1599,16 @@ def overview(
             )
         except Exception:
             ctx["view"] = None
+    # Same profile popup as Students/Leaderboards: opened from a Need
+    # Attention name, closed back to this exact overview view.
+    if select and view is not None and _is_complete(view):
+        try:
+            candidates = view.get("students")
+            match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
+            if not match.empty:
+                ctx["profile"] = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+        except Exception:
+            ctx["profile"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
 

@@ -1744,18 +1744,23 @@ def _quality_number(result: pd.DataFrame, column: str) -> pd.Series:
 
 
 def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
-    """Anti-gaming 100-point score for a repository.
+    """Strict 100-point score for a repository.
 
-    Six fixed categories — Commit Volume & Consistency (25), Direct Team
-    Collaboration (20), Originality & Fork Guard (15), Code Density & File
-    Quality (15), Community & Popularity (15) and Recent Maintenance (10) —
-    use hard, mutually exclusive tiers and are structurally capped so the best
-    repo scores exactly 100 and the worst 0. Volume+consistency split means a
-    single-day commit dump earns no consistency points; the fork guard never
-    rewards an unedited fork (custom work = commits dated at/after the fork's
-    ``created_at``); a repo with unknown fork status is never assumed original.
-    Missing columns (old runs, team rows) read as 0. The score is recomputed
-    from zero on every call.
+    Nine fixed categories — Commit Volume (15), Commit Spread (10), Team
+    Collaboration (12), PR / Issue Activity (8), Originality & Fork Guard
+    (10), Code Density & File Quality (15), Documentation & Hygiene (10),
+    Community & Popularity (10) and Recent Maintenance (10) — use hard,
+    mutually exclusive tiers and are structurally capped so the best repo
+    scores exactly 100 and the worst 0. The top tier of every category is
+    deliberately hard: 90+ needs a near-sweep across all nine, so only a
+    handful of repos per thousand ever reach Exceptional. Volume+spread
+    split means a single-day commit dump earns no consistency points; the
+    fork guard never rewards an unedited fork (custom work = commits dated
+    at/after the fork's ``created_at``); a repo with unknown fork status is
+    never assumed original. Contributed rows (hard-coded score 0 upstream)
+    never pass through here. Missing columns (old runs) read as 0. The
+    score is recomputed from zero on every call. Recent Maintenance tiers
+    are intentionally left alone — they keep fresh work surfacing.
     """
     result = repo_df.copy()
     if result.empty:
@@ -1764,54 +1769,86 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
     updated = pd.to_datetime(result["Updated"], errors="coerce", utc=True)
     age_days = (pd.Timestamp.now(tz="UTC") - updated).dt.days
 
-    # Commit Volume & Consistency (max 25): volume (15) + spread (10)
+    # Commit Volume (max 15): hard tiers — 100+ commits for full marks.
     total_commits = _quality_number(result, "Total_Commits")
     commits_score = pd.Series(0, index=result.index, dtype=int)
-    commits_score[total_commits >= 50] = 15
-    commits_score[(total_commits >= 10) & (total_commits < 50)] = 10
-    commits_score[(total_commits >= 1) & (total_commits < 10)] = 5
+    commits_score[total_commits >= 100] = 15
+    commits_score[(total_commits >= 50) & (total_commits < 100)] = 12
+    commits_score[(total_commits >= 20) & (total_commits < 50)] = 8
+    commits_score[(total_commits >= 5) & (total_commits < 20)] = 5
+    commits_score[(total_commits >= 1) & (total_commits < 5)] = 2
+    # Commit Spread (max 10): distinct commit days — 10+ days for full marks.
     distinct_days = _quality_number(result, "Commit_Distinct_Days")
     spread_score = pd.Series(0, index=result.index, dtype=int)
-    spread_score[distinct_days >= 3] = 10
-    spread_score[(distinct_days >= 2) & (distinct_days < 3)] = 5
+    spread_score[distinct_days >= 10] = 10
+    spread_score[(distinct_days >= 5) & (distinct_days < 10)] = 7
+    spread_score[(distinct_days >= 3) & (distinct_days < 5)] = 5
+    spread_score[distinct_days == 2] = 2
     volume = commits_score + spread_score
 
-    # Direct Team Collaboration (max 20): unique human contributors
+    # Team Collaboration (max 12): unique human contributors — solo scores 0.
     humans = _quality_number(result, "Human_Contributors")
     collaboration = pd.Series(0, index=result.index, dtype=int)
-    collaboration[humans >= 3] = 20
-    collaboration[(humans >= 2) & (humans < 3)] = 10
+    collaboration[humans >= 5] = 12
+    collaboration[(humans >= 3) & (humans < 5)] = 8
+    collaboration[humans == 2] = 4
 
-    # Originality & Fork Guard (max 15): forks need post-fork custom work
+    # PR / Issue Activity (max 8): process signals, attainable solo.
+    pr_activity = _quality_number(result, "Pull_Requests") + _quality_number(result, "Issues")
+    activity = pd.Series(0, index=result.index, dtype=int)
+    activity[pr_activity >= 10] = 8
+    activity[(pr_activity >= 5) & (pr_activity < 10)] = 5
+    activity[(pr_activity >= 1) & (pr_activity < 5)] = 2
+
+    # Originality & Fork Guard (max 10): forks need substantial post-fork work.
     post_fork = _quality_number(result, "Post_Fork_Commits")
     originality = pd.Series(0, index=result.index, dtype=int)
     if "Is_Fork" in result.columns:
         is_fork = _quality_number(result, "Is_Fork")
-        originality[is_fork == 0] = 15
+        originality[is_fork == 0] = 10
         fork_mask = is_fork > 0
-        originality[fork_mask & (post_fork >= 20)] = 10
-        originality[fork_mask & (post_fork >= 1) & (post_fork < 20)] = 5
+        originality[fork_mask & (post_fork >= 20)] = 6
+        originality[fork_mask & (post_fork >= 1) & (post_fork < 20)] = 2
 
-    # Code Density & File Quality (max 15): source concentration
+    # Code Density & File Quality (max 15): source concentration.
     source = _quality_number(result, "Source_Code_Count")
     total_files = _quality_number(result, "Total_File_Count")
     density = pd.Series(0.0, index=result.index, dtype=float)
     file_mask = total_files > 0
     density[file_mask] = pd.to_numeric(source[file_mask]) / total_files[file_mask]
     density_score = pd.Series(0, index=result.index, dtype=int)
-    density_score[density >= 0.5] = 15
-    density_score[(density >= 0.2) & (density < 0.5)] = 10
-    density_score[(density > 0) & (density < 0.2)] = 5
+    density_score[density >= 0.6] = 15
+    density_score[(density >= 0.4) & (density < 0.6)] = 10
+    density_score[(density >= 0.2) & (density < 0.4)] = 5
+    density_score[(density > 0) & (density < 0.2)] = 2
 
-    # Community & Popularity (max 15): stars tiers + external forks
+    # Documentation & Hygiene (max 10): README + topics + description.
+    has_readme = _quality_number(result, "Has_README") > 0
+    has_topics = _quality_number(result, "Topics_Count") > 0
+    if "Description" in result.columns:
+        try:
+            has_desc = result["Description"].fillna("").astype(str).str.strip().str.len() > 0
+            has_desc = has_desc.fillna(False)
+        except Exception:
+            has_desc = pd.Series(False, index=result.index)
+    else:
+        has_desc = pd.Series(False, index=result.index)
+    hygiene = pd.Series(0, index=result.index, dtype=int)
+    hygiene[has_readme & has_topics & has_desc] = 10
+    hygiene[has_readme & ~(has_readme & has_topics & has_desc)] = 6
+    hygiene[~has_readme & (has_topics | has_desc)] = 3
+
+    # Community & Popularity (max 10): stars tiers + forked bonus.
     stars = _quality_number(result, "Stars")
     stars_score = pd.Series(0, index=result.index, dtype=int)
-    stars_score[stars >= 5] = 10
-    stars_score[(stars >= 1) & (stars < 5)] = 5
+    stars_score[stars >= 10] = 7
+    stars_score[(stars >= 5) & (stars < 10)] = 5
+    stars_score[(stars >= 1) & (stars < 5)] = 2
     forks = _quality_number(result, "Forks")
-    community = stars_score + (forks > 0).astype(int) * 5
+    community = (stars_score + (forks > 0).astype(int) * 3).clip(upper=10)
 
-    # Recent Maintenance (max 10): mutually-exclusive recency tiers
+    # Recent Maintenance (max 10): mutually-exclusive recency tiers.
+    # Deliberately unchanged — the decay is what surfaces fresh work.
     recency_score = age_days.map(
         lambda days: 10
         if pd.notna(days) and days <= 14
@@ -1825,16 +1862,16 @@ def add_repository_quality_metrics(repo_df: pd.DataFrame) -> pd.DataFrame:
         lambda days: "Active" if pd.notna(days) and days <= 180 else "Aging" if pd.notna(days) and days <= 365 else "Stale"
     ).fillna("Unknown")
     result["Repository_Quality_Score"] = (
-        volume + collaboration + originality + density_score + community + maintenance
+        volume + collaboration + activity + originality + density_score + hygiene + community + maintenance
     ).astype(int)
     result["Quality_Band"] = result["Repository_Quality_Score"].map(
         lambda score: (
             "Exceptional / Open Source Ready"
-            if score >= 80
+            if score >= 90
             else "Strong Signals"
-            if score >= 55
+            if score >= 70
             else "Developing"
-            if score >= 30
+            if score >= 40
             else "Needs Attention"
         )
     )
