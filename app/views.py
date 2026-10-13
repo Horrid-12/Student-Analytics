@@ -697,15 +697,15 @@ def classify_consistency(row) -> tuple[str, str]:
       Doing Good     = active in the last 90 days but not the last 30.
       Need Attention = no commits in the last 90 days (incl. zero repos).
 
-    Returns (bucket, reason): reason is "" except for Need Attention, where
-    it is the one-line "why" shown in the scrollable list.
+    Returns (bucket, reason): reason is the one-line "why" shown beside the
+    student in the scrollable Statistics list.
     """
     c30 = _stat_num(row, "Owned_Commits_30d") + _stat_num(row, "Team_Commits_30d")
     c90 = _stat_num(row, "Owned_Commits_90d") + _stat_num(row, "Team_Commits_90d")
     if c30 > 0:
-        return "Consistent", ""
+        return "Consistent", "Active in the last 30 days"
     if c90 > 0:
-        return "Doing Good", ""
+        return "Doing Good", "No commits in the last 30 days"
     repos = _stat_num(row, "Combined_Repos")
     if repos <= 0:
         repos = _stat_num(row, "Repository_Count") + _stat_num(row, "Contributed_Repos_Count")
@@ -965,7 +965,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _n_consistent = 0
     _n_doing_good = 0
     _n_attention = 0
-    need_attention_students: list[dict] = []
+    statistics_lists: dict[str, list[dict]] = {"Consistent": [], "Doing Good": [], "Need Attention": []}
     try:
         if students is not None and not students.empty:
             for _, _row in students.iterrows():
@@ -973,41 +973,49 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                     _bucket, _reason = classify_consistency(_row)
                 except Exception:
                     _bucket, _reason = "Need Attention", "No recent activity"
+                if _bucket not in statistics_lists:
+                    _bucket, _reason = "Need Attention", "No recent activity"
                 if _bucket == "Consistent":
                     _n_consistent += 1
                 elif _bucket == "Doing Good":
                     _n_doing_good += 1
                 else:
                     _n_attention += 1
+                try:
+                    _name = str(_row.get("Student Name") or "").strip()
+                except Exception:
+                    _name = ""
+                if not _name or _name.lower() in {"nan", "none"}:
                     try:
-                        _name = str(_row.get("Student Name") or "").strip()
+                        _name = str(_row.get("GitHub_Username") or "Unknown").strip() or "Unknown"
                     except Exception:
-                        _name = ""
-                    if not _name or _name.lower() in {"nan", "none"}:
-                        try:
-                            _name = str(_row.get("GitHub_Username") or "Unknown").strip() or "Unknown"
-                        except Exception:
-                            _name = "Unknown"
-                    try:
-                        _div = str(_row.get("Division") or "").strip()
-                        _bat = str(_row.get("Batch") or "").strip()
-                        _user = str(_row.get("GitHub_Username") or "").strip()
-                    except Exception:
-                        _div, _bat, _user = "", "", ""
-                    _bits = []
-                    if _div and _div.lower() not in {"nan", "none", "unknown"}:
-                        _bits.append(f"Div {_clean_division_text(_div) or _div}")
-                    if _bat and _bat.lower() not in {"nan", "none", "unknown"}:
-                        _bits.append(f"Batch {_clean_batch_text(_bat) or _bat}")
-                    if _user and _user.lower() not in {"nan", "none", "unknown", ""}:
-                        _bits.append(f"@{_user}")
-                    need_attention_students.append({
-                        "name": _name,
-                        "detail": " · ".join(_bits),
-                        "reason": _reason or "No recent activity",
-                    })
+                        _name = "Unknown"
+                try:
+                    _div = str(_row.get("Division") or "").strip()
+                    _bat = str(_row.get("Batch") or "").strip()
+                    _user = str(_row.get("GitHub_Username") or "").strip()
+                except Exception:
+                    _div, _bat, _user = "", "", ""
+                try:
+                    _sid = str(_row.get(STUDENT_ID_COL) or "").strip()
+                except Exception:
+                    _sid = ""
+                _bits = []
+                if _div and _div.lower() not in {"nan", "none", "unknown"}:
+                    _bits.append(f"Div {_clean_division_text(_div) or _div}")
+                if _bat and _bat.lower() not in {"nan", "none", "unknown"}:
+                    _bits.append(f"Batch {_clean_batch_text(_bat) or _bat}")
+                if _user and _user.lower() not in {"nan", "none", "unknown", ""}:
+                    _bits.append(f"@{_user}")
+                statistics_lists[_bucket].append({
+                    "name": _name,
+                    "detail": " · ".join(_bits),
+                    "reason": _reason or "No recent activity",
+                    "student_id": _sid,
+                })
             try:
-                need_attention_students.sort(key=lambda s: str(s.get("name") or "").lower())
+                for _lst in statistics_lists.values():
+                    _lst.sort(key=lambda s: str(s.get("name") or "").lower())
             except Exception:
                 pass
         else:
@@ -1016,7 +1024,9 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         _n_consistent = 0
         _n_doing_good = 0
         _n_attention = int(total or 0)
-        need_attention_students = []
+        statistics_lists = {"Consistent": [], "Doing Good": [], "Need Attention": []}
+    # Back-compat alias: the template server-renders the Need Attention list.
+    need_attention_students = statistics_lists["Need Attention"]
     statistics_data = [
         {"name": "Consistent", "value": _n_consistent},
         {"name": "Doing Good", "value": _n_doing_good},
@@ -1245,6 +1255,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "bubble_data": bubble_data,
         "sankey_data": sankey_data,
         "statistics_data": statistics_data,
+        "statistics_lists": statistics_lists,
         "need_attention_students": need_attention_students,
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
