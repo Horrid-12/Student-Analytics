@@ -667,6 +667,53 @@ def _batch_year_key(batch_label: str):
     return int(m.group(0)) if m else None
 
 
+#: Statistics buckets — fixed labels shown in the pie + list. NEVER reordered.
+STATISTICS_BUCKETS = ("Consistent", "Doing Good", "Need Attention")
+
+
+def _stat_num(row, column: str) -> float:
+    """Safe numeric from a student row (dict or Series); 0 when missing."""
+    try:
+        value = row.get(column, 0) if isinstance(row, dict) else row.get(column, 0)
+    except Exception:
+        return 0.0
+    try:
+        if pd.isna(value):
+            return 0.0
+    except Exception:
+        pass
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def classify_consistency(row) -> tuple[str, str]:
+    """Single place that decides a student's Statistics bucket + list reason.
+
+    Current (placeholder) rules — redefine here later without touching the
+    payload/template:
+      Consistent     = any commit in the last 30 days (owned or team).
+      Doing Good     = active in the last 90 days but not the last 30.
+      Need Attention = no commits in the last 90 days (incl. zero repos).
+
+    Returns (bucket, reason): reason is "" except for Need Attention, where
+    it is the one-line "why" shown in the scrollable list.
+    """
+    c30 = _stat_num(row, "Owned_Commits_30d") + _stat_num(row, "Team_Commits_30d")
+    c90 = _stat_num(row, "Owned_Commits_90d") + _stat_num(row, "Team_Commits_90d")
+    if c30 > 0:
+        return "Consistent", ""
+    if c90 > 0:
+        return "Doing Good", ""
+    repos = _stat_num(row, "Combined_Repos")
+    if repos <= 0:
+        repos = _stat_num(row, "Repository_Count") + _stat_num(row, "Contributed_Repos_Count")
+    if repos <= 0:
+        return "Need Attention", "No repositories yet"
+    return "Need Attention", "No commits in the last 90 days"
+
+
 def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> list:
     """Return the 5 Class Metrics Radar values in fixed axis order:
     [Avg Repos, Pull Requests, Collaboration Rate, Quality Score,
@@ -910,33 +957,66 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
-    # ── Statistics pie: student consistency buckets (same filtered cohort) ──
-    # Consistent    = any commit in the last 30 days (owned or team).
-    # Doing Good    = active in the last 90 days but not the last 30.
-    # Need Attention = no commits in the last 90 days (incl. zero repos).
-    # Buckets are exhaustive and sum to the filtered `total`, mirroring the
-    # Active Contributor Rate definition used by the radar.
-    def _pos_mask(frame, column: str):
-        try:
-            if frame is None or frame.empty or column not in frame.columns:
-                return pd.Series(False, index=frame.index if frame is not None else [])
-            return pd.to_numeric(frame[column], errors="coerce").fillna(0) > 0
-        except Exception:
-            try:
-                return pd.Series(False, index=frame.index)
-            except Exception:
-                return pd.Series(dtype=bool)
+    # ── Statistics pie + Need Attention list (same filtered cohort) ─────────
+    # Buckets come from classify_consistency() — the single place to redefine
+    # the rules later. Counts feed the pie; the Need Attention rows feed the
+    # scrollable list (name + one-line reason). Buckets are exhaustive and
+    # sum to the filtered `total`.
+    _n_consistent = 0
+    _n_doing_good = 0
+    _n_attention = 0
+    need_attention_students: list[dict] = []
     try:
-        _active_30 = (_pos_mask(students, "Owned_Commits_30d") | _pos_mask(students, "Team_Commits_30d"))
-        _active_90 = (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d"))
-        _n_consistent = int(_active_30.sum()) if len(_active_30) else 0
-        _n_active_90 = int(_active_90.sum()) if len(_active_90) else 0
-        _n_doing_good = max(_n_active_90 - _n_consistent, 0)
-        _n_attention = max(int(total or 0) - _n_active_90, 0)
+        if students is not None and not students.empty:
+            for _, _row in students.iterrows():
+                try:
+                    _bucket, _reason = classify_consistency(_row)
+                except Exception:
+                    _bucket, _reason = "Need Attention", "No recent activity"
+                if _bucket == "Consistent":
+                    _n_consistent += 1
+                elif _bucket == "Doing Good":
+                    _n_doing_good += 1
+                else:
+                    _n_attention += 1
+                    try:
+                        _name = str(_row.get("Student Name") or "").strip()
+                    except Exception:
+                        _name = ""
+                    if not _name or _name.lower() in {"nan", "none"}:
+                        try:
+                            _name = str(_row.get("GitHub_Username") or "Unknown").strip() or "Unknown"
+                        except Exception:
+                            _name = "Unknown"
+                    try:
+                        _div = str(_row.get("Division") or "").strip()
+                        _bat = str(_row.get("Batch") or "").strip()
+                        _user = str(_row.get("GitHub_Username") or "").strip()
+                    except Exception:
+                        _div, _bat, _user = "", "", ""
+                    _bits = []
+                    if _div and _div.lower() not in {"nan", "none", "unknown"}:
+                        _bits.append(f"Div {_clean_division_text(_div) or _div}")
+                    if _bat and _bat.lower() not in {"nan", "none", "unknown"}:
+                        _bits.append(f"Batch {_clean_batch_text(_bat) or _bat}")
+                    if _user and _user.lower() not in {"nan", "none", "unknown", ""}:
+                        _bits.append(f"@{_user}")
+                    need_attention_students.append({
+                        "name": _name,
+                        "detail": " · ".join(_bits),
+                        "reason": _reason or "No recent activity",
+                    })
+            try:
+                need_attention_students.sort(key=lambda s: str(s.get("name") or "").lower())
+            except Exception:
+                pass
+        else:
+            _n_attention = 0
     except Exception:
         _n_consistent = 0
         _n_doing_good = 0
         _n_attention = int(total or 0)
+        need_attention_students = []
     statistics_data = [
         {"name": "Consistent", "value": _n_consistent},
         {"name": "Doing Good", "value": _n_doing_good},
@@ -1165,6 +1245,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "bubble_data": bubble_data,
         "sankey_data": sankey_data,
         "statistics_data": statistics_data,
+        "need_attention_students": need_attention_students,
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
