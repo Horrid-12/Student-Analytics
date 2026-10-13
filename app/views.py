@@ -910,39 +910,6 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
-    # ── Statistics pie: student consistency buckets (same filtered cohort) ──
-    # Consistent    = any commit in the last 30 days (owned or team).
-    # Doing Good    = active in the last 90 days but not the last 30.
-    # Need Attention = no commits in the last 90 days (incl. zero repos).
-    # Buckets are exhaustive and sum to the filtered `total`, mirroring the
-    # Active Contributor Rate definition used by the radar.
-    def _pos_mask(frame, column: str):
-        try:
-            if frame is None or frame.empty or column not in frame.columns:
-                return pd.Series(False, index=frame.index if frame is not None else [])
-            return pd.to_numeric(frame[column], errors="coerce").fillna(0) > 0
-        except Exception:
-            try:
-                return pd.Series(False, index=frame.index)
-            except Exception:
-                return pd.Series(dtype=bool)
-    try:
-        _active_30 = (_pos_mask(students, "Owned_Commits_30d") | _pos_mask(students, "Team_Commits_30d"))
-        _active_90 = (_pos_mask(students, "Owned_Commits_90d") | _pos_mask(students, "Team_Commits_90d"))
-        _n_consistent = int(_active_30.sum()) if len(_active_30) else 0
-        _n_active_90 = int(_active_90.sum()) if len(_active_90) else 0
-        _n_doing_good = max(_n_active_90 - _n_consistent, 0)
-        _n_attention = max(int(total or 0) - _n_active_90, 0)
-    except Exception:
-        _n_consistent = 0
-        _n_doing_good = 0
-        _n_attention = int(total or 0)
-    statistics_data = [
-        {"name": "Consistent", "value": _n_consistent},
-        {"name": "Doing Good", "value": _n_doing_good},
-        {"name": "Need Attention", "value": _n_attention},
-    ]
-
     # ── Class Metrics Radar: multi-cohort comparison ────────────────────────
     # Card strings keep their existing formulas (no visual change to the two
     # side cards); the radar itself becomes a comparison canvas: Overall
@@ -1164,7 +1131,6 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "treemap_data": treemap_data,
         "bubble_data": bubble_data,
         "sankey_data": sankey_data,
-        "statistics_data": statistics_data,
         "radar_data": radar_data,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
