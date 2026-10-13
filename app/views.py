@@ -688,30 +688,153 @@ def _stat_num(row, column: str) -> float:
         return 0.0
 
 
-def classify_consistency(row) -> tuple[str, str]:
+def _stat_present(row, column: str) -> bool:
+    """True when a handle/username column holds a real value (not blank/NaN)."""
+    try:
+        value = row.get(column, "") if isinstance(row, dict) else row.get(column, "")
+    except Exception:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except Exception:
+        pass
+    text = str(value).strip()
+    return bool(text) and text.lower() not in {"nan", "none", "unknown", ""}
+
+
+#: Priority weights for the Statistics consistency criteria (High=3, Med=2,
+#: Low=1). Positive ticks add, negative flags subtract; the net decides.
+_CONSISTENCY_W_HIGH = 3
+_CONSISTENCY_W_MED = 2
+_CONSISTENCY_W_LOW = 1
+
+#: Average owned-repo quality score (0-100) that earns the quality tick.
+_CONSISTENCY_QUALITY_BAR = 40
+
+#: Net score a veto-free, sustained student needs for Consistent.
+_CONSISTENCY_CONSISTENT_BAR = 10
+
+
+def classify_consistency(row, avg_quality: float | None = None) -> tuple[str, str]:
     """Single place that decides a student's Statistics bucket + list reason.
 
-    Current (placeholder) rules — redefine here later without touching the
-    payload/template:
-      Consistent     = any commit in the last 30 days (owned or team).
-      Doing Good     = active in the last 90 days but not the last 30.
-      Need Attention = no commits in the last 90 days (incl. zero repos).
+    Criteria checklist (weights in brackets):
 
-    Returns (bucket, reason): reason is the one-line "why" shown beside the
-    student in the scrollable Statistics list.
+    Positive ticks:
+      P1 Has ≥1 repo (owned or contributed) [High]
+      P2 ≥1 commit in last 30d (owned or team) [High]
+      P3 Active in last 90d [Med]
+      P4 Sustained — commits in last 30d AND in days 31-90 [High]
+      P5 Collaboration — contributed repo or external PR [Med]
+      P6 PR raised or issue opened [Low]
+      P7 Avg owned-repo quality >= bar [Med] (skipped when unknown)
+      P8 ≥1 active repo [Med]
+      P9 Profile complete — GitHub + LinkedIn/HackerRank [Low]
+
+    Negative flags (vetoes marked * force Need Attention on their own):
+      F* GitHub account missing
+      B* Zero repositories
+      A* No commits in last 90d
+      C  No commits in last 30d [Med]
+      D  Avg quality below bar [Low] (skipped when unknown)
+      E  No collaboration and no PRs [Low]
+
+    Judgement:
+      veto hit OR net score < 0            → Need Attention
+      no veto, sustained tick, net >= 10,
+        and no Medium-or-worse miss        → Consistent
+      otherwise (net >= 0, no veto)        → Doing Good
+
+    Returns (bucket, reason): reason is the highest-priority failed
+    criterion, or a placement note when nothing failed.
     """
-    c30 = _stat_num(row, "Owned_Commits_30d") + _stat_num(row, "Team_Commits_30d")
-    c90 = _stat_num(row, "Owned_Commits_90d") + _stat_num(row, "Team_Commits_90d")
-    if c30 > 0:
-        return "Consistent", "Active in the last 30 days"
-    if c90 > 0:
-        return "Doing Good", "No commits in the last 30 days"
     repos = _stat_num(row, "Combined_Repos")
     if repos <= 0:
         repos = _stat_num(row, "Repository_Count") + _stat_num(row, "Contributed_Repos_Count")
-    if repos <= 0:
-        return "Need Attention", "No repositories yet"
-    return "Need Attention", "No commits in the last 90 days"
+    o30 = _stat_num(row, "Owned_Commits_30d")
+    t30 = _stat_num(row, "Team_Commits_30d")
+    o90 = _stat_num(row, "Owned_Commits_90d")
+    t90 = _stat_num(row, "Team_Commits_90d")
+    c30 = o30 + t30
+    c90 = o90 + t90
+    contributed = _stat_num(row, "Contributed_Repos_Count")
+    ext_prs = _stat_num(row, "External_PRs")
+    prs = _stat_num(row, "Pull_Requests")
+    issues = _stat_num(row, "Issues_Opened")
+    active = _stat_num(row, "Combined_Active")
+    if active <= 0:
+        active = _stat_num(row, "Active_Repositories") + _stat_num(row, "Team_Active_Repos")
+    has_github = _stat_present(row, "GitHub_Username")
+    has_profile = has_github and (
+        _stat_present(row, "LinkedIn_Username") or _stat_present(row, "HackerRank_Username")
+    )
+    collab = contributed > 0 or ext_prs > 0
+    sustained = c30 > 0 and c90 > c30
+    try:
+        quality_known = avg_quality is not None and pd.notna(avg_quality)
+    except Exception:
+        quality_known = avg_quality is not None
+    try:
+        quality_ok = bool(quality_known and float(avg_quality) >= _CONSISTENCY_QUALITY_BAR)
+    except (TypeError, ValueError):
+        quality_known = False
+        quality_ok = False
+
+    ticks = 0
+    misses = 0
+    failed: list[tuple[int, str]] = []
+
+    def _tick(weight: int, ok: bool):
+        nonlocal ticks
+        if ok:
+            ticks += weight
+
+    def _flag(weight: int, hit: bool, reason: str):
+        nonlocal misses
+        if hit:
+            misses += weight
+            failed.append((weight, reason))
+
+    _tick(_CONSISTENCY_W_HIGH, repos > 0)  # P1
+    _tick(_CONSISTENCY_W_HIGH, c30 > 0)  # P2
+    _tick(_CONSISTENCY_W_MED, c90 > 0)  # P3
+    _tick(_CONSISTENCY_W_HIGH, sustained)  # P4
+    _tick(_CONSISTENCY_W_MED, collab)  # P5
+    _tick(_CONSISTENCY_W_LOW, prs > 0 or issues > 0)  # P6
+    if quality_known:
+        _tick(_CONSISTENCY_W_MED, quality_ok)  # P7
+    _tick(_CONSISTENCY_W_MED, active > 0)  # P8
+    _tick(_CONSISTENCY_W_LOW, has_profile)  # P9
+
+    veto = False
+    if not has_github:  # F*
+        veto = True
+        failed.append((_CONSISTENCY_W_HIGH, "GitHub account not connected"))
+    if repos <= 0:  # B*
+        veto = True
+        failed.append((_CONSISTENCY_W_HIGH, "No repositories yet"))
+    if c90 <= 0:  # A*
+        veto = True
+        failed.append((_CONSISTENCY_W_HIGH, "No commits in the last 90 days"))
+    _flag(_CONSISTENCY_W_MED, c30 <= 0, "No commits in the last 30 days")  # C
+    if quality_known:
+        _flag(_CONSISTENCY_W_LOW, not quality_ok, "Low average repo quality")  # D
+    _flag(_CONSISTENCY_W_LOW, (not collab) and prs <= 0, "No collaboration yet")  # E
+
+    score = ticks - misses
+    failed.sort(key=lambda item: -item[0])
+
+    if veto or score < 0:
+        return "Need Attention", failed[0][1] if failed else "No recent activity"
+    med_plus_miss = any(weight >= _CONSISTENCY_W_MED for weight, _ in failed)
+    if sustained and score >= _CONSISTENCY_CONSISTENT_BAR and not med_plus_miss:
+        return "Consistent", failed[0][1] if failed else "All criteria met"
+    if not failed:
+        # Veto-free with a non-negative score but not sustained: everything
+        # happened in the last 30 days (bursty newcomer, not proven over time).
+        return "Doing Good", "Active only in the last 30 days" if c30 > 0 else "On track"
+    return "Doing Good", failed[0][1]
 
 
 def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> list:
@@ -957,11 +1080,26 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         for _, row in heatmap_rows.iterrows()
     ] if not heatmap_rows.empty else []
 
-    # ── Statistics pie + Need Attention list (same filtered cohort) ─────────
-    # Buckets come from classify_consistency() — the single place to redefine
-    # the rules later. Counts feed the pie; the Need Attention rows feed the
-    # scrollable list (name + one-line reason). Buckets are exhaustive and
-    # sum to the filtered `total`.
+    # ── Statistics pie + category lists (same filtered cohort) ──────────────
+    # Buckets come from classify_consistency() — the criteria checklist lives
+    # there; this only feeds it per-student quality and collects the results.
+    # Counts feed the pie; the per-category rows feed the scrollable list
+    # (name + one-line reason). Buckets are exhaustive and sum to `total`.
+    # Per-student average owned-repo quality. Contributed rows carry a
+    # hard-coded score of 0, so they are excluded — including them would
+    # punish collaborators for helping on others' repos.
+    try:
+        if (
+            repos is not None
+            and not repos.empty
+            and {"Username", "Repository_Quality_Score"}.issubset(repos.columns)
+        ):
+            _qvals = pd.to_numeric(repos["Repository_Quality_Score"], errors="coerce")
+            _qual_map = _qvals.groupby(repos["Username"].astype(str)).mean().to_dict()
+        else:
+            _qual_map = {}
+    except Exception:
+        _qual_map = {}
     _n_consistent = 0
     _n_doing_good = 0
     _n_attention = 0
@@ -969,18 +1107,6 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     try:
         if students is not None and not students.empty:
             for _, _row in students.iterrows():
-                try:
-                    _bucket, _reason = classify_consistency(_row)
-                except Exception:
-                    _bucket, _reason = "Need Attention", "No recent activity"
-                if _bucket not in statistics_lists:
-                    _bucket, _reason = "Need Attention", "No recent activity"
-                if _bucket == "Consistent":
-                    _n_consistent += 1
-                elif _bucket == "Doing Good":
-                    _n_doing_good += 1
-                else:
-                    _n_attention += 1
                 try:
                     _name = str(_row.get("Student Name") or "").strip()
                 except Exception:
@@ -1000,6 +1126,23 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                     _sid = str(_row.get(STUDENT_ID_COL) or "").strip()
                 except Exception:
                     _sid = ""
+                try:
+                    _raw_q = _qual_map.get(_user)
+                    _aq = float(_raw_q) if pd.notna(_raw_q) else None
+                except (TypeError, ValueError):
+                    _aq = None
+                try:
+                    _bucket, _reason = classify_consistency(_row, _aq)
+                except Exception:
+                    _bucket, _reason = "Need Attention", "No recent activity"
+                if _bucket not in statistics_lists:
+                    _bucket, _reason = "Need Attention", "No recent activity"
+                if _bucket == "Consistent":
+                    _n_consistent += 1
+                elif _bucket == "Doing Good":
+                    _n_doing_good += 1
+                else:
+                    _n_attention += 1
                 _bits = []
                 if _div and _div.lower() not in {"nan", "none", "unknown"}:
                     _bits.append(f"Div {_clean_division_text(_div) or _div}")
