@@ -80,6 +80,73 @@
   .fl-num { font-variant-numeric: tabular-nums; }
 
   .scroll-sentinel { text-align: center; color: var(--muted); font-size: 13px; padding: 14px 0 4px; }
+
+  /* ── student profile popup (same panel as Students/Leaderboards) ─── */
+  .student-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow: hidden;
+    z-index: 100;
+  }
+  .student-modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 720px;
+    width: 100%;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  }
+  .student-modal .profile-panel {
+    position: static;
+  }
+  .student-modal-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-soft);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .student-modal-close:hover {
+    border-color: var(--blue);
+  }
+
+  /* ── clickable repo owners (open the student profile popup) ──────── */
+  .fl-owner .avatar-link, .fl-cell-owner .avatar-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    border-radius: 50%;
+    text-decoration: none;
+  }
+  .fl-owner .avatar-link:hover, .fl-cell-owner .avatar-link:hover {
+    opacity: 0.85;
+  }
+  a.fl-owner-name, a.fl-cell-name {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  a.fl-owner-name:hover, a.fl-cell-name:hover {
+    color: var(--blue);
+    text-decoration: underline;
+  }
+  .fl-cell-owner .fl-cell-name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 {% endblock %}
 {% block content %}
@@ -355,6 +422,7 @@
       busy = true;
       var params = new URLSearchParams(window.location.search);
       params.delete('rows');
+      params.delete('select');
       params.set('offset', String(loaded()));
       params.set('limit', String(batchSize));
       fetch('/repositories/rows?' + params.toString(), { headers: { 'Accept': 'text/html' }, redirect: 'manual' })
@@ -385,4 +453,39 @@
   observer.observe(sentinel);
 })();
 </script>
+
+<script>
+(function () {
+  // Preserve scroll depth when opening a student popup: stamp the currently
+  // loaded row count onto the profile link so closing returns here.
+  var grid = document.getElementById('repo-grid-view');
+  var tbody = document.querySelector('#repo-table-view tbody');
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest ? event.target.closest('a.student-open-link') : null;
+    if (!link) return;
+    try {
+      var loaded = 0;
+      if (grid) loaded = Math.max(loaded, grid.querySelectorAll('.repo-card-v2').length);
+      if (tbody) loaded = Math.max(loaded, tbody.querySelectorAll('tr:not(.table-empty)').length);
+      var url = new URL(link.getAttribute('href'), window.location.origin);
+      url.searchParams.set('rows', String(loaded));
+      link.setAttribute('href', url.pathname + url.search);
+    } catch (err) { /* keep the original href */ }
+  });
+})();
+</script>
+
+{% if profile %}
+  {% set p = profile %}
+  {% set close_url = "/repositories?roster=" + roster_id + "&q=" + (q|urlencode) + "&language=" + (language|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&pair=" + ((pair or 'All')|urlencode) + "&semester=" + (semester|urlencode) + "&sort=" + sort + "&recency=" + recency + "&view=" + view_mode + "&mine=" + (mine|string) + "&rows=" + (payload.showing|string) %}
+  <div class="student-modal-backdrop" id="student-modal-backdrop" data-close-url="{{ close_url }}">
+    <div class="student-modal" role="dialog" aria-modal="true" aria-label="Student details for {{ p.name }}">
+      <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
+        <div class="panel-title" style="margin-bottom:0;">Student Profile</div>
+        <a class="student-modal-close" href="{{ close_url }}" aria-label="Close student details">&times;</a>
+      </div>
+      {% include "partials/profile_panel.html" %}
+    </div>
+  </div>
+{% endif %}
 {% endblock %}

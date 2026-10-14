@@ -3,17 +3,23 @@
 Context: `rows` (list of repo card dicts).
 #}
 {% for repo in rows %}
+{% set open_url = "/repositories?roster=" + roster_id + "&q=" + (q|urlencode) + "&language=" + (language|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&pair=" + ((pair or 'All')|urlencode) + "&semester=" + (semester|urlencode) + "&sort=" + sort + "&recency=" + recency + "&view=" + view_mode + "&mine=" + ((mine or '1')|string) + "&select=" + (repo.student_id|string) %}
 <tr>
   <td>
     <div class="fl-cell-repo">
       <a class="repo-name" href="{{ repo.url }}" target="_blank" rel="noopener">{{ repo.repository }}</a>
       <div class="fl-cell-owner">
+        {% if repo.student_id %}
+        <a class="avatar-link student-open-link" href="{{ open_url }}" aria-label="View profile of {{ repo.owner_name }}">{% if repo.avatar_url %}<img class="table-avatar" src="{{ repo.avatar_url|avatar }}" loading="lazy" decoding="async" alt="">{% else %}<span class="avatar-fallback">{{ (repo.owner_name or '?')[0:1] }}</span>{% endif %}</a>
+        <a class="fl-cell-name student-open-link" href="{{ open_url }}">{{ repo.owner_name or 'Unknown student' }}</a>
+        {% else %}
         {% if repo.avatar_url %}
         <img class="table-avatar" src="{{ repo.avatar_url|avatar }}" loading="lazy" decoding="async" alt="">
         {% else %}
         <span class="avatar-fallback">{{ (repo.owner_name or '?')[0:1] }}</span>
         {% endif %}
         <span>{{ repo.owner_name or 'Unknown student' }}</span>
+        {% endif %}
         {% if repo.owner_username %}<span class="fl-cell-handle">@{{ repo.owner_username }}</span>{% endif %}
       </div>
     </div>

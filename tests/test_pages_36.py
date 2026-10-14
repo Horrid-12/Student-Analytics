@@ -910,6 +910,28 @@ class TestPageRenderingWithData:
             f"/leaderboards?roster={roster_id}&select=999"
         ).text
 
+    def test_repositories_owner_opens_profile_popup(self, tmp_path):
+        roster_id = self._setup(tmp_path)
+        body = self.client.get(f"/repositories?roster={roster_id}").text
+        # Repo owner names link to the same popup profile as Students.
+        # (hrefs are HTML-escaped, so & renders as &amp; in the source.)
+        assert 'student-open-link" href="/repositories?' in body
+        assert "select=101" in body
+        # No profile popup without ?select=.
+        assert 'id="student-modal-backdrop"' not in body
+        popup = self.client.get(f"/repositories?roster={roster_id}&select=101").text
+        assert 'id="student-modal-backdrop"' in popup
+        assert "Student Profile" in popup
+        assert "Alice Example" in popup
+        assert "Repositories (" in popup
+        # Closing returns to this repositories view (filters preserved).
+        assert '/repositories?roster=' in popup
+        assert 'class="student-modal-close"' in popup
+        # Unknown ids render no popup.
+        assert 'id="student-modal-backdrop"' not in self.client.get(
+            f"/repositories?roster={roster_id}&select=999"
+        ).text
+
     def test_verification_page_and_routes_are_gone(self, tmp_path):
         roster_id = self._setup(tmp_path)
         # The Verification page was removed entirely: every route is a plain
