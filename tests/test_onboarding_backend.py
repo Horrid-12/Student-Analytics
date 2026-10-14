@@ -301,6 +301,58 @@ class TestLedgerView:
         assert "login" in str(r.url)
 
 
+class TestLedgerSearch:
+    """Admin ledger search (?q=) — same filter-bar pattern as the Students page."""
+
+    def _seed_two(self, client):
+        signup(client, "1111111111.s@college.edu", name="Alice Example")
+        login(client, "1111111111.s@college.edu")
+        submit(client, prn="1111111111", hackerrank="alice_hr")
+        client.get("/logout")
+        signup(client, "2222222222.s@college.edu", name="Bob Other")
+        login(client, "2222222222.s@college.edu")
+        submit(client, prn="2222222222", hackerrank="bob_hr")
+        client.get("/logout")
+        _session(client, "admin")
+
+    def test_search_bar_matches_students_page(self, client):
+        self._seed_two(client)
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert 'class="filter-bar"' in body
+        assert 'id="onboarding-search"' in body
+        assert 'class="search-input"' in body
+        assert "Search by ID, name or username" in body
+        assert '<button class="btn" type="submit">Apply</button>' in body
+        assert '<a class="btn" href="/onboarding">Clear</a>' in body
+        assert 'id="shown-count"' in body
+        assert 'id="shown-count">2</span> of 2 shown' in body
+
+    def test_search_filters_by_name(self, client):
+        self._seed_two(client)
+        body = client.get("/onboarding?q=Alice", headers={"Accept": "text/html"}).text
+        assert "1111111111.s@college.edu" in body
+        assert "2222222222.s@college.edu" not in body
+
+    def test_search_is_case_insensitive_and_matches_username(self, client):
+        self._seed_two(client)
+        body = client.get("/onboarding?q=BOB_HR", headers={"Accept": "text/html"}).text
+        assert "2222222222.s@college.edu" in body
+        assert "1111111111.s@college.edu" not in body
+
+    def test_search_by_prn_digits(self, client):
+        self._seed_two(client)
+        body = client.get("/onboarding?q=2222222222", headers={"Accept": "text/html"}).text
+        assert "2222222222.s@college.edu" in body
+        assert "1111111111.s@college.edu" not in body
+
+    def test_search_no_match_shows_empty_state_not_blank(self, client):
+        self._seed_two(client)
+        body = client.get("/onboarding?q=nomatch-xyz", headers={"Accept": "text/html"}).text
+        assert "No matching submissions" in body
+        assert 'id="onboarding-search"' in body  # bar stays so the admin can retry
+        assert 'id="ledger-table"' not in body
+
+
 def _faculty_session(client, email="prof@example.com"):
     """Seed a faculty account and log it in (faculty table, any domain)."""
     assert auth.create_faculty(email, "secret123", "Prof")

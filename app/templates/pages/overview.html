@@ -1107,6 +1107,39 @@
 <section class="panel">
   <div class="trend-header">
     <div class="panel-title">Weekly Commit &amp; Activity Trend Across Batches</div>
+    <div class="trend-filters">
+      <div class="radar-controls">
+        <button type="button" id="trend-compare-btn" class="radar-compare-btn" aria-haspopup="true" aria-expanded="false">
+          Division &amp; Batch
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div id="trend-compare-panel" class="radar-compare-panel" hidden>
+          <div class="radar-compare-box">
+            <button type="button" class="radar-compare-row" data-trend-overall>All students (average)</button>
+          </div>
+          {% for g in payload.division_groups %}
+          <div class="radar-compare-divrow">
+            <span class="radar-compare-div">{{ g.label }}</span>
+            <span class="radar-compare-batches">
+              {% for b in g.batches %}
+              <button type="button" class="radar-compare-batch" data-trend-div="{{ g.division }}" data-trend-batch="{{ b }}">{{ b }}</button>
+              {% endfor %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="filter-field">
+        <label class="filter-label" for="trend-semester">Semester</label>
+        <select id="trend-semester" class="filter-select" name="semester">
+          {% for value in payload.semesters %}
+          <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="button" id="trend-apply">Apply</button>
+      <button class="btn btn-ghost" type="button" id="trend-clear">Clear</button>
+    </div>
     <div class="activity-tabs" role="group" aria-label="Trend period">
       <button type="button" class="activity-tab" data-trend="weekly" aria-pressed="false">Weekly</button>
       <button type="button" class="activity-tab" data-trend="monthly" aria-pressed="false">Monthly</button>
@@ -1129,7 +1162,7 @@
 </section>
 <script>
   (function () {
-    // Weekly / Monthly trend switcher for the Commit & Activity Trend graph.
+    // Trend period switcher for the Commit & Activity Trend graph.
     document.addEventListener('click', function (event) {
       var btn = event.target.closest ? event.target.closest('[data-trend]') : null;
       if (!btn) return;
@@ -1139,8 +1172,85 @@
         other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
       });
       var bridge = window.__chartBridge && window.__chartBridge['weekly-trend'];
-      if (bridge) bridge.render(btn.getAttribute('data-trend'));
+      if (bridge && bridge.setPeriod) bridge.setPeriod(btn.getAttribute('data-trend'));
     });
+  })();
+  (function () {
+    // Trend card controls: a radar-style Division/Batch compare picker that
+    // filters the chart client-side (so it resets to the overall average on any
+    // page reload), plus the server-side Semester filter via Apply.
+    var compareBtn = document.getElementById('trend-compare-btn');
+    var comparePanel = document.getElementById('trend-compare-panel');
+    var applyBtn = document.getElementById('trend-apply');
+    var clearBtn = document.getElementById('trend-clear');
+    var semesterSel = document.getElementById('trend-semester');
+    var bridge = null;
+
+    function syncButtons() {
+      if (!comparePanel || !bridge) return;
+      comparePanel.querySelectorAll('[data-trend-div][data-trend-batch]').forEach(function (b) {
+        var key = b.getAttribute('data-trend-div') + '|' + b.getAttribute('data-trend-batch');
+        b.setAttribute('data-active', bridge.isSelected(key) ? 'true' : 'false');
+      });
+    }
+
+    // Wait for chart bridge
+    var tries = 0;
+    (function waitForBridge() {
+      var b = window.__chartBridge && window.__chartBridge['weekly-trend'];
+      if (b) { bridge = b; syncButtons(); return; }
+      if (tries++ < 200) setTimeout(waitForBridge, 60);
+    })();
+
+    // Compare panel open/close (button toggles, outside click + Escape dismiss).
+    if (compareBtn && comparePanel) {
+      compareBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        comparePanel.hidden = !comparePanel.hidden;
+        compareBtn.setAttribute('aria-expanded', comparePanel.hidden ? 'false' : 'true');
+      });
+      document.addEventListener('click', function (e) {
+        if (!comparePanel.hidden && !comparePanel.contains(e.target) && e.target !== compareBtn && !compareBtn.contains(e.target)) {
+          comparePanel.hidden = true;
+          compareBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !comparePanel.hidden) {
+          comparePanel.hidden = true;
+          compareBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+      // Batch buttons toggle a cohort; "All students" restores the average line.
+      comparePanel.addEventListener('click', function (e) {
+        if (!bridge) return;
+        var overall = e.target.closest ? e.target.closest('[data-trend-overall]') : null;
+        if (overall) { bridge.clear(); syncButtons(); return; }
+        var btn = e.target.closest ? e.target.closest('[data-trend-div][data-trend-batch]') : null;
+        if (!btn) return;
+        bridge.toggle(btn.getAttribute('data-trend-div') + '|' + btn.getAttribute('data-trend-batch'));
+        syncButtons();
+      });
+    }
+
+    // Clear: drop every selected cohort -> back to the overall average line.
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (bridge && bridge.clear) bridge.clear();
+        syncButtons();
+      });
+    }
+
+    // Apply: reload with the semester filter (server-side), which also resets
+    // the client-side comparison back to the overall trend.
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function () {
+        var params = new URLSearchParams(window.location.search);
+        params.set('semester', semesterSel.value || 'All');
+        params.delete('offset');
+        window.location.search = params.toString();
+      });
+    }
   })();
 </script>
 

@@ -829,31 +829,37 @@ window.__EC_THEME = (function () {
            series: [ { batch: "B1", values: [1.2, ...] }, ... ] }
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro multi_line(id, data) %}
-{% if data and data.weeks and data.series %}
 {{ _theme_bridge() }}
 <div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+{% if data and data.weeks and data.series and data.series|length > 0 %}
 <script>
 (function () {
   var el = document.getElementById('{{ id }}');
   var raw = {{ data | tojson }};
   var chart = echarts.init(el);
+  var OVERALL = raw.overall || {};
+  var OVERALL_NAME = 'All students (average)';
 
-  function build(weeks, seriesData) {
-    var p = window.__EC_THEME.get();
+  function hexToRgba(hex, alpha) {
+    hex = hex.replace('#', '');
+    var r = parseInt(hex.substring(0, 2), 16);
+    var g = parseInt(hex.substring(2, 4), 16);
+    var b = parseInt(hex.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
 
-    /* Convert hex to rgba for translucent area fills. */
-    function hexToRgba(hex, alpha) {
-      hex = hex.replace('#', '');
-      var r = parseInt(hex.substring(0, 2), 16);
-      var g = parseInt(hex.substring(2, 4), 16);
-      var b = parseInt(hex.substring(4, 6), 16);
-      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-    }
+  /* Cohorts are keyed "division|batch" so the page picker and the chart agree. */
+  function cohortKey(s) { return (s.division || '') + '|' + (s.batch || ''); }
+  function displayName(s) {
+    if (s.division && s.batch) return s.division + ' - ' + s.batch;
+    return s.batch || s.division || 'Series';
+  }
 
-    var series = seriesData.map(function (s, i) {
-      var color = p.series[i % p.series.length];
+  function buildSeries(seriesList, colorPalette, weeks, theme) {
+    return seriesList.map(function (s, i) {
+      var color = colorPalette[i % colorPalette.length];
       return {
-        name: s.batch,
+        name: s.name,
         type: 'line',
         data: s.values,
         smooth: 0.3,
@@ -863,7 +869,7 @@ window.__EC_THEME = (function () {
         lineStyle: { color: color, width: 2 },
         itemStyle: {
           color: color,
-          borderColor: p.card,
+          borderColor: theme.card,
           borderWidth: 1.5
         },
         areaStyle: {
@@ -880,51 +886,40 @@ window.__EC_THEME = (function () {
           focus: 'series',
           lineStyle: { width: 3 },
           itemStyle: { borderWidth: 2.5 }
-        },
-        animationDuration: 800,
-        animationEasing: 'cubicOut'
+        }
       };
     });
+  }
+
+  /* Legend ("switches") only appears once cohorts are selected, and lists just
+     the selected series so it doubles as a per-cohort toggle. */
+  function build(weeks, seriesList, showLegend) {
+    var p = window.__EC_THEME.get();
+    var series = buildSeries(seriesList, p.series, weeks, p);
 
     return {
-      tooltip: window.__EC_THEME.tooltip({
-        trigger: 'axis',
-        axisPointer: {
-          type: 'cross',
-          lineStyle: { color: p.grid, width: 1 },
-          crossStyle: { color: p.grid },
-          label: { backgroundColor: p.tooltip_bg, color: p.tooltip_text, borderColor: p.tooltip_border }
-        },
-        formatter: function (params) {
-          if (!params || !params.length) return '';
-          var html = '<b>' + params[0].axisValue + '</b>';
-          params.forEach(function (item) {
-            html += '<br/>' +
-              '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
-              item.color + ';margin-right:6px;"></span>' +
-              item.seriesName + ': <b>' + item.value + '</b>';
-          });
-          return html;
-        }
-      }),
-      legend: {
-        data: seriesData.map(function (s) { return s.batch; }),
+      animation: true,
+      animationDuration: 900,
+      animationEasing: 'cubicOut',
+      tooltip: { show: false },
+      legend: showLegend ? {
+        data: seriesList.map(function (s) { return s.name; }),
         bottom: 0,
         textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
         icon: 'roundRect',
         itemWidth: 14,
         itemHeight: 8,
         itemGap: 12,
-        type: seriesData.length > 8 ? 'scroll' : 'plain',
+        type: seriesList.length > 8 ? 'scroll' : 'plain',
         pageTextStyle: { color: p.textSoft },
         pageIconColor: p.accent,
         pageIconInactiveColor: p.muted
-      },
+      } : { show: false },
       grid: {
         left: 12,
         right: 16,
         top: 16,
-        bottom: seriesData.length > 8 ? 50 : 36,
+        bottom: showLegend ? (seriesList.length > 8 ? 50 : 36) : 24,
         containLabel: true
       },
       xAxis: {
@@ -955,31 +950,70 @@ window.__EC_THEME = (function () {
     };
   }
 
-  var current = { weeks: raw.weeks || [], series: raw.series || [] };
+  var allViews = {
+    weekly: { weeks: raw.weeks || [], series: raw.series || [], overall: OVERALL.weeks || [] },
+    monthly: { weeks: raw.months || [], series: raw.monthly_series || [], overall: OVERALL.months || [] },
+    semester: { weeks: raw.semesters || [], series: raw.semester_series || [], overall: OVERALL.semesters || [] }
+  };
 
-  function render(view) {
-    var next;
-    if (view === 'monthly' && raw.months && raw.monthly_series) {
-      next = { weeks: raw.months, series: raw.monthly_series };
-    } else if (view === 'semester' && raw.semesters && raw.semester_series) {
-      next = { weeks: raw.semesters, series: raw.semester_series };
-    } else {
-      next = { weeks: raw.weeks || [], series: raw.series || [] };
+  var period = 'semester';
+  var selected = [];
+
+  /* No selection -> a single campus-wide average line. Otherwise one line per
+     selected (division, batch) cohort. */
+  function currentSeriesList() {
+    var view = allViews[period];
+    if (!selected.length) {
+      return [{ name: OVERALL_NAME, values: view.overall }];
     }
-    if (!next.weeks.length || !next.series.length) { return; }
-    current = next;
-    chart.setOption(build(current.weeks, current.series));
+    var want = {};
+    selected.forEach(function (k) { want[k] = true; });
+    var picked = view.series.filter(function (s) { return want[cohortKey(s)]; });
+    if (!picked.length) {
+      return [{ name: OVERALL_NAME, values: view.overall }];
+    }
+    return picked.map(function (s) { return { name: displayName(s), values: s.values }; });
   }
 
-  /* Initial (semester) render. */
-  render('semester');
+  /* clear() + setOption replays the load animation on EVERY render (first paint
+     and each period/filter change), which is the effect the tabs had. */
+  function render() {
+    var view = allViews[period];
+    if (!view || !view.weeks.length) { return; }
+    var seriesList = currentSeriesList();
+    var showLegend = selected.length > 0 && seriesList.length > 0;
+    chart.clear();
+    chart.setOption(build(view.weeks, seriesList, showLegend));
+  }
 
-  /* Page-level bridge so an Overview toggle can switch Weekly/Monthly. */
+  function setPeriod(next) { if (allViews[next]) { period = next; render(); } }
+  function toggle(key) {
+    var i = selected.indexOf(key);
+    if (i === -1) { selected.push(key); } else { selected.splice(i, 1); }
+    render();
+  }
+  function clear() { selected = []; render(); }
+  function isSelected(key) { return selected.indexOf(key) !== -1; }
+  function getSelected() { return selected.slice(); }
+
+  /* Initial (semester) render -> the overall average line. */
+  render();
+
+  /* Page-level bridge for the Overview period tabs + Division/Batch picker. */
   window.__chartBridge = window.__chartBridge || {};
-  window.__chartBridge['{{ id }}'] = { chart: chart, render: render };
+  window.__chartBridge['{{ id }}'] = {
+    chart: chart,
+    render: render,
+    setPeriod: setPeriod,
+    toggle: toggle,
+    clear: clear,
+    isSelected: isSelected,
+    getSelected: getSelected
+  };
 
   window.__EC_THEME.register(chart, function () {
-    return build(current.weeks, current.series);
+    var view = allViews[period];
+    return build(view.weeks, currentSeriesList(), selected.length > 0);
   });
   window.addEventListener('resize', function () { chart.resize(); });
 })();
