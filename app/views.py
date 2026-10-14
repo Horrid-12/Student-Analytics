@@ -2447,6 +2447,7 @@ def _repo_card(row) -> dict:
         "updated": _repo_clean(row.get("Updated"))[:10],
         "owner_name": _repo_clean(row.get("Student Name")),
         "owner_username": _repo_clean(row.get("Username")).lstrip("@"),
+        "student_id": _repo_clean(row.get("Student_ID")),
         "avatar_url": _repo_clean(row.get("Avatar_URL")),
         "div": tokens[0],
         "batch": tokens[1],

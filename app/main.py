@@ -2721,6 +2721,7 @@ def repositories_page(
     recency: str = "all",
     mine: str = "1",
     pair: str = "All",
+    select: str = "",
 ):
     ctx = _base_context(request, "Repositories", roster)
     if roster:
@@ -2758,10 +2759,21 @@ def repositories_page(
     ctx.update(_fc)
     payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
+    # Same profile popup as Students/Leaderboards: opened from a repo owner's
+    # name, closed back to this exact repositories view.
+    profile = None
+    if select:
+        try:
+            candidates = data.get("students")
+            match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
+            if not match.empty:
+                profile = views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos"))
+        except Exception:
+            profile = None
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "roster_id": roster, "q": q, "language": language, "rows_page": rows, "view_mode": view, "semester": semester, "sort": sort, "recency": recency},
+        {**ctx, "view": data, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "bl_roster": _bl_roster(roster), "q": q, "language": language, "rows_page": rows, "view_mode": view, "semester": semester, "sort": sort, "recency": recency},
     )
 
 
@@ -2780,6 +2792,7 @@ def repositories_rows(
     limit: int = 30,
     mine: str = "1",
     pair: str = "All",
+    view: str = "grid",
 ):
     """One batch of repository cards + rows for the infinite-scroll list.
 
@@ -2814,8 +2827,23 @@ def repositories_rows(
     batch_rows = payload["rows"][start : start + count]
     if not batch_rows:
         return HTMLResponse("")
-    cards = templates.get_template("partials/repo_cards.html").render(rows=batch_rows)
-    rows_html = templates.get_template("partials/repo_rows.html").render(rows=batch_rows)
+    # Owner-profile links need the same filter context as the first paint;
+    # without it infinite-scroll batches would render plain (unclickable) names.
+    link_ctx = {
+        "roster_id": roster,
+        "q": q,
+        "language": language,
+        "division": _fc["division"],
+        "batch": _fc["batch"],
+        "pair": _fc["pair"],
+        "semester": semester,
+        "sort": sort,
+        "recency": recency,
+        "mine": "0" if (mine or "1") == "0" else "1",
+        "view_mode": view if view in ("grid", "table") else "grid",
+    }
+    cards = templates.get_template("partials/repo_cards.html").render(rows=batch_rows, **link_ctx)
+    rows_html = templates.get_template("partials/repo_rows.html").render(rows=batch_rows, **link_ctx)
     return HTMLResponse(
         f'<template data-for="grid">{cards}</template>'
         f'<template data-for="table">{rows_html}</template>'

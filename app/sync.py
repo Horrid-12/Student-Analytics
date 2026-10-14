@@ -66,6 +66,8 @@ def _repos_frame(raw_repos: list[dict], username: str) -> pd.DataFrame:
                 "Created": repo.get("created_at"),
                 "Updated": repo.get("updated_at"),
                 "Repository_URL": repo.get("html_url"),
+                "Is_Fork": 1 if bool(repo.get("fork")) else 0,
+                "Default_Branch": repo.get("default_branch") or "main",
             }
         )
     frame = pd.DataFrame(rows)
@@ -78,7 +80,14 @@ def _repos_frame(raw_repos: list[dict], username: str) -> pd.DataFrame:
     for column in REPO_COLS:
         if column not in frame.columns:
             frame[column] = None
-    return frame[REPO_COLS]
+    # Persist fork/branch alongside REPO_COLS: Is_Fork feeds the originality
+    # guard on the next light recompute, and both are restored as fallback by
+    # _carry_forward_repo_quality. Views filter by REPO_COLS so extras are safe
+    # (heavy snapshots already persist extra quality columns).
+    for column in ("Is_Fork", "Default_Branch"):
+        if column not in frame.columns:
+            frame[column] = None
+    return frame[REPO_COLS + ["Is_Fork", "Default_Branch"]]
 
 
 def _active_repo_count(repos: list[dict]) -> int:
@@ -304,6 +313,89 @@ def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "
     return repos
 
 
+#: Heavy-only per-repo quality inputs. The lightweight login/nightly sync
+#: (``compute_account_snapshot``) only refetches the repo listing, so without
+#: carry-forward every light run resets these to None/0 and the recomputed
+#: ``Repository_Quality_Score`` collapses to stars + recency (e.g. 17 for an
+#: 11-star repo). Stars/Forks/Description/Updated stay fresh — only the
+#: expensive-to-fetch inputs below are restored from the previous heavy
+#: snapshot, then the score is recomputed so recency never goes stale.
+_REPO_QUALITY_CARRY_COLS = (
+    "Pull_Requests",
+    "Issues",
+    "Contributors",
+    "Has_README",
+    "Topics_Count",
+    "Total_Commits",
+    "Human_Contributors",
+    "Commit_Distinct_Days",
+    "Post_Fork_Commits",
+    "Source_Code_Count",
+    "Total_File_Count",
+    "Is_Fork",
+    "Default_Branch",
+)
+
+
+def _carry_forward_repo_quality(email: str, repos: list[dict]) -> list[dict]:
+    """Preserve heavy repo-quality inputs across lightweight syncs (BUG-140).
+
+    Matches repos by lower-cased name. For each fresh repo, any quality input
+    that is None (light path never fetches it) is restored from the previous
+    snapshot, then ``Repository_Quality_Score`` / ``Quality_Band`` /
+    ``Maintenance_Status`` are recomputed from fresh Stars/Forks/Description/
+    Updated plus the carried inputs. New repos with no previous entry keep
+    their lightweight score until the next heavy sync.
+    """
+    if not repos:
+        return repos
+    try:
+        prev_snapshot = accounts.get_snapshot(email) or {}
+    except Exception:
+        return repos
+    prev_repos = prev_snapshot.get("repos") or []
+    if not prev_repos:
+        return repos
+    prev_by_name = {
+        str(r.get("Repository") or r.get("name") or "").strip().lower(): r
+        for r in prev_repos
+    }
+    carried = False
+    for repo in repos:
+        name = str(repo.get("Repository") or repo.get("name") or "").strip()
+        prev_r = prev_by_name.get(name.lower())
+        if not prev_r:
+            continue
+        for col in _REPO_QUALITY_CARRY_COLS:
+            if repo.get(col) is None and prev_r.get(col) is not None:
+                repo[col] = prev_r[col]
+                carried = True
+    if not carried:
+        return repos
+    try:
+        frame = pd.DataFrame(repos)
+        if frame.empty:
+            return repos
+        scored = services.add_repository_quality_metrics(frame)
+        for idx, repo in enumerate(repos):
+            try:
+                row = scored.iloc[idx]
+            except (IndexError, KeyError):
+                continue
+            for col in ("Maintenance_Status", "Repository_Quality_Score", "Quality_Band"):
+                if col in scored.columns:
+                    try:
+                        value = row[col]
+                        if pd.isna(value):
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                    repo[col] = value
+    except Exception:
+        pass
+    return repos
+
+
 def _academic_year_for(value) -> str:
     """July-June academic-year label from an onboarding timestamp.
 
@@ -447,6 +539,7 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
     student = _carry_forward_profile_links(email, student)
     student, team_repos = _carry_forward_heavy_metrics(email, student, team_repos, is_lightweight=True)
     repos = _carry_forward_repo_commits(email, repos, username=username, token=token)
+    repos = _carry_forward_repo_quality(email, repos)
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,
         repos=repos, team_repos=team_repos, synced_at=now, error="",
