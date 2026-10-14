@@ -2,6 +2,25 @@
 {% block title %}Academic Onboarding & Record Setup{% endblock %}
 {% block head %}
 <style>
+  .filter-bar {
+    align-items: flex-end;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .filter-field.search-box-row {
+    flex: 1 1 260px;
+  }
+  .filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
   @media (max-width: 700px) {
     .onboarding-grid {
       grid-template-columns: 1fr !important;
@@ -222,9 +241,17 @@
 </script>
 {% elif manager %}
 
-
-
-
+{% if onboarding_total %}
+<form class="filter-bar" method="get">
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="onboarding-search">Search</label>
+    <input id="onboarding-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
+  </div>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/onboarding">Clear</a>
+  <span class="filter-count"><span id="shown-count">{{ 10 if onboarding_users|length > 10 else onboarding_users|length }}</span> of {{ onboarding_users|length }} shown</span>
+</form>
+{% endif %}
 
 <div class="panel" style="padding: 24px;">
     {% if onboarding_users %}
@@ -364,8 +391,13 @@
     {% endif %}
     {% else %}
     <div style="padding: 32px; text-align: center; color: var(--muted);">
+        {% if onboarding_total %}
+        <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">No matching submissions</div>
+        <div style="font-size: 13px;">No ledger record matches <strong>{{ q }}</strong>. Try a different ID, name or username, or clear the search.</div>
+        {% else %}
         <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px;">No submissions yet</div>
         <div style="font-size: 13px;">Student onboarding records will appear here as soon as they're submitted.</div>
+        {% endif %}
     </div>
     {% endif %}
 </div>
@@ -658,12 +690,18 @@
 (function () {
     var rows = Array.prototype.slice.call(document.querySelectorAll('#ledger-table tbody tr.ledger-row'));
     var btn = document.getElementById('ledger-more-btn');
-    if (!btn || rows.length <= 10) return;
+    var shownEl = document.getElementById('shown-count');
+    function syncShown() {
+        if (!shownEl) return;
+        shownEl.textContent = String(rows.filter(function (row) { return !row.hidden; }).length);
+    }
+    if (!btn || rows.length <= 10) { syncShown(); return; }
     rows.slice(10).forEach(function (row) { row.hidden = true; });
     btn.addEventListener('click', function () {
         rows.filter(function (row) { return row.hidden; }).slice(0, 10)
             .forEach(function (row) { row.hidden = false; });
         var left = rows.filter(function (row) { return row.hidden; }).length;
+        syncShown();
         if (!left) { btn.remove(); return; }
         btn.textContent = 'Show more (' + left + ' remaining)';
     });
