@@ -1613,11 +1613,25 @@ def overview(
     return templates.TemplateResponse(request, "pages/overview.html", ctx)
 
 
+def _filter_onboarding_rows(rows: list[dict], q: str) -> list[dict]:
+    """Registrar-ledger search: case-insensitive substring over every text
+    field of the row (name, email/PRN, branch, usernames…) — the dict-rows
+    counterpart of ui_helpers.filter_text used by the Students page."""
+    text = (q or "").strip().lower()
+    if not text:
+        return rows
+    return [
+        row for row in rows
+        if text in " ".join(str(v or "") for v in row.values()).lower()
+    ]
+
+
 @app.get("/onboarding", response_class=HTMLResponse)
-def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = ""):
+def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = "", q: str = ""):
     """Onboarding page. Students see their own submission form + status;
     faculty see their teaching-assignment form (divisions + batches taught);
-    admins see the registrar ledger with approve/reject actions."""
+    admins see the registrar ledger with approve/reject actions (searchable
+    via ?q=, same filter-bar pattern as the Students page)."""
     ctx = _base_context(request, "Onboarding")
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
@@ -1629,13 +1643,16 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["teaching"] = {}
     ctx["teaching_divisions"] = list(auth.DIVISIONS)
     ctx["teaching_batches"] = list(auth.TEACHING_BATCHES)
+    ctx["q"] = q
     if role == "faculty" and user:
         try:
             ctx["teaching"] = auth.get_faculty_teaching(user.get("email", ""))
         except Exception:
             ctx["teaching"] = {}
     elif ctx["manager"]:
-        ctx["onboarding_users"] = auth.get_onboarding_users()
+        _rows = auth.get_onboarding_users()
+        ctx["onboarding_total"] = len(_rows)
+        ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
     elif user:
         try:
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
