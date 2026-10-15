@@ -1242,10 +1242,13 @@ div[data-testid="stPopover"] > button:hover {
 
 /* Profile Status (student privacy): button top-left of the own-profile card
    plus the popup with hide-toggles and the leaderboard disclaimer. */
-.profile-status-row {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 10px;
+.profile-head-main {
+    flex: 1;
+    min-width: 0;
+}
+.profile-name-row .profile-status-btn {
+    margin-left: auto;
+    flex: none;
 }
 .profile-status-btn {
     display: inline-flex;
@@ -1340,6 +1343,7 @@ div[data-testid="stPopover"] > button:hover {
     flex: none;
     width: 46px;
     height: 26px;
+    box-sizing: border-box;
 }
 .privacy-switch input {
     position: absolute;
@@ -1352,6 +1356,7 @@ div[data-testid="stPopover"] > button:hover {
     display: block;
     width: 46px;
     height: 26px;
+    box-sizing: border-box;
     border-radius: 999px;
     border: 2px solid #8b5cf6;
     background: transparent;
@@ -1361,8 +1366,9 @@ div[data-testid="stPopover"] > button:hover {
 .privacy-knob::after {
     content: "";
     position: absolute;
-    top: 2px;
+    top: 50%;
     left: 2px;
+    transform: translateY(-50%);
     width: 18px;
     height: 18px;
     border-radius: 50%;

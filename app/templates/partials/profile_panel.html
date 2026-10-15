@@ -2,18 +2,16 @@
    shows; /me includes it directly. Expects `p` (students_payload_profile
    dict) in context. #}
       <div class="profile-panel">
-        {% if show_privacy_button is defined and show_privacy_button %}
-        <div class="profile-status-row">
-          <button type="button" class="profile-status-btn" id="profile-status-btn">Profile Status</button>
-        </div>
-        {% endif %}
         <div class="profile-header">
           <div class="profile-avatar-wrap">
             {% if p.avatar %}<img src="{{ p.avatar|avatar }}" loading="lazy" decoding="async" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
           </div>
-          <div>
+          <div class="profile-head-main">
             <div class="profile-name-row">
               <div class="profile-name">{{ p.name }}</div>
+              {% if show_privacy_button is defined and show_privacy_button %}
+              <button type="button" class="profile-status-btn" id="profile-status-btn">Profile Status</button>
+              {% endif %}
               {% if auth_role == 'Admin' %}
               {% set bl_boards = blacklist.get(p.student_id, []) if blacklist is defined and blacklist else [] %}
               {% set _bl_key = bl_roster if bl_roster is defined and bl_roster else (roster_id if roster_id is defined and roster_id else 'fleet') %}
@@ -163,7 +161,7 @@
 <div class="privacy-backdrop" id="privacy-backdrop" hidden>
   <div class="privacy-modal" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
     <div class="privacy-title" id="privacy-title">Profile Status</div>
-    <div class="privacy-disclaimer" role="alert"><strong>WARNING:</strong> hiding your GitHub profile will automatically remove you from all GitHub leaderboards (Most Active Repositories, Most Commits, Most Stars and Top Starred Repositories). Hiding your HackerRank profile will remove you from the HackerRank leaderboards (Most Problems Solved and Top Practice Scores). Faculty and admins will still see all your information.</div>
+    <div class="privacy-disclaimer" role="alert"><strong>WARNING:</strong> hiding your GitHub profile will automatically remove you from all GitHub leaderboards. Hiding your HackerRank profile will remove you from the HackerRank leaderboards. Faculty and admins will still see all your information.</div>
     <div class="privacy-rows">
       <label class="privacy-row">
         <span class="privacy-text"><span class="privacy-label">Hide my PRN</span><span class="privacy-desc">Other students see &ldquo;Hidden&rdquo; instead of your student ID.</span></span>

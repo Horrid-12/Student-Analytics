@@ -6,7 +6,7 @@ columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -130,10 +130,10 @@ def _combined_active(row) -> int:
         return get("Active_Repositories")
 
 
-def _team_active_dates_set(row) -> set:
-    """Parse the comma-separated Team_Active_Dates (YYYY-MM-DD) into dates."""
+def _active_dates_set(row, column: str) -> set:
+    """Parse a comma-separated YYYY-MM-DD active-dates column into dates."""
     try:
-        raw = row.get("Team_Active_Dates", "") if isinstance(row, dict) else row.get("Team_Active_Dates", "")
+        raw = row.get(column, "") if isinstance(row, dict) else row.get(column, "")
     except Exception:
         return set()
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
@@ -148,6 +148,49 @@ def _team_active_dates_set(row) -> set:
         except Exception:
             continue
     return dates
+
+
+def _as_date_set(values) -> set:
+    """Coerce a mixed active-days collection to ``date`` objects.
+
+    Harvested sets arrive as dates, but callers may hand strings (or a mix
+    with the repo-Updated dates) — ``max()`` over mixed types raises, which
+    used to collapse the whole streak to 0. Unparseable entries are dropped.
+    """
+    out = set()
+    try:
+        items = list(values or [])
+    except Exception:
+        return out
+    for value in items:
+        try:
+            if isinstance(value, str):
+                text = value.strip()
+                if not text:
+                    continue
+                value = pd.to_datetime(text).date()
+            elif isinstance(value, datetime):
+                value = value.date() if value.tzinfo is None else value.date()
+            elif not isinstance(value, date):
+                value = pd.to_datetime(value).date()
+            out.add(value)
+        except Exception:
+            continue
+    return out
+
+
+def _team_active_dates_set(row) -> set:
+    """Parse the comma-separated Team_Active_Dates (YYYY-MM-DD) into dates."""
+    return _active_dates_set(row, "Team_Active_Dates")
+
+
+def _owned_active_dates_set(row) -> set:
+    """Parse the comma-separated Owned_Active_Dates (YYYY-MM-DD) into dates.
+
+    Per-day commit days harvested at sync time; empty for snapshots predating
+    the collection (callers fall back to repo Updated dates).
+    """
+    return _active_dates_set(row, "Owned_Active_Dates")
 
 
 def _team_repos_as_owned_rows(team_repos: pd.DataFrame, username: str) -> pd.DataFrame:
@@ -1998,11 +2041,14 @@ def _recent_activity(
     student_repos: pd.DataFrame,
     team_active_dates: set | None = None,
     team_commits_30d: int = 0,
+    owned_active_dates: set | None = None,
 ) -> tuple[int, int]:
     """Derive 30-day activity from owned + team activity (no extra API calls).
 
-    Owned activity comes from repo update timestamps; team activity comes from
-    the events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
+    Owned activity comes from per-day commit days (``Owned_Active_Dates``,
+    harvested at sync time) with repo update timestamps as the fallback for
+    snapshots predating the collection; team activity comes from the
+    events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
     pushing daily to a leader-owned repo finally count. Returns (combined
     contributions in last 30 days, combined streak). Day boundaries follow IST.
     """
@@ -2017,16 +2063,18 @@ def _recent_activity(
             days_ago = (today - updated_ist).dt.days
             owned_contrib = int(((days_ago >= 0) & (days_ago <= 30)).sum())
             active_days |= set(updated_ist[updated_ist <= today].dt.date)
+    # Merge per-day commit days (already YYYY-MM-DD dates, treat as IST days).
+    # One repo contributes a single Updated date, so without these a student
+    # pushing daily to the same repos can never streak past their repo count.
+    if owned_active_dates:
+        active_days |= _as_date_set(owned_active_dates)
     # Merge team active days (already YYYY-MM-DD dates, treat as IST days).
     try:
         team_commits_30d = int(float(team_commits_30d or 0))
     except (TypeError, ValueError):
         team_commits_30d = 0
     if team_active_dates:
-        try:
-            active_days |= set(team_active_dates)
-        except Exception:
-            pass
+        active_days |= _as_date_set(team_active_dates)
     contributions = int(owned_contrib + max(team_commits_30d, 0))
     if not active_days:
         return contributions, 0
@@ -2096,10 +2144,12 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
             )
     team_dates = _team_active_dates_set(row)
     team_commits_30d = _team_int(row, "Team_Commits_30d")
+    owned_dates = _owned_active_dates_set(row)
     # Activity counts owned repos only + team commits (team repos already
     # counted via commits, so pass owned to avoid double-counting team rows
-    # as both a repo-update and commits). Streak still merges team dates.
-    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d)
+    # as both a repo-update and commits). Streak merges owned commit days +
+    # team dates on top of the repo-Updated fallback.
+    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d, owned_dates)
     # Exact commit totals per window for the activity tabs; None on runs that
     # predate commit history (the template then keeps the legacy 30d display).
     window_pairs = (

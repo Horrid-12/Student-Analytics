@@ -1490,7 +1490,29 @@ OWNED_COMMIT_SUMMARY_COLS = [
     "Owned_Commits",
     "Owned_Commits_30d",
     "Owned_Commits_90d",
+    "Owned_Active_Dates",
 ]
+
+#: Max distinct commit days kept per student (a full year covers any plausible
+#: current streak; each ISO date is 10 chars so the stored string stays ~4KB).
+OWNED_ACTIVE_DATES_CAP = 366
+
+
+def _owned_commit_day(commit: dict) -> str:
+    """IST calendar day (YYYY-MM-DD) of one commits-API entry, "" when unknown.
+
+    Day boundaries follow IST to match the streak math in views._recent_activity.
+    """
+    try:
+        dt = pd.to_datetime(_commit_date(commit), utc=True, errors="coerce")
+    except Exception:
+        return ""
+    if dt is None or pd.isna(dt):
+        return ""
+    try:
+        return ((dt + pd.Timedelta(hours=5, minutes=30)).normalize().date().isoformat())
+    except Exception:
+        return ""
 
 
 def _windowed_commit_counts(commits: list[dict]) -> tuple[int, int, int]:
@@ -1557,6 +1579,7 @@ def fetch_owned_commit_data(
                 owned = repo_df.iloc[0:0]
             total = recent_30 = recent_90 = 0
             failed = False
+            active_days: set[str] = set()
             for _, repo in owned.iterrows():
                 repo_name = str(repo.get("Repository") or "").strip()
                 if not repo_name:
@@ -1570,6 +1593,15 @@ def fetch_owned_commit_data(
                 total += n_all
                 recent_30 += n_30
                 recent_90 += n_90
+                # Harvest commit days while the listing is in hand — counts
+                # alone cannot rebuild a streak (one repo = one Updated date).
+                for entry in commits or []:
+                    try:
+                        day = _owned_commit_day(entry)
+                    except Exception:
+                        day = ""
+                    if day:
+                        active_days.add(day)
             if failed and username not in unavailable_users:
                 unavailable_users.append(username)
             summaries.append(
@@ -1578,6 +1610,9 @@ def fetch_owned_commit_data(
                     "Owned_Commits": int(total),
                     "Owned_Commits_30d": int(recent_30),
                     "Owned_Commits_90d": int(recent_90),
+                    # Newest-first: keep the most recent days (a current streak
+                    # walks back from today, so old days are expendable).
+                    "Owned_Active_Dates": ", ".join(sorted(active_days)[-OWNED_ACTIVE_DATES_CAP:]),
                 }
             )
         except RateLimitError:
@@ -2107,6 +2142,7 @@ def build_dashboard_df(
         ("Contributed_Repos", ""),
         ("Team_Last_Active_At", ""),
         ("Team_Active_Dates", ""),
+        ("Owned_Active_Dates", ""),
     ):
         if column not in dashboard_df.columns:
             dashboard_df[column] = default
@@ -2170,6 +2206,7 @@ def build_dashboard_df(
             "Owned_Commits",
             "Owned_Commits_30d",
             "Owned_Commits_90d",
+            "Owned_Active_Dates",
             "Commit_Fetch_Status",
             "Followers",
             "Following",
