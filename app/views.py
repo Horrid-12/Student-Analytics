@@ -1406,6 +1406,42 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "valid_users": valid,
     }
 
+
+def _iso_week_label(ts) -> str:
+    """ISO-8601 year-week label (matches the ``%G-W%V`` activity bucket)."""
+    iso = ts.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def _semester_period_label(ts):
+    """Academic-semester label for an activity timestamp.
+
+    July–December = Semester 1 of YY-(YY+1); January–June = Semester 2 of
+    (YY-1)-YY — the same convention as ``add_academic_periods``."""
+    if pd.isna(ts):
+        return None
+    start = ts.year if ts.month >= 7 else ts.year - 1
+    half = 1 if ts.month >= 7 else 2
+    return f"{start}-{str(start + 1)[-2:]} · Semester {half}"
+
+
+def _centered_period_window(kind: str, anchor, half: int) -> list[str]:
+    """A symmetric window of ``2*half+1`` period labels with ``anchor`` central.
+
+    kind is ``"week"``, ``"month"`` or ``"semester"`` and the anchor period sits
+    at index ``half`` so the chart can pin the ongoing period in the middle."""
+    labels: list[str] = []
+    for offset in range(-half, half + 1):
+        if kind == "week":
+            labels.append(_iso_week_label(anchor + pd.Timedelta(weeks=offset)))
+        elif kind == "month":
+            shifted = anchor.replace(day=1) + pd.DateOffset(months=offset)
+            labels.append(shifted.strftime("%Y-%m"))
+        else:
+            labels.append(_semester_period_label(anchor + pd.DateOffset(months=6 * offset)))
+    return labels
+
+
 def _weekly_activity_trend(
     repos: pd.DataFrame,
     team_repos: pd.DataFrame | None,
@@ -1525,25 +1561,40 @@ def _weekly_activity_trend(
     # Compute ISO year-week and calendar-month labels, then derive the
     # semester period from each ACTIVITY timestamp (July–December = Semester 1
     # of YY-(YY+1); January–June = Semester 2 of (YY-1)-YY — the same calendar
-    # convention as add_academic_periods). Bucketing by the activity time keeps
-    # multiple semester categories across a division/batch filter, so the line renders.
+    # convention as add_academic_periods).
     combined["Week"] = combined["Updated"].dt.strftime("%G-W%V")
     combined["Month"] = combined["Updated"].dt.strftime("%Y-%m")
-
-    def _sem_period(ts) -> str:
-        if pd.isna(ts):
-            return None
-        _start = ts.year if ts.month >= 7 else ts.year - 1
-        _half = 1 if ts.month >= 7 else 2
-        return f"{_start}-{str(_start + 1)[-2:]} · Semester {_half}"
-
-    combined["Semester"] = combined["Updated"].apply(_sem_period)
+    combined["Semester"] = combined["Updated"].apply(_semester_period_label)
 
     # Unique (division, batch) pairs
     div_batches = sorted(combined[["Division", "Batch"]].drop_duplicates().apply(tuple, axis=1).unique())
 
-    def _aggregate(period: str, count_lookup) -> tuple[list[str], list[dict]]:
-        labels = sorted(combined[period].dropna().unique())
+    # Overall "all students" average shown when no cohort is selected:
+    # total activity in each period divided by the whole (filtered) roster, so
+    # the default graph is one clean campus-wide trend instead of every series.
+    _total_students = int(stu["GitHub_Username"].nunique()) if not stu.empty else 0
+
+    # The chart pins the ONGOING period in the centre of the x-axis: build a
+    # fixed, symmetric window around today (falling back to the latest activity
+    # period when the current window is empty), then mark periods AFTER the
+    # centre as future (null) so the trend line stops on the ongoing period
+    # instead of trailing off to zero across the right half.
+    _now = pd.Timestamp.now(tz="UTC")
+    _latest = combined["Updated"].max()
+
+    def _window(kind: str, period_col: str, half: int) -> tuple[list[str], int]:
+        present = set(combined[period_col].dropna().unique())
+        labels = _centered_period_window(kind, _now, half)
+        if not any(lab in present for lab in labels):
+            labels = _centered_period_window(kind, _latest, half)
+        # Anchor sits at index ``half`` -> everything after it is the future.
+        return labels, half
+
+    weeks, _w_half = _window("week", "Week", 13)
+    months, _m_half = _window("month", "Month", 6)
+    semesters, _s_half = _window("semester", "Semester", 3)
+
+    def _aggregate(period: str, count_lookup, window_labels: list[str], future_after: int) -> list[dict]:
         counts = combined.groupby([period, "Division", "Batch"]).size().reset_index(name="count")
         # Average per student (division+batch, or semester+division+batch, whichever the lookup keyed on)
         counts["avg"] = counts.apply(
@@ -1554,44 +1605,50 @@ def _weekly_activity_trend(
         series = []
         for div, bat in div_batches:
             vals = []
-            for lab in labels:
-                if lab in pivot.index and (div, bat) in pivot.columns:
+            for idx, lab in enumerate(window_labels):
+                if idx > future_after:
+                    vals.append(None)
+                elif lab in pivot.index and (div, bat) in pivot.columns:
                     vals.append(float(pivot.loc[lab, (div, bat)]))
                 else:
                     vals.append(0.0)
             series.append({"division": div, "batch": bat, "values": vals})
-        return labels, series
+        return series
 
-    weeks, weekly_series = _aggregate(
+    def _overall_values(period: str, window_labels: list[str], future_after: int) -> list[float]:
+        counts = combined.groupby(period).size().to_dict()
+        denom = max(_total_students, 1)
+        out = []
+        for idx, lab in enumerate(window_labels):
+            if idx > future_after:
+                out.append(None)
+            else:
+                out.append(round(float(counts.get(lab, 0)) / denom, 2))
+        return out
+
+    weekly_series = _aggregate(
         "Week",
         lambda r: div_batch_student_count.get((r["Division"], r["Batch"]), 1),
+        weeks, _w_half,
     )
-    months, monthly_series = _aggregate(
+    monthly_series = _aggregate(
         "Month",
         lambda r: div_batch_student_count.get((r["Division"], r["Batch"]), 1),
+        months, _m_half,
     )
-    semesters, semester_series = _aggregate(
+    semester_series = _aggregate(
         "Semester",
         lambda r: semester_batch_student_count.get(
             (r["Semester"], r["Division"], r["Batch"]),
             div_batch_student_count.get((r["Division"], r["Batch"]), 1)
         ),
+        semesters, _s_half,
     )
 
-    # Overall "all students" average line shown when no cohort is selected:
-    # total activity in each period divided by the whole (filtered) roster, so
-    # the default graph is one clean campus-wide trend instead of every series.
-    _total_students = int(stu["GitHub_Username"].nunique()) if not stu.empty else 0
-
-    def _overall_values(period: str, labels: list[str]) -> list[float]:
-        counts = combined.groupby(period).size().to_dict()
-        denom = max(_total_students, 1)
-        return [round(float(counts.get(lab, 0)) / denom, 2) for lab in labels]
-
     overall = {
-        "weeks": _overall_values("Week", weeks),
-        "months": _overall_values("Month", months),
-        "semesters": _overall_values("Semester", semesters),
+        "weeks": _overall_values("Week", weeks, _w_half),
+        "months": _overall_values("Month", months, _m_half),
+        "semesters": _overall_values("Semester", semesters, _s_half),
     }
 
     return {
