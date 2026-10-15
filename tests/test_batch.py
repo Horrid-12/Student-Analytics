@@ -194,7 +194,19 @@ class TestAnalyzeRecordsParity:
         expected_issues = json.loads(
             result.invalid_issues_df.to_json(orient="records", date_format="iso")
         )
-        assert got["students"] == expected_students
+        # Owned_Active_Dates is port-only (harvested commit days feeding the
+        # activity streak — the frozen reference predates it), so it is
+        # excluded from the pin; everything else must still match exactly.
+        got_students = [
+            {k: v for k, v in row.items() if k != "Owned_Active_Dates"}
+            for row in got["students"]
+        ]
+        assert got_students == expected_students
+        alice = next(r for r in got["students"] if r["GitHub_Username"] == "alice-dev")
+        alice_days = alice["Owned_Active_Dates"].split(", ")
+        assert len(alice_days) == 6  # commits at 0/10/40/100/400 + 200 days ago
+        today_ist = ((pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=5, minutes=30)).normalize().date().isoformat())
+        assert today_ist in alice_days
         assert got["issues"] == expected_issues
         assert got["valid_users"] == len(result.valid_users)
         assert got["invalid_users"] == len(result.invalid_users)

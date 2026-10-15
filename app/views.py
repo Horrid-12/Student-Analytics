@@ -6,7 +6,7 @@ columns, ordering, labels and formatting. No Streamlit, no network.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -130,10 +130,10 @@ def _combined_active(row) -> int:
         return get("Active_Repositories")
 
 
-def _team_active_dates_set(row) -> set:
-    """Parse the comma-separated Team_Active_Dates (YYYY-MM-DD) into dates."""
+def _active_dates_set(row, column: str) -> set:
+    """Parse a comma-separated YYYY-MM-DD active-dates column into dates."""
     try:
-        raw = row.get("Team_Active_Dates", "") if isinstance(row, dict) else row.get("Team_Active_Dates", "")
+        raw = row.get(column, "") if isinstance(row, dict) else row.get(column, "")
     except Exception:
         return set()
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
@@ -148,6 +148,49 @@ def _team_active_dates_set(row) -> set:
         except Exception:
             continue
     return dates
+
+
+def _as_date_set(values) -> set:
+    """Coerce a mixed active-days collection to ``date`` objects.
+
+    Harvested sets arrive as dates, but callers may hand strings (or a mix
+    with the repo-Updated dates) — ``max()`` over mixed types raises, which
+    used to collapse the whole streak to 0. Unparseable entries are dropped.
+    """
+    out = set()
+    try:
+        items = list(values or [])
+    except Exception:
+        return out
+    for value in items:
+        try:
+            if isinstance(value, str):
+                text = value.strip()
+                if not text:
+                    continue
+                value = pd.to_datetime(text).date()
+            elif isinstance(value, datetime):
+                value = value.date() if value.tzinfo is None else value.date()
+            elif not isinstance(value, date):
+                value = pd.to_datetime(value).date()
+            out.add(value)
+        except Exception:
+            continue
+    return out
+
+
+def _team_active_dates_set(row) -> set:
+    """Parse the comma-separated Team_Active_Dates (YYYY-MM-DD) into dates."""
+    return _active_dates_set(row, "Team_Active_Dates")
+
+
+def _owned_active_dates_set(row) -> set:
+    """Parse the comma-separated Owned_Active_Dates (YYYY-MM-DD) into dates.
+
+    Per-day commit days harvested at sync time; empty for snapshots predating
+    the collection (callers fall back to repo Updated dates).
+    """
+    return _active_dates_set(row, "Owned_Active_Dates")
 
 
 def _team_repos_as_owned_rows(team_repos: pd.DataFrame, username: str) -> pd.DataFrame:
@@ -888,7 +931,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All") -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1148,7 +1191,15 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                     _bits.append(f"Div {_clean_division_text(_div) or _div}")
                 if _bat and _bat.lower() not in {"nan", "none", "unknown"}:
                     _bits.append(f"Batch {_clean_batch_text(_bat) or _bat}")
-                if _user and _user.lower() not in {"nan", "none", "unknown", ""}:
+                # Privacy: a student who hid GitHub keeps stats but loses the
+                # @handle in other students' Need Attention style lists.
+                _gh_hidden = False
+                try:
+                    if isinstance(privacy_map, dict) and _sid:
+                        _gh_hidden = bool(int((privacy_map.get(_sid) or {}).get("hide_github") or 0))
+                except Exception:
+                    _gh_hidden = False
+                if _user and _user.lower() not in {"nan", "none", "unknown", ""} and not _gh_hidden:
                     _bits.append(f"@{_user}")
                 statistics_lists[_bucket].append({
                     "name": _name,
@@ -2047,11 +2098,14 @@ def _recent_activity(
     student_repos: pd.DataFrame,
     team_active_dates: set | None = None,
     team_commits_30d: int = 0,
+    owned_active_dates: set | None = None,
 ) -> tuple[int, int]:
     """Derive 30-day activity from owned + team activity (no extra API calls).
 
-    Owned activity comes from repo update timestamps; team activity comes from
-    the events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
+    Owned activity comes from per-day commit days (``Owned_Active_Dates``,
+    harvested at sync time) with repo update timestamps as the fallback for
+    snapshots predating the collection; team activity comes from the
+    events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
     pushing daily to a leader-owned repo finally count. Returns (combined
     contributions in last 30 days, combined streak). Day boundaries follow IST.
     """
@@ -2066,16 +2120,18 @@ def _recent_activity(
             days_ago = (today - updated_ist).dt.days
             owned_contrib = int(((days_ago >= 0) & (days_ago <= 30)).sum())
             active_days |= set(updated_ist[updated_ist <= today].dt.date)
+    # Merge per-day commit days (already YYYY-MM-DD dates, treat as IST days).
+    # One repo contributes a single Updated date, so without these a student
+    # pushing daily to the same repos can never streak past their repo count.
+    if owned_active_dates:
+        active_days |= _as_date_set(owned_active_dates)
     # Merge team active days (already YYYY-MM-DD dates, treat as IST days).
     try:
         team_commits_30d = int(float(team_commits_30d or 0))
     except (TypeError, ValueError):
         team_commits_30d = 0
     if team_active_dates:
-        try:
-            active_days |= set(team_active_dates)
-        except Exception:
-            pass
+        active_days |= _as_date_set(team_active_dates)
     contributions = int(owned_contrib + max(team_commits_30d, 0))
     if not active_days:
         return contributions, 0
@@ -2145,10 +2201,12 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
             )
     team_dates = _team_active_dates_set(row)
     team_commits_30d = _team_int(row, "Team_Commits_30d")
+    owned_dates = _owned_active_dates_set(row)
     # Activity counts owned repos only + team commits (team repos already
     # counted via commits, so pass owned to avoid double-counting team rows
-    # as both a repo-update and commits). Streak still merges team dates.
-    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d)
+    # as both a repo-update and commits). Streak merges owned commit days +
+    # team dates on top of the repo-Updated fallback.
+    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d, owned_dates)
     # Exact commit totals per window for the activity tabs; None on runs that
     # predate commit history (the template then keeps the legacy 30d display).
     window_pairs = (
@@ -2218,6 +2276,36 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
         "team_commits": _team_int(row, "Team_Commits"),
         "contributed_repos": str(row.get("Contributed_Repos") or "") if not (isinstance(row.get("Contributed_Repos"), float) and pd.isna(row.get("Contributed_Repos"))) else "",
     }
+
+
+def apply_profile_privacy(p: dict, prefs: dict | None) -> dict:
+    """Blank the fields a student hid from OTHER students.
+
+    ``prefs`` is {hide_prn, hide_github, hide_linkedin, hide_hackerrank}
+    (0/1). Callers only pass prefs when the viewer is a student looking at
+    someone else's profile — faculty/admins and the owner bypass. The
+    ``student_id`` key is kept so profile links keep working; templates show
+    "Hidden" via the ``prn_hidden`` flag. Blanked handles also collapse the
+    matching icon buttons and the HackerRank live tab via existing guards.
+    """
+    if not p or not prefs or not isinstance(prefs, dict):
+        return p
+    try:
+        if int(prefs.get("hide_github") or 0):
+            p["username"] = ""
+            p["profile_url"] = ""
+        if int(prefs.get("hide_linkedin") or 0):
+            p["linkedin_username"] = ""
+            p["linkedin_url"] = ""
+            p["linkedin_display"] = ""
+        if int(prefs.get("hide_hackerrank") or 0):
+            p["hackerrank_username"] = ""
+            p["hackerrank_url"] = ""
+        if int(prefs.get("hide_prn") or 0):
+            p["prn_hidden"] = True
+    except Exception:
+        pass
+    return p
 
 
 def _num(value):
@@ -2357,6 +2445,49 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
         return students_payload_profile(row, repos, team_repos)
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
+
+
+def mask_export_df(df, privacy: dict | None, own_sid: str | None = None) -> object:
+    """Blank privacy-hidden fields in a student export frame for student viewers.
+
+    ``df`` uses the renamed export columns ("Student ID", "GitHub Username",
+    ...). Hidden PRNs become "Hidden"; hidden handles + URLs become "".
+    The viewer's own row (``own_sid``) is never masked. Returns ``df``.
+    """
+    if df is None or getattr(df, "empty", False) or not isinstance(privacy, dict) or not privacy:
+        return df
+    try:
+        own = str(own_sid) if own_sid is not None else None
+        for idx in df.index:
+            try:
+                sid = str(df.at[idx, "Student ID"]) if "Student ID" in df.columns else ""
+            except Exception:
+                continue
+            if not sid or sid == own:
+                continue
+            prefs = privacy.get(sid)
+            if not isinstance(prefs, dict):
+                continue
+            try:
+                if int(prefs.get("hide_prn") or 0) and "Student ID" in df.columns:
+                    df.at[idx, "Student ID"] = "Hidden"
+                if int(prefs.get("hide_github") or 0):
+                    for col in ("GitHub Username", "GitHub URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+                if int(prefs.get("hide_linkedin") or 0):
+                    for col in ("LinkedIn Username", "LinkedIn URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+                if int(prefs.get("hide_hackerrank") or 0):
+                    for col in ("HackerRank Username", "HackerRank URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return df
 
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:
@@ -2794,6 +2925,37 @@ def repository_export_df(payload: dict) -> pd.DataFrame:
     rows = payload.get("rows") or []
     df = pd.DataFrame([{c: row.get(c) for c in columns} for row in rows], columns=columns).rename(columns=headers)
     return df
+
+
+def mask_repo_rows(rows, privacy: dict | None, own_sid: str | None = None):
+    """Hide @handles on repository cards/rows/exports for student viewers.
+
+    ``rows`` are the payload row dicts (each carries ``student_id`` +
+    ``owner_username``). A student who hid GitHub keeps their repos listed
+    (public data) but loses the @handle for other students; the owner's own
+    rows (``own_sid``) are never masked. Returns ``rows``.
+    """
+    if not rows or not isinstance(privacy, dict) or not privacy:
+        return rows
+    try:
+        own = str(own_sid) if own_sid is not None else None
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            sid = str(row.get("student_id") or "")
+            if not sid or sid == own:
+                continue
+            prefs = privacy.get(sid)
+            if not isinstance(prefs, dict):
+                continue
+            try:
+                if int(prefs.get("hide_github") or 0):
+                    row["owner_username"] = ""
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return rows
 
 
 # ---------------------------------------------------------------------------
