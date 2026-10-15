@@ -176,6 +176,7 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
         "Owned_Commits": None,
         "Owned_Commits_30d": None,
         "Owned_Commits_90d": None,
+        "Owned_Active_Dates": "",
         "Commit_Fetch_Status": "Loaded",
         "Followers": followers,
         "Following": following,
@@ -247,7 +248,7 @@ def _carry_forward_heavy_metrics(email: str, student: dict, team_repos: list, is
 
     _contrib_cols = ["Pull_Requests", "Open_PRs", "Closed_PRs", "Issues_Opened", "Open_Issues", "External_PRs"]
     _team_cols = ["Team_Commits", "Team_Push_Events", "Team_PR_Events", "Team_Total_Events", "Team_Commits_30d", "Team_Commits_90d", "Team_Total_Events_30d", "Team_Active_Dates", "Team_Active_Repos", "Contributed_Repos_Count", "Contributed_Repos", "Team_Last_Active_At"]
-    _commit_cols = ["Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d"]
+    _commit_cols = ["Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d", "Owned_Active_Dates"]
 
     if is_lightweight or student.get("Contrib_Fetch_Status") == "Unavailable":
         for col in _contrib_cols:
@@ -278,12 +279,41 @@ def _carry_forward_heavy_metrics(email: str, student: dict, team_repos: list, is
     return student, team_repos
 
 
-def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "", token: str | None = None) -> list[dict]:
+def _merge_owned_active_dates(existing: str, fresh: set[str] | None) -> str:
+    """Union a stored Owned_Active_Dates string with freshly fetched commit days.
+
+    Keeps the newest OWNED_ACTIVE_DATES_CAP days (a current streak walks back
+    from today, so old days are expendable and the snapshot stays small).
+    """
+    days: set[str] = set()
+    for part in str(existing or "").split(","):
+        part = part.strip()
+        if part:
+            days.add(part)
+    try:
+        days |= set(fresh or set())
+    except Exception:
+        pass
+    try:
+        cap = int(services.OWNED_ACTIVE_DATES_CAP)
+    except Exception:
+        cap = 366
+    return ", ".join(sorted(days)[-cap:])
+
+
+def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "", token: str | None = None) -> tuple[list[dict], set[str]]:
     """Preserve per-repo author commits (Commits, Commits_30d, Commits_90d) from
     the previous heavy snapshot so lightweight login syncs don't reset them to None.
-    If a repo's commits are still missing and a token is available, fetch them."""
+    If a repo's commits are still missing and a token is available, fetch them.
+
+    Returns ``(repos, owned_days)`` where ``owned_days`` is the set of IST
+    commit-day strings harvested from every fresh fetch this run. Repos pushed
+    since the previous snapshot are refetched (bounded to active repos) so both
+    the counts and the commit days stay fresh between heavy syncs.
+    """
+    owned_days: set[str] = set()
     if not repos:
-        return repos
+        return repos, owned_days
     try:
         prev_snapshot = accounts.get_snapshot(email) or {}
     except Exception:
@@ -293,6 +323,10 @@ def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "
         str(r.get("Repository") or r.get("name") or "").strip().lower(): r
         for r in prev_repos
     }
+    try:
+        prev_synced = _parse_synced(prev_snapshot.get("synced_at", ""))
+    except Exception:
+        prev_synced = None
     for repo in repos:
         name = str(repo.get("Repository") or repo.get("name") or "").strip()
         prev_r = prev_by_name.get(name.lower())
@@ -300,7 +334,21 @@ def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "
             for col in ("Commits", "Commits_30d", "Commits_90d"):
                 if repo.get(col) is None and prev_r.get(col) is not None:
                     repo[col] = prev_r[col]
-        if repo.get("Commits") is None and username and name and token:
+        if not (username and name and token):
+            continue
+        needs_fetch = repo.get("Commits") is None
+        if not needs_fetch and prev_synced is not None:
+            # Fresh push since the last snapshot: refetch so counts AND commit
+            # days stay current (light syncs otherwise freeze both at the first
+            # fetch, and the streak decays to zero within days).
+            try:
+                updated = pd.to_datetime(repo.get("Updated"), errors="coerce", utc=True)
+                needs_fetch = bool(
+                    pd.notna(updated) and updated.timestamp() > prev_synced.timestamp()
+                )
+            except Exception:
+                needs_fetch = False
+        if needs_fetch:
             try:
                 commits, ok = services.get_repo_author_commits(f"{username}/{name}", username, token)
                 if ok:
@@ -308,9 +356,16 @@ def _carry_forward_repo_commits(email: str, repos: list[dict], username: str = "
                     repo["Commits"] = int(n_all)
                     repo["Commits_30d"] = int(n_30)
                     repo["Commits_90d"] = int(n_90)
+                    for entry in commits or []:
+                        try:
+                            day = services._owned_commit_day(entry)
+                        except Exception:
+                            day = ""
+                        if day:
+                            owned_days.add(day)
             except Exception:
                 pass
-    return repos
+    return repos, owned_days
 
 
 #: Heavy-only per-repo quality inputs. The lightweight login/nightly sync
@@ -538,7 +593,10 @@ def sync_one(user_row: dict, token: str | None = None, force: bool = False) -> t
     accounts.init_db()
     student = _carry_forward_profile_links(email, student)
     student, team_repos = _carry_forward_heavy_metrics(email, student, team_repos, is_lightweight=True)
-    repos = _carry_forward_repo_commits(email, repos, username=username, token=token)
+    repos, fresh_days = _carry_forward_repo_commits(email, repos, username=username, token=token)
+    # Union carried-forward commit days with this run's fresh fetches so the
+    # streak stays current between heavy syncs (both start blank pre-fix).
+    student["Owned_Active_Dates"] = _merge_owned_active_dates(student.get("Owned_Active_Dates"), fresh_days)
     repos = _carry_forward_repo_quality(email, repos)
     ok = accounts.save_snapshot(
         email, username=username, status="ok", student=student,

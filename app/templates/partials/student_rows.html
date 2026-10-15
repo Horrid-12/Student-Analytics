@@ -11,6 +11,10 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
 #}
 {% for row in rows.to_dict('records') %}
 {% set open_url = "/students?roster=" + roster_id + "&q=" + (q|urlencode) + "&division=" + (division|urlencode) + "&batch=" + (batch|urlencode) + "&semester=" + (semester|urlencode) + "&mine=" + ((mine or '1')|string) + "&pair=" + ((pair or 'All')|urlencode) + "&rows=" + (page_size|string) + "&select=" + (row.Student_ID|string) %}
+{# Privacy: fields this student hid from other students. The owner's own row
+   (own_sid) and faculty/admin views (mask_privacy false) stay untouched. #}
+{% set _sid = row.Student_ID|string %}
+{% if mask_privacy|default(false) and privacy is defined and privacy and not (own_sid is defined and own_sid is not none and _sid == own_sid|string) %}{% set _pp = privacy.get(_sid, {}) %}{% else %}{% set _pp = {} %}{% endif %}
 <tr class="student-row" data-student-id="{{ row.Student_ID }}">
   <td>
     <div class="student-cell">
@@ -19,23 +23,24 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
     </div>
   </td>
   <td>
-    <a class="student-open-link" href="{{ open_url }}">{{ row.Student_ID }}</a>
+    {% if _pp.get('hide_prn') %}<span style="color:var(--muted);">Hidden</span>
+    {% else %}<a class="student-open-link" href="{{ open_url }}">{{ row.Student_ID }}</a>{% endif %}
   </td>
   <td>{{ row.Division }}</td>
   <td>{{ row.Batch }}</td>
   <td>{{ row.Semester }}</td>
   <td>
-    {% if row.GitHub_Username %}
+    {% if row.GitHub_Username and not _pp.get('hide_github') %}
       <a class="handle" href="{{ row.Profile_URL }}" target="_blank" rel="noopener" title="{{ row.GitHub_Username }}">{{ row.GitHub_Username }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>
-    {% if row.LinkedIn_Username %}
+    {% if row.LinkedIn_Username and not _pp.get('hide_linkedin') %}
       <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>
-    {% if row.HackerRank_Username %}
+    {% if row.HackerRank_Username and not _pp.get('hide_hackerrank') %}
       <a class="handle" href="{{ row.HackerRank_URL }}" target="_blank" rel="noopener" title="{{ row.HackerRank_Username }}">{{ row.HackerRank_Username }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>

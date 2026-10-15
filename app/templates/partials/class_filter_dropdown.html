@@ -37,26 +37,30 @@
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
     padding: 10px; z-index: 40;
   }
-  .cf-row {
-    display: flex; align-items: center; width: 100%; text-align: left;
-    padding: 12px 14px; font-size: 15px; font-weight: 600;
-    font-family: Inter, system-ui, sans-serif;
-    background: transparent; border: 2px solid transparent; border-radius: 8px; color: var(--text);
-    cursor: pointer;
-  }
-  .cf-row:hover { background: var(--hover-bg); }
   .cf-box {
     border: 1px solid var(--border); border-radius: 10px;
     background: var(--card-soft, rgba(128, 128, 128, 0.04));
     margin: 0 0 8px; padding: 4px;
   }
-  .cf-scope-opt {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; font-size: 14px; font-weight: 600;
-    border-radius: 8px; cursor: pointer; color: var(--text);
+  /* Scope toggle switch: My Classes | All students in one purple-bordered
+     pill. Both options stay visible so the state never has to be guessed
+     (replaces the old radio list). Active side is filled purple. */
+  .cf-scope-toggle {
+    display: flex;
+    border: 3px solid #8b5cf6; border-radius: 10px;
+    overflow: hidden; min-height: 42px;
   }
-  .cf-scope-opt:hover { background: var(--hover-bg); }
-  .cf-scope-opt input { width: 16px; height: 16px; accent-color: #8b5cf6; flex: none; }
+  .cf-scope-seg {
+    flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0 16px; min-height: 42px;
+    font-size: 14px; font-weight: 800;
+    font-family: Inter, system-ui, sans-serif;
+    color: #8b5cf6; background: transparent;
+    cursor: pointer; white-space: nowrap; transition: all 180ms ease;
+  }
+  .cf-scope-seg:hover:not(.is-active) { background: rgba(139, 92, 246, 0.12); }
+  .cf-scope-seg.is-active { background: #8b5cf6; color: #fff; }
+  .cf-scope-seg input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
   .cf-divrow {
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; padding: 10px 14px; border-radius: 8px;
@@ -92,13 +96,12 @@
   <div id="cf-panel" class="cf-panel" hidden>
     {% if teaching_active %}
     <div class="cf-box" role="radiogroup" aria-label="Scope">
-      <label class="cf-scope-opt"><input type="radio" name="mine" value="1" {% if mine != '0' %}checked{% endif %}> My Classes</label>
-      <label class="cf-scope-opt"><input type="radio" name="mine" value="0" {% if mine == '0' %}checked{% endif %}> All students</label>
+      <div class="cf-scope-toggle" id="cf-scope-toggle">
+        <label class="cf-scope-seg{% if mine != '0' %} is-active{% endif %}"><input type="radio" name="mine" value="1" {% if mine != '0' %}checked{% endif %}> <span>My Classes</span></label>
+        <label class="cf-scope-seg{% if mine == '0' %} is-active{% endif %}"><input type="radio" name="mine" value="0" {% if mine == '0' %}checked{% endif %}> <span>All students</span></label>
+      </div>
     </div>
     {% endif %}
-    <div class="cf-box">
-      <button type="button" class="cf-row" data-cf-clear>All</button>
-    </div>
     {% for g in payload.division_groups %}
     {% set div_key = g.key %}
     <div class="cf-divrow{% if teaching_active and taught_map and div_key in taught_map %} taught{% endif %}">
@@ -181,14 +184,32 @@
         refresh();
       });
     });
-    // "All" clears every staged pick (unfiltered).
-    panel.querySelectorAll('[data-cf-clear]').forEach(function (row) {
-      row.addEventListener('click', function () {
-        checks().forEach(function (c) { c.checked = false; });
-        pairButtons().forEach(function (b) { b.removeAttribute('data-active'); });
-        refresh();
+    // Scope toggle switch: picking a side applies immediately — no Apply
+    // click needed. Submits the parent filter form (carrying any staged
+    // pair picks + semester/search along with the new `mine` value).
+    (function syncScope() {
+      var segs = Array.prototype.slice.call(panel.querySelectorAll('.cf-scope-seg'));
+      if (!segs.length) return;
+      function paint() {
+        segs.forEach(function (seg) {
+          var input = seg.querySelector('input[name="mine"]');
+          if (input && input.checked) seg.classList.add('is-active');
+          else seg.classList.remove('is-active');
+        });
+      }
+      segs.forEach(function (seg) {
+        var input = seg.querySelector('input[name="mine"]');
+        if (input) input.addEventListener('change', function () {
+          paint();
+          var form = panel.closest ? panel.closest('form') : null;
+          if (form) {
+            if (typeof form.requestSubmit === 'function') form.requestSubmit();
+            else form.submit();
+          }
+        });
       });
-    });
+      paint();
+    })();
     refresh();
   })();
 </script>
