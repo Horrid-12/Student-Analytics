@@ -42,6 +42,19 @@
 .auth-card .auth-divider{display:flex;align-items:center;margin:16px 0;text-align:center}
 .auth-card .auth-divider::before,.auth-card .auth-divider::after{content:'';flex:1;border-bottom:1px solid var(--border)}
 .auth-card .auth-divider span{padding:0 12px;color:var(--muted);font-size:12px;white-space:nowrap}
+/* Multi-phase signup stepper (shared by all signup phases). Purple accent +
+   paper theme; later phases reuse .phase-steps with a higher --phase-now. */
+.auth-card .phase-steps{margin:0 0 20px}
+.auth-card .phase-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8b5cf6;margin-bottom:10px}
+.auth-card .phase-track{display:flex;align-items:center;gap:0}
+.auth-card .phase-dot{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none}
+.auth-card .phase-dot i{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:700;border:2px solid var(--border);background:var(--card-bg);color:var(--muted)}
+.auth-card .phase-dot small{font-size:11px;font-weight:600;color:var(--muted)}
+.auth-card .phase-dot.is-now i{border-color:#8b5cf6;background:#8b5cf6;color:#fff;box-shadow:0 0 0 4px rgba(139,92,246,.18)}
+.auth-card .phase-dot.is-now small{color:#8b5cf6}
+.auth-card .phase-link{flex:1;height:2px;background:var(--border);opacity:.45;margin:0 6px 20px}
+.auth-card .phase-note{font-size:12px;color:var(--muted);margin-top:10px}
+.auth-card .signup-note{font-size:12px;color:var(--muted);background:var(--card-soft,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-top:12px}
 </style>
 </head>
 <body style="background:var(--bg)">

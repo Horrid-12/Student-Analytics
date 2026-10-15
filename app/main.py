@@ -1157,6 +1157,7 @@ def signup_page(request: Request, error: int = 0):
             "show_error_banner": bool(error == 1),
             "show_domain_banner": bool(error == 2),
             "show_exists_banner": bool(error == 3),
+            "google_configured": google_oauth.configured(),
         },
     )
 
@@ -1173,7 +1174,8 @@ async def signup_submit(
         return RedirectResponse("/signup?error=1", status_code=302)
     if len(password) < 6:
         return RedirectResponse("/signup?error=1", status_code=302)
-    # Phase 4.7.2: signup is restricted to college addresses.
+    # College-only signup: the form constrains input to @mitwpu.edu.in and the
+    # server re-checks the configured allowlist (tests override it via env).
     if not auth.domain_allowed_email(email):
         return RedirectResponse("/signup?error=2", status_code=302)
     # Already-registered addresses (e.g. created via Google sign-in) get their
