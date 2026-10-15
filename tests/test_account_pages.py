@@ -384,9 +384,10 @@ class TestFleetPages:
         assert me.iloc[0]["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
         assert me.iloc[0]["LinkedIn_Username"] == "alice-li"
 
-    def test_verification_page_is_gone(self):
+    def test_verification_page_admin_only(self):
         client, _ = self._fleet()
-        assert self._get(client, "/verification").status_code == 404  # page removed
+        # /verification was re-added as an Admin-only portal; student is redirected
+        assert self._get(client, "/verification").status_code in (303, 403)
 
     def test_issues_page_is_gone(self):
         client, _ = self._fleet()

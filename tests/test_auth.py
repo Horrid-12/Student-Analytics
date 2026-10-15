@@ -142,11 +142,12 @@ class TestRBACGating:
         assert client.get("/settings").status_code == 200
         # 082512a restores student access to the Students page again.
         assert client.get("/students", headers={"accept": "text/html"}, follow_redirects=False).status_code == 200
-        # /history, /issues and /verification pages removed — unknown paths
+        # /history and /issues pages removed — unknown paths
         # fall through to 404, not a redirect.
         assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
         assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
-        assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
+        # /verification was re-added as Admin-only: student gets 303 redirect
+        assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code in (303, 403)
 
     def test_faculty_and_admin_open_all_pages(self, client):
         for role in ("faculty", "admin"):
@@ -154,10 +155,13 @@ class TestRBACGating:
             self._session(c, role)
             for path in ("/students", "/settings", "/repositories"):
                 assert c.get(path).status_code in (200, 404), f"{role} blocked on {path}"
-            # /history, /issues and /verification pages removed.
+            # /history and /issues pages removed.
             assert c.get("/history").status_code == 404
             assert c.get("/issues").status_code == 404
-            assert c.get("/verification").status_code == 404
+            if role == "admin":
+                assert c.get("/verification").status_code == 200
+            else:
+                assert c.get("/verification", follow_redirects=False).status_code in (303, 403)
 
 
 class TestSessionTokens:

@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, certificates, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
 from app.hackerrank_client.service import (
     decode_badges,
     decode_profile_model,
@@ -344,12 +344,13 @@ def _db_log_event(event_type: str, detail: str = "") -> bool:
     return storage.log_event(event_type, detail)
 
 
-PAGES = ["Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings"]
 
-# Sidebar icons â€” SVG inner markup of the legacy radio-label masks (style.css 304-344).
+# Sidebar icons — SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
     "Overview": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     "Onboarding": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M16 11h6"/>',
+    "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
@@ -359,10 +360,11 @@ NAV_SVG = {
 
 
 def slug_for(page: str) -> str:
-    """URL slug per page â€” mirrors the legacy sidebar order."""
+    """URL slug per page — mirrors the legacy sidebar order."""
     SLUGS = {
         "Overview": "overview",
         "Onboarding": "onboarding",
+        "Verification": "verification",
         "Students": "students",
         "Repositories": "repositories",
         "Leaderboards": "leaderboards",
@@ -742,6 +744,45 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         # instead of the linked GitHub/LinkedIn handle.
         "sidebar_name": _short_sidebar_name(display, bool(user and user.get("name"))) if user else "",
     }
+
+
+def _attach_profile_certificates(profile: dict | None, request: Request) -> dict | None:
+    """Attach certificate list and ownership status to student profile payload."""
+    if not profile:
+        return profile
+    user = getattr(request.state, "user", None) or {}
+    user_row = getattr(request.state, "user_row", None) or {}
+    user_email = (user.get("email") or "").strip().lower()
+    user_prn = str(user_row.get("prn") or "").strip()
+    auth_role = (user.get("role") or "").lower()
+
+    student_id = str(profile.get("student_id") or "").strip()
+    student_email = (profile.get("email") or "").strip().lower()
+
+    is_owner = bool(
+        (user_email and student_email and user_email == student_email)
+        or (user_prn and student_id and user_prn == student_id)
+        or (auth_role == "student" and profile.get("username") and profile.get("username") == user.get("github_username"))
+    )
+    is_admin = auth_role == "admin"
+
+    try:
+        if is_owner or is_admin:
+            certs = certificates.list_certificates_for_student(
+                student_email=student_email, student_id=student_id, approved_only=False
+            )
+        else:
+            certs = certificates.list_certificates_for_student(
+                student_email=student_email, student_id=student_id, approved_only=True
+            )
+    except Exception as exc:
+        logger.warning("_attach_profile_certificates failed: %s", exc)
+        certs = []
+
+    profile["certificates"] = certs
+    profile["is_owner"] = is_owner
+    profile["is_admin"] = is_admin
+    return profile
 
 
 def _placeholder_response(request: Request, ctx: dict, page_name: str):
@@ -1606,7 +1647,10 @@ def overview(
             candidates = view.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                ctx["profile"] = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+                ctx["profile"] = _attach_profile_certificates(
+                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    request,
+                )
         except Exception:
             ctx["profile"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
@@ -1842,6 +1886,242 @@ async def _onboarding_review(request: Request, email: str, status: str, promote_
     if ok:
         return RedirectResponse(f"/onboarding?action={status}&email={email}", status_code=303)
     return RedirectResponse(f"/onboarding?action=error&email={email}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Certificate Registry & Admin Verification (Phase 19 / Row 78)
+# ---------------------------------------------------------------------------
+
+@app.post("/certificates/queue")
+async def certificates_queue(
+    request: Request,
+    title: str = Form(""),
+    issuer: str = Form(""),
+    issue_date: str = Form(""),
+    credential_url: str = Form(""),
+    credential_id: str = Form(""),
+    skills: str = Form(""),
+    return_to: str = Form("/me"),
+    attachment: UploadFile = File(None),
+):
+    """Student queues a course or vendor certificate for admin verification."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_row = getattr(request.state, "user_row", None) or {}
+    student_email = (user.get("email") or "").strip().lower()
+    student_name = user.get("name") or user_row.get("name") or "Student"
+    student_id = str(user_row.get("prn") or "").strip()
+
+    title = (title or "").strip()
+    issuer = (issuer or "").strip()
+    credential_url = (credential_url or "").strip()
+    credential_id = (credential_id or "").strip()
+    skills = (skills or "").strip()
+    issue_date = (issue_date or "").strip()
+
+    sep = "&" if "?" in return_to else "?"
+    if not title or not issuer:
+        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=missing_fields", status_code=303)
+
+    filename = ""
+    file_bytes = b""
+    if attachment is not None and (attachment.filename or "").strip():
+        filename = (attachment.filename or "").split("/")[-1].split("\\")[-1].strip().replace('"', "'")
+        file_bytes = await attachment.read()
+        val_err = certificates.validate_attachment(filename, file_bytes)
+        if val_err:
+            return RedirectResponse(f"{return_to}{sep}tab=certificates&error={val_err}", status_code=303)
+
+    if not credential_url and not file_bytes:
+        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=proof_required", status_code=303)
+
+    cert = certificates.create_certificate(
+        student_email=student_email,
+        student_id=student_id,
+        student_name=student_name,
+        title=title,
+        issuer=issuer,
+        issue_date=issue_date,
+        credential_url=credential_url,
+        credential_id=credential_id,
+        skills=skills,
+        attachment_name=filename,
+        attachment_data=file_bytes,
+    )
+    if not cert:
+        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=save_failed", status_code=303)
+
+    _db_log_event("certificate_queued", f"{student_email}:{cert.get('id')}:{title}")
+    return RedirectResponse(f"{return_to}{sep}tab=certificates&notice=queued", status_code=303)
+
+
+@app.post("/certificates/{cert_id}/delete")
+def certificates_delete(request: Request, cert_id: int, return_to: str = Form("/me")):
+    """Student or admin deletes a pending/rejected certificate submission."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    cert = certificates.get_certificate(cert_id)
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    user_email = (user.get("email") or "").strip().lower()
+    is_admin = user.get("role") == "admin"
+    if not is_admin and cert["student_email"].lower() != user_email:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    certificates.delete_certificate(cert_id)
+    _db_log_event("certificate_deleted", f"{user_email}:{cert_id}")
+    sep = "&" if "?" in return_to else "?"
+    return RedirectResponse(f"{return_to}{sep}tab=certificates&notice=deleted", status_code=303)
+
+
+@app.get("/certificates/{cert_id}/attachment")
+def certificates_attachment(request: Request, cert_id: int):
+    """View/download a certificate attachment (PDF/image) inline in browser."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    cert = certificates.get_certificate(cert_id)
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    user_email = (user.get("email") or "").strip().lower()
+    is_staff = user.get("role") in ("admin", "faculty")
+    is_owner = cert["student_email"].lower() == user_email
+    if cert["status"] != "approved" and not is_staff and not is_owner:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    res = certificates.get_certificate_attachment(cert_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="No attachment found")
+    filename, data = res
+    ext = "." + (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+    safe_name = re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )
+
+
+@app.get("/verification", response_class=HTMLResponse)
+def verification_page(
+    request: Request,
+    status: str = "pending",
+    q: str = "",
+    roster: str = "",
+    notice: str = "",
+):
+    """Admin-only Certificate Verification Center (Phase 19 / Row 78).
+    Review and verify queued student certificates."""
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        return RedirectResponse("/", status_code=303)
+    ctx = _base_context(request, "Verification", roster)
+    status_filter = status.lower() if status and status.lower() in ("pending", "approved", "rejected") else None
+    if status.lower() == "all":
+        status_filter = None
+    items = certificates.list_certificates(status=status_filter, query=q)
+    counts = certificates.counts_by_status()
+    return templates.TemplateResponse(
+        request,
+        "pages/verification.html",
+        {
+            **ctx,
+            "items": items,
+            "counts": counts,
+            "active_status": status.lower(),
+            "q": q,
+            "notice": notice,
+        },
+    )
+
+
+@app.post("/verification/certificates/{cert_id}/approve")
+def verification_approve(request: Request, cert_id: int, return_to: str = Form("/verification")):
+    """Admin approves a queued certificate."""
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    cert = certificates.get_certificate(cert_id)
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    admin_email = user.get("email", "admin")
+    certificates.update_certificate_status(cert_id, "approved", verified_by=admin_email)
+    _db_log_event("certificate_approved", f"{admin_email}:{cert_id}:{cert['student_email']}")
+    try:
+        notif_msg = f"Your certificate '{cert['title']}' from {cert['issuer']} has been verified and added to your profile."
+        if database.db_configured():
+            db.create_notification(cert["student_email"], None, "CERTIFICATE_VERIFIED", "Certificate Verified ✓", notif_msg)
+        else:
+            support.create_notification(cert["student_email"], 0, "CERTIFICATE_VERIFIED", "Certificate Verified ✓", notif_msg)
+    except Exception as exc:
+        logger.warning("Failed to send certificate notification: %s", exc)
+    sep = "&" if "?" in return_to else "?"
+    return RedirectResponse(f"{return_to}{sep}notice=approved", status_code=303)
+
+
+@app.post("/verification/certificates/{cert_id}/reject")
+def verification_reject(
+    request: Request,
+    cert_id: int,
+    reason: str = Form(""),
+    return_to: str = Form("/verification"),
+):
+    """Admin rejects a certificate submission with an optional reason note."""
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    cert = certificates.get_certificate(cert_id)
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    admin_email = user.get("email", "admin")
+    certificates.update_certificate_status(cert_id, "rejected", verified_by=admin_email, admin_notes=reason.strip())
+    _db_log_event("certificate_rejected", f"{admin_email}:{cert_id}:{cert['student_email']}")
+    try:
+        notif_msg = f"Your certificate '{cert['title']}' was rejected: {reason.strip() or 'Does not meet criteria'}"
+        if database.db_configured():
+            db.create_notification(cert["student_email"], None, "CERTIFICATE_REJECTED", "Certificate Submission Rejected", notif_msg)
+        else:
+            support.create_notification(cert["student_email"], 0, "CERTIFICATE_REJECTED", "Certificate Submission Rejected", notif_msg)
+    except Exception as exc:
+        logger.warning("Failed to send certificate notification: %s", exc)
+    sep = "&" if "?" in return_to else "?"
+    return RedirectResponse(f"{return_to}{sep}notice=rejected", status_code=303)
+
+
+@app.post("/verification/certificates/{cert_id}/delete")
+def verification_delete(request: Request, cert_id: int, return_to: str = Form("/verification")):
+    """Admin deletes a certificate submission."""
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    certificates.delete_certificate(cert_id)
+    _db_log_event("certificate_deleted_admin", f"{user.get('email', 'admin')}:{cert_id}")
+    sep = "&" if "?" in return_to else "?"
+    return RedirectResponse(f"{return_to}{sep}notice=deleted", status_code=303)
+
+
+@app.get("/api/certificates")
+def api_certificates(request: Request, student_id: str = "", student_email: str = ""):
+    """JSON API to fetch certificates for a student."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_email = (user.get("email") or "").strip().lower()
+    is_admin = user.get("role") == "admin"
+    is_owner = bool((student_email and user_email == student_email.lower()) or (user.get("role") == "student" and not student_email and not student_id))
+    approved_only = not (is_admin or is_owner)
+    if not student_email and not student_id:
+        student_email = user_email
+    items = certificates.list_certificates_for_student(student_email=student_email, student_id=student_id, approved_only=approved_only)
+    return JSONResponse({"status": "ok", "certificates": items})
 
 
 @app.post("/sync/accounts")
@@ -2565,6 +2845,8 @@ def students_page(
     _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
     payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None, pairs=ctx["pairs"] or "All")
+    if payload.get("profile"):
+        payload["profile"] = _attach_profile_certificates(payload["profile"], request)
     payload["export_query"] += f"&mine={ctx['mine']}"
     return templates.TemplateResponse(
         request,
@@ -2642,7 +2924,7 @@ def students_rows(
 
 
 @app.get("/me", response_class=HTMLResponse)
-def my_profile_page(request: Request, roster: str = ""):
+def my_profile_page(request: Request, roster: str = "", tab: str = "", notice: str = "", error: str = ""):
     """4.11: the signed-in user's own student profile, rendered with the exact
     same panel component as the Students modal. Open to every logged-in role
     (RBAC "My Profile"); non-roster users get a friendly empty state."""
@@ -2669,10 +2951,20 @@ def my_profile_page(request: Request, roster: str = ""):
                 gh = str(user_row.get("github_username") or "").strip()
                 if gh:
                     profile = views.own_profile_payload(view, gh)
+    profile = _attach_profile_certificates(profile, request)
     return templates.TemplateResponse(
         request,
         "pages/me.html",
-        {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster)},
+        {
+            **ctx,
+            "profile": profile,
+            "blacklist": _blacklist_state(roster) if roster else {},
+            "hidden_repos": _hidden_repos_state(roster) if roster else {},
+            "has_roster": bool(roster),
+            "profile_tab": tab or "github",
+            "notice": notice,
+            "error": error,
+        },
     )
 
 
@@ -2767,7 +3059,10 @@ def repositories_page(
             candidates = data.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                profile = views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos"))
+                profile = _attach_profile_certificates(
+                    views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos")),
+                    request,
+                )
         except Exception:
             profile = None
     return templates.TemplateResponse(
@@ -2938,7 +3233,10 @@ def leaderboards_page(
             candidates = view.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                profile = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+                profile = _attach_profile_certificates(
+                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    request,
+                )
         except Exception:
             profile = None
     return templates.TemplateResponse(
