@@ -830,8 +830,8 @@ window.__EC_THEME = (function () {
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {% macro multi_line(id, data) %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
 {% if data and data.weeks and data.series and data.series|length > 0 %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
 <script>
 (function () {
   var el = document.getElementById('{{ id }}');
@@ -1018,5 +1018,12 @@ window.__EC_THEME = (function () {
   window.addEventListener('resize', function () { chart.resize(); });
 })();
 </script>
+{% else %}
+<div class="echart-box" style="height:380px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;">
+  <div style="text-align:center;">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:0.5;"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    <div>No activity data available for the selected filters.</div>
+  </div>
+</div>
 {% endif %}
 {% endmacro %}
