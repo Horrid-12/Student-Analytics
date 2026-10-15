@@ -1244,7 +1244,7 @@ div[data-testid="stPopover"] > button:hover {
    plus the popup with hide-toggles and the leaderboard disclaimer. */
 .profile-status-row {
     display: flex;
-    justify-content: flex-start;
+    justify-content: flex-end;
     margin-bottom: 10px;
 }
 .profile-status-btn {
