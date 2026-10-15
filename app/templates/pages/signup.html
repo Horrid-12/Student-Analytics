@@ -1,9 +1,8 @@
 {% extends "pages/auth_base.html" %}
 {% block title %}Create Account{% endblock %}
 {% block auth_card %}
-<div class="auth-card">
+<div class="auth-card auth-card-wide">
   <h1>Create an Account</h1>
-  <p class="sub">Student sign-up — faculty and admin accounts are provisioned by your administrator.</p>
 
   <div class="phase-steps" aria-label="Sign-up progress: phase 1 of 4">
     <div class="phase-label">Phase 1 of 4 &middot; Account</div>
@@ -16,7 +15,6 @@
       <div class="phase-link" aria-hidden="true"></div>
       <div class="phase-dot"><i>4</i><small>&nbsp;</small></div>
     </div>
-    <div class="phase-note">Complete your account to unlock the next phases.</div>
   </div>
 
   {% if show_error_banner %}
@@ -47,6 +45,7 @@
     <div class="form-group">
       <label for="email">College email address</label>
       <input type="email" id="email" name="email" placeholder="you@mitwpu.edu.in" required autofocus pattern=".*@mitwpu\.edu\.in$" title="Use your @mitwpu.edu.in college email address">
+      <div class="field-error" id="email-error">Please use your @mitwpu.edu.in college email address.</div>
     </div>
     <div class="form-group">
       <label for="name">Full name</label>
@@ -55,6 +54,7 @@
     <div class="form-group">
       <label for="password">Password</label>
       <input type="password" id="password" name="password" placeholder="Min. 6 characters" required minlength="6">
+      <div class="field-error" id="password-error">Password must be at least 6 characters.</div>
     </div>
     <div class="form-group">
       <label for="confirm_password">Confirm password</label>
@@ -65,4 +65,35 @@
 
   <p class="foot-text" style="font-size: 15px;">Already have an account? <a href="/login">Sign in</a></p>
 </div>
+<script>
+(function () {
+  var email = document.getElementById('email');
+  var emailErr = document.getElementById('email-error');
+  var pwd = document.getElementById('password');
+  var pwdErr = document.getElementById('password-error');
+  function isCollegeId(v) { return /@mitwpu\.edu\.in$/i.test((v || '').trim()); }
+  if (email && emailErr) {
+    email.addEventListener('blur', function () {
+      var bad = email.value.trim() !== '' && !isCollegeId(email.value);
+      emailErr.style.display = bad ? 'block' : 'none';
+      email.classList.toggle('is-invalid', bad);
+    });
+    email.addEventListener('input', function () {
+      emailErr.style.display = 'none';
+      email.classList.remove('is-invalid');
+    });
+  }
+  if (pwd && pwdErr) {
+    pwd.addEventListener('blur', function () {
+      var bad = pwd.value !== '' && pwd.value.length < 6;
+      pwdErr.style.display = bad ? 'block' : 'none';
+      pwd.classList.toggle('is-invalid', bad);
+    });
+    pwd.addEventListener('input', function () {
+      pwdErr.style.display = 'none';
+      pwd.classList.remove('is-invalid');
+    });
+  }
+})();
+</script>
 {% endblock %}
