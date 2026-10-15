@@ -199,21 +199,23 @@
               <!-- Directly display the certificate itself -->
               {% if cert.attachment_name %}
                 {% if cert.is_image %}
-                <div class="cert-doc-frame">
+                <div class="cert-doc-frame" style="max-width:100%;overflow:hidden;">
                   <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-image-link" title="Click to view full image in new tab">
-                    <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="cert-display-image" loading="lazy">
-                    <div class="cert-image-hover-pill">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                      <span>View full size</span>
-                    </div>
+                    <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="cert-display-image" loading="lazy" style="max-width:100%;max-height:380px;height:auto;object-fit:contain;display:block;margin:0 auto;">
                   </a>
+                  <div class="cert-doc-footer" style="padding:8px 12px;border-top:1px solid var(--border);background:var(--card);display:flex;justify-content:flex-end;">
+                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      <span>Open image in new tab</span>
+                    </a>
+                  </div>
                 </div>
                 {% elif cert.is_pdf %}
-                <div class="cert-doc-frame cert-pdf-frame">
-                  <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="cert-display-pdf" title="{{ cert.title }}"></iframe>
-                  <div class="cert-pdf-footer">
-                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-pdf-open-btn">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <div class="cert-doc-frame cert-pdf-frame" style="max-width:100%;overflow:hidden;">
+                  <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="cert-display-pdf" title="{{ cert.title }}" style="width:100%;height:320px;border:none;"></iframe>
+                  <div class="cert-pdf-footer" style="padding:8px 12px;border-top:1px solid var(--border);background:var(--card);display:flex;justify-content:flex-end;">
+                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-pdf-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                       <span>Open PDF in new tab</span>
                     </a>
                   </div>
