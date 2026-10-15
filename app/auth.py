@@ -112,6 +112,7 @@ _PRONS_TAKEN_STATUSES = ("pending", "approved")
 
 # Guarded page routes by URL prefix. Keep longest prefixes first.
 _PAGE_BY_PREFIX = (
+    ("/verification", "Verification"),
     ("/settings", "Settings"),
     ("/support", "Support"),
     ("/leaderboards", "Leaderboards"),
@@ -123,18 +124,15 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile")
 
-# BUG-044/045 RBAC: faculty and admin see everything. Students see Overview +
-# Onboarding + Repositories + Leaderboards + Settings + Support, plus My Profile.
-# (The later 4be7609 "Changed which tabs student account can see" narrowed the
-# student stack to this list, which is the current product decision. The old
-# Verification page was removed entirely.)
-# (Anonymized leaderboards are rendered by the page.)
+# RBAC: Verification is admin-only (Phase 19 certificate verification ledger).
+# Faculty see Overview + Onboarding + Students + Repositories + Leaderboards + Support + Settings + My Profile.
+# Students see Overview + Onboarding + Students + Repositories + Leaderboards + Settings + Support + My Profile.
 ROLE_PAGES = {
     "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
-    "faculty": ALL_PAGES,
-    "admin": ALL_PAGES,
+    "faculty": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile"),
+    "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile"),
 }
 
 _PBKDF2_ITERATIONS = 120_000
