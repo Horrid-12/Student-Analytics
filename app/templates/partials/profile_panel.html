@@ -36,7 +36,7 @@
               </details>
               {% endif %}
             </div>
-            <div class="profile-sub">{% if p.prn_hidden is defined and p.prn_hidden %}Hidden{% else %}{{ p.student_id }}{% endif %} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
+            <div class="profile-sub">{% if p.prn_hidden is defined and p.prn_hidden %}PRN Hidden{% else %}{{ p.student_id }}{% endif %} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
             <div class="profile-links">
               {% if p.username %}
               <a class="profile-icon-btn profile-icon-github" href="{{ p.profile_url }}" target="_blank" rel="noopener" title="GitHub: {{ p.username }}" aria-label="Open GitHub profile of {{ p.name }}">
@@ -255,6 +255,9 @@
         </div>
       </div>
       <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
+        {% if p.github_hidden is defined and p.github_hidden %}
+        <p class="tab-empty">GitHub profile Hidden by student</p>
+        {% else %}
         <details class="repo-dropdown">
           <summary class="repo-dropdown-btn">
             <span>Repositories ({{ p.repos|length }})</span>
@@ -339,9 +342,12 @@
             </div>
           </div>
         </div>
+        {% endif %}
       </div>
       <div id="profile-panel-hackerrank" role="tabpanel" aria-labelledby="profile-tab-hackerrank" hidden>
-        {% if p.hackerrank_username %}
+        {% if p.hackerrank_hidden is defined and p.hackerrank_hidden %}
+        <p class="tab-empty">HackerRank profile hidden by student</p>
+        {% elif p.hackerrank_username %}
         <div class="hr-profile" data-hr-username="{{ p.hackerrank_username }}" data-hr-state="idle">
           <p class="tab-empty" data-hr-status>Loading live details&hellip;</p>
           <div data-hr-content hidden></div>

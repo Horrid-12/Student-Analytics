@@ -200,12 +200,15 @@ class TestStudentMasking:
     def test_profile_popup_masked_for_students(self, fleet2):
         assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 1, "hide_hackerrank": 1})
         body = login(B_EMAIL).get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
-        assert "Hidden" in body
+        assert "PRN Hidden" in body
         assert "profile-icon-github" not in body
         assert "profile-icon-linkedin" not in body
         assert "profile-icon-hackerrank" not in body
-        # Stats still visible (only PRN + links are hideable).
-        assert "Repositories" in body
+        # Hidden tabs show the by-student message instead of data/empty states.
+        assert "GitHub profile Hidden by student" in body
+        assert "HackerRank profile hidden by student" in body
+        assert "No HackerRank profile linked." not in body
+        assert "Repositories (" not in body
 
     def test_profile_popup_full_for_faculty_and_owner(self, fleet2):
         assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 1, "hide_hackerrank": 1})
