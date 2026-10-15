@@ -3337,6 +3337,26 @@ button {
   height: 18px;
   flex-shrink: 0;
 }
+.cert-under-review-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #b45309;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+  max-width: 680px;
+  box-sizing: border-box;
+}
+.cert-review-svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: #d97706;
+}
 .cert-panel-top {
   display: flex;
   align-items: center;
@@ -3344,6 +3364,7 @@ button {
   gap: 12px;
   margin-bottom: 14px;
   flex-wrap: wrap;
+  max-width: 680px;
 }
 .cert-panel-heading {
   display: flex;
@@ -3387,6 +3408,8 @@ button {
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 16px;
+  max-width: 680px;
+  box-sizing: border-box;
 }
 .cert-form-header {
   margin-bottom: 12px;
@@ -3482,14 +3505,17 @@ button {
 .cert-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  max-width: 680px;
 }
 .cert-item {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   background: var(--card);
   transition: border-color 0.15s ease;
+  max-width: 680px;
+  box-sizing: border-box;
 }
 .cert-item:hover {
   border-color: var(--blue-active-border);
@@ -3637,7 +3663,8 @@ button {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--card-soft);
+  background: var(--card);
+  width: fit-content;
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -3646,27 +3673,25 @@ button {
   text-decoration: none;
   cursor: zoom-in;
   line-height: 0;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.03);
+  background: transparent;
   max-width: 100%;
 }
 .cert-display-image {
   max-width: 100%;
   height: auto;
-  max-height: 380px;
+  max-height: 360px;
   object-fit: contain;
   display: block;
-  margin: 0 auto;
-  border-radius: 8px;
+  border-radius: 8px 8px 0 0;
   transition: transform 0.2s ease;
 }
 .cert-image-link:hover .cert-display-image {
   transform: scale(1.01);
 }
 .cert-doc-footer {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-top: 1px solid var(--border);
-  background: var(--card);
+  background: var(--card-soft);
   display: flex;
   justify-content: flex-end;
 }

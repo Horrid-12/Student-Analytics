@@ -767,19 +767,24 @@ def _attach_profile_certificates(profile: dict | None, request: Request) -> dict
     is_admin = auth_role == "admin"
 
     try:
-        if is_owner or is_admin:
-            certs = certificates.list_certificates_for_student(
+        # Certificates under review are pending and should NOT be visible on profile cards.
+        # Only approved/verified certificates are published.
+        certs = certificates.list_certificates_for_student(
+            student_email=student_email, student_id=student_id, approved_only=True
+        )
+        pending_count = 0
+        if is_owner:
+            all_certs = certificates.list_certificates_for_student(
                 student_email=student_email, student_id=student_id, approved_only=False
             )
-        else:
-            certs = certificates.list_certificates_for_student(
-                student_email=student_email, student_id=student_id, approved_only=True
-            )
+            pending_count = sum(1 for c in all_certs if c.get("status") == "pending")
     except Exception as exc:
         logger.warning("_attach_profile_certificates failed: %s", exc)
         certs = []
+        pending_count = 0
 
     profile["certificates"] = certs
+    profile["pending_certificates_count"] = pending_count
     profile["is_owner"] = is_owner
     profile["is_admin"] = is_admin
     return profile
