@@ -732,7 +732,7 @@ window.__EC_THEME = (function () {
    Theme-aware pie with fixed semantic colours:
      Consistent → success, Doing Good → warning, Need Attention → danger.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
-{% macro pie(id, data) %}
+{% macro pie(id, data, center=None) %}
 {% if data %}
 {{ _theme_bridge() }}
 <div id="{{ id }}" class="echart-box" style="height:340px;"></div>
@@ -741,6 +741,7 @@ window.__EC_THEME = (function () {
   'use strict';
   var el = document.getElementById('{{ id }}');
   var raw = {{ data | tojson }};
+  var center = {{ (center or {}) | tojson }};
   var chart = echarts.init(el);
 
   function opts() {
@@ -753,7 +754,7 @@ window.__EC_THEME = (function () {
     var total = 0;
     raw.forEach(function (d) { total += (Number(d.value) || 0); });
 
-    return {
+    var option = {
       tooltip: window.__EC_THEME.tooltip({
         trigger: 'item',
         formatter: function (info) {
@@ -773,7 +774,7 @@ window.__EC_THEME = (function () {
       },
       series: [{
         type: 'pie',
-        radius: '62%',
+        radius: ['46%', '68%'],
         center: ['50%', '46%'],
         data: raw.map(function (d, i) {
           return {
@@ -812,6 +813,37 @@ window.__EC_THEME = (function () {
         animationEasing: 'cubicOut'
       }]
     };
+
+    if (center && center.value) {
+      option.graphic = [
+        {
+          type: 'text',
+          left: 'center',
+          top: '33%',
+          silent: true,
+          z: 10,
+          style: { text: String(center.value), fill: p.text, font: '700 30px Inter, sans-serif' }
+        },
+        {
+          type: 'text',
+          left: 'center',
+          top: '46%',
+          silent: true,
+          z: 10,
+          style: { text: String(center.label || ''), fill: p.textSoft, font: '600 13px Inter, sans-serif' }
+        },
+        {
+          type: 'text',
+          left: 'center',
+          top: '55%',
+          silent: true,
+          z: 10,
+          style: { text: String(center.sub || ''), fill: p.muted, font: '500 11px Inter, sans-serif' }
+        }
+      ];
+    }
+
+    return option;
   }
 
   chart.setOption(opts());

@@ -1237,6 +1237,17 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
 
+    # Class-health headline for the Statistics doughnut hole: the share of the
+    # filtered cohort that is "Consistent" (the healthiest bucket) plus the
+    # cohort's average owned-repo quality. Both are already computed above.
+    _stat_total = _n_consistent + _n_doing_good + _n_attention
+    _consistent_pct = round(100 * _n_consistent / _stat_total) if _stat_total else 0
+    stats_headline = {
+        "value": f"{_consistent_pct}%",
+        "label": "Consistent",
+        "sub": f"Avg quality {_avg_quality:.1f}",
+    }
+
     # Cohort picker options: distinct (Batch × Division) combos in the roster.
     # Labels are user-friendly ("Batch 2026" groups + "Division A" items) and the
     # groups sort by batch YEAR numerically, so mixed/messy roster values still
@@ -1449,6 +1460,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "bubble_data": bubble_data,
         "sankey_data": sankey_data,
         "statistics_data": statistics_data,
+        "stats_headline": stats_headline,
         "statistics_lists": statistics_lists,
         "need_attention_students": need_attention_students,
         "radar_data": radar_data,
