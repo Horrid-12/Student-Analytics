@@ -1750,7 +1750,10 @@ def overview(
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
                 ctx["profile"] = _mask_profile_for_viewer(
-                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    _attach_profile_certificates(
+                        views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                        request,
+                    ),
                     view, request, _privacy,
                 )
         except Exception:
@@ -3146,6 +3149,7 @@ def my_profile_page(request: Request, roster: str = "", tab: str = "", notice: s
                     profile = views.own_profile_payload(view, gh)
     # Profile Status (privacy toggles): offered on the student's own card
     # only. The popup reads/writes the prefs for the matched student_id.
+    profile = _attach_profile_certificates(profile, request)
     show_privacy = bool(profile) and (user.get("role") or "") == "student"
     privacy_prefs = auth.get_privacy_prefs(profile.get("student_id")) if show_privacy and profile else {f: 0 for f in auth.PRIVACY_FIELDS}
     return templates.TemplateResponse(
@@ -3309,7 +3313,10 @@ def repositories_page(
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
                 profile = _mask_profile_for_viewer(
-                    views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos")),
+                    _attach_profile_certificates(
+                        views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos")),
+                        request,
+                    ),
                     data, request, _privacy,
                 )
         except Exception:
@@ -3491,7 +3498,10 @@ def leaderboards_page(
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
                 profile = _mask_profile_for_viewer(
-                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    _attach_profile_certificates(
+                        views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                        request,
+                    ),
                     view, request, _privacy,
                 )
         except Exception:
