@@ -14,6 +14,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -1897,6 +1898,61 @@ async def _onboarding_review(request: Request, email: str, status: str, promote_
 # Certificate Registry & Admin Verification (Phase 19 / Row 78)
 # ---------------------------------------------------------------------------
 
+ALLOWED_REDIRECT_PATHS = (
+    "/",
+    "/overview",
+    "/me",
+    "/students",
+    "/repositories",
+    "/leaderboards",
+    "/verification",
+    "/settings",
+    "/support",
+    "/onboarding",
+    "/faculty",
+    "/faculty-setup",
+    "/cohorts",
+    "/privacy",
+)
+
+
+def _safe_redirect_url(target: str | None, default: str = "/me", **extra_params: str) -> str:
+    """Validate and sanitize redirect URL to prevent Open Redirect (CWE-601 / py/url-redirection).
+
+    Guarantees that the returned redirect URL:
+    1. Is strictly a relative URL pointing to an allowed internal path.
+    2. Has no scheme, no host/netloc, and no protocol-relative slashes (// or /\\).
+    3. Safely preserves query parameters from the original path while merging extra_params.
+    4. Falls back to `default` whenever `target` is missing, external, malformed, or untrusted.
+    """
+    fallback = default if default in ALLOWED_REDIRECT_PATHS else "/me"
+    clean = (target or "").strip().replace("\\", "/")
+    if not clean.startswith("/") or clean.startswith("//"):
+        base_path = fallback
+        query_dict = {}
+    else:
+        parsed = urlparse(clean)
+        if parsed.scheme or parsed.netloc:
+            base_path = fallback
+            query_dict = {}
+        else:
+            path = parsed.path.rstrip("/") or "/"
+            if path in ALLOWED_REDIRECT_PATHS:
+                base_path = path
+                query_dict = dict(parse_qsl(parsed.query, keep_blank_values=True)) if parsed.query else {}
+            else:
+                base_path = fallback
+                query_dict = {}
+
+    for k, v in extra_params.items():
+        if v is not None:
+            query_dict[k] = str(v)
+
+    if query_dict:
+        return base_path + "?" + urlencode(query_dict)
+    return base_path
+
+
 @app.post("/certificates/queue")
 async def certificates_queue(
     request: Request,
@@ -1925,9 +1981,11 @@ async def certificates_queue(
     skills = (skills or "").strip()
     issue_date = (issue_date or "").strip()
 
-    sep = "&" if "?" in return_to else "?"
     if not title or not issuer:
-        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=missing_fields", status_code=303)
+        return RedirectResponse(
+            _safe_redirect_url(return_to, default="/me", tab="certificates", error="missing_fields"),
+            status_code=303,
+        )
 
     filename = ""
     file_bytes = b""
@@ -1936,10 +1994,16 @@ async def certificates_queue(
         file_bytes = await attachment.read()
         val_err = certificates.validate_attachment(filename, file_bytes)
         if val_err:
-            return RedirectResponse(f"{return_to}{sep}tab=certificates&error={val_err}", status_code=303)
+            return RedirectResponse(
+                _safe_redirect_url(return_to, default="/me", tab="certificates", error=val_err),
+                status_code=303,
+            )
 
     if not file_bytes:
-        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=file_required", status_code=303)
+        return RedirectResponse(
+            _safe_redirect_url(return_to, default="/me", tab="certificates", error="file_required"),
+            status_code=303,
+        )
 
     cert = certificates.create_certificate(
         student_email=student_email,
@@ -1955,10 +2019,16 @@ async def certificates_queue(
         attachment_data=file_bytes,
     )
     if not cert:
-        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=save_failed", status_code=303)
+        return RedirectResponse(
+            _safe_redirect_url(return_to, default="/me", tab="certificates", error="save_failed"),
+            status_code=303,
+        )
 
     _db_log_event("certificate_queued", f"{student_email}:{cert.get('id')}:{title}")
-    return RedirectResponse(f"{return_to}{sep}tab=certificates&notice=queued", status_code=303)
+    return RedirectResponse(
+        _safe_redirect_url(return_to, default="/me", tab="certificates", notice="queued"),
+        status_code=303,
+    )
 
 
 @app.post("/certificates/{cert_id}/delete")
@@ -1975,8 +2045,10 @@ def certificates_delete(request: Request, cert_id: int, return_to: str = Form("/
     user_email = (user.get("email") or "").strip().lower()
     certificates.delete_certificate(cert_id)
     _db_log_event("certificate_deleted", f"{user_email}:{cert_id}")
-    sep = "&" if "?" in return_to else "?"
-    return RedirectResponse(f"{return_to}{sep}tab=certificates&notice=deleted", status_code=303)
+    return RedirectResponse(
+        _safe_redirect_url(return_to, default="/me", tab="certificates", notice="deleted"),
+        status_code=303,
+    )
 
 
 @app.get("/certificates/{cert_id}/attachment")
@@ -2067,8 +2139,10 @@ def verification_approve(request: Request, cert_id: int, return_to: str = Form("
             support.create_notification(cert["student_email"], 0, "CERTIFICATE_VERIFIED", "Certificate Verified ✓", notif_msg)
     except Exception as exc:
         logger.warning("Failed to send certificate notification: %s", exc)
-    sep = "&" if "?" in return_to else "?"
-    return RedirectResponse(f"{return_to}{sep}notice=approved", status_code=303)
+    return RedirectResponse(
+        _safe_redirect_url(return_to, default="/verification", notice="approved"),
+        status_code=303,
+    )
 
 
 @app.post("/verification/certificates/{cert_id}/reject")
@@ -2096,8 +2170,10 @@ def verification_reject(
             support.create_notification(cert["student_email"], 0, "CERTIFICATE_REJECTED", "Certificate Submission Rejected", notif_msg)
     except Exception as exc:
         logger.warning("Failed to send certificate notification: %s", exc)
-    sep = "&" if "?" in return_to else "?"
-    return RedirectResponse(f"{return_to}{sep}notice=rejected", status_code=303)
+    return RedirectResponse(
+        _safe_redirect_url(return_to, default="/verification", notice="rejected"),
+        status_code=303,
+    )
 
 
 @app.post("/verification/certificates/{cert_id}/delete")
@@ -2108,8 +2184,10 @@ def verification_delete(request: Request, cert_id: int, return_to: str = Form("/
         raise HTTPException(status_code=403, detail="Admin access required")
     certificates.delete_certificate(cert_id)
     _db_log_event("certificate_deleted_admin", f"{user.get('email', 'admin')}:{cert_id}")
-    sep = "&" if "?" in return_to else "?"
-    return RedirectResponse(f"{return_to}{sep}notice=deleted", status_code=303)
+    return RedirectResponse(
+        _safe_redirect_url(return_to, default="/verification", notice="deleted"),
+        status_code=303,
+    )
 
 
 @app.get("/api/certificates")

@@ -299,3 +299,118 @@ class TestCertificateEndpoints:
         assert res_adm.status_code == 303
         assert "notice=deleted" in res_adm.headers["location"]
         assert certificates.get_certificate(cert_id) is None
+
+
+class TestSafeRedirectProtection:
+    """Validate open redirect sanitization (CodeQL py/url-redirection CWE-601)."""
+
+    def test_safe_redirect_helper_directly(self):
+        from app.main import _safe_redirect_url
+
+        # Legitimate internal paths
+        assert _safe_redirect_url("/me") == "/me"
+        assert _safe_redirect_url("/verification?status=pending") == "/verification?status=pending"
+        assert _safe_redirect_url("/students?q=John", tab="certificates") == "/students?q=John&tab=certificates"
+
+        # Parameter merging / overriding
+        res = _safe_redirect_url("/me?tab=overview", tab="certificates", notice="queued")
+        assert "tab=certificates" in res
+        assert "notice=queued" in res
+
+        # Malicious targets must all safely fall back to default
+        malicious = [
+            "https://evil.com",
+            "http://evil.com/phish",
+            "//evil.com",
+            "///evil.com",
+            "/\\evil.com",
+            "\\\\evil.com",
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "evil.com",
+            "/unallowed_route/secret",
+            "",
+            None,
+        ]
+        for bad in malicious:
+            result = _safe_redirect_url(bad, default="/me", tab="certificates")
+            assert result.startswith("/me"), f"Failed to sanitize {bad}: got {result}"
+            assert "evil.com" not in result
+            assert "javascript" not in result
+
+    def test_endpoints_block_open_redirect(self):
+        client = TestClient(app)
+        _make_session(client, "alice@uni.edu", "student", "Alice")
+
+        # 1. Queue endpoint blocks external redirect
+        res = client.post(
+            "/certificates/queue",
+            data={
+                "title": "AWS Cert",
+                "issuer": "Amazon",
+                "return_to": "https://evil.com/steal_creds",
+            },
+            follow_redirects=False,
+        )
+        assert res.status_code == 303
+        loc = res.headers["location"]
+        assert loc.startswith("/me?")
+        assert "evil.com" not in loc
+
+        # 2. Queue with protocol-relative URL blocks external redirect
+        res2 = client.post(
+            "/certificates/queue",
+            data={
+                "title": "AWS Cert",
+                "issuer": "Amazon",
+                "return_to": "//attacker.com/oauth_callback",
+            },
+            follow_redirects=False,
+        )
+        assert res2.status_code == 303
+        loc2 = res2.headers["location"]
+        assert loc2.startswith("/me?")
+        assert "attacker.com" not in loc2
+
+        # 3. Verification action endpoints block external redirect
+        admin_client = TestClient(app)
+        _make_session(admin_client, "admin@uni.edu", "admin", "Admin")
+
+        cert = certificates.create_certificate(
+            student_email="alice@uni.edu",
+            student_id="1122334455",
+            student_name="Alice",
+            title="GCP Architect",
+            issuer="Google",
+        )
+        cert_id = cert["id"]
+
+        # Approve with malicious return_to
+        appr = admin_client.post(
+            f"/verification/certificates/{cert_id}/approve",
+            data={"return_to": "https://evil-hacker.com"},
+            follow_redirects=False,
+        )
+        assert appr.status_code == 303
+        assert appr.headers["location"].startswith("/verification?")
+        assert "evil-hacker.com" not in appr.headers["location"]
+
+        # Reject with backslash malicious return_to
+        rej = admin_client.post(
+            f"/verification/certificates/{cert_id}/reject",
+            data={"reason": "Invalid", "return_to": "/\\evil-hacker.com"},
+            follow_redirects=False,
+        )
+        assert rej.status_code == 303
+        assert rej.headers["location"].startswith("/verification?")
+        assert "evil-hacker.com" not in rej.headers["location"]
+
+        # Delete with javascript URI return_to
+        del_res = admin_client.post(
+            f"/verification/certificates/{cert_id}/delete",
+            data={"return_to": "javascript:alert(document.cookie)"},
+            follow_redirects=False,
+        )
+        assert del_res.status_code == 303
+        assert del_res.headers["location"].startswith("/verification?")
+        assert "javascript" not in del_res.headers["location"]
