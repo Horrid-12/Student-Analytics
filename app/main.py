@@ -880,6 +880,18 @@ def _attach_profile_certificates(profile: dict | None, request: Request) -> dict
     profile["pending_certificates_count"] = pending_count
     profile["is_owner"] = is_owner
     profile["is_admin"] = is_admin
+    # Admin-only: which Profile Status fields this student hid from other
+    # students. Admins still see all data; the profile card renders these as
+    # small red icons under a "Hidden" heading (leftmost rail).
+    profile["staff_hidden"] = {}
+    if is_admin and student_id:
+        try:
+            _prefs = auth.get_privacy_prefs(student_id) or {}
+            profile["staff_hidden"] = {
+                k: bool(int(_prefs.get(k) or 0)) for k in auth.PRIVACY_FIELDS
+            }
+        except Exception:
+            profile["staff_hidden"] = {}
     return profile
 
 
