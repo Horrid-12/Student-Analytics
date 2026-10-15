@@ -75,6 +75,80 @@ class TestSignup:
         assert str(r.url).endswith("?error=1")
         assert auth.get_user("x@college.edu") is None
 
+    def test_phase1_advances_to_phase_2(self, client):
+        r = signup(client)
+        assert "phase=2" in str(r.url)
+        assert "gsad_signup" in client.cookies
+
+
+def _phase2(client, **overrides):
+    data = {
+        "prn": "1234567890",
+        "branch": "Computer Science and Engineering",
+        "specialisation": "Core",
+        "division": "3",
+        "practical_batch": "1",
+    }
+    data.update(overrides)
+    return client.post("/signup/phase/2", data=data)
+
+
+class TestSignupPhase2:
+    def test_phase_2_blocked_before_phase_1(self, client):
+        r = _phase2(client)
+        assert str(r.url).endswith("/signup")  # no progress cookie → back to phase 1
+
+    def test_prn_must_be_10_digits(self, client):
+        signup(client)
+        r = _phase2(client, prn="12345")
+        assert "error=prn" in str(r.url)
+
+    def test_invalid_branch_rejected(self, client):
+        signup(client)
+        r = _phase2(client, branch="Underwater Basket Weaving")
+        assert "error=branch" in str(r.url)
+
+    def test_specialisation_required_for_cse(self, client):
+        signup(client)
+        r = _phase2(client, specialisation="")
+        assert "error=specialisation" in str(r.url)
+
+    def test_invalid_specialisation_rejected(self, client):
+        signup(client)
+        r = _phase2(client, specialisation="Pottery")
+        assert "error=specialisation" in str(r.url)
+
+    def test_specialisation_hidden_for_untracked_branch(self, client):
+        signup(client)
+        r = _phase2(client, branch="Bioengineering", specialisation="", practical_batch="1")
+        assert "phase=3" in str(r.url)  # no specialisation needed
+
+    def test_division_out_of_range_rejected(self, client):
+        signup(client)
+        r = _phase2(client, division="33")
+        assert "error=division" in str(r.url)
+        r = _phase2(client, division="0")
+        assert "error=division" in str(r.url)
+
+    def test_python_batch_only_for_divisions_1_to_14(self, client):
+        signup(client)
+        r = _phase2(client, division="3", practical_batch="3")
+        assert "error=batch" in str(r.url)
+        r = _phase2(client, division="14", practical_batch="2")
+        assert "phase=3" in str(r.url)
+
+    def test_computer_batch_for_divisions_15_to_32(self, client):
+        signup(client)
+        r = _phase2(client, division="20", practical_batch="3")
+        assert "phase=3" in str(r.url)
+        r = _phase2(client, division="15", practical_batch="2")
+        assert "phase=3" in str(r.url)
+
+    def test_valid_phase_2_advances_to_phase_3(self, client):
+        signup(client)
+        r = _phase2(client)
+        assert "phase=3" in str(r.url)
+
 
 class TestLogin:
     def test_login_success_sets_session_cookie(self, client):

@@ -1146,17 +1146,32 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
 
 
 @app.get("/signup", response_class=HTMLResponse)
-def signup_page(request: Request, error: int = 0):
+def signup_page(request: Request, error: str = "", phase: int = 1):
     if request.state.user:
         return RedirectResponse("/", status_code=302)
+    try:
+        phase = max(1, min(4, int(phase)))
+    except (TypeError, ValueError):
+        phase = 1
+    token = auth.read_signup_token(request.cookies.get(auth._SIGNUP_COOKIE))
+    # Phases 2+ require the signed progress cookie — the stateless session
+    # carries no sign-up state, so the cookie is the only phase gate.
+    if phase > 1 and (not token or int(token.get("phase") or 1) < phase):
+        return RedirectResponse("/signup", status_code=302)
+    progress = {k: v for k, v in (token or {}).items() if k not in ("purpose", "exp")}
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
         {
             "page_name": "signup",
-            "show_error_banner": bool(error == 1),
-            "show_domain_banner": bool(error == 2),
-            "show_exists_banner": bool(error == 3),
+            "phase": phase,
+            "error": error,
+            "progress": progress,
+            "branches": auth.SIGNUP_BRANCHES,
+            "branch_specialisations": auth.SIGNUP_BRANCH_SPECIALISATIONS,
+            "show_error_banner": error == "1",
+            "show_domain_banner": error == "2",
+            "show_exists_banner": error == "3",
             "google_configured": google_oauth.configured(),
         },
     )
@@ -1187,7 +1202,69 @@ async def signup_submit(
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)
     _db_log_event("signup", email)
-    return RedirectResponse("/login?registered=1", status_code=302)
+    # Phase 1 done — carry the new account into the academic phase through a
+    # signed progress cookie (same HMAC pattern as the faculty-setup token).
+    response = RedirectResponse("/signup?phase=2", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        auth.create_signup_token({"email": email, "name": name, "phase": 2}),
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/signup/phase/2", response_class=HTMLResponse)
+async def signup_phase_2_submit(
+    request: Request,
+    prn: str = Form(""),
+    branch: str = Form(""),
+    specialisation: str = Form(""),
+    division: str = Form(""),
+    practical_batch: str = Form(""),
+):
+    """Academic phase: PRN, branch (+ specialisation for tracked branches),
+    division, and the division-dependent practical batch."""
+    token = auth.read_signup_token(request.cookies.get(auth._SIGNUP_COOKIE))
+    if not token or int(token.get("phase") or 1) < 2:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=2&error={code}", status_code=302)
+
+    if not auth.valid_prn(prn):
+        return fail("prn")
+    if (branch or "").strip() not in auth.SIGNUP_BRANCHES:
+        return fail("branch")
+    if branch in auth.SIGNUP_BRANCH_SPECIALISATIONS:
+        if (specialisation or "").strip() not in auth.SIGNUP_BRANCH_SPECIALISATIONS[branch]:
+            return fail("specialisation")
+    elif (specialisation or "").strip():
+        return fail("specialisation")
+    if (division or "").strip() not in auth.SIGNUP_DIVISIONS:
+        return fail("division")
+    if not auth.valid_signup_practical_batch(practical_batch, division):
+        return fail("batch")
+    token.update({
+        "phase": 3,
+        "prn": (prn or "").strip(),
+        "branch": (branch or "").strip(),
+        "specialisation": (specialisation or "").strip(),
+        "division": (division or "").strip(),
+        "practical_batch": (practical_batch or "").strip(),
+    })
+    response = RedirectResponse("/signup?phase=3", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        auth.create_signup_token(token),
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
 
 
 @app.get("/faculty-setup", response_class=HTMLResponse)

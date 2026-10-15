@@ -4,18 +4,20 @@
 <div class="auth-card auth-card-wide">
   <h1>Create an Account</h1>
 
-  <div class="phase-steps" aria-label="Sign-up progress: phase 1 of 4">
-    <div class="phase-label">Phase 1 of 4 &middot; Account</div>
+  <div class="phase-steps" aria-label="Sign-up progress">
+    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% else %}&nbsp;{% endif %}</div>
     <div class="phase-track">
-      <div class="phase-dot is-now"><i>1</i><small>Account</small></div>
+      <div class="phase-dot{% if phase == 1 %} is-now{% elif phase > 1 %} is-done{% endif %}"><i>1</i><small>Account</small></div>
       <div class="phase-link" aria-hidden="true"></div>
-      <div class="phase-dot"><i>2</i><small>&nbsp;</small></div>
+      <div class="phase-dot{% if phase == 2 %} is-now{% elif phase > 2 %} is-done{% endif %}"><i>2</i><small>Academic</small></div>
       <div class="phase-link" aria-hidden="true"></div>
-      <div class="phase-dot"><i>3</i><small>&nbsp;</small></div>
+      <div class="phase-dot{% if phase == 3 %} is-now{% elif phase > 3 %} is-done{% endif %}"><i>3</i><small>&nbsp;</small></div>
       <div class="phase-link" aria-hidden="true"></div>
-      <div class="phase-dot"><i>4</i><small>&nbsp;</small></div>
+      <div class="phase-dot{% if phase == 4 %} is-now{% endif %}"><i>4</i><small>&nbsp;</small></div>
     </div>
   </div>
+
+  {% if phase == 1 %}
 
   {% if show_error_banner %}
   <div class="banner-error">Sign-up failed — check your details or try a different email.</div>
@@ -59,18 +61,71 @@
     <div class="form-group">
       <label for="confirm_password">Confirm password</label>
       <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required minlength="6">
+      <div class="field-error" id="confirm-error">Passwords do not match.</div>
     </div>
     <button type="submit" class="btn-primary">Create Account</button>
   </form>
 
   <p class="foot-text" style="font-size: 15px;">Already have an account? <a href="/login">Sign in</a></p>
+
+  {% elif phase == 2 %}
+
+  {% if error == "prn" %}<div class="banner-error">PRN must be exactly 10 digits.</div>{% endif %}
+  {% if error == "branch" %}<div class="banner-error">Please select your branch.</div>{% endif %}
+  {% if error == "specialisation" %}<div class="banner-error">Please select a valid specialisation for your branch.</div>{% endif %}
+  {% if error == "division" %}<div class="banner-error">Division must be between 1 and 32.</div>{% endif %}
+  {% if error == "batch" %}<div class="banner-error">Please select a valid practical batch for your division.</div>{% endif %}
+
+  <form method="post" action="/signup/phase/2">
+    <div class="form-group">
+      <label for="prn">PRN number</label>
+      <input type="text" id="prn" name="prn" placeholder="10-digit PRN" inputmode="numeric" value="{{ progress.prn if progress.prn else '' }}">
+      <div class="field-error" id="prn-error">PRN must be exactly 10 digits.</div>
+    </div>
+    <div class="form-group">
+      <label for="branch">Branch</label>
+      <select id="branch" name="branch" required>
+        <option value="" disabled{% if not progress.branch %} selected{% endif %}>Select your branch</option>
+        {% for b in branches %}
+        <option value="{{ b }}"{% if progress.branch == b %} selected{% endif %}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" id="specialisation-group" style="display:none;">
+      <label for="specialisation">Specialisation</label>
+      <select id="specialisation" name="specialisation">
+        <option value="">Select your specialisation</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="division">Division</label>
+      <input type="text" id="division" name="division" placeholder="Division (1-32)" inputmode="numeric" value="{{ progress.division if progress.division else '' }}">
+      <div class="field-error" id="division-error">Division must be between 1 and 32.</div>
+    </div>
+    <div class="form-group">
+      <label for="practical_batch" id="batch-label">Practical Batch</label>
+      <select id="practical_batch" name="practical_batch" required>
+        <option value="" disabled selected>Select your division above to continue</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-primary">Continue</button>
+  </form>
+
+  {% else %}
+
+  <p class="sub">The next phase of sign-up is on its way.</p>
+
+  {% endif %}
 </div>
+{% if phase == 1 %}
 <script>
 (function () {
   var email = document.getElementById('email');
   var emailErr = document.getElementById('email-error');
   var pwd = document.getElementById('password');
   var pwdErr = document.getElementById('password-error');
+  var confirm = document.getElementById('confirm_password');
+  var confirmErr = document.getElementById('confirm-error');
   function isCollegeId(v) { return /@mitwpu\.edu\.in$/i.test((v || '').trim()); }
   if (email && emailErr) {
     email.addEventListener('blur', function () {
@@ -83,17 +138,112 @@
       email.classList.remove('is-invalid');
     });
   }
+  function checkMatch() {
+    if (!confirm || !confirmErr) return;
+    var bad = confirm.value !== '' && confirm.value !== pwd.value;
+    confirmErr.style.display = bad ? 'block' : 'none';
+    confirm.classList.toggle('is-invalid', bad);
+  }
   if (pwd && pwdErr) {
     pwd.addEventListener('blur', function () {
       var bad = pwd.value !== '' && pwd.value.length < 6;
       pwdErr.style.display = bad ? 'block' : 'none';
       pwd.classList.toggle('is-invalid', bad);
+      checkMatch();
     });
     pwd.addEventListener('input', function () {
       pwdErr.style.display = 'none';
       pwd.classList.remove('is-invalid');
+      if (confirm && confirm.value !== '') checkMatch();
+    });
+  }
+  if (confirm && confirmErr) {
+    confirm.addEventListener('blur', checkMatch);
+    confirm.addEventListener('input', function () {
+      confirmErr.style.display = 'none';
+      confirm.classList.remove('is-invalid');
     });
   }
 })();
 </script>
+{% elif phase == 2 %}
+<script>
+(function () {
+  var BRANCH_SPECIALISATIONS = {{ branch_specialisations | tojson }};
+  var prn = document.getElementById('prn');
+  var prnErr = document.getElementById('prn-error');
+  var branch = document.getElementById('branch');
+  var specGroup = document.getElementById('specialisation-group');
+  var spec = document.getElementById('specialisation');
+  var division = document.getElementById('division');
+  var divErr = document.getElementById('division-error');
+  var batch = document.getElementById('practical_batch');
+  var batchLabel = document.getElementById('batch-label');
+
+  function setFieldError(input, err, bad) {
+    if (!input || !err) return;
+    err.style.display = bad ? 'block' : 'none';
+    input.classList.toggle('is-invalid', bad);
+  }
+
+  function rebuildSpecialisation() {
+    var tracked = branch.value && Object.prototype.hasOwnProperty.call(BRANCH_SPECIALISATIONS, branch.value);
+    if (!tracked) {
+      specGroup.style.display = 'none';
+      spec.value = '';
+      return;
+    }
+    specGroup.style.display = '';
+    var options = BRANCH_SPECIALISATIONS[branch.value];
+    var html = '<option value="">Select your specialisation</option>';
+    for (var i = 0; i < options.length; i++) {
+      html += '<option value="' + options[i] + '"' + (spec.value === options[i] ? ' selected' : '') + '>' + options[i] + '</option>';
+    }
+    spec.innerHTML = html;
+  }
+
+  function rebuildBatch() {
+    var div = parseInt((division.value || '').trim(), 10);
+    if (div >= 1 && div <= 14) {
+      batchLabel.textContent = 'Python Practical Batch';
+      batch.innerHTML = '<option value="" disabled selected>Select batch</option>' +
+        '<option value="1"' + (batch.value === '1' ? ' selected' : '') + '>1</option>' +
+        '<option value="2"' + (batch.value === '2' ? ' selected' : '') + '>2</option>';
+    } else if (div >= 15 && div <= 32) {
+      batchLabel.textContent = 'Computer Practical Batch';
+      batch.innerHTML = '<option value="" disabled selected>Select batch</option>' +
+        '<option value="1"' + (batch.value === '1' ? ' selected' : '') + '>1</option>' +
+        '<option value="2"' + (batch.value === '2' ? ' selected' : '') + '>2</option>' +
+        '<option value="3"' + (batch.value === '3' ? ' selected' : '') + '>3</option>';
+    } else {
+      batchLabel.textContent = 'Practical Batch';
+      batch.innerHTML = '<option value="" disabled selected>Select your division above to continue</option>';
+    }
+  }
+
+  if (prn && prnErr) {
+    prn.addEventListener('blur', function () {
+      var v = (prn.value || '').trim();
+      setFieldError(prn, prnErr, v !== '' && !/^\d{10}$/.test(v));
+    });
+    prn.addEventListener('input', function () { setFieldError(prn, prnErr, false); });
+  }
+  if (division && divErr) {
+    division.addEventListener('blur', function () {
+      var v = parseInt((division.value || '').trim(), 10);
+      setFieldError(division, divErr, (division.value || '').trim() !== '' && !(v >= 1 && v <= 32));
+    });
+    division.addEventListener('input', function () {
+      setFieldError(division, divErr, false);
+      rebuildBatch();
+    });
+  }
+  if (branch) {
+    branch.addEventListener('change', rebuildSpecialisation);
+  }
+  rebuildSpecialisation();
+  rebuildBatch();
+})();
+</script>
+{% endif %}
 {% endblock %}

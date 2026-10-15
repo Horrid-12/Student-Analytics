@@ -78,6 +78,9 @@ _EXTRA_COLUMNS = (
     # HackerRank handle captured at onboarding (required) and shown on the
     # Students profile HackerRank tab.
     ("hackerrank_username", "TEXT NOT NULL DEFAULT ''"),
+    # Sign-up phase 2: specialisation track captured alongside the branch
+    # (empty for single-track branches).
+    ("specialisation", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # OAuth providers a student can fetch their picture + username from (4.11 e).
@@ -87,8 +90,50 @@ LINK_SOURCES = ("github", "linkedin")
 #: <select> can never smuggle an unlisted value into the ledger).
 DEGREE_BRANCHES = ("Core", "AI/DS", "Cloud Computing", "Cyber Security and Forensics")
 
+#: Branch choices on sign-up phase 2 (full programme names, distinct from the
+#: legacy /onboarding short codes above).
+SIGNUP_BRANCHES = (
+    "Computer Science and Engineering",
+    "Electronics and Communication Engineering",
+    "Electrical & Computer Engineering",
+    "Electronics (Semiconductor and VLSI Design)",
+    "Renewable Energy Engineering",
+    "Mechanical Engineering",
+    "Chemical Engineering",
+    "Materials Science & Engineering",
+    "Petroleum Engineering",
+    "Civil Engineering",
+    "Bioengineering",
+)
+
+#: Sign-up branches that offer a specialisation track — every other branch is
+#: single-track, so the sign-up specialisation dropdown stays hidden for them.
+SIGNUP_BRANCH_SPECIALISATIONS = {
+    "Computer Science and Engineering": (
+        "Core",
+        "Artificial Intelligence & Data Science",
+        "Cyber Security & Forensics",
+        "Cloud Computing",
+    ),
+    "Electronics and Communication Engineering": (
+        "Core",
+        "Artificial Intelligence and Machine Learning",
+    ),
+    "Mechanical Engineering": (
+        "Core",
+        "Robotics and Automation",
+    ),
+    "Civil Engineering": (
+        "Core",
+        "Smart Infrastructure & Construction",
+    ),
+}
+
 #: Allowed division labels (1-14), matching the onboarding <select> options.
 DIVISIONS = tuple(str(n) for n in range(1, 15))
+
+#: Division range accepted by sign-up phase 2 (1-32).
+SIGNUP_DIVISIONS = tuple(str(n) for n in range(1, 33))
 
 #: Main batch = admission cohort (stored, never shown on the dashboard).
 MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
@@ -102,6 +147,10 @@ TEACHING_BATCHES = ("1", "2", "3")
 
 #: Current term options (1-8), matching the legacy "Semester N" labels.
 SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
+
+#: Division bands that map to the two sign-up practical-batch tracks.
+_PYTHON_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(1, 15))
+_COMPUTER_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(15, 33))
 
 ONBOARDING_STATUSES = ("none", "pending", "approved", "rejected")
 
@@ -705,6 +754,47 @@ def read_faculty_setup_token(token: str | None) -> str | None:
             return None
         invite_email = str(payload.get("invite_email") or "").strip().lower()
         return invite_email or None
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return None
+
+
+#: Short-lived cookie carrying multi-phase sign-up progress (phase 1 → 4).
+#: Same HMAC shape as the faculty-setup token — the stateless session carries
+#: no sign-up state, so progress rides in this signed cookie instead.
+_SIGNUP_COOKIE = "gsad_signup"
+_SIGNUP_TTL_SECONDS = 60 * 60
+
+
+def create_signup_token(payload: dict) -> str:
+    """Short-lived proof of in-flight sign-up progress."""
+    data = dict(payload or {})
+    data["purpose"] = "signup"
+    data["exp"] = int(time.time()) + _SIGNUP_TTL_SECONDS
+    body = base64.urlsafe_b64encode(json.dumps(data).encode("utf-8")).decode("ascii").rstrip("=")
+    digest = base64.urlsafe_b64encode(
+        hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
+    ).decode("ascii").rstrip("=")
+    return f"{body}.{digest}"
+
+
+def read_signup_token(token: str | None) -> dict | None:
+    """Return the sign-up payload when ``token`` is a live sign-up token."""
+    if not token:
+        return None
+    try:
+        body, digest = token.split(".", 1)
+        expected = base64.urlsafe_b64encode(
+            hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
+        ).decode("ascii").rstrip("=")
+        if not hmac.compare_digest(digest, expected):
+            return None
+        padded = body + "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        if payload.get("purpose") != "signup":
+            return None
+        if int(payload.get("exp", 0)) < time.time():
+            return None
+        return payload
     except (ValueError, json.JSONDecodeError, TypeError):
         return None
 
@@ -1657,6 +1747,19 @@ def valid_main_batch(value: str) -> bool:
 
 def valid_practical_batch(value: str) -> bool:
     return (value or "").strip() in PRACTICAL_BATCHES
+
+
+def valid_signup_practical_batch(value: str, division: str) -> bool:
+    """Sign-up practical-batch options depend on the division: divisions 1-14
+    take the Python practical (batches 1-2), divisions 15-32 the Computer
+    practical (batches 1-3)."""
+    value = (value or "").strip()
+    division = (division or "").strip()
+    if division in _PYTHON_PRACTICAL_DIVISIONS:
+        return value in ("1", "2")
+    if division in _COMPUTER_PRACTICAL_DIVISIONS:
+        return value in ("1", "2", "3")
+    return False
 
 
 def valid_semester(value: str) -> bool:
