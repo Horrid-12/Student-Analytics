@@ -932,19 +932,19 @@ class TestPageRenderingWithData:
             f"/repositories?roster={roster_id}&select=999"
         ).text
 
-    def test_verification_page_and_routes_are_gone(self, tmp_path):
+    def test_verification_page_is_admin_portal(self, tmp_path):
         roster_id = self._setup(tmp_path)
-        # The Verification page was removed entirely: every route is a plain
-        # 404 for every role (faculty/admin included), not a role-gated page.
-        assert self.client.get(f"/verification?roster={roster_id}").status_code == 404
-        assert self.client.get("/verification").status_code == 404
+        # /verification was re-added as an Admin-only Certificate Verification Center (Phase 19 / Row 78).
+        assert self.client.get(f"/verification?roster={roster_id}").status_code == 200
+        assert self.client.get("/verification").status_code == 200
+        # The legacy reference-sheet endpoints remain gone (404)
         assert self.client.get(f"/verification/export?roster={roster_id}&format=csv").status_code == 404
         assert self.client.post(f"/verification/reference?roster={roster_id}").status_code == 404
         assert self.client.post("/verification/reference/clear").status_code == 404
         student_client = TestClient(app)
         make_user(student_client, "student")
-        for path in (f"/verification?roster={roster_id}", "/verification", "/verification/export"):
-            assert student_client.get(path).status_code == 404
+        assert student_client.get("/verification", follow_redirects=False).status_code in (303, 403)
+        assert student_client.get(f"/verification?roster={roster_id}", follow_redirects=False).status_code in (303, 403)
 
     def test_issues_page_and_workflow_are_gone(self, tmp_path):
         roster_id = self._setup(tmp_path)

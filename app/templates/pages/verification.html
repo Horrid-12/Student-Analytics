@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Certificate Verification &mdash; Admin Portal{% endblock %}
+
+{% block content %}
+<div class="topbar-card">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <div class="topbar-title">Certificate Verification</div>
+      <div class="topbar-subtitle">Review, verify, or reject student certificates and external credentials.</div>
+    </div>
+  </div>
+</div>
+
+{% if notice %}
+<div class="verif-notice verif-notice-{{ notice }}">
+  {% if notice == 'approved' %}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verif-notice-icon"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  <span>Certificate successfully verified and approved!</span>
+  {% elif notice == 'rejected' %}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verif-notice-icon"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+  <span>Certificate rejected with feedback recorded.</span>
+  {% elif notice == 'deleted' %}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verif-notice-icon"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+  <span>Certificate record deleted.</span>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- KPI Metric Cards -->
+<div class="metrics-grid verif-metrics-grid">
+  <div class="metric-card verif-metric-card">
+    <div class="metric-label">Pending Review</div>
+    <div class="metric-value verif-val-pending">{{ counts.get('pending', 0) }}</div>
+    <div class="metric-meta">Awaiting staff verification</div>
+  </div>
+  <div class="metric-card verif-metric-card">
+    <div class="metric-label">Approved &amp; Verified</div>
+    <div class="metric-value verif-val-approved">{{ counts.get('approved', 0) }}</div>
+    <div class="metric-meta">Active on student profiles</div>
+  </div>
+  <div class="metric-card verif-metric-card">
+    <div class="metric-label">Needs Attention</div>
+    <div class="metric-value verif-val-rejected">{{ counts.get('rejected', 0) }}</div>
+    <div class="metric-meta">Rejected with feedback</div>
+  </div>
+  <div class="metric-card verif-metric-card">
+    <div class="metric-label">Total Submissions</div>
+    <div class="metric-value verif-val-total">{{ counts.get('total', 0) }}</div>
+    <div class="metric-meta">All lifetime uploads</div>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="verif-filter-bar">
+  <div class="verif-status-tabs" role="tablist">
+    <a href="/verification?status=pending{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'pending' %} is-active{% endif %}">
+      Pending
+      <span class="verif-tab-badge verif-tab-pending">{{ counts.get('pending', 0) }}</span>
+    </a>
+    <a href="/verification?status=approved{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'approved' %} is-active{% endif %}">
+      Approved
+      <span class="verif-tab-badge verif-tab-approved">{{ counts.get('approved', 0) }}</span>
+    </a>
+    <a href="/verification?status=rejected{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'rejected' %} is-active{% endif %}">
+      Rejected
+      <span class="verif-tab-badge verif-tab-rejected">{{ counts.get('rejected', 0) }}</span>
+    </a>
+    <a href="/verification?status=all{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'all' %} is-active{% endif %}">
+      All
+      <span class="verif-tab-badge">{{ counts.get('total', 0) }}</span>
+    </a>
+  </div>
+
+  <form method="GET" action="/verification" class="verif-search-form">
+    <input type="hidden" name="status" value="{{ active_status }}">
+    <div class="verif-search-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verif-search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search by student, PRN, certificate, issuer, skills..." class="verif-search-input">
+      {% if q %}
+      <a href="/verification?status={{ active_status }}" class="verif-search-clear" title="Clear search">&times;</a>
+      {% endif %}
+    </div>
+    <button type="submit" class="verif-search-btn">Filter</button>
+  </form>
+</div>
+
+<!-- Ledger of Submissions -->
+<div class="verif-ledger">
+  {% if items %}
+    {% for cert in items %}
+    <div class="verif-card verif-card-{{ cert.status }}">
+      <div class="verif-card-header">
+        <div class="verif-student-info">
+          <div class="verif-student-name">
+            {{ cert.student_name or 'Student' }}
+            {% if cert.student_id %}
+            <a href="/students?student={{ cert.student_id }}" class="verif-student-prn" title="View student profile">{{ cert.student_id }}</a>
+            {% endif %}
+          </div>
+          <div class="verif-student-email">{{ cert.student_email }}</div>
+        </div>
+        <div class="verif-header-right">
+          <div class="verif-status-pill pill-{{ cert.status }}">
+            {% if cert.status == 'approved' %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Verified
+            {% elif cert.status == 'pending' %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Queued for Review
+            {% elif cert.status == 'rejected' %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            Rejected
+            {% endif %}
+          </div>
+          <div class="verif-date" title="Submitted at">{{ cert.created_at[:10] }}</div>
+        </div>
+      </div>
+
+      <div class="verif-card-body">
+        <h3 class="verif-cert-title">{{ cert.title }}</h3>
+        <div class="verif-cert-meta">
+          <span class="verif-cert-issuer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verif-icon-inline"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            {{ cert.issuer }}
+          </span>
+          {% if cert.issue_date %}
+          <span class="verif-meta-sep">&bull;</span>
+          <span class="verif-cert-issuedate">Issued: {{ cert.issue_date }}</span>
+          {% endif %}
+        </div>
+
+        {% if cert.skills %}
+        <div class="verif-skills-row">
+          {% for skill in cert.skills.split(',') %}
+            {% if skill.strip() %}
+            <span class="verif-skill-tag">{{ skill.strip() }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Direct Certificate Preview -->
+        {% if cert.attachment_name %}
+          {% if cert.is_image %}
+          <div class="verif-doc-frame" style="max-width:100%;overflow:hidden;">
+            <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-image-link" title="Click to view full image in a new tab">
+              <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="verif-display-image" loading="lazy" style="max-width:100%;max-height:440px;height:auto;object-fit:contain;display:block;margin:0 auto;">
+            </a>
+            <div class="verif-pdf-footer" style="padding:8px 12px;border-top:1px solid var(--border);background:var(--card);display:flex;justify-content:flex-end;">
+              <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-pdf-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--blue);text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span>Open image in new tab</span>
+              </a>
+            </div>
+          </div>
+          {% elif cert.is_pdf %}
+          <div class="verif-doc-frame verif-pdf-frame" style="max-width:100%;overflow:hidden;">
+            <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="verif-display-pdf" title="{{ cert.title }}" style="width:100%;height:340px;border:none;"></iframe>
+            <div class="verif-pdf-footer" style="padding:8px 12px;border-top:1px solid var(--border);background:var(--card);display:flex;justify-content:flex-end;">
+              <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-pdf-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--blue);text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span>Open PDF in new tab</span>
+              </a>
+            </div>
+          </div>
+          {% endif %}
+        {% endif %}
+
+        {% if cert.status == 'approved' and cert.verified_by %}
+        <div class="verif-audit-note is-approved">
+          Verified by <strong>{{ cert.verified_by }}</strong> at {{ cert.verified_at }}
+        </div>
+        {% elif cert.status == 'rejected' %}
+        <div class="verif-audit-note is-rejected">
+          <div>Rejected by <strong>{{ cert.verified_by or 'Admin' }}</strong> at {{ cert.verified_at }}</div>
+          {% if cert.admin_notes %}
+          <div class="verif-note-reason"><strong>Reason:</strong> {{ cert.admin_notes }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="verif-card-actions">
+        {% set curr_url = (request.url.path ~ '?' ~ request.url.query) if request.url.query else request.url.path %}
+        {% if cert.status != 'approved' %}
+        <form method="POST" action="/verification/certificates/{{ cert.id }}/approve" class="verif-action-form">
+          <input type="hidden" name="return_to" value="{{ curr_url }}">
+          <button type="submit" class="verif-btn verif-btn-approve">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Approve &amp; Verify
+          </button>
+        </form>
+        {% endif %}
+
+        {% if cert.status != 'rejected' %}
+        <details class="verif-reject-details">
+          <summary class="verif-btn verif-btn-reject-toggle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Reject...
+          </summary>
+          <div class="verif-reject-popover">
+            <form method="POST" action="/verification/certificates/{{ cert.id }}/reject" class="verif-reject-form">
+              <input type="hidden" name="return_to" value="{{ curr_url }}">
+              <label class="verif-reject-label" for="reason-{{ cert.id }}">Reason for rejection (sent to student):</label>
+              <input type="text" id="reason-{{ cert.id }}" name="reason" placeholder="e.g. Broken link, blurry attachment, unaccredited" class="verif-reject-input">
+              <div class="verif-reject-actions">
+                <button type="submit" class="verif-btn verif-btn-reject-confirm">Confirm Rejection</button>
+              </div>
+            </form>
+          </div>
+        </details>
+        {% endif %}
+
+        <form method="POST" action="/verification/certificates/{{ cert.id }}/delete" onsubmit="return confirm('Permanently remove this certificate record?');" class="verif-action-form verif-delete-wrap">
+          <input type="hidden" name="return_to" value="{{ curr_url }}">
+          <button type="submit" class="verif-btn verif-btn-delete" title="Delete record" aria-label="Delete certificate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="verif-empty-state">
+      <div class="verif-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+      </div>
+      <div class="verif-empty-title">No certificate submissions found</div>
+      <div class="verif-empty-sub">
+        {% if q %}
+        No submissions matched &ldquo;{{ q }}&rdquo; in <strong>{{ active_status }}</strong> status.
+        <div style="margin-top: 8px;"><a href="/verification?status={{ active_status }}" class="verif-empty-link">Clear search filter</a></div>
+        {% else %}
+        There are currently no certificates in <strong>{{ active_status }}</strong> status.
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

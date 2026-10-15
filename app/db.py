@@ -2617,3 +2617,225 @@ def list_snapshot_timestamps() -> list[dict]:
         import logging
         logging.getLogger(__name__).warning("list_snapshot_timestamps failed: %s", exc)
         return []
+
+
+# ---------------------------------------------------------------------------
+# Certificates (student credential submissions and admin verification)
+# ---------------------------------------------------------------------------
+
+_CERT_COLUMNS = (
+    "id, student_email, student_id, student_name, title, issuer, issue_date, "
+    "credential_url, credential_id, skills, attachment_name, status, admin_notes, "
+    "verified_by, verified_at, created_at, updated_at"
+)
+
+
+def _format_cert_row(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("created_at") is not None and not isinstance(d["created_at"], str):
+        d["created_at"] = d["created_at"].isoformat()
+    if d.get("updated_at") is not None and not isinstance(d["updated_at"], str):
+        d["updated_at"] = d["updated_at"].isoformat()
+    att = str(d.get("attachment_name") or "").lower()
+    d["is_image"] = att.endswith((".png", ".jpg", ".jpeg", ".webp"))
+    d["is_pdf"] = att.endswith(".pdf")
+    return d
+
+
+def create_certificate(
+    student_email: str,
+    student_id: str,
+    student_name: str,
+    title: str,
+    issuer: str,
+    issue_date: str = "",
+    credential_url: str = "",
+    credential_id: str = "",
+    skills: str = "",
+    attachment_name: str = "",
+    attachment_data: bytes = b"",
+) -> Optional[dict]:
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "INSERT INTO certificates "
+                "(student_email, student_id, student_name, title, issuer, issue_date, "
+                "credential_url, credential_id, skills, attachment_name, attachment_data, "
+                "status, admin_notes, verified_by, verified_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', '', '', '') "
+                f"RETURNING {_CERT_COLUMNS}",
+                (
+                    student_email,
+                    student_id,
+                    student_name,
+                    title,
+                    issuer,
+                    issue_date,
+                    credential_url,
+                    credential_id,
+                    skills,
+                    attachment_name,
+                    bytes(attachment_data) if attachment_name and attachment_data else None,
+                ),
+            )
+            row = cur.fetchone()
+            return _format_cert_row(row)
+    except Exception as exc:
+        logger.warning("db.create_certificate failed: %s", exc)
+        return None
+
+
+def get_certificate(cert_id: int) -> Optional[dict]:
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                f"SELECT {_CERT_COLUMNS} FROM certificates WHERE id = %s",
+                (cert_id,),
+            )
+            row = cur.fetchone()
+            return _format_cert_row(row)
+    except Exception as exc:
+        logger.warning("db.get_certificate failed: %s", exc)
+        return None
+
+
+def list_certificates(
+    status: Optional[str] = None,
+    query: Optional[str] = None,
+    limit: int = 200,
+) -> list[dict]:
+    limit = max(1, min(int(limit or 200), 500))
+    clauses: list[str] = []
+    params: list = []
+    if status and status.lower() in ("pending", "approved", "rejected"):
+        clauses.append("status = %s")
+        params.append(status.lower())
+    if query and query.strip():
+        q_term = f"%{query.strip().lower()}%"
+        clauses.append(
+            "(lower(student_name) LIKE %s OR lower(student_email) LIKE %s OR student_id LIKE %s "
+            "OR lower(title) LIKE %s OR lower(issuer) LIKE %s OR lower(skills) LIKE %s)"
+        )
+        params.extend([q_term] * 6)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT {_CERT_COLUMNS} FROM certificates {where} ORDER BY id DESC LIMIT %s"
+    params.append(limit)
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(sql, params)
+            return [_format_cert_row(r) for r in cur.fetchall() if r]
+    except Exception as exc:
+        logger.warning("db.list_certificates failed: %s", exc)
+        return []
+
+
+def list_certificates_for_student(
+    student_email: str = "",
+    student_id: str = "",
+    approved_only: bool = True,
+) -> list[dict]:
+    conditions = []
+    params = []
+    if student_email and student_id:
+        conditions.append("(lower(student_email) = %s OR student_id = %s)")
+        params.extend([student_email.lower(), student_id])
+    elif student_email:
+        conditions.append("lower(student_email) = %s")
+        params.append(student_email.lower())
+    else:
+        conditions.append("student_id = %s")
+        params.append(student_id)
+    if approved_only:
+        conditions.append("status = 'approved'")
+    where = "WHERE " + " AND ".join(conditions)
+    sql = f"SELECT {_CERT_COLUMNS} FROM certificates {where} ORDER BY id DESC"
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(sql, params)
+            return [_format_cert_row(r) for r in cur.fetchall() if r]
+    except Exception as exc:
+        logger.warning("db.list_certificates_for_student failed: %s", exc)
+        return []
+
+
+def update_certificate_status(
+    cert_id: int,
+    status: str,
+    verified_by: str,
+    admin_notes: str = "",
+    verified_at: str = "",
+) -> bool:
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE certificates "
+                "SET status = %s, verified_by = %s, admin_notes = %s, verified_at = %s, updated_at = NOW() "
+                "WHERE id = %s",
+                (status, verified_by, admin_notes, verified_at, cert_id),
+            )
+            return (cur.rowcount or 0) > 0
+    except Exception as exc:
+        logger.warning("db.update_certificate_status failed: %s", exc)
+        return False
+
+
+def delete_certificate(cert_id: int) -> bool:
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute("DELETE FROM certificates WHERE id = %s", (cert_id,))
+            return (cur.rowcount or 0) > 0
+    except Exception as exc:
+        logger.warning("db.delete_certificate failed: %s", exc)
+        return False
+
+
+def get_certificate_attachment(cert_id: int) -> Optional[tuple[str, bytes]]:
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT attachment_name, attachment_data FROM certificates WHERE id = %s",
+                (cert_id,),
+            )
+            row = cur.fetchone()
+            if not row or not row.get("attachment_name") or not row.get("attachment_data"):
+                return None
+            return str(row["attachment_name"]), bytes(row["attachment_data"])
+    except Exception as exc:
+        logger.warning("db.get_certificate_attachment failed: %s", exc)
+        return None
+
+
+def count_certificates(status: Optional[str] = None) -> int:
+    clauses = []
+    params = []
+    if status and status.lower() in ("pending", "approved", "rejected"):
+        clauses.append("status = %s")
+        params.append(status.lower())
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT COUNT(*) as cnt FROM certificates {where}"
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return 0
+            cur = c.execute(sql, params)
+            row = cur.fetchone()
+            return int(row["cnt"]) if row and "cnt" in row else 0
+    except Exception as exc:
+        logger.warning("db.count_certificates failed: %s", exc)
+        return 0
