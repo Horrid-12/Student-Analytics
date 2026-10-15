@@ -171,18 +171,30 @@ class TestMyProfilePage:
 
 
 class TestSidebarIdentity:
-    def test_avatar_links_to_me_with_roster(self, client, monkeypatch):
+    def test_staff_identity_has_no_profile_link(self, client, monkeypatch):
         import app.main as main
 
-        make_user(client, "admin")
+        for role in ("admin", "faculty"):
+            make_user(client, role)
+            monkeypatch.setattr(main, "_analysis_view", lambda roster_id: make_view())
+            body = client.get("/students?roster=r1", headers={"Accept": "text/html"}).text
+            assert "sidebar-avatar-link" in body  # plain span keeps styling
+            assert "sidebar-name-link" in body
+            assert 'href="/me?roster=r1"' not in body
+            assert "sidebar-user-footer" not in body
+            client.get("/logout")
+
+    def test_student_identity_links_to_me_with_roster(self, client, monkeypatch):
+        import app.main as main
+
+        make_user(client, "student")
         monkeypatch.setattr(main, "_analysis_view", lambda roster_id: make_view())
         body = client.get("/students?roster=r1", headers={"Accept": "text/html"}).text
         assert "sidebar-avatar-link" in body
         assert 'href="/me?roster=r1"' in body
-        assert "sidebar-user-footer" not in body
 
     def test_avatar_links_to_me_without_roster(self, client):
-        make_user(client, "admin")
+        make_user(client, "student")
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert 'href="/me"' in body
 

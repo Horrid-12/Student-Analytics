@@ -37,6 +37,15 @@
   <aside class="app-sidebar" id="sidebar">
     <div class="sidebar-stack">
     <div class="sidebar-identity">
+      {% if auth_role == 'Faculty' or auth_role == 'Admin' %}
+      <span class="sidebar-avatar-link" aria-hidden="true">
+        {% if sidebar_avatar_url %}<img class="sidebar-avatar-img" src="{{ sidebar_avatar_url }}" alt="">{% else %}<div class="user-avatar-pill">{{ avatar_initial }}</div>{% endif %}
+      </span>
+      <div class="user-details">
+        <div class="user-role-line">{{ auth_status }}</div>
+        {% if sidebar_name %}<span class="sidebar-name-link">{{ sidebar_name }}</span>{% endif %}
+      </div>
+      {% else %}
       <a class="sidebar-avatar-link" href="{{ profile_href }}" title="My profile" aria-label="Open my profile">
         {% if sidebar_avatar_url %}<img class="sidebar-avatar-img" src="{{ sidebar_avatar_url }}" alt="">{% else %}<div class="user-avatar-pill">{{ avatar_initial }}</div>{% endif %}
       </a>
@@ -44,6 +53,7 @@
         <div class="user-role-line">{{ auth_status }}</div>
         {% if sidebar_name %}<a class="sidebar-name-link" href="{{ profile_href }}" title="My profile">{{ sidebar_name }}</a>{% endif %}
       </div>
+      {% endif %}
       {% if auth_logged_in %}
       <a class="sidebar-gear-link" href="{{ auth_logout }}" title="Sign out" aria-label="Sign out">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
