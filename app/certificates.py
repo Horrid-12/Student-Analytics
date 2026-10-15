@@ -92,6 +92,16 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         logger.warning("Certificates schema init failed: %s", exc)
 
 
+def _enrich_cert(d: dict | None) -> dict | None:
+    if not d:
+        return None
+    res = dict(d)
+    att = str(res.get("attachment_name") or "").lower()
+    res["is_image"] = att.endswith((".png", ".jpg", ".jpeg", ".webp"))
+    res["is_pdf"] = att.endswith(".pdf")
+    return res
+
+
 def validate_attachment(filename: str, data: bytes) -> Optional[str]:
     """Validate uploaded certificate file. Returns an error message or None."""
     if not filename or not data:
@@ -209,7 +219,7 @@ def get_certificate(cert_id: int) -> Optional[dict]:
             _ensure_schema(conn)
             cur = conn.execute(f"SELECT {_SELECT} FROM certificates WHERE id = ?", (cert_id,))
             row = cur.fetchone()
-            return dict(row) if row else None
+            return _enrich_cert(dict(row)) if row else None
     except (sqlite3.Error, OSError) as exc:
         logger.warning("get_certificate failed: %s", exc)
         return None
@@ -248,7 +258,7 @@ def list_certificates(
         with closing(_connect()) as conn:
             _ensure_schema(conn)
             cur = conn.execute(sql, params)
-            return [dict(r) for r in cur.fetchall()]
+            return [_enrich_cert(dict(r)) for r in cur.fetchall()]
     except (sqlite3.Error, OSError) as exc:
         logger.warning("list_certificates failed: %s", exc)
         return []
@@ -295,7 +305,7 @@ def list_certificates_for_student(
         with closing(_connect()) as conn:
             _ensure_schema(conn)
             cur = conn.execute(sql, params)
-            return [dict(r) for r in cur.fetchall()]
+            return [_enrich_cert(dict(r)) for r in cur.fetchall()]
     except (sqlite3.Error, OSError) as exc:
         logger.warning("list_certificates_for_student failed: %s", exc)
         return []

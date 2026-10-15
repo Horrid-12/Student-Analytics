@@ -79,8 +79,8 @@
             <span>
               {% if request.query_params.get('error') == 'missing_fields' %}
                 Please fill in both the Certificate Title and Issuing Organization.
-              {% elif request.query_params.get('error') == 'proof_required' %}
-                Please provide either a valid Verification / Credential URL or upload a certificate document.
+              {% elif request.query_params.get('error') == 'file_required' or request.query_params.get('error') == 'proof_required' %}
+                Please upload your certificate file (PDF or image).
               {% else %}
                 Submission error: {{ request.query_params.get('error') }}
               {% endif %}
@@ -91,8 +91,8 @@
 
         <div class="cert-panel-top">
           <div class="cert-panel-heading">
-            <div class="panel-minor-title" style="margin-bottom:0;">Certifications &amp; Credentials</div>
-            <div class="cert-panel-count">{{ p.certificates|length if p.certificates else 0 }} credential{% if not p.certificates or p.certificates|length != 1 %}s{% endif %}</div>
+            <div class="panel-minor-title" style="margin-bottom:0;">Certificates</div>
+            <div class="cert-panel-count">{{ p.certificates|length if p.certificates else 0 }} certificate{% if not p.certificates or p.certificates|length != 1 %}s{% endif %}</div>
           </div>
           {% if p.is_owner %}
           <button type="button" class="cert-queue-toggle-btn" id="cert-toggle-form-btn">
@@ -108,12 +108,12 @@
             <input type="hidden" name="return_to" class="cert-return-to-field" value="{{ (request.url.path ~ '?' ~ request.url.query) if (request is defined and request.url.query) else (request.url.path if request is defined else '/me') }}">
             <div class="cert-form-header">
               <h4 class="cert-form-title">Queue a Certificate for Verification</h4>
-              <p class="cert-form-desc">Submit your course, specialization, or vendor credential. Once verified by admins, it will appear publicly on your profile.</p>
+              <p class="cert-form-desc">Upload your certificate. Once verified by admins, it will appear publicly on your profile.</p>
             </div>
             <div class="cert-form-grid">
               <div class="cert-form-col">
-                <label class="cert-field-label" for="cert-input-title">Certificate / Course Title <span class="cert-req">*</span></label>
-                <input type="text" id="cert-input-title" name="title" class="cert-text-input" required placeholder="e.g. AWS Certified Solutions Architect, Deep Learning Specialization">
+                <label class="cert-field-label" for="cert-input-title">Certificate Title <span class="cert-req">*</span></label>
+                <input type="text" id="cert-input-title" name="title" class="cert-text-input" required placeholder="e.g. AWS Certified Solutions Architect, Python Programming">
               </div>
               <div class="cert-form-col">
                 <label class="cert-field-label" for="cert-input-issuer">Issuing Organization <span class="cert-req">*</span></label>
@@ -121,24 +121,16 @@
               </div>
               <div class="cert-form-col">
                 <label class="cert-field-label" for="cert-input-date">Issue Date</label>
-                <input type="text" id="cert-input-date" name="issue_date" class="cert-text-input" placeholder="e.g. May 2024 or 2024-05">
+                <input type="text" id="cert-input-date" name="issue_date" class="cert-text-input" placeholder="e.g. August 2026 or 2026-08">
               </div>
               <div class="cert-form-col">
-                <label class="cert-field-label" for="cert-input-id">Credential ID / License Number</label>
-                <input type="text" id="cert-input-id" name="credential_id" class="cert-text-input" placeholder="e.g. UC-12345678 or AWS-00123">
+                <label class="cert-field-label" for="cert-input-skills">Skills &amp; Topics</label>
+                <input type="text" id="cert-input-skills" name="skills" class="cert-text-input" placeholder="e.g. Python, Docker, Machine Learning (comma-separated)">
               </div>
               <div class="cert-form-col cert-col-full">
-                <label class="cert-field-label" for="cert-input-url">Verification / Credential URL</label>
-                <input type="url" id="cert-input-url" name="credential_url" class="cert-text-input" placeholder="https://coursera.org/verify/... or https://www.credly.com/...">
-              </div>
-              <div class="cert-form-col cert-col-full">
-                <label class="cert-field-label" for="cert-input-skills">Skills &amp; Technologies Covered</label>
-                <input type="text" id="cert-input-skills" name="skills" class="cert-text-input" placeholder="e.g. Python, Machine Learning, PyTorch, Docker (comma-separated)">
-              </div>
-              <div class="cert-form-col cert-col-full">
-                <label class="cert-field-label" for="cert-input-file">Certificate File (PDF or Image, max 20MB)</label>
-                <input type="file" id="cert-input-file" name="attachment" class="cert-file-input" accept=".pdf,.png,.jpg,.jpeg,.webp">
-                <div class="cert-field-hint">Accepted file formats: PDF, PNG, JPG, JPEG, WEBP. Provide a verification link and/or upload the certificate document.</div>
+                <label class="cert-field-label" for="cert-input-file">Certificate File (Upload PDF or Image) <span class="cert-req">*</span></label>
+                <input type="file" id="cert-input-file" name="attachment" class="cert-file-input" required accept=".pdf,.png,.jpg,.jpeg,.webp">
+                <div class="cert-field-hint">Upload your certificate document or photo (PDF, PNG, JPG, JPEG, WEBP).</div>
               </div>
             </div>
             <div class="cert-form-footer">
@@ -188,10 +180,6 @@
               <div class="cert-item-issuer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-issuer-svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 <span class="cert-issuer-name">{{ cert.issuer }}</span>
-                {% if cert.credential_id %}
-                <span class="cert-issuer-sep">&bull;</span>
-                <span class="cert-cred-id">ID: {{ cert.credential_id }}</span>
-                {% endif %}
               </div>
               {% if cert.skills %}
               <div class="cert-skill-pills">
@@ -207,20 +195,31 @@
                 <strong>Admin Feedback:</strong> {{ cert.admin_notes }}
               </div>
               {% endif %}
-              <div class="cert-item-actions">
-                {% if cert.credential_url %}
-                <a href="{{ cert.credential_url }}" target="_blank" rel="noopener noreferrer" class="cert-action-link">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-action-svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                  <span>Verify Link</span>
-                </a>
+
+              <!-- Directly display the certificate itself -->
+              {% if cert.attachment_name %}
+                {% if cert.is_image %}
+                <div class="cert-doc-frame">
+                  <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-image-link" title="Click to view full image in new tab">
+                    <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="cert-display-image" loading="lazy">
+                    <div class="cert-image-hover-pill">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                      <span>View full size</span>
+                    </div>
+                  </a>
+                </div>
+                {% elif cert.is_pdf %}
+                <div class="cert-doc-frame cert-pdf-frame">
+                  <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="cert-display-pdf" title="{{ cert.title }}"></iframe>
+                  <div class="cert-pdf-footer">
+                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-pdf-open-btn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      <span>Open PDF in new tab</span>
+                    </a>
+                  </div>
+                </div>
                 {% endif %}
-                {% if cert.attachment_name %}
-                <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-action-link cert-action-file">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-action-svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  <span>View Document ({{ cert.attachment_name }})</span>
-                </a>
-                {% endif %}
-              </div>
+              {% endif %}
             </div>
             {% endfor %}
           {% else %}

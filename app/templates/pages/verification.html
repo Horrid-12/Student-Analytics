@@ -127,10 +127,6 @@
           <span class="verif-meta-sep">&bull;</span>
           <span class="verif-cert-issuedate">Issued: {{ cert.issue_date }}</span>
           {% endif %}
-          {% if cert.credential_id %}
-          <span class="verif-meta-sep">&bull;</span>
-          <span class="verif-cert-id">ID: {{ cert.credential_id }}</span>
-          {% endif %}
         </div>
 
         {% if cert.skills %}
@@ -143,21 +139,30 @@
         </div>
         {% endif %}
 
-        <!-- Proof Evidence Links -->
-        <div class="verif-evidence-row">
-          {% if cert.credential_url %}
-          <a href="{{ cert.credential_url }}" target="_blank" rel="noopener noreferrer" class="verif-evidence-link verif-link-url">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            <span>Verify URL ↗</span>
-          </a>
+        <!-- Direct Certificate Preview -->
+        {% if cert.attachment_name %}
+          {% if cert.is_image %}
+          <div class="verif-doc-frame">
+            <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-image-link" title="Click to view full image in a new tab">
+              <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="verif-display-image" loading="lazy">
+              <div class="verif-image-hover-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                <span>View full size</span>
+              </div>
+            </a>
+          </div>
+          {% elif cert.is_pdf %}
+          <div class="verif-doc-frame verif-pdf-frame">
+            <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="verif-display-pdf" title="{{ cert.title }}"></iframe>
+            <div class="verif-pdf-footer">
+              <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-pdf-open-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span>Open PDF in new tab</span>
+              </a>
+            </div>
+          </div>
           {% endif %}
-          {% if cert.attachment_name %}
-          <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="verif-evidence-link verif-link-file">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            <span>View Attachment ({{ cert.attachment_name }}) ↗</span>
-          </a>
-          {% endif %}
-        </div>
+        {% endif %}
 
         {% if cert.status == 'approved' and cert.verified_by %}
         <div class="verif-audit-note is-approved">

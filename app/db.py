@@ -2583,6 +2583,9 @@ def _format_cert_row(row: dict | None) -> dict | None:
         d["created_at"] = d["created_at"].isoformat()
     if d.get("updated_at") is not None and not isinstance(d["updated_at"], str):
         d["updated_at"] = d["updated_at"].isoformat()
+    att = str(d.get("attachment_name") or "").lower()
+    d["is_image"] = att.endswith((".png", ".jpg", ".jpeg", ".webp"))
+    d["is_pdf"] = att.endswith(".pdf")
     return d
 
 

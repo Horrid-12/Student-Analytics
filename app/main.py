@@ -1933,8 +1933,8 @@ async def certificates_queue(
         if val_err:
             return RedirectResponse(f"{return_to}{sep}tab=certificates&error={val_err}", status_code=303)
 
-    if not credential_url and not file_bytes:
-        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=proof_required", status_code=303)
+    if not file_bytes:
+        return RedirectResponse(f"{return_to}{sep}tab=certificates&error=file_required", status_code=303)
 
     cert = certificates.create_certificate(
         student_email=student_email,

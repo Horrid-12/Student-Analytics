@@ -132,7 +132,7 @@ class TestCertificateEndpoints:
         assert res.status_code == 303
         assert "error=missing_fields" in res.headers["location"]
 
-    def test_queue_requires_proof_url_or_file(self):
+    def test_queue_requires_file(self):
         client = TestClient(app)
         _make_session(client, "alice@uni.edu", "student", "Alice")
         res = client.post(
@@ -141,20 +141,24 @@ class TestCertificateEndpoints:
             follow_redirects=False,
         )
         assert res.status_code == 303
-        assert "error=proof_required" in res.headers["location"]
+        assert "error=file_required" in res.headers["location"]
 
-    def test_queue_success_with_url(self):
+    def test_queue_success_with_image_attachment(self):
         client = TestClient(app)
         _make_session(client, "alice@uni.edu", "student", "Alice")
+        # Valid PNG bytes
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        png_file = io.BytesIO(png_bytes)
         res = client.post(
             "/certificates/queue",
             data={
                 "title": "AWS Certified Architect",
                 "issuer": "Amazon Web Services",
-                "credential_url": "https://credly.com/earner/test",
                 "skills": "Cloud, AWS, S3",
+                "issue_date": "2024-05",
                 "return_to": "/me",
             },
+            files={"attachment": ("aws_badge.png", png_file, "image/png")},
             follow_redirects=False,
         )
         assert res.status_code == 303
@@ -165,6 +169,9 @@ class TestCertificateEndpoints:
         assert len(items) == 1
         assert items[0]["title"] == "AWS Certified Architect"
         assert items[0]["status"] == "pending"
+        assert items[0]["is_image"] is True
+        assert items[0]["is_pdf"] is False
+        assert items[0]["skills"] == "Cloud, AWS, S3"
 
     def test_queue_success_with_pdf_attachment(self):
         client = TestClient(app)

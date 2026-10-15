@@ -3624,31 +3624,93 @@ button {
   font-size: 12px;
   margin-bottom: 10px;
 }
-.cert-item-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+.cert-doc-frame {
+  margin-top: 10px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  position: relative;
 }
-.cert-action-link {
+.cert-image-link {
+  display: block;
+  position: relative;
+  text-decoration: none;
+  cursor: zoom-in;
+  line-height: 0;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.03);
+}
+.cert-display-image {
+  max-width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  transition: transform 0.2s ease;
+}
+.cert-image-link:hover .cert-display-image {
+  transform: scale(1.01);
+}
+.cert-image-hover-pill {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  line-height: 1.2;
+}
+.cert-image-link:hover .cert-image-hover-pill {
+  opacity: 1;
+}
+.cert-image-hover-pill svg {
+  width: 13px;
+  height: 13px;
+}
+.cert-pdf-frame {
+  display: flex;
+  flex-direction: column;
+  height: 360px;
+}
+.cert-display-pdf {
+  width: 100%;
+  height: 320px;
+  border: none;
+}
+.cert-pdf-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  display: flex;
+  justify-content: flex-end;
+}
+.cert-pdf-open-btn,
+.cert-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
   color: var(--blue);
   text-decoration: none;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--card-soft);
-  transition: all 0.15s ease;
 }
-.cert-action-link:hover {
-  border-color: var(--blue);
-  text-decoration: none;
+.cert-pdf-open-btn:hover,
+.cert-open-btn:hover {
+  text-decoration: underline;
 }
-.cert-action-svg {
+.cert-pdf-open-btn svg,
+.cert-open-btn svg {
   width: 13px;
   height: 13px;
 }
@@ -3972,33 +4034,90 @@ button {
   color: var(--text);
   border: 1px solid var(--border);
 }
-.verif-evidence-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
+.verif-doc-frame {
+  margin: 12px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  position: relative;
 }
-.verif-evidence-link {
+.verif-image-link {
+  display: block;
+  position: relative;
+  text-decoration: none;
+  cursor: zoom-in;
+  line-height: 0;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.03);
+}
+.verif-display-image {
+  max-width: 100%;
+  max-height: 440px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  transition: transform 0.2s ease;
+}
+.verif-image-link:hover .verif-display-image {
+  transform: scale(1.01);
+}
+.verif-image-hover-pill {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  line-height: 1.2;
+}
+.verif-image-link:hover .verif-image-hover-pill {
+  opacity: 1;
+}
+.verif-image-hover-pill svg {
+  width: 13px;
+  height: 13px;
+}
+.verif-pdf-frame {
+  display: flex;
+  flex-direction: column;
+  height: 380px;
+}
+.verif-display-pdf {
+  width: 100%;
+  height: 340px;
+  border: none;
+}
+.verif-pdf-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  display: flex;
+  justify-content: flex-end;
+}
+.verif-pdf-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12.5px;
   font-weight: 600;
-  text-decoration: none;
-  border: 1px solid var(--border);
-  background: var(--card-soft);
-  color: var(--text);
-  transition: all 0.15s ease;
-}
-.verif-evidence-link:hover {
-  border-color: var(--blue);
   color: var(--blue);
   text-decoration: none;
 }
-.verif-evidence-link svg {
+.verif-pdf-open-btn:hover {
+  text-decoration: underline;
+}
+.verif-pdf-open-btn svg {
   width: 14px;
   height: 14px;
 }
