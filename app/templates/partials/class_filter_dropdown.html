@@ -37,14 +37,6 @@
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
     padding: 10px; z-index: 40;
   }
-  .cf-row {
-    display: flex; align-items: center; width: 100%; text-align: left;
-    padding: 12px 14px; font-size: 15px; font-weight: 600;
-    font-family: Inter, system-ui, sans-serif;
-    background: transparent; border: 2px solid transparent; border-radius: 8px; color: var(--text);
-    cursor: pointer;
-  }
-  .cf-row:hover { background: var(--hover-bg); }
   .cf-box {
     border: 1px solid var(--border); border-radius: 10px;
     background: var(--card-soft, rgba(128, 128, 128, 0.04));
@@ -110,9 +102,6 @@
       </div>
     </div>
     {% endif %}
-    <div class="cf-box">
-      <button type="button" class="cf-row" data-cf-clear>All</button>
-    </div>
     {% for g in payload.division_groups %}
     {% set div_key = g.key %}
     <div class="cf-divrow{% if teaching_active and taught_map and div_key in taught_map %} taught{% endif %}">
@@ -192,14 +181,6 @@
         var btns = Array.prototype.slice.call(row.querySelectorAll('[data-cf-pair]'));
         var allOn = btns.length > 0 && btns.every(function (b) { return b.getAttribute('data-active') === 'true'; });
         btns.forEach(function (b) { setPair(b.getAttribute('data-cf-pair'), !allOn); });
-        refresh();
-      });
-    });
-    // "All" clears every staged pick (unfiltered).
-    panel.querySelectorAll('[data-cf-clear]').forEach(function (row) {
-      row.addEventListener('click', function () {
-        checks().forEach(function (c) { c.checked = false; });
-        pairButtons().forEach(function (b) { b.removeAttribute('data-active'); });
         refresh();
       });
     });
