@@ -2206,7 +2206,7 @@ def api_certificates(request: Request, student_id: str = "", student_email: str 
     return JSONResponse({"status": "ok", "certificates": items})
 
 
-@app.post("/sync/accounts")
+@app.api_route("/sync/accounts", methods=["GET", "POST"])
 async def sync_accounts(request: Request, force: bool = False):
     """Phase 5.1: refresh every approved account's analytics snapshot.
 
@@ -2776,7 +2776,9 @@ async def api_notifications_stream(request: Request):
         try:
             last_count = -1
             yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
-            for _ in range(30):
+            # Capped to 3 ticks (15s total) so serverless functions do not stay
+            # alive indefinitely (Vercel Hobby Fluid CPU guard).
+            for _ in range(3):
                 if await request.is_disconnected():
                     break
                 # Reads go through a worker thread: a psycopg call here used to
@@ -2804,9 +2806,7 @@ async def api_notifications_stream(request: Request):
                     yield f"event: notification\ndata: {payload}\n\n"
                 else:
                     yield ": ping\n\n"
-                # 10s tick (was 2s): keeps the stream under proxy idle timeouts via
-                # the ping above while cutting per-tab DB polling 5x (Lag Fix).
-                await asyncio.sleep(10)
+                await asyncio.sleep(5)
         finally:
             # Runs on normal completion, client disconnect (GeneratorExit) and
             # cancellation — the slot must always go back to the user.

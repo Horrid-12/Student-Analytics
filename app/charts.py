@@ -9,7 +9,10 @@ ACCENT is the sidebar-active red (#BE342B) in light mode, swapped to the
 bright blue (#5B9CF6) in dark mode by the JS macro.
 """
 
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+except ImportError:
+    go = None  # type: ignore
 
 # light-theme site tokens (static/theme.css [data-theme="light"])
 # ACCENT is the hero colour — red in light mode (sidebar active), remapped to
