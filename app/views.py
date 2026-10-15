@@ -888,7 +888,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All") -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1148,7 +1148,15 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
                     _bits.append(f"Div {_clean_division_text(_div) or _div}")
                 if _bat and _bat.lower() not in {"nan", "none", "unknown"}:
                     _bits.append(f"Batch {_clean_batch_text(_bat) or _bat}")
-                if _user and _user.lower() not in {"nan", "none", "unknown", ""}:
+                # Privacy: a student who hid GitHub keeps stats but loses the
+                # @handle in other students' Need Attention style lists.
+                _gh_hidden = False
+                try:
+                    if isinstance(privacy_map, dict) and _sid:
+                        _gh_hidden = bool(int((privacy_map.get(_sid) or {}).get("hide_github") or 0))
+                except Exception:
+                    _gh_hidden = False
+                if _user and _user.lower() not in {"nan", "none", "unknown", ""} and not _gh_hidden:
                     _bits.append(f"@{_user}")
                 statistics_lists[_bucket].append({
                     "name": _name,
@@ -2162,6 +2170,36 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     }
 
 
+def apply_profile_privacy(p: dict, prefs: dict | None) -> dict:
+    """Blank the fields a student hid from OTHER students.
+
+    ``prefs`` is {hide_prn, hide_github, hide_linkedin, hide_hackerrank}
+    (0/1). Callers only pass prefs when the viewer is a student looking at
+    someone else's profile — faculty/admins and the owner bypass. The
+    ``student_id`` key is kept so profile links keep working; templates show
+    "Hidden" via the ``prn_hidden`` flag. Blanked handles also collapse the
+    matching icon buttons and the HackerRank live tab via existing guards.
+    """
+    if not p or not prefs or not isinstance(prefs, dict):
+        return p
+    try:
+        if int(prefs.get("hide_github") or 0):
+            p["username"] = ""
+            p["profile_url"] = ""
+        if int(prefs.get("hide_linkedin") or 0):
+            p["linkedin_username"] = ""
+            p["linkedin_url"] = ""
+            p["linkedin_display"] = ""
+        if int(prefs.get("hide_hackerrank") or 0):
+            p["hackerrank_username"] = ""
+            p["hackerrank_url"] = ""
+        if int(prefs.get("hide_prn") or 0):
+            p["prn_hidden"] = True
+    except Exception:
+        pass
+    return p
+
+
 def _num(value):
     try:
         return int(float(value))
@@ -2299,6 +2337,49 @@ def own_profile_payload(view: dict, email: str) -> dict | None:
         return students_payload_profile(row, repos, team_repos)
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
+
+
+def mask_export_df(df, privacy: dict | None, own_sid: str | None = None) -> object:
+    """Blank privacy-hidden fields in a student export frame for student viewers.
+
+    ``df`` uses the renamed export columns ("Student ID", "GitHub Username",
+    ...). Hidden PRNs become "Hidden"; hidden handles + URLs become "".
+    The viewer's own row (``own_sid``) is never masked. Returns ``df``.
+    """
+    if df is None or getattr(df, "empty", False) or not isinstance(privacy, dict) or not privacy:
+        return df
+    try:
+        own = str(own_sid) if own_sid is not None else None
+        for idx in df.index:
+            try:
+                sid = str(df.at[idx, "Student ID"]) if "Student ID" in df.columns else ""
+            except Exception:
+                continue
+            if not sid or sid == own:
+                continue
+            prefs = privacy.get(sid)
+            if not isinstance(prefs, dict):
+                continue
+            try:
+                if int(prefs.get("hide_prn") or 0) and "Student ID" in df.columns:
+                    df.at[idx, "Student ID"] = "Hidden"
+                if int(prefs.get("hide_github") or 0):
+                    for col in ("GitHub Username", "GitHub URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+                if int(prefs.get("hide_linkedin") or 0):
+                    for col in ("LinkedIn Username", "LinkedIn URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+                if int(prefs.get("hide_hackerrank") or 0):
+                    for col in ("HackerRank Username", "HackerRank URL"):
+                        if col in df.columns:
+                            df.at[idx, col] = ""
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return df
 
 
 def student_export_df(students_payload: dict, with_avatar: bool = False) -> pd.DataFrame:
@@ -2736,6 +2817,37 @@ def repository_export_df(payload: dict) -> pd.DataFrame:
     rows = payload.get("rows") or []
     df = pd.DataFrame([{c: row.get(c) for c in columns} for row in rows], columns=columns).rename(columns=headers)
     return df
+
+
+def mask_repo_rows(rows, privacy: dict | None, own_sid: str | None = None):
+    """Hide @handles on repository cards/rows/exports for student viewers.
+
+    ``rows`` are the payload row dicts (each carries ``student_id`` +
+    ``owner_username``). A student who hid GitHub keeps their repos listed
+    (public data) but loses the @handle for other students; the owner's own
+    rows (``own_sid``) are never masked. Returns ``rows``.
+    """
+    if not rows or not isinstance(privacy, dict) or not privacy:
+        return rows
+    try:
+        own = str(own_sid) if own_sid is not None else None
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            sid = str(row.get("student_id") or "")
+            if not sid or sid == own:
+                continue
+            prefs = privacy.get(sid)
+            if not isinstance(prefs, dict):
+                continue
+            try:
+                if int(prefs.get("hide_github") or 0):
+                    row["owner_username"] = ""
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return rows
 
 
 # ---------------------------------------------------------------------------

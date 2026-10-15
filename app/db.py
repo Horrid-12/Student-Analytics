@@ -893,6 +893,61 @@ def put_blacklist(roster_id: str, state: dict) -> None:
         logger.warning("put_blacklist failed: %s", exc)
 
 
+def get_privacy_prefs(student_id: str) -> dict | None:
+    """One student's privacy prefs row, or None when never saved."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "SELECT hide_prn, hide_github, hide_linkedin, hide_hackerrank "
+                "FROM privacy_prefs WHERE student_id = %s",
+                (str(student_id or "").strip(),),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def get_all_privacy_prefs() -> dict:
+    """Every saved prefs row ({student_id: {field: 0/1}})."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return {}
+            cur = c.execute(
+                "SELECT student_id, hide_prn, hide_github, hide_linkedin, hide_hackerrank "
+                "FROM privacy_prefs"
+            )
+            return {str(r["student_id"]): dict(r) for r in cur.fetchall()}
+    except Exception:
+        return {}
+
+
+def set_privacy_prefs(student_id: str, prefs: dict) -> bool:
+    """Upsert one student's privacy prefs (fields coerced to 0/1)."""
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cleaned = {k: (1 if int((prefs or {}).get(k) or 0) else 0) for k in ("hide_prn", "hide_github", "hide_linkedin", "hide_hackerrank")}
+            c.execute(
+                "INSERT INTO privacy_prefs "
+                "(student_id, hide_prn, hide_github, hide_linkedin, hide_hackerrank) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (student_id) DO UPDATE SET "
+                "hide_prn = EXCLUDED.hide_prn, hide_github = EXCLUDED.hide_github, "
+                "hide_linkedin = EXCLUDED.hide_linkedin, hide_hackerrank = EXCLUDED.hide_hackerrank, "
+                "updated_at = now()",
+                (str(student_id or "").strip(), cleaned["hide_prn"], cleaned["hide_github"], cleaned["hide_linkedin"], cleaned["hide_hackerrank"]),
+            )
+            return True
+    except Exception as exc:
+        logger.warning("set_privacy_prefs failed: %s", exc)
+        return False
+
+
 def get_hidden_repos(roster_id: str) -> dict:
     """Return the hidden repositories ({student_id: [repo keys]})."""
     try:

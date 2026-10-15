@@ -2,6 +2,11 @@
    shows; /me includes it directly. Expects `p` (students_payload_profile
    dict) in context. #}
       <div class="profile-panel">
+        {% if show_privacy_button is defined and show_privacy_button %}
+        <div class="profile-status-row">
+          <button type="button" class="profile-status-btn" id="profile-status-btn">Profile Status</button>
+        </div>
+        {% endif %}
         <div class="profile-header">
           <div class="profile-avatar-wrap">
             {% if p.avatar %}<img src="{{ p.avatar|avatar }}" loading="lazy" decoding="async" alt="" class="profile-avatar">{% else %}<div class="profile-avatar-fallback">{{ (p.name or '')[0:1] }}</div>{% endif %}
@@ -33,7 +38,7 @@
               </details>
               {% endif %}
             </div>
-            <div class="profile-sub">{{ p.student_id }} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
+            <div class="profile-sub">{% if p.prn_hidden is defined and p.prn_hidden %}Hidden{% else %}{{ p.student_id }}{% endif %} &middot; Div {{ p.division }}{% if p.batch %} &middot; Batch {{ p.batch }}{% endif %}{% if p.semester %} &middot; {{ p.semester }}{% endif %}</div>
             <div class="profile-links">
               {% if p.username %}
               <a class="profile-icon-btn profile-icon-github" href="{{ p.profile_url }}" target="_blank" rel="noopener" title="GitHub: {{ p.username }}" aria-label="Open GitHub profile of {{ p.name }}">
@@ -154,6 +159,85 @@
         <p class="tab-empty">No HackerRank profile linked.</p>
         {% endif %}
       </div>
+{% if show_privacy_button is defined and show_privacy_button %}
+<div class="privacy-backdrop" id="privacy-backdrop" hidden>
+  <div class="privacy-modal" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+    <div class="privacy-title" id="privacy-title">Profile Status</div>
+    <div class="privacy-disclaimer" role="alert"><strong>WARNING:</strong> hiding your GitHub profile will automatically remove you from all GitHub leaderboards (Most Active Repositories, Most Commits, Most Stars and Top Starred Repositories). Hiding your HackerRank profile will remove you from the HackerRank leaderboards (Most Problems Solved and Top Practice Scores). Faculty and admins will still see all your information.</div>
+    <div class="privacy-rows">
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my PRN</span><span class="privacy-desc">Other students see &ldquo;Hidden&rdquo; instead of your student ID.</span></span>
+        <span class="privacy-switch"><input type="checkbox" data-privacy-field="hide_prn" {% if privacy_prefs is defined and privacy_prefs and privacy_prefs['hide_prn'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my GitHub profile</span><span class="privacy-desc">Hides your GitHub link and removes you from GitHub leaderboards.</span></span>
+        <span class="privacy-switch"><input type="checkbox" data-privacy-field="hide_github" {% if privacy_prefs is defined and privacy_prefs and privacy_prefs['hide_github'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my LinkedIn profile</span><span class="privacy-desc">Hides your LinkedIn link from other students.</span></span>
+        <span class="privacy-switch"><input type="checkbox" data-privacy-field="hide_linkedin" {% if privacy_prefs is defined and privacy_prefs and privacy_prefs['hide_linkedin'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my HackerRank profile</span><span class="privacy-desc">Hides your HackerRank link and removes you from HackerRank leaderboards.</span></span>
+        <span class="privacy-switch"><input type="checkbox" data-privacy-field="hide_hackerrank" {% if privacy_prefs is defined and privacy_prefs and privacy_prefs['hide_hackerrank'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+    </div>
+    <div class="privacy-error" id="privacy-error" hidden></div>
+    <div class="privacy-actions">
+      <button type="button" class="btn" id="privacy-save">Save</button>
+      <button type="button" class="btn" id="privacy-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    // Profile Status popup (own /me card only): toggle which fields other
+    // students can see, then POST /me/privacy and reload.
+    var openBtn = document.getElementById('profile-status-btn');
+    var backdrop = document.getElementById('privacy-backdrop');
+    if (!openBtn || !backdrop) return;
+    var errorBox = document.getElementById('privacy-error');
+    var saveBtn = document.getElementById('privacy-save');
+    function setOpen(open) {
+      backdrop.hidden = !open;
+      document.body.style.overflow = open ? 'hidden' : '';
+      if (!open && errorBox) { errorBox.hidden = true; errorBox.textContent = ''; }
+      if (open && saveBtn) saveBtn.focus();
+    }
+    openBtn.addEventListener('click', function () { setOpen(true); });
+    document.getElementById('privacy-cancel').addEventListener('click', function () { setOpen(false); });
+    backdrop.addEventListener('click', function (event) {
+      if (event.target === backdrop) setOpen(false);
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !backdrop.hidden) setOpen(false);
+    });
+    saveBtn.addEventListener('click', function () {
+      var payload = { student_id: {{ p.student_id|tojson }} };
+      backdrop.querySelectorAll('[data-privacy-field]').forEach(function (input) {
+        payload[input.getAttribute('data-privacy-field')] = input.checked ? 1 : 0;
+      });
+      saveBtn.disabled = true;
+      fetch('/me/privacy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(function (resp) {
+        if (!resp.ok) throw new Error('save failed');
+        return resp.json();
+      }).then(function () {
+        window.location.reload();
+      }).catch(function () {
+        saveBtn.disabled = false;
+        if (errorBox) {
+          errorBox.textContent = 'Could not save — please try again.';
+          errorBox.hidden = false;
+        }
+      });
+    });
+  })();
+</script>
+{% endif %}
 <script>
   (function () {
     var backdrop = document.getElementById('student-modal-backdrop');

@@ -1390,6 +1390,129 @@ def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
     return True, ""
 
 
+#: Toggleable student privacy fields. A student can hide their PRN and
+#: profile links from OTHER students; faculty/admins always see everything.
+#: Hiding GitHub/HackerRank additionally excludes the student from the
+#: connected leaderboards (see main._privacy_blacklist_merge).
+PRIVACY_FIELDS = ("hide_prn", "hide_github", "hide_linkedin", "hide_hackerrank")
+
+_PRIVACY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS privacy_prefs (
+    student_id TEXT NOT NULL PRIMARY KEY,
+    hide_prn INTEGER NOT NULL DEFAULT 0,
+    hide_github INTEGER NOT NULL DEFAULT 0,
+    hide_linkedin INTEGER NOT NULL DEFAULT 0,
+    hide_hackerrank INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
+
+def _ensure_privacy_schema(conn) -> None:
+    conn.execute(_PRIVACY_SCHEMA)
+
+
+def _clean_privacy_prefs(row: dict | None) -> dict:
+    """Normalize a prefs row to {field: 0/1} (all-visible when unknown)."""
+    prefs = {field: 0 for field in PRIVACY_FIELDS}
+    if isinstance(row, dict):
+        for field in PRIVACY_FIELDS:
+            try:
+                prefs[field] = 1 if int(row.get(field) or 0) else 0
+            except (TypeError, ValueError):
+                prefs[field] = 0
+    return prefs
+
+
+def get_privacy_prefs(student_id: str) -> dict:
+    """One student's prefs ({field: 0/1}); all-visible when never saved."""
+    student_id = str(student_id or "").strip()
+    if not student_id:
+        return _clean_privacy_prefs(None)
+    if database.db_configured():
+        try:
+            return _clean_privacy_prefs(db.get_privacy_prefs(student_id))
+        except Exception:
+            return _clean_privacy_prefs(None)
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            _ensure_privacy_schema(conn)
+            row = conn.execute(
+                "SELECT hide_prn, hide_github, hide_linkedin, hide_hackerrank "
+                "FROM privacy_prefs WHERE student_id = ?",
+                (student_id,),
+            ).fetchone()
+        return _clean_privacy_prefs(dict(row) if row is not None else None)
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("privacy lookup failed: %s", exc)
+        return _clean_privacy_prefs(None)
+
+
+def get_all_privacy_prefs() -> dict:
+    """Every saved prefs row ({student_id: {field: 0/1}}). Small table."""
+    if database.db_configured():
+        try:
+            rows = db.get_all_privacy_prefs() or {}
+            return {str(sid): _clean_privacy_prefs(p) for sid, p in rows.items()}
+        except Exception:
+            return {}
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            _ensure_privacy_schema(conn)
+            fetched = conn.execute(
+                "SELECT student_id, hide_prn, hide_github, hide_linkedin, hide_hackerrank "
+                "FROM privacy_prefs"
+            ).fetchall()
+        return {str(r["student_id"]): _clean_privacy_prefs(dict(r)) for r in fetched}
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("privacy list failed: %s", exc)
+        return {}
+
+
+def set_privacy_prefs(student_id: str, prefs: dict) -> bool:
+    """Upsert one student's prefs. Only the four known fields are stored
+    (coerced to 0/1); unknown keys are ignored. Returns True on success."""
+    student_id = str(student_id or "").strip()
+    if not student_id or not isinstance(prefs, dict):
+        return False
+    cleaned = _clean_privacy_prefs(prefs)
+    if database.db_configured():
+        try:
+            return bool(db.set_privacy_prefs(student_id, cleaned))
+        except Exception:
+            return False
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                _ensure_privacy_schema(conn)
+                conn.execute(
+                    "INSERT INTO privacy_prefs "
+                    "(student_id, hide_prn, hide_github, hide_linkedin, hide_hackerrank, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(student_id) DO UPDATE SET "
+                    "hide_prn = excluded.hide_prn, hide_github = excluded.hide_github, "
+                    "hide_linkedin = excluded.hide_linkedin, hide_hackerrank = excluded.hide_hackerrank, "
+                    "updated_at = excluded.updated_at",
+                    (
+                        student_id,
+                        cleaned["hide_prn"],
+                        cleaned["hide_github"],
+                        cleaned["hide_linkedin"],
+                        cleaned["hide_hackerrank"],
+                        time.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    ),
+                )
+        return True
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("privacy save failed: %s", exc)
+        return False
+
+
 def _drop_user(email: str) -> None:
     """Evict the memoised users row for one email (Lag Fix phase 1).
 

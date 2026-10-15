@@ -305,6 +305,98 @@ def _hidden_repos_state(roster_id: str) -> dict:
     return roster_store.get_hidden_repos(key)
 
 
+#: GitHub-connected leaderboard boards — a student who hides GitHub is
+#: removed from all of these (for every viewer, like an admin blacklist).
+_PRIVACY_GITHUB_BOARDS = ("active", "commits", "stars", "repos")
+#: HackerRank-connected boards — same treatment for a hidden HackerRank.
+_PRIVACY_HR_BOARDS = ("hr_solved", "hr_score")
+
+
+def _privacy_state() -> dict:
+    """All saved student privacy prefs ({student_id: {field: 0/1}}).
+
+    Small table; memoised on Postgres like the blacklist siblings so every
+    page doesn't pay a round trip. A prefs save surfaces within the short
+    memo TTL (same staleness contract as blacklist saves).
+    """
+    try:
+        if database.db_configured():
+            return _memo("privacy:all", auth.get_all_privacy_prefs)
+        return auth.get_all_privacy_prefs()
+    except Exception:
+        return {}
+
+
+def _is_student_viewer(request: Request) -> bool:
+    user = getattr(request.state, "user", None) or {}
+    return (user.get("role") or "") == "student"
+
+
+def _own_student_id(view: dict | None, request: Request) -> str | None:
+    """The viewer's own roster PRN (None when unmatched — e.g. no snapshot)."""
+    try:
+        user = getattr(request.state, "user", None) or {}
+        email = (user.get("email") or "").strip()
+        if not view or not email:
+            return None
+        row = views.find_own_student_row(view.get("students"), email)
+        if not row:
+            return None
+        sid = str(row.get(services.STUDENT_ID_COL) or "").strip()
+        return sid or None
+    except Exception:
+        return None
+
+
+def _mask_profile_for_viewer(profile: dict | None, view: dict | None, request: Request, privacy: dict | None) -> dict | None:
+    """Blank fields the profile owner hid from other students.
+
+    Faculty/admins and the owner themself always see everything; only a
+    student viewing SOMEONE ELSE's profile gets the masked copy.
+    """
+    if not profile or not _is_student_viewer(request):
+        return profile
+    try:
+        own = _own_student_id(view, request)
+        if own is not None and str(profile.get("student_id") or "") == own:
+            return profile
+        prefs = (privacy or {}).get(str(profile.get("student_id") or ""))
+        return views.apply_profile_privacy(profile, prefs)
+    except Exception:
+        return profile
+
+
+def _privacy_blacklist_merge(blacklist: dict | None, privacy: dict | None) -> dict:
+    """Fold privacy opt-outs into the leaderboard blacklist (all viewers).
+
+    Hiding GitHub removes the student from the GitHub-connected boards;
+    hiding HackerRank from the HackerRank boards. Never mutates the input
+    (it may be the memoised blacklist dict).
+    """
+    base = blacklist if isinstance(blacklist, dict) else {}
+    priv = privacy if isinstance(privacy, dict) else {}
+    if not priv:
+        return base
+    merged = {str(k): list(v or []) for k, v in base.items()}
+    for sid, prefs in priv.items():
+        if not isinstance(prefs, dict):
+            continue
+        try:
+            hide_gh = bool(int(prefs.get("hide_github") or 0))
+            hide_hr = bool(int(prefs.get("hide_hackerrank") or 0))
+        except (TypeError, ValueError):
+            continue
+        if not (hide_gh or hide_hr):
+            continue
+        boards = set(merged.get(str(sid), []))
+        if hide_gh:
+            boards.update(_PRIVACY_GITHUB_BOARDS)
+        if hide_hr:
+            boards.update(_PRIVACY_HR_BOARDS)
+        merged[str(sid)] = sorted(boards)
+    return merged
+
+
 def _hr_snapshots_state() -> dict:
     """HackerRank snapshots: prefer Postgres; fall back to RosterStore cache.
 
@@ -1587,6 +1679,9 @@ def overview(
                 )
         else:
             ctx["teaching_empty"] = True
+    # Student privacy: @handles are stripped from the named statistics
+    # lists for student viewers (faculty/admins pass None = see all).
+    _privacy = _privacy_state() if _is_student_viewer(request) else {}
     if view is not None and _is_complete(view):
         try:
             ctx["view"] = view
@@ -1596,6 +1691,7 @@ def overview(
                 view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
+                privacy_map=_privacy or None,
             )
         except Exception:
             ctx["view"] = None
@@ -1606,7 +1702,10 @@ def overview(
             candidates = view.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                ctx["profile"] = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+                ctx["profile"] = _mask_profile_for_viewer(
+                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    view, request, _privacy,
+                )
         except Exception:
             ctx["profile"] = None
     ctx.update(_bell_context(request, ctx["view"], roster))
@@ -2564,8 +2663,16 @@ def students_page(
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
     _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
+    # Student privacy: field masking for student viewers (faculty/admins
+    # pass {} = see all). The table template consults `privacy` per row;
+    # the profile popup dict is masked server-side below.
+    _student_viewer = _is_student_viewer(request)
+    _privacy = _privacy_state() if _student_viewer else {}
+    _own_sid = _own_student_id(view, request) if _student_viewer else None
     payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None, pairs=ctx["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
+    if payload.get("profile") is not None:
+        payload["profile"] = _mask_profile_for_viewer(payload["profile"], view, request, _privacy)
     return templates.TemplateResponse(
         request,
         "pages/students.html",
@@ -2580,6 +2687,9 @@ def students_page(
             "q": q,
             "year": year,
             "semester": semester,
+            "privacy": _privacy,
+            "own_sid": _own_sid,
+            "mask_privacy": _student_viewer,
         },
     )
 
@@ -2627,6 +2737,7 @@ def students_rows(
     rows = payload["display"].iloc[start : start + count]
     if rows.empty:
         return HTMLResponse("")
+    _student_viewer = _is_student_viewer(request)
     html = templates.get_template("partials/student_rows.html").render(
         rows=rows,
         roster_id=roster,
@@ -2637,6 +2748,9 @@ def students_rows(
         mine=mine,
         pair=_fc["pair"],
         page_size=payload["page_size"],
+        privacy=_privacy_state() if _student_viewer else {},
+        own_sid=_own_student_id(view, request) if _student_viewer else None,
+        mask_privacy=_student_viewer,
     )
     return HTMLResponse(html)
 
@@ -2669,11 +2783,68 @@ def my_profile_page(request: Request, roster: str = ""):
                 gh = str(user_row.get("github_username") or "").strip()
                 if gh:
                     profile = views.own_profile_payload(view, gh)
+    # Profile Status (privacy toggles): offered on the student's own card
+    # only. The popup reads/writes the prefs for the matched student_id.
+    show_privacy = bool(profile) and (user.get("role") or "") == "student"
+    privacy_prefs = auth.get_privacy_prefs(profile.get("student_id")) if show_privacy and profile else {f: 0 for f in auth.PRIVACY_FIELDS}
     return templates.TemplateResponse(
         request,
         "pages/me.html",
-        {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster)},
+        {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster),
+         "show_privacy_button": show_privacy, "privacy_prefs": privacy_prefs},
     )
+
+
+@app.post("/me/privacy")
+async def my_privacy_save(request: Request):
+    """Student-only: save own Profile Status toggles (PRN/profile-link hiding).
+
+    The posted ``student_id`` must match the caller's own roster row —
+    verified via the same lookup as /me — so nobody can flip someone else's
+    prefs. Faculty/admins always see everything and have nothing to save.
+    """
+    user = getattr(request.state, "user", None) or {}
+    if (user.get("role") or "") != "student":
+        raise HTTPException(status_code=403, detail="Only students can set profile privacy")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid privacy payload")
+    student_id = str(body.get("student_id") or "").strip()
+    if not student_id:
+        raise HTTPException(status_code=400, detail="student_id is required")
+    # Resolve the caller's own row across fleet/account views (same chain as
+    # GET /me) and require the posted id to be that row.
+    email = (user.get("email") or "").strip()
+    own = None
+    try:
+        for candidate in (_fleet_view(request), _account_view(request)):
+            if candidate is not None and _is_complete(candidate):
+                row = views.find_own_student_row(candidate.get("students"), email)
+                if row:
+                    own = str(row.get(services.STUDENT_ID_COL) or "").strip()
+                    break
+    except Exception:
+        own = None
+    if not own or own != student_id:
+        raise HTTPException(status_code=403, detail="You can only change your own profile status")
+    prefs = {}
+    for field in auth.PRIVACY_FIELDS:
+        try:
+            prefs[field] = 1 if int(body.get(field) or 0) else 0
+        except (TypeError, ValueError):
+            prefs[field] = 0
+    if not auth.set_privacy_prefs(student_id, prefs):
+        raise HTTPException(status_code=500, detail="Could not save privacy settings")
+    try:
+        # Drop only the prefs memo (NOT the fleet frames — privacy applies at
+        # render time, so no rebuild is needed for the save to take effect).
+        view_cache.invalidate("privacy:all")
+    except Exception:
+        pass
+    return {"status": "ok", "privacy": prefs}
 
 
 @app.get("/students/export")
@@ -2703,6 +2874,8 @@ def students_export(
     _fc = _filter_context(request, division, batch, pair)
     payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester, pairs=_fc["pairs"] or "All")
     df = views.student_export_df(payload)
+    if _is_student_viewer(request):
+        df = views.mask_export_df(df, _privacy_state(), _own_student_id(view, request))
     return _export_response(df, format, "students")
 
 
@@ -2759,6 +2932,13 @@ def repositories_page(
     ctx.update(_fc)
     payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
+    # Student privacy: @handles hidden on cards/rows for student viewers;
+    # the owner popup dict is masked server-side below.
+    _student_viewer = _is_student_viewer(request)
+    _privacy = _privacy_state() if _student_viewer else {}
+    _own_sid = _own_student_id(data, request) if _student_viewer else None
+    if _student_viewer:
+        payload["rows"] = views.mask_repo_rows(payload.get("rows"), _privacy, _own_sid)
     # Same profile popup as Students/Leaderboards: opened from a repo owner's
     # name, closed back to this exact repositories view.
     profile = None
@@ -2767,7 +2947,10 @@ def repositories_page(
             candidates = data.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                profile = views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos"))
+                profile = _mask_profile_for_viewer(
+                    views.students_payload_profile(match.iloc[0], data["repos"], data.get("team_repos")),
+                    data, request, _privacy,
+                )
         except Exception:
             profile = None
     return templates.TemplateResponse(
@@ -2827,6 +3010,8 @@ def repositories_rows(
     batch_rows = payload["rows"][start : start + count]
     if not batch_rows:
         return HTMLResponse("")
+    if _is_student_viewer(request):
+        batch_rows = views.mask_repo_rows(batch_rows, _privacy_state(), _own_student_id(view, request))
     # Owner-profile links need the same filter context as the first paint;
     # without it infinite-scroll batches would render plain (unclickable) names.
     link_ctx = {
@@ -2877,6 +3062,8 @@ def repositories_export(
             view = views.filter_view_by_teaching(view, taught_map)
     _fc = _filter_context(request, division, batch, pair)
     payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
+    if _is_student_viewer(request):
+        payload["rows"] = views.mask_repo_rows(payload.get("rows"), _privacy_state(), _own_student_id(view, request))
     df = views.repository_export_df(payload)
     return _export_response(df, format, "repositories")
 
@@ -2921,6 +3108,10 @@ def leaderboards_page(
     blacklist = _blacklist_state(roster)
     hidden_repos = _hidden_repos_state(roster)
     hr_snapshots = _hr_snapshots_state()
+    # Student privacy: hiding GitHub/HackerRank auto-excludes the student
+    # from the connected boards — for every viewer, like an admin blacklist.
+    _privacy = _privacy_state()
+    blacklist = _privacy_blacklist_merge(blacklist, _privacy)
     _fc = _filter_context(request, division, batch, pair)
     ctx.update(_fc)
     payload = views.leaderboards_payload(
@@ -2938,7 +3129,10 @@ def leaderboards_page(
             candidates = view.get("students")
             match = candidates[candidates[services.STUDENT_ID_COL].astype(str) == str(select)]
             if not match.empty:
-                profile = views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
+                profile = _mask_profile_for_viewer(
+                    views.students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos")),
+                    view, request, _privacy,
+                )
         except Exception:
             profile = None
     return templates.TemplateResponse(

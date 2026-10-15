@@ -258,7 +258,20 @@ CREATE TABLE IF NOT EXISTS leaderboard_hidden_repos (
     state       JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
--- 8d. HackerRank snapshots ({lowercase handle: {practice_score, total_solved,
+-- 8d. Student privacy prefs (student_id = roster PRN; 0/1 flags for fields a
+--     student hides from OTHER students — faculty/admins always see all).
+--     Hiding GitHub/HackerRank also excludes the student from the connected
+--     leaderboards (merged into the blacklist at render time).
+CREATE TABLE IF NOT EXISTS privacy_prefs (
+    student_id    TEXT PRIMARY KEY,
+    hide_prn      INTEGER NOT NULL DEFAULT 0,
+    hide_github   INTEGER NOT NULL DEFAULT 0,
+    hide_linkedin INTEGER NOT NULL DEFAULT 0,
+    hide_hackerrank INTEGER NOT NULL DEFAULT 0,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 8e. HackerRank snapshots ({lowercase handle: {practice_score, total_solved,
 --     badges, display_name, synced_at}} — progressively cached from
 --     profile-view fetches; the HackerRank leaderboards rank from this).
 CREATE TABLE IF NOT EXISTS hackerrank_snapshots (
