@@ -1997,8 +1997,15 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         display = filtered
 
     profile = None
-    if selected_id is not None:
-        match = students[students[STUDENT_ID_COL].astype(str) == str(selected_id)]
+    if selected_id is not None and str(selected_id).strip():
+        sid_str = str(selected_id).strip()
+        match = students[students[STUDENT_ID_COL].astype(str).str.strip() == sid_str]
+        if match.empty and "GitHub_Username" in students.columns:
+            match = students[students["GitHub_Username"].astype(str).str.strip().str.lower() == sid_str.lower()]
+        if match.empty and "HackerRank_Username" in students.columns:
+            match = students[students["HackerRank_Username"].astype(str).str.strip().str.lower() == sid_str.lower()]
+        if match.empty and "Roster_Email" in students.columns:
+            match = students[students["Roster_Email"].astype(str).str.strip().str.lower() == sid_str.lower()]
         if not match.empty:
             profile = students_payload_profile(match.iloc[0], view["repos"], view.get("team_repos"))
 

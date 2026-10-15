@@ -50,7 +50,7 @@ at once and scrolls (CSS). #} {% if notif_empty %}
           <div class="notif-text" style="flex: 1">{{ n.issue }}</div>
         </div>
         {% if n.sub %}
-        <div class="notif-sub">{{ n.sub }}</div>
+        <div class="notif-sub">{{ n.sub|safe }}</div>
         {% endif %}
         <div class="notif-meta">
           {% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}
@@ -69,6 +69,45 @@ at once and scrolls (CSS). #} {% if notif_empty %}
     {% endif %}
   </div>
 </details>
+
+{% set unread_weekly = [] %}
+{% for n in notifications %}
+  {% if n.is_unread and n.type in ('WEEKLY_TOP_STUDENT', 'WEEKLY_TOP_HACKERRANK') %}
+    {% set _ = unread_weekly.append(n) %}
+  {% endif %}
+{% endfor %}
+{% if unread_weekly %}
+<aside class="weekly-toast-banner" id="weekly-toast-banner" role="alert" aria-label="Weekly Top Students Announcement">
+  <div class="weekly-toast-card">
+    <div class="weekly-toast-header">
+      <div class="weekly-toast-title-box">
+        <span class="weekly-toast-badge-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+        </span>
+        <span class="weekly-toast-title">Weekly Top Students</span>
+      </div>
+      <button type="button" class="weekly-toast-close" id="weekly-toast-close" aria-label="Dismiss">&times;</button>
+    </div>
+    <div class="weekly-toast-body">
+      {% for item in unread_weekly %}
+      <div class="weekly-toast-item" data-notif-id="{{ item.id or '' }}">
+        <div class="weekly-toast-item-header">
+          <span class="weekly-platform-tag {% if item.type == 'WEEKLY_TOP_HACKERRANK' %}tag-hr{% else %}tag-gh{% endif %}">
+            {% if item.type == 'WEEKLY_TOP_HACKERRANK' %}HackerRank{% else %}GitHub{% endif %}
+          </span>
+          <span class="weekly-toast-item-issue">{{ item.issue }}</span>
+        </div>
+        <div class="weekly-toast-item-msg">{{ item.sub|safe }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="weekly-toast-footer">
+      <a href="/leaderboards" class="weekly-toast-action-btn">Leaderboards</a>
+      <button type="button" class="weekly-toast-dismiss-btn" id="weekly-toast-dismiss">Got it</button>
+    </div>
+  </div>
+</aside>
+{% endif %}
 <script>
   (function () {
     var bell = document.getElementById("global-notif-bell");
@@ -195,6 +234,58 @@ at once and scrolls (CSS). #} {% if notif_empty %}
 
     if (!document.hidden) {
       schedulePoll();
+    }
+
+    // Weekly top students toast banner logic
+    var toastBanner = document.getElementById("weekly-toast-banner");
+    if (toastBanner) {
+      var toastItems = toastBanner.querySelectorAll(".weekly-toast-item");
+      var toastIds = [];
+      Array.prototype.forEach.call(toastItems, function (el) {
+        var nid = el.getAttribute("data-notif-id");
+        if (nid) toastIds.push(nid);
+      });
+      var storageKey = "gsad_weekly_toast_dismissed_" + toastIds.join("_");
+      try {
+        if (sessionStorage.getItem(storageKey)) {
+          toastBanner.remove();
+        }
+      } catch (e) {}
+
+      function dismissToast(markAsRead) {
+        toastBanner.classList.add("is-dismissed");
+        try { sessionStorage.setItem(storageKey, "1"); } catch (e) {}
+        if (markAsRead && toastIds.length > 0) {
+          toastIds.forEach(function (id) {
+            fetch("/api/notifications/" + encodeURIComponent(id) + "/read", { method: "POST" })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                if (data && typeof data.unread_count === "number") {
+                  updateBadge(data.unread_count);
+                  var notifItem = document.querySelector('.notif-item[data-notif-id="' + id + '"]');
+                  if (notifItem) {
+                    notifItem.classList.remove("notif-unread");
+                    var dot = notifItem.querySelector(".notif-unread-dot");
+                    if (dot) dot.remove();
+                  }
+                }
+              })
+              .catch(function () {});
+          });
+        }
+        setTimeout(function () {
+          if (toastBanner.parentNode) toastBanner.remove();
+        }, 300);
+      }
+
+      var closeBtn = document.getElementById("weekly-toast-close");
+      if (closeBtn) {
+        closeBtn.addEventListener("click", function () { dismissToast(false); });
+      }
+      var dismissBtn = document.getElementById("weekly-toast-dismiss");
+      if (dismissBtn) {
+        dismissBtn.addEventListener("click", function () { dismissToast(true); });
+      }
     }
   })();
 </script>

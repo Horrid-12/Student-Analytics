@@ -1,0 +1,35 @@
+# Weekly top student leaderboard announcements — runs every week to
+# collect data from the up-to-date leaderboards for GitHub and HackerRank
+# separately, and publishes announcements into the notification system.
+#
+# Schedule: every Sunday at 00:00 UTC + manual trigger (workflow_dispatch).
+#
+# Required repository secrets:
+#   APP_URL      — production application URL (e.g. https://your-app.vercel.app)
+#   CRON_SECRET  — must match the CRON_SECRET env var on the app deployment
+
+name: Weekly Leaderboard Announcements
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'   # Weekly Sunday at 00:00 UTC
+  workflow_dispatch:        # Manual trigger from Actions tab
+
+jobs:
+  weekly-announcements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Trigger weekly leaderboard announcements
+        run: |
+          python3 .github/scripts/weekly_sync.py \
+            --app-url "${{ secrets.APP_URL }}" \
+            --secret "${{ secrets.CRON_SECRET }}"

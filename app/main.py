@@ -1602,10 +1602,14 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "issue": n.get("title") or "Support Update",
                 "sub": n.get("message") or "",
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
-                "fix_url": "/leaderboards"
-                if n.get("type") == "WEEKLY_TOP_STUDENT"
-                else (n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}"),
-                "link_label": "View" if n.get("type") == "WEEKLY_TOP_STUDENT" else "Fix",
+                "fix_url": "/leaderboards?platform=hackerrank"
+                if n.get("type") == "WEEKLY_TOP_HACKERRANK"
+                else (
+                    "/leaderboards"
+                    if n.get("type") == "WEEKLY_TOP_STUDENT"
+                    else (n.get("fix_url") or f"/support#ticket-detail-{n.get('ticket_id')}")
+                ),
+                "link_label": "View" if n.get("type") in ("WEEKLY_TOP_STUDENT", "WEEKLY_TOP_HACKERRANK") else "Fix",
                 "is_unread": not n.get("is_read"),
                 "type": n.get("type"),
                 "ticket_id": n.get("ticket_id"),
@@ -1637,14 +1641,14 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "issue": n.get("title") or "Weekly update",
                 "sub": n.get("message") or "",
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
-                "fix_url": "/leaderboards",
+                "fix_url": "/leaderboards?platform=hackerrank" if n.get("type") == "WEEKLY_TOP_HACKERRANK" else "/leaderboards",
                 "link_label": "View",
                 "is_unread": not n.get("is_read"),
                 "type": n.get("type"),
                 "ticket_id": n.get("ticket_id"),
             }
             for n in own_notifs
-            if n.get("type") == "WEEKLY_TOP_STUDENT"
+            if n.get("type") in ("WEEKLY_TOP_STUDENT", "WEEKLY_TOP_HACKERRANK")
         ]
         notifications = announcements + [
             {
@@ -2819,7 +2823,15 @@ async def api_list_notifications(request: Request):
             "createdAt": n.get("created_at") or n.get("createdAt"),
             "time": views.friendly_timestamp(n.get("created_at") or ""),
             "fixUrl": n.get("fix_url")
-            or ("/leaderboards" if n.get("type") == "WEEKLY_TOP_STUDENT" else f"/support#ticket-detail-{n.get('ticket_id')}"),
+            or (
+                "/leaderboards?platform=hackerrank"
+                if n.get("type") == "WEEKLY_TOP_HACKERRANK"
+                else (
+                    "/leaderboards"
+                    if n.get("type") == "WEEKLY_TOP_STUDENT"
+                    else f"/support#ticket-detail-{n.get('ticket_id')}"
+                )
+            ),
         })
     return JSONResponse(content={
         "notifications": formatted,
@@ -3031,7 +3043,8 @@ def students_page(
     _student_viewer = _is_student_viewer(request)
     _privacy = _privacy_state() if _student_viewer else {}
     _own_sid = _own_student_id(view, request) if _student_viewer else None
-    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, select or None, pairs=ctx["pairs"] or "All")
+    effective_select = (select or "").strip() or (request.query_params.get("student") or "").strip()
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All")
     if payload.get("profile"):
         payload["profile"] = _attach_profile_certificates(payload["profile"], request)
     payload["export_query"] += f"&mine={ctx['mine']}"

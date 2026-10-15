@@ -26,6 +26,7 @@ from app import accounts, auth, database, db, services, support
 logger = logging.getLogger(__name__)
 
 WEEKLY_TYPE = "WEEKLY_TOP_STUDENT"
+WEEKLY_HR_TYPE = "WEEKLY_TOP_HACKERRANK"
 WEEKLY_BUDGET_S = 45.0
 MAX_REPOS_PER_USER = 10
 MAX_TIE_NAMES = 5
@@ -125,7 +126,7 @@ def count_user_week(username: str, email: str, since_iso: str, token: str | None
 def rank_week(counts: list[dict]) -> dict:
     """Pick the announcement payload from counted rows.
 
-    ``counts``: [{email, username, name, commits}]. Returns
+    ``counts``: [{email, username, name, commits, student_id}]. Returns
     {kind: winner|tie|quiet, entries: [...], commits: int} where entries holds
     every top account (ties included, highest commits first).
     """
@@ -145,6 +146,7 @@ def rank_week(counts: list[dict]) -> dict:
                 "email": email,
                 "username": str(row.get("username") or "").strip(),
                 "name": str(row.get("name") or "").strip(),
+                "student_id": str(row.get("student_id") or "").strip(),
                 "commits": commits,
             }
         )
@@ -169,6 +171,15 @@ def _display(entry: dict) -> str:
     return f"@{handle}" if handle else (entry.get("email") or "")
 
 
+def _display_linked(entry: dict) -> str:
+    """Render student display name as an HTML link to open their profile in the students tab."""
+    target_id = (entry.get("student_id") or "").strip() or (entry.get("username") or "").strip() or (entry.get("email") or "").strip()
+    disp = _display(entry)
+    if target_id:
+        return f'<a href="/students?select={target_id}" class="notif-student-link">{disp}</a>'
+    return disp
+
+
 def build_message(top: dict, label: str) -> tuple[str, str]:
     """(title, message) for a ranked week. Pure function — no I/O."""
     kind = (top or {}).get("kind", "quiet")
@@ -181,13 +192,13 @@ def build_message(top: dict, label: str) -> tuple[str, str]:
         entry = top["entries"][0]
         return (
             f"Top student of {label}",
-            f"{_display(entry)} topped {label} with {commits} "
+            f"{_display_linked(entry)} topped {label} with {commits} "
             f"commit{'s' if commits != 1 else ''}.",
         )
     if kind == "tie" and (top or {}).get("entries"):
         entries = list(top["entries"])
         shown = entries[:MAX_TIE_NAMES]
-        names = ", ".join(_display(e) for e in shown)
+        names = ", ".join(_display_linked(e) for e in shown)
         if len(entries) > MAX_TIE_NAMES:
             names += f", and {len(entries) - MAX_TIE_NAMES} more"
         return (
@@ -200,6 +211,137 @@ def build_message(top: dict, label: str) -> tuple[str, str]:
     )
 
 
+def rank_hackerrank(rows: list[dict]) -> dict:
+    """Rank HackerRank candidates from snapshot/leaderboard rows."""
+    usable = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        try:
+            score = max(0, int(row.get("score") or row.get("practice_score") or row.get("total_solved") or 0))
+        except (TypeError, ValueError):
+            continue
+        handle = str(row.get("username") or row.get("handle") or "").strip()
+        if not handle:
+            continue
+        usable.append(
+            {
+                "email": str(row.get("email") or "").strip(),
+                "username": handle,
+                "name": str(row.get("name") or "").strip(),
+                "student_id": str(row.get("student_id") or handle).strip(),
+                "score": score,
+                "metric": str(row.get("metric") or "points"),
+            }
+        )
+    if not usable:
+        return {"kind": "quiet", "entries": [], "score": 0, "metric": "points"}
+    top_score = max(r["score"] for r in usable)
+    if top_score <= 0:
+        return {"kind": "quiet", "entries": [], "score": 0, "metric": "points"}
+    winners = sorted(
+        [r for r in usable if r["score"] == top_score],
+        key=lambda r: (r["username"] or r["email"]).lower(),
+    )
+    kind = "winner" if len(winners) == 1 else "tie"
+    return {"kind": kind, "entries": winners, "score": top_score, "metric": winners[0].get("metric", "points")}
+
+
+def build_hackerrank_message(top: dict, label: str) -> tuple[str, str]:
+    """(title, message) for ranked HackerRank top performers."""
+    kind = (top or {}).get("kind", "quiet")
+    score = 0
+    try:
+        score = max(0, int((top or {}).get("score") or 0))
+    except (TypeError, ValueError):
+        score = 0
+    metric = (top or {}).get("metric") or "points"
+    if kind == "winner" and (top or {}).get("entries"):
+        entry = top["entries"][0]
+        return (
+            f"Top HackerRank student of {label}",
+            f"{_display_linked(entry)} topped HackerRank for {label} with {score} {metric}.",
+        )
+    if kind == "tie" and (top or {}).get("entries"):
+        entries = list(top["entries"])
+        shown = entries[:MAX_TIE_NAMES]
+        names = ", ".join(_display_linked(e) for e in shown)
+        if len(entries) > MAX_TIE_NAMES:
+            names += f", and {len(entries) - MAX_TIE_NAMES} more"
+        return (
+            f"Tie for top HackerRank student, {label}",
+            f"{names} tied with {score} {metric} each.",
+        )
+    return (
+        f"{label} HackerRank in review",
+        "No HackerRank activity was recorded this week — solve practice problems to top the next one.",
+    )
+
+
+def collect_hackerrank_leaderboard(fleet: list[dict] | None = None) -> list[dict]:
+    """Collect up-to-date HackerRank student data from the database/snapshots."""
+    if fleet is None:
+        try:
+            fleet = auth.get_approved_accounts() or []
+        except Exception:
+            fleet = []
+
+    hr_snaps = {}
+    if database.db_configured():
+        try:
+            hr_snaps = db.get_hackerrank_snapshots() or {}
+        except Exception:
+            hr_snaps = {}
+    if not hr_snaps:
+        try:
+            from app.main import roster_store
+            hr_snaps = roster_store.get_hr_snapshots() or {}
+        except Exception:
+            hr_snaps = {}
+
+    rows = []
+    for u in fleet or []:
+        if not isinstance(u, dict):
+            continue
+        raw_handle = str(u.get("hackerrank_username") or "").strip()
+        handle = services.extract_hackerrank_username(raw_handle)
+        handle = str(handle or "").strip().lower()
+        if not handle:
+            continue
+        snap = hr_snaps.get(handle) if isinstance(hr_snaps, dict) else None
+        if not isinstance(snap, dict) or snap.get("invalid"):
+            continue
+        try:
+            score = int(snap.get("practice_score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+        try:
+            solved = int(snap.get("total_solved") or 0)
+        except (TypeError, ValueError):
+            solved = 0
+        student_id = str(u.get("prn") or u.get("student_id") or handle).strip()
+        name = str(u.get("name") or "").strip()
+        email = str(u.get("email") or "").strip()
+
+        metric = "points"
+        final_score = score
+        if final_score <= 0 and solved > 0:
+            final_score = solved
+            metric = "problems solved"
+
+        rows.append(
+            {
+                "email": email,
+                "username": handle,
+                "name": name,
+                "student_id": student_id,
+                "score": final_score,
+                "metric": metric,
+            }
+        )
+    return rows
+
+
 def _store():
     """(save_commits, get_commits, get_run, save_run, create_one) for the
     configured backend. SQLite announcements reuse ticket_id 0 (no FK
@@ -210,8 +352,8 @@ def _store():
             db.get_weekly_commits,
             db.get_weekly_run,
             db.save_weekly_run,
-            lambda email, title, message: db.create_notification(
-                email, None, WEEKLY_TYPE, title, message
+            lambda email, title, message, ntype=WEEKLY_TYPE: db.create_notification(
+                email, None, ntype, title, message
             ),
         )
     return (
@@ -219,8 +361,8 @@ def _store():
         support.get_weekly_commits,
         support.get_weekly_run,
         support.save_weekly_run,
-        lambda email, title, message: support.create_notification(
-            email, 0, WEEKLY_TYPE, title, message
+        lambda email, title, message, ntype=WEEKLY_TYPE: support.create_notification(
+            email, 0, ntype, title, message
         ),
     )
 
@@ -262,7 +404,14 @@ def run_weekly(
         if isinstance(existing, dict) and existing.get("status") == "complete":
             summary["status"] = "already_published"
             try:
-                summary["top"] = json.loads(existing.get("top_json") or "{}")
+                raw_top = json.loads(existing.get("top_json") or "{}")
+                if isinstance(raw_top, dict) and "top_github" in raw_top:
+                    summary["top"] = raw_top.get("top_github") or raw_top.get("top") or {}
+                    summary["top_github"] = raw_top.get("top_github") or {}
+                    summary["top_hackerrank"] = raw_top.get("top_hackerrank") or {}
+                else:
+                    summary["top"] = raw_top
+                    summary["top_github"] = raw_top
             except Exception:
                 pass
             return summary
@@ -324,12 +473,26 @@ def run_weekly(
                 {"email": r.get("email"), "username": r.get("username"),
                  "name": next((str(u.get("name") or "") for u in handled
                                if str(u.get("email") or "").strip().lower() == str(r.get("email") or "").strip().lower()), ""),
+                 "student_id": next((str(u.get("prn") or u.get("student_id") or r.get("username") or "") for u in handled
+                                     if str(u.get("email") or "").strip().lower() == str(r.get("email") or "").strip().lower()), str(r.get("username") or "")),
                  "commits": r.get("commits")}
                 for r in ok_rows
             ]
             top = rank_week(ranked)
             summary["top"] = top
+            summary["top_github"] = top
             title, message = build_message(top, label)
+
+            # HackerRank top performer collected from up-to-date data
+            hr_candidates = collect_hackerrank_leaderboard(fleet)
+            top_hr = rank_hackerrank(hr_candidates)
+            summary["top_hackerrank"] = top_hr
+            has_hr_accounts = any(bool(str(u.get("hackerrank_username") or "").strip()) for u in fleet if isinstance(u, dict))
+            if has_hr_accounts or top_hr.get("entries"):
+                hr_title, hr_message = build_hackerrank_message(top_hr, label)
+            else:
+                hr_title, hr_message = None, None
+
             try:
                 audience = auth.list_user_emails() or []
             except Exception:
@@ -340,14 +503,17 @@ def run_weekly(
                 delivered = 0
                 for address in audience:
                     try:
-                        if create_one(address, title, message) is not None:
+                        if create_one(address, title, message, WEEKLY_TYPE) is not None:
                             delivered += 1
+                        if hr_title and hr_message:
+                            create_one(address, hr_title, hr_message, WEEKLY_HR_TYPE)
                     except Exception as exc:
                         logger.warning("weekly fan-out failed for %s: %s", address, exc)
                 summary["published"] = delivered > 0
                 summary["status"] = "complete" if summary["published"] else "partial"
             try:
-                save_run(week_id, label, summary["status"], json.dumps(top))
+                save_payload = {"top": top, "top_github": top, "top_hackerrank": top_hr}
+                save_run(week_id, label, summary["status"], json.dumps(save_payload))
             except Exception as exc:
                 logger.warning("weekly run record failed: %s", exc)
         else:

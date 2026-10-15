@@ -3196,6 +3196,208 @@ button {
     font-size: 13px;
     color: var(--muted);
 }
+.notif-student-link {
+  font-weight: 700;
+  color: var(--blue);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.notif-student-link:hover {
+  text-decoration: underline;
+  color: var(--blue-glow);
+}
+
+/* Weekly Top Student Popped Announcement Toast */
+.weekly-toast-banner {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: 380px;
+  width: calc(100vw - 48px);
+  z-index: 9999;
+  animation: weeklyToastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes weeklyToastSlideUp {
+  from {
+    transform: translateY(20px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.weekly-toast-banner.is-dismissed {
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+  transition: all 0.25s ease-out;
+  pointer-events: none;
+}
+
+.weekly-toast-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 16px 40px var(--shadow-strong);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+}
+
+.weekly-toast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.weekly-toast-title-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-toast-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--blue-active-bg);
+  color: var(--blue);
+  border: 1px solid var(--blue-active-border);
+}
+
+.weekly-toast-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.weekly-toast-close {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.weekly-toast-close:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.weekly-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.weekly-toast-item {
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.weekly-toast-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.weekly-platform-tag {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.weekly-platform-tag.tag-gh {
+  background: var(--blue-active-bg);
+  color: var(--blue);
+  border: 1px solid var(--blue-active-border);
+}
+
+.weekly-platform-tag.tag-hr {
+  background: rgba(33, 132, 93, 0.14);
+  color: var(--green);
+  border: 1px solid rgba(33, 132, 93, 0.35);
+}
+
+.weekly-toast-item-issue {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.weekly-toast-item-msg {
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.weekly-toast-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.weekly-toast-action-btn {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.weekly-toast-action-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.weekly-toast-dismiss-btn {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-toast-dismiss-btn:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 600px) {
+  .weekly-toast-banner {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
 
 /* Settings legal rows (Privacy Policy entry point). */
 .legal-row {
