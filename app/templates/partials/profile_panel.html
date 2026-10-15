@@ -55,8 +55,201 @@
         </div>
       </div>
       <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+        <button type="button" class="profile-tab" role="tab" id="profile-tab-certificates" aria-controls="profile-panel-certificates" aria-selected="false" tabindex="-1">
+          Certificates{% if p.certificates %}<span class="tab-badge">{{ p.certificates|length }}</span>{% endif %}
+        </button>
         <button type="button" class="profile-tab" role="tab" id="profile-tab-github" aria-controls="profile-panel-github" aria-selected="true">GitHub</button>
         <button type="button" class="profile-tab" role="tab" id="profile-tab-hackerrank" aria-controls="profile-panel-hackerrank" aria-selected="false" tabindex="-1">HackerRank</button>
+      </div>
+      <div id="profile-panel-certificates" role="tabpanel" aria-labelledby="profile-tab-certificates" hidden>
+        {% if request is defined and request.query_params %}
+          {% if request.query_params.get('notice') == 'queued' %}
+          <div class="cert-alert is-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-alert-icon"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span>Certificate queued for verification! An administrator will review your submission.</span>
+          </div>
+          {% elif request.query_params.get('notice') == 'deleted' %}
+          <div class="cert-alert is-info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-alert-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Certificate deleted.</span>
+          </div>
+          {% elif request.query_params.get('error') %}
+          <div class="cert-alert is-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-alert-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>
+              {% if request.query_params.get('error') == 'missing_fields' %}
+                Please fill in both the Certificate Title and Issuing Organization.
+              {% elif request.query_params.get('error') == 'file_required' or request.query_params.get('error') == 'proof_required' %}
+                Please upload your certificate file (PDF or image).
+              {% else %}
+                Submission error: {{ request.query_params.get('error') }}
+              {% endif %}
+            </span>
+          </div>
+          {% endif %}
+        {% endif %}
+
+        {% if p.is_owner and p.pending_certificates_count %}
+        <div class="cert-under-review-banner">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-review-svg" style="width:15px;height:15px;max-width:15px;max-height:15px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>You have <strong>{{ p.pending_certificates_count }} certificate{% if p.pending_certificates_count != 1 %}s{% endif %}</strong> under review by administrators. Once approved, {% if p.pending_certificates_count == 1 %}it{% else %}they{% endif %} will appear here.</span>
+        </div>
+        {% endif %}
+
+        <div class="cert-panel-top">
+          <div class="cert-panel-heading">
+            <div class="panel-minor-title" style="margin-bottom:0;">Certificates</div>
+            <div class="cert-panel-count">{{ p.certificates|length if p.certificates else 0 }} certificate{% if not p.certificates or p.certificates|length != 1 %}s{% endif %}</div>
+          </div>
+          {% if p.is_owner %}
+          <button type="button" class="cert-queue-toggle-btn" id="cert-toggle-form-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-btn-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Queue Certificate</span>
+          </button>
+          {% endif %}
+        </div>
+
+        {% if p.is_owner %}
+        <div id="cert-queue-form-wrapper" class="cert-queue-form-box" style="display:none;">
+          <form method="POST" action="/certificates/queue" enctype="multipart/form-data" class="cert-queue-form">
+            <input type="hidden" name="return_to" class="cert-return-to-field" value="{{ (request.url.path ~ '?' ~ request.url.query) if (request is defined and request.url.query) else (request.url.path if request is defined else '/me') }}">
+            <div class="cert-form-header">
+              <h4 class="cert-form-title">Queue a Certificate for Verification</h4>
+              <p class="cert-form-desc">Upload your certificate. Once verified by admins, it will appear publicly on your profile.</p>
+            </div>
+            <div class="cert-form-grid">
+              <div class="cert-form-col">
+                <label class="cert-field-label" for="cert-input-title">Certificate Title <span class="cert-req">*</span></label>
+                <input type="text" id="cert-input-title" name="title" class="cert-text-input" required placeholder="e.g. AWS Certified Solutions Architect, Python Programming">
+              </div>
+              <div class="cert-form-col">
+                <label class="cert-field-label" for="cert-input-issuer">Issuing Organization <span class="cert-req">*</span></label>
+                <input type="text" id="cert-input-issuer" name="issuer" class="cert-text-input" required placeholder="e.g. Coursera, AWS, Google, HackerRank, Microsoft">
+              </div>
+              <div class="cert-form-col">
+                <label class="cert-field-label" for="cert-input-date">Issue Date</label>
+                <input type="text" id="cert-input-date" name="issue_date" class="cert-text-input" placeholder="e.g. August 2026 or 2026-08">
+              </div>
+              <div class="cert-form-col">
+                <label class="cert-field-label" for="cert-input-skills">Skills &amp; Topics</label>
+                <input type="text" id="cert-input-skills" name="skills" class="cert-text-input" placeholder="e.g. Python, Docker, Machine Learning (comma-separated)">
+              </div>
+              <div class="cert-form-col cert-col-full">
+                <label class="cert-field-label" for="cert-input-file">Certificate File (Upload PDF or Image) <span class="cert-req">*</span></label>
+                <input type="file" id="cert-input-file" name="attachment" class="cert-file-input" required accept=".pdf,.png,.jpg,.jpeg,.webp">
+                <div class="cert-field-hint">Upload your certificate document or photo (PDF, PNG, JPG, JPEG, WEBP).</div>
+              </div>
+            </div>
+            <div class="cert-form-footer">
+              <button type="submit" class="cert-submit-btn">Queue for Verification</button>
+              <button type="button" class="cert-cancel-btn" id="cert-cancel-form-btn">Cancel</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+
+        <div class="cert-list">
+          {% if p.certificates %}
+            {% for cert in p.certificates %}
+            <div class="cert-item cert-item-{{ cert.status }}">
+              <div class="cert-item-top">
+                <div class="cert-item-badges">
+                  {% if cert.status == 'approved' %}
+                  <span class="cert-badge cert-badge-approved" title="Verified by admin">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="cert-status-svg"><polyline points="20 6 9 17 4 12"/></svg>
+                    Verified
+                  </span>
+                  {% elif cert.status == 'pending' %}
+                  <span class="cert-badge cert-badge-pending" title="Awaiting admin verification">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-status-svg"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Queued for Review
+                  </span>
+                  {% elif cert.status == 'rejected' %}
+                  <span class="cert-badge cert-badge-rejected" title="Verification rejected">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-status-svg"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    Needs Attention
+                  </span>
+                  {% endif %}
+                  {% if cert.issue_date %}
+                  <span class="cert-meta-date">{{ cert.issue_date }}</span>
+                  {% endif %}
+                </div>
+                {% if p.is_admin %}
+                <form method="POST" action="/certificates/{{ cert.id }}/delete" onsubmit="return confirm('Remove this certificate?');" class="cert-delete-form">
+                  <input type="hidden" name="return_to" class="cert-return-to-field" value="{{ (request.url.path ~ '?' ~ request.url.query) if (request is defined and request.url.query) else (request.url.path if request is defined else '/me') }}">
+                  <button type="submit" class="cert-delete-btn" title="Delete certificate" aria-label="Delete certificate">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-del-svg"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+              <div class="cert-item-title">{{ cert.title }}</div>
+              <div class="cert-item-issuer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cert-issuer-svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <span class="cert-issuer-name">{{ cert.issuer }}</span>
+              </div>
+              {% if cert.skills %}
+              <div class="cert-skill-pills">
+                {% for skill in cert.skills.split(',') %}
+                  {% if skill.strip() %}
+                  <span class="cert-skill-tag">{{ skill.strip() }}</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if cert.status == 'rejected' and cert.admin_notes %}
+              <div class="cert-rejection-box">
+                <strong>Admin Feedback:</strong> {{ cert.admin_notes }}
+              </div>
+              {% endif %}
+
+              <!-- Directly display the certificate itself -->
+              {% if cert.attachment_name %}
+                {% if cert.is_image %}
+                <div class="cert-doc-frame" style="width:fit-content;max-width:100%;overflow:hidden;background:var(--card);">
+                  <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-image-link" title="Click to view full image in new tab">
+                    <img src="/certificates/{{ cert.id }}/attachment" alt="{{ cert.title }}" class="cert-display-image" loading="lazy" style="max-width:100%;max-height:360px;height:auto;object-fit:contain;display:block;">
+                  </a>
+                  <div class="cert-doc-footer" style="padding:6px 12px;border-top:1px solid var(--border);background:var(--card-soft);display:flex;justify-content:flex-end;">
+                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      <span>Open image in new tab</span>
+                    </a>
+                  </div>
+                </div>
+                {% elif cert.is_pdf %}
+                <div class="cert-doc-frame cert-pdf-frame" style="width:100%;max-width:560px;overflow:hidden;">
+                  <iframe src="/certificates/{{ cert.id }}/attachment#toolbar=0&navpanes=0" class="cert-display-pdf" title="{{ cert.title }}" style="width:100%;height:320px;border:none;"></iframe>
+                  <div class="cert-pdf-footer" style="padding:6px 12px;border-top:1px solid var(--border);background:var(--card-soft);display:flex;justify-content:flex-end;">
+                    <a href="/certificates/{{ cert.id }}/attachment" target="_blank" rel="noopener" class="cert-pdf-open-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;max-width:13px;max-height:13px;flex-shrink:0;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      <span>Open PDF in new tab</span>
+                    </a>
+                  </div>
+                </div>
+                {% endif %}
+              {% endif %}
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="cert-empty">
+              <div class="cert-empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="cert-empty-svg"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+              </div>
+              {% if p.is_owner %}
+                {% if p.pending_certificates_count %}
+                <div class="cert-empty-text">Your certificate submission is currently under review.</div>
+                <div class="cert-empty-hint">Administrators will verify it on the Verification portal shortly. Once approved, it will be showcased here.</div>
+                {% else %}
+                <div class="cert-empty-text">No verified certificates yet.</div>
+                <div class="cert-empty-hint">Click &ldquo;+ Queue Certificate&rdquo; above to submit your credentials for staff verification.</div>
+                {% endif %}
+              {% else %}
+              <div class="cert-empty-text">No verified certificates on file for this student.</div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
       </div>
       <div id="profile-panel-github" role="tabpanel" aria-labelledby="profile-tab-github">
         <details class="repo-dropdown">
@@ -194,6 +387,52 @@
         if (next) { next.focus(); selectTab(next); }
       });
     });
+
+    // Check URL parameters for tab selection (e.g. ?tab=certificates or ?tab=hackerrank)
+    try {
+      var urlParams = new URLSearchParams(window.location.search);
+      var reqTab = urlParams.get('tab');
+      if (reqTab === 'certificates') {
+        var cTab = document.getElementById('profile-tab-certificates');
+        if (cTab) selectTab(cTab);
+      } else if (reqTab === 'hackerrank') {
+        var hTab = document.getElementById('profile-tab-hackerrank');
+        if (hTab) {
+          selectTab(hTab);
+          var hPanel = document.getElementById('profile-panel-hackerrank');
+          if (hPanel) loadHR(hPanel);
+        }
+      }
+      // Certificate form toggle and auto-expansion on error
+      var certToggleBtn = document.getElementById('cert-toggle-form-btn');
+      var certFormWrap = document.getElementById('cert-queue-form-wrapper');
+      var certCancelBtn = document.getElementById('cert-cancel-form-btn');
+      if (certToggleBtn && certFormWrap) {
+        certToggleBtn.addEventListener('click', function () {
+          var isHidden = certFormWrap.style.display === 'none';
+          certFormWrap.style.display = isHidden ? 'block' : 'none';
+          certToggleBtn.classList.toggle('is-open', isHidden);
+        });
+        if (certCancelBtn) {
+          certCancelBtn.addEventListener('click', function () {
+            certFormWrap.style.display = 'none';
+            certToggleBtn.classList.remove('is-open');
+          });
+        }
+        if (urlParams.get('error')) {
+          certFormWrap.style.display = 'block';
+          certToggleBtn.classList.add('is-open');
+        }
+      }
+      // Keep return_to input in sync with full URL
+      var retInputs = document.querySelectorAll('.cert-return-to-field');
+      var currHref = window.location.pathname + window.location.search;
+      retInputs.forEach(function (inp) {
+        if (currHref) inp.value = currHref;
+      });
+    } catch (e) {
+      /* ignore older browsers */
+    }
     // Dropdown batching: show the first 10 rows, reveal 10 more per click.
     // Used by the server-rendered GitHub repositories list and the
     // HackerRank solved-questions list alike.

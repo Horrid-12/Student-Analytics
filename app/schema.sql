@@ -471,3 +471,30 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_ticket_id ON notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_lower   ON notifications (lower(user_id));
+
+-- 19. Student certificates (Phase 19 / Row 78).
+--     Queued by students on their profile (/me), verified by admins on /verification.
+CREATE TABLE IF NOT EXISTS certificates (
+    id              SERIAL PRIMARY KEY,
+    student_email   TEXT NOT NULL,
+    student_id      TEXT NOT NULL DEFAULT '',
+    student_name    TEXT NOT NULL DEFAULT '',
+    title           TEXT NOT NULL,
+    issuer          TEXT NOT NULL,
+    issue_date      TEXT NOT NULL DEFAULT '',
+    credential_url  TEXT NOT NULL DEFAULT '',
+    credential_id   TEXT NOT NULL DEFAULT '',
+    skills          TEXT NOT NULL DEFAULT '',
+    attachment_name TEXT NOT NULL DEFAULT '',
+    attachment_data BYTEA,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    admin_notes     TEXT NOT NULL DEFAULT '',
+    verified_by     TEXT NOT NULL DEFAULT '',
+    verified_at     TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_certificates_student_email ON certificates (lower(student_email));
+CREATE INDEX IF NOT EXISTS idx_certificates_student_id ON certificates (student_id);
+CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates (status);

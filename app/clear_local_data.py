@@ -19,13 +19,13 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import accounts, auth, storage, support
+from app import accounts, auth, certificates, storage, support
 
 #: Stores that hold pure analysis/roster artifacts — safe to clear by default.
 ANALYSIS_FILES = [storage.DB_PATH]
 
 #: Identity/feature stores — only wiped with ``--all``.
-FEATURE_FILES = [auth.USERS_DB, support.DB_PATH, accounts.ACCOUNTS_DB]
+FEATURE_FILES = [auth.USERS_DB, support.DB_PATH, accounts.ACCOUNTS_DB, certificates.DB_PATH]
 
 #: Legacy files removed at the Phase-3.10 cutover — delete if they ever resurface.
 STALE_FILES = [

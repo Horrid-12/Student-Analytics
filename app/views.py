@@ -2135,6 +2135,7 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     hackerrank_user = row.get("HackerRank_Username", "")
     return {
         "student_id": str(row.get(STUDENT_ID_COL, "")),
+        "email": str(row.get(ROSTER_EMAIL_COL) or row.get("Roster_Email") or row.get("Email") or "").strip(),
         "name": row.get("Student Name", ""),
         "division": row.get("Division", ""),
         "batch": row.get("Batch", ""),
