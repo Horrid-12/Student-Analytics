@@ -1963,17 +1963,16 @@ async def certificates_queue(
 
 @app.post("/certificates/{cert_id}/delete")
 def certificates_delete(request: Request, cert_id: int, return_to: str = Form("/me")):
-    """Student or admin deletes a pending/rejected certificate submission."""
+    """Admin deletes a certificate submission."""
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only administrators can delete certificates")
     cert = certificates.get_certificate(cert_id)
     if not cert:
         raise HTTPException(status_code=404, detail="Certificate not found")
     user_email = (user.get("email") or "").strip().lower()
-    is_admin = user.get("role") == "admin"
-    if not is_admin and cert["student_email"].lower() != user_email:
-        raise HTTPException(status_code=403, detail="Forbidden")
     certificates.delete_certificate(cert_id)
     _db_log_event("certificate_deleted", f"{user_email}:{cert_id}")
     sep = "&" if "?" in return_to else "?"

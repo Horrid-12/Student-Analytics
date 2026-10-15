@@ -174,7 +174,7 @@
                   <span class="cert-meta-date">{{ cert.issue_date }}</span>
                   {% endif %}
                 </div>
-                {% if p.is_owner or p.is_admin %}
+                {% if p.is_admin %}
                 <form method="POST" action="/certificates/{{ cert.id }}/delete" onsubmit="return confirm('Remove this certificate?');" class="cert-delete-form">
                   <input type="hidden" name="return_to" class="cert-return-to-field" value="{{ (request.url.path ~ '?' ~ request.url.query) if (request is defined and request.url.query) else (request.url.path if request is defined else '/me') }}">
                   <button type="submit" class="cert-delete-btn" title="Delete certificate" aria-label="Delete certificate">

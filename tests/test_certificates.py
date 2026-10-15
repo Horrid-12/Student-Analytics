@@ -269,3 +269,33 @@ class TestCertificateEndpoints:
         assert data["status"] == "ok"
         assert len(data["certificates"]) == 1
         assert data["certificates"][0]["title"] == "React Basics"
+
+    def test_delete_certificate_admin_only(self):
+        client = TestClient(app)
+        cert = certificates.create_certificate(
+            student_email="alice@uni.edu",
+            student_id="1122334455",
+            student_name="Alice",
+            title="TypeScript Core",
+            issuer="Microsoft",
+        )
+        cert_id = cert["id"]
+
+        # Student cannot delete (even own certificate)
+        _make_session(client, "alice@uni.edu", "student", "Alice")
+        res_stu = client.post(f"/certificates/{cert_id}/delete")
+        assert res_stu.status_code == 403
+
+        # Faculty cannot delete
+        faculty_client = TestClient(app)
+        _make_session(faculty_client, "prof@uni.edu", "faculty", "Professor")
+        res_fac = faculty_client.post(f"/certificates/{cert_id}/delete")
+        assert res_fac.status_code == 403
+
+        # Admin can delete
+        admin_client = TestClient(app)
+        _make_session(admin_client, "admin@uni.edu", "admin", "Admin")
+        res_adm = admin_client.post(f"/certificates/{cert_id}/delete", follow_redirects=False)
+        assert res_adm.status_code == 303
+        assert "notice=deleted" in res_adm.headers["location"]
+        assert certificates.get_certificate(cert_id) is None
