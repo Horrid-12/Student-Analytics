@@ -30,17 +30,20 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
   <td>{{ row.Batch }}</td>
   <td>{{ row.Semester }}</td>
   <td>
-    {% if row.GitHub_Username and not _pp.get('hide_github') %}
+    {% if _pp.get('hide_github') %}<span style="color:var(--muted);">Hidden</span>
+    {% elif row.GitHub_Username %}
       <a class="handle" href="{{ row.Profile_URL }}" target="_blank" rel="noopener" title="{{ row.GitHub_Username }}">{{ row.GitHub_Username }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>
-    {% if row.LinkedIn_Username and not _pp.get('hide_linkedin') %}
+    {% if _pp.get('hide_linkedin') %}<span style="color:var(--muted);">Hidden</span>
+    {% elif row.LinkedIn_Username %}
       <a class="handle" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>
-    {% if row.HackerRank_Username and not _pp.get('hide_hackerrank') %}
+    {% if _pp.get('hide_hackerrank') %}<span style="color:var(--muted);">Hidden</span>
+    {% elif row.HackerRank_Username %}
       <a class="handle" href="{{ row.HackerRank_URL }}" target="_blank" rel="noopener" title="{{ row.HackerRank_Username }}">{{ row.HackerRank_Username }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>

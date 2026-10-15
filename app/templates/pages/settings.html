@@ -110,6 +110,26 @@
 </div>
 
 <div data-tab-content="general">
+  {% if onboarding_approved is defined and onboarding_approved %}
+  <section class="panel">
+    <div class="panel-title">Academic Record</div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:12px;">Your record is verified and approved. The onboarding form now lives here instead of a separate tab.</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px 16px; font-size:13px;">
+      {% if onboarding_record.name %}<div><span style="color:var(--muted);">Name:</span> <strong>{{ onboarding_record.name }}</strong></div>{% endif %}
+      {% if onboarding_record.prn %}<div><span style="color:var(--muted);">PRN:</span> <strong>{{ onboarding_record.prn }}</strong></div>{% endif %}
+      {% if onboarding_record.degree_branch %}<div><span style="color:var(--muted);">Branch:</span> <strong>{{ onboarding_record.degree_branch }}</strong></div>{% endif %}
+      {% if onboarding_record.division %}<div><span style="color:var(--muted);">Division:</span> <strong>{{ onboarding_record.division }}</strong></div>{% endif %}
+      {% if onboarding_record.main_batch %}<div><span style="color:var(--muted);">Batch:</span> <strong>{{ onboarding_record.main_batch }}</strong></div>{% endif %}
+      {% if onboarding_record.practical_batch %}<div><span style="color:var(--muted);">Practical Batch:</span> <strong>{{ onboarding_record.practical_batch }}</strong></div>{% endif %}
+      {% if onboarding_record.semester %}<div><span style="color:var(--muted);">Semester:</span> <strong>{{ onboarding_record.semester }}</strong></div>{% endif %}
+      {% if onboarding_record.github_username %}<div><span style="color:var(--muted);">GitHub:</span> <strong>{{ onboarding_record.github_username }}</strong></div>{% endif %}
+      {% if onboarding_record.hackerrank_username %}<div><span style="color:var(--muted);">HackerRank:</span> <strong>{{ onboarding_record.hackerrank_username }}</strong></div>{% endif %}
+    </div>
+    <div style="margin-top:16px;">
+      <a class="btn" href="/onboarding">View / Update Onboarding</a>
+    </div>
+  </section>
+  {% endif %}
   <section class="panel">
     <div class="panel-title">Appearance</div>
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">

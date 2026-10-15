@@ -200,12 +200,15 @@ class TestStudentMasking:
     def test_profile_popup_masked_for_students(self, fleet2):
         assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 1, "hide_hackerrank": 1})
         body = login(B_EMAIL).get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
-        assert "Hidden" in body
+        assert "PRN Hidden" in body
         assert "profile-icon-github" not in body
         assert "profile-icon-linkedin" not in body
         assert "profile-icon-hackerrank" not in body
-        # Stats still visible (only PRN + links are hideable).
-        assert "Repositories" in body
+        # Hidden tabs show the by-student message instead of data/empty states.
+        assert "GitHub profile Hidden by student" in body
+        assert "HackerRank profile hidden by student" in body
+        assert "No HackerRank profile linked." not in body
+        assert "Repositories (" not in body
 
     def test_profile_popup_full_for_faculty_and_owner(self, fleet2):
         assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 1, "hide_hackerrank": 1})
@@ -215,6 +218,35 @@ class TestStudentMasking:
         # Owner sees their own full profile too.
         body = login(A_EMAIL).get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
         assert "profile-icon-github" in body
+        assert A_PRN in body
+
+    def test_admin_sees_hidden_rail_with_red_icons(self, fleet2):
+        assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 0, "hide_hackerrank": 1})
+        body = admin_client().get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
+        # Leftmost rail with heading + one red icon per hidden field.
+        assert "profile-hidden-rail" in body
+        assert "profile-hidden-title" in body
+        assert "hidden-icon" in body
+        assert "PRN hidden by student" in body
+        assert "GitHub hidden by student" in body
+        assert "HackerRank hidden by student" in body
+        assert "LinkedIn hidden by student" not in body
+        # Admin still sees the real data (nothing masked).
+        assert A_PRN in body
+        assert "alice-priv" in body
+        # Admin never gets the student-facing hidden-tab messages.
+        assert "GitHub profile Hidden by student" not in body
+        assert "HackerRank profile hidden by student" not in body
+
+    def test_admin_no_rail_when_nothing_hidden(self, fleet2):
+        assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 0, "hide_github": 0, "hide_linkedin": 0, "hide_hackerrank": 0})
+        body = admin_client().get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
+        assert "profile-hidden-rail" not in body
+
+    def test_faculty_has_no_hidden_rail(self, fleet2):
+        assert auth.set_privacy_prefs(A_PRN, {"hide_prn": 1, "hide_github": 1})
+        body = faculty_client().get(f"/students?select={A_PRN}", headers={"Accept": "text/html"}).text
+        assert "profile-hidden-rail" not in body
         assert A_PRN in body
 
     def test_export_masked_for_students(self, fleet2):

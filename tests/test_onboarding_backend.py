@@ -420,3 +420,24 @@ class TestFacultyTeachingOnboarding:
         r = anon.post("/onboarding/faculty", data={"division": "1", "batch": "1"},
                       follow_redirects=False)
         assert r.status_code == 401
+
+
+class TestApprovedStudentNav:
+    """Approved students lose the standalone Onboarding nav tab — their
+    verified record moves to Settings > General (the URL stays reachable)."""
+
+    def test_tab_hidden_and_record_in_settings_once_approved(self, client):
+        signup(client)
+        login(client)
+        submit(client)
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "<span>Onboarding</span>" in body  # tab present while pending
+        assert "Academic Record" not in body
+        assert auth.set_onboarding_status("stu1@college.edu", "approved")[0]
+        body2 = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "<span>Onboarding</span>" not in body2
+        assert "Academic Record" in body2
+        assert "View / Update Onboarding" in body2
+        assert "1234567890" in body2  # verified PRN shown in the record
+        r = client.get("/onboarding", headers={"Accept": "text/html"})
+        assert r.status_code == 200

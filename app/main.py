@@ -820,9 +820,19 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     # Exposed for handlers that need the same row (e.g. /settings) instead of
     # paying a second round trip.
     request.state.user_row = user_row
+    nav_items = nav(active=page_name, role=role, roster_id=roster_id)
+    try:
+        # Approved students no longer need the standalone Onboarding tab — it
+        # moves into Settings > General once their record is verified. Fresh
+        # status comes from the DB row (the session cookie can be stale).
+        _ob_status = str(((user_row or {}).get("onboarding_status") or "")).strip().lower()
+        if (role or "") == "student" and _ob_status == "approved":
+            nav_items = [item for item in nav_items if item.get("label") != "Onboarding"]
+    except Exception:
+        pass
     return {
         "topbar_date": topbar_date(),
-        "nav": nav(active=page_name, role=role, roster_id=roster_id),
+        "nav": nav_items,
         "auth_role": role.title() if role else "",
         "auth_user": display,
         "auth_status": status,
@@ -880,6 +890,18 @@ def _attach_profile_certificates(profile: dict | None, request: Request) -> dict
     profile["pending_certificates_count"] = pending_count
     profile["is_owner"] = is_owner
     profile["is_admin"] = is_admin
+    # Admin-only: which Profile Status fields this student hid from other
+    # students. Admins still see all data; the profile card renders these as
+    # small red icons under a "Hidden" heading (leftmost rail).
+    profile["staff_hidden"] = {}
+    if is_admin and student_id:
+        try:
+            _prefs = auth.get_privacy_prefs(student_id) or {}
+            profile["staff_hidden"] = {
+                k: bool(int(_prefs.get(k) or 0)) for k in auth.PRIVACY_FIELDS
+            }
+        except Exception:
+            profile["staff_hidden"] = {}
     return profile
 
 
@@ -4137,6 +4159,26 @@ def settings_page(request: Request, linked: str = ""):
         "handle": identity.get("handle", ""),
         "avatar": identity.get("avatar", ""),
     }
+    # Approved students: the standalone Onboarding nav tab is hidden — their
+    # verified record moves here under Settings > General instead.
+    onboarding_approved = bool(
+        (user.get("role") or "") == "student"
+        and str((row or {}).get("onboarding_status") or "").strip().lower() == "approved"
+    )
+    onboarding_record = {}
+    if onboarding_approved and row:
+        onboarding_record = {
+            "prn": str(row.get("prn") or "").strip(),
+            "name": str(row.get("name") or user.get("name") or "").strip(),
+            "degree_branch": str(row.get("degree_branch") or "").strip(),
+            "division": str(row.get("division") or "").strip(),
+            "main_batch": str(row.get("main_batch") or "").strip(),
+            "practical_batch": str(row.get("practical_batch") or "").strip(),
+            "semester": str(row.get("semester") or "").strip(),
+            "github_username": str(row.get("github_username") or "").strip(),
+            "hackerrank_username": str(row.get("hackerrank_username") or hackerrank_handle or "").strip(),
+            "status": str(row.get("onboarding_status") or "").strip(),
+        }
     return templates.TemplateResponse(
         request,
         "pages/settings.html",
@@ -4149,6 +4191,8 @@ def settings_page(request: Request, linked: str = ""):
             "github_configured": github_oauth.configured(),
             "linkedin_configured": linkedin_oauth.configured(),
             "link_profile": link_profile,
+            "onboarding_approved": onboarding_approved,
+            "onboarding_record": onboarding_record,
         },
     )
 

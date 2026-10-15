@@ -2304,8 +2304,9 @@ def apply_profile_privacy(p: dict, prefs: dict | None) -> dict:
     (0/1). Callers only pass prefs when the viewer is a student looking at
     someone else's profile — faculty/admins and the owner bypass. The
     ``student_id`` key is kept so profile links keep working; templates show
-    "Hidden" via the ``prn_hidden`` flag. Blanked handles also collapse the
-    matching icon buttons and the HackerRank live tab via existing guards.
+    "PRN Hidden" via the ``prn_hidden`` flag and the per-tab hidden messages
+    via ``github_hidden`` / ``hackerrank_hidden``. Blanked handles also
+    collapse the matching icon buttons via existing guards.
     """
     if not p or not prefs or not isinstance(prefs, dict):
         return p
@@ -2313,6 +2314,7 @@ def apply_profile_privacy(p: dict, prefs: dict | None) -> dict:
         if int(prefs.get("hide_github") or 0):
             p["username"] = ""
             p["profile_url"] = ""
+            p["github_hidden"] = True
         if int(prefs.get("hide_linkedin") or 0):
             p["linkedin_username"] = ""
             p["linkedin_url"] = ""
@@ -2320,6 +2322,7 @@ def apply_profile_privacy(p: dict, prefs: dict | None) -> dict:
         if int(prefs.get("hide_hackerrank") or 0):
             p["hackerrank_username"] = ""
             p["hackerrank_url"] = ""
+            p["hackerrank_hidden"] = True
         if int(prefs.get("hide_prn") or 0):
             p["prn_hidden"] = True
     except Exception:
