@@ -145,42 +145,56 @@ at once and scrolls (CSS). #} {% if notif_empty %}
       }
     }
 
-    var hasSSE = typeof EventSource !== "undefined";
-    if (hasSSE) {
-      try {
-        var source = new EventSource("/api/notifications/stream");
-        source.addEventListener("notification", function (e) {
-          try {
-            var payload = JSON.parse(e.data);
-            if (payload && typeof payload.unreadCount === "number") {
-              updateBadge(payload.unreadCount);
-            }
-          } catch (err) {}
+    var POLL_INTERVAL_MS = 60000;
+    var pollTimer = null;
+    var lastPollTime = Date.now();
+    var backoffMultiplier = 1;
+
+    function pollNotifications() {
+      if (document.hidden) return;
+      lastPollTime = Date.now();
+      fetch("/api/notifications")
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          backoffMultiplier = 1;
+          if (data && typeof data.unread_count === "number") {
+            updateBadge(data.unread_count);
+          }
+        })
+        .catch(function () {
+          backoffMultiplier = Math.min(backoffMultiplier * 1.5, 5);
+        })
+        .finally(function () {
+          schedulePoll();
         });
-        source.onerror = function () {
-          source.close();
-          startPolling();
-        };
-      } catch (e) {
-        startPolling();
-      }
-    } else {
-      startPolling();
     }
 
-    function startPolling() {
-      setInterval(function () {
-        fetch("/api/notifications")
-          .then(function (r) {
-            return r.json();
-          })
-          .then(function (data) {
-            if (data && typeof data.unread_count === "number") {
-              updateBadge(data.unread_count);
-            }
-          })
-          .catch(function () {});
-      }, 15000);
+    function schedulePoll() {
+      if (pollTimer) clearTimeout(pollTimer);
+      if (document.hidden) return;
+      pollTimer = setTimeout(pollNotifications, Math.round(POLL_INTERVAL_MS * backoffMultiplier));
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) {
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      } else {
+        if (Date.now() - lastPollTime >= POLL_INTERVAL_MS) {
+          pollNotifications();
+        } else {
+          schedulePoll();
+        }
+      }
+    });
+
+    if (!document.hidden) {
+      schedulePoll();
     }
   })();
 </script>
