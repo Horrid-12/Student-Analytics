@@ -2618,6 +2618,42 @@ def _dept_label(tokens: tuple, separator: str) -> str:
     return f"div {div or '—'}{separator}batch {batch or '—'}"
 
 
+#: Quality_Band (services.py) → short indicator label + colour tone used by
+#: the small quality indicator on repository cards/rows. Contributed repos are
+#: neutral: their score is a hard-coded 0 and must not read as "bad".
+_REPO_BAND_TONES = {
+    "exceptional / open source ready": ("Excellent", "green"),
+    "strong signals": ("Strong", "green"),
+    "developing": ("Developing", "amber"),
+    "needs attention": ("Needs work", "red"),
+    "contributed": ("Contributed", "muted"),
+}
+
+
+def _repo_band(row, score) -> tuple[str, str]:
+    """(label, tone) for the small repo quality indicator.
+
+    Prefers the stored ``Quality_Band``; falls back to the numeric score so
+    older cached frames without a band still get a sensible indicator. Returns
+    ("", "") when nothing usable is available.
+    """
+    band = _repo_clean(row.get("Quality_Band"))
+    label, tone = _REPO_BAND_TONES.get(band.strip().lower(), ("", ""))
+    if label:
+        return label, tone
+    if score is None:
+        return "", ""
+    if score >= 90:
+        return "Excellent", "green"
+    if score >= 70:
+        return "Strong", "green"
+    if score >= 40:
+        return "Developing", "amber"
+    if score > 0:
+        return "Needs work", "red"
+    return "", ""
+
+
 def _repo_card(row) -> dict:
     """One repository, pre-normalized for the flat repository list. Cleaning
     rules match the previous card/table rendering exactly (NaN/None/'Unknown'
@@ -2635,6 +2671,7 @@ def _repo_card(row) -> dict:
     forks = int(_repo_number(row.get("Forks"), int) or 0)
     score = _repo_number(row.get("Repository_Quality_Score"), float)
     tokens = _dept_tokens(row.get("Division"), row.get("Batch"))
+    band_label, band_tone = _repo_band(row, score)
     return {
         "repository": _repo_clean(row.get("Repository")),
         "url": _repo_clean(row.get("Repository_URL")),
@@ -2642,6 +2679,8 @@ def _repo_card(row) -> dict:
         "stars": stars,
         "forks": forks,
         "score": round(score, 1) if score is not None else None,
+        "band": band_label,
+        "band_tone": band_tone,
         "license": _repo_clean(row.get("License")),
         "status": status,
         "description": _repo_clean(row.get("Description")),

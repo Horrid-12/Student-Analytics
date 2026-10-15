@@ -35,6 +35,7 @@ Context: `rows` (list of repo card dicts).
     <span class="rc-stat">★ {{ repo.stars }}</span>
     <span class="rc-stat">⑂ {{ repo.forks }}</span>
     <span class="rc-score">Score {% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}</span>
+    {% if repo.band %}<span class="rc-band rc-band-{{ repo.band_tone }}">{{ repo.band }}</span>{% endif %}
     {% if repo.status %}<span class="rc-status">{{ repo.status }}</span>{% endif %}
     {% if repo.updated %}<span class="rc-stat">{{ repo.updated }}</span>{% endif %}
   </div>

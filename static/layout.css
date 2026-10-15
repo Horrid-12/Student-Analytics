@@ -1386,6 +1386,10 @@ button {
     font-size: 10px;
     padding: 1px 6px;
   }
+  .rc-band {
+    font-size: 10px;
+    padding: 0 5px;
+  }
   .leader-sub {
     font-size: 11px;
   }
@@ -2618,6 +2622,21 @@ button {
   background: var(--hover-bg);
   white-space: nowrap;
 }
+.rc-band {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  color: var(--muted);
+  background: transparent;
+  white-space: nowrap;
+}
+.rc-band-green { color: var(--green); }
+.rc-band-amber { color: var(--amber); }
+.rc-band-red { color: var(--red); }
+.rc-band-muted { color: var(--muted); }
 .leaderboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

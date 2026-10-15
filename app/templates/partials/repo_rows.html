@@ -28,7 +28,7 @@ Context: `rows` (list of repo card dicts).
   <td>{% if repo.div or repo.batch %}{{ repo.dept_table }}{% else %}&mdash;{% endif %}</td>
   <td class="fl-num">{{ repo.stars }}</td>
   <td class="fl-num">{{ repo.forks }}</td>
-  <td>{% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}</td>
+  <td>{% if repo.score is not none %}{{ repo.score }}{% else %}&mdash;{% endif %}{% if repo.band %} <span class="rc-band rc-band-{{ repo.band_tone }}">{{ repo.band }}</span>{% endif %}</td>
   <td>{{ repo.status or '&mdash;' }}</td>
   <td>{{ repo.updated or '&mdash;' }}</td>
 </tr>
