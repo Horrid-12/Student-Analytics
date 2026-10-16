@@ -65,15 +65,18 @@
 .auth-card .link-row input{flex:1;min-width:0;}
 .auth-card .link-row input[readonly]{opacity:.75;}
 .auth-card .link-static{flex:1;min-width:0;display:flex;align-items:center;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;box-sizing:border-box;}
+/* Boxed link row: label/handle and the Link/Pending button share one box. */
+.auth-card .link-boxed{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);box-sizing:border-box;}
+.auth-card .link-boxed .link-static{flex:1;min-width:0;border:0;background:transparent;padding:10px 0;}
 .auth-card .link-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:0 16px;border:2px solid #8b5cf6;border-radius:8px;background:transparent;color:#8b5cf6;font-weight:800;font-size:13px;font-family:Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap;text-decoration:none;transition:all 180ms ease;}
 .auth-card a.link-btn:hover{background:rgba(139,92,246,.12);}
 .auth-card .link-btn.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
 .auth-card .link-btn:disabled{cursor:not-allowed;}
 .auth-card .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
-/* Bottom reminder above Continue: icon + bigger text, no box. */
-.auth-card .reminder-note{display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px 0;}
-.auth-card .reminder-note svg{flex:none;margin-top:2px;}
-.auth-card .reminder-note span{font-size:15px;font-weight:600;color:var(--text);}
+/* Bottom reminder above Continue: icon + one-line text inside a box. */
+.auth-card .reminder-note{display:flex;align-items:center;gap:10px;margin:4px 0 16px 0;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-soft,rgba(0,0,0,.03));}
+.auth-card .reminder-note svg{flex:none;}
+.auth-card .reminder-note span{font-size:14px;font-weight:600;color:var(--text);}
 /* Signup single-select dropdowns — same language as the site filters:
    pill button + panel of pill options, single pick per field. */
 .auth-card .su-wrap{position:relative;}
