@@ -20,6 +20,9 @@
 <style>
 .auth-page{display:flex;justify-content:center;align-items:center;min-height:100vh;width:100%;padding:24px;box-sizing:border-box;}
 .auth-card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:420px;box-shadow:0 2px 12px rgba(0,0,0,.08);}
+.auth-card-wide{max-width:560px;}
+.auth-card input.is-invalid{border-color:#fca5a5;}
+.auth-card .field-error{display:none;color:#991b1b;font-size:12px;margin-top:5px;}
 .auth-card h1{font-size:22px;font-weight:600;color:var(--text);margin:0 0 4px}
 .auth-card p.sub{color:var(--muted);font-size:14px;margin:0 0 20px}
 .auth-card .form-group{margin-bottom:14px}
@@ -42,6 +45,65 @@
 .auth-card .auth-divider{display:flex;align-items:center;margin:16px 0;text-align:center}
 .auth-card .auth-divider::before,.auth-card .auth-divider::after{content:'';flex:1;border-bottom:1px solid var(--border)}
 .auth-card .auth-divider span{padding:0 12px;color:var(--muted);font-size:12px;white-space:nowrap}
+/* Multi-phase signup stepper (shared by all signup phases). Purple accent +
+   paper theme; later phases reuse .phase-steps with a higher --phase-now. */
+.auth-card .phase-steps{margin:0 0 20px}
+.auth-card .phase-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8b5cf6;margin-bottom:10px}
+.auth-card .phase-track{display:flex;align-items:center;gap:0}
+.auth-card .phase-dot{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none}
+.auth-card .phase-dot i{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:700;border:2px solid var(--border);background:var(--card-bg);color:var(--muted)}
+.auth-card .phase-dot small{font-size:11px;font-weight:600;color:var(--muted)}
+.auth-card .phase-dot.is-now i{border-color:#8b5cf6;background:#8b5cf6;color:#fff;box-shadow:0 0 0 4px rgba(139,92,246,.18)}
+.auth-card .phase-dot.is-now small{color:#8b5cf6}
+.auth-card .phase-dot.is-done i{border-color:#8b5cf6;background:#8b5cf6;color:#fff}
+.auth-card .phase-dot.is-done small{color:#8b5cf6}
+.auth-card .phase-link{flex:1;height:2px;background:var(--border);opacity:.45;margin:0 6px 20px}
+.auth-card .phase-note{font-size:12px;color:var(--muted);margin-top:10px}
+.auth-card .signup-note{font-size:12px;color:var(--muted);background:var(--card-soft,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-top:12px}
+/* Phase-3 link rows: handle box + inline Link/Pending button on the right. */
+.auth-card .link-row{display:flex;gap:8px;align-items:stretch;}
+.auth-card .link-row input{flex:1;min-width:0;}
+.auth-card .link-row input[readonly]{opacity:.75;}
+.auth-card .link-static{flex:1;min-width:0;display:flex;align-items:center;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;box-sizing:border-box;}
+/* Boxed link row: label/handle and the Link/Pending button share one box. */
+.auth-card .link-boxed{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);box-sizing:border-box;}
+.auth-card .link-boxed .link-static{flex:1;min-width:0;border:0;background:transparent;padding:10px 0;}
+.auth-card .link-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:0 16px;border:2px solid #8b5cf6;border-radius:8px;background:transparent;color:#8b5cf6;font-weight:800;font-size:13px;font-family:Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap;text-decoration:none;transition:all 180ms ease;}
+.auth-card a.link-btn:hover{background:rgba(139,92,246,.12);}
+.auth-card .link-btn.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
+.auth-card .link-btn:disabled{cursor:not-allowed;}
+/* Whole-box OAuth buttons: logo left, centered text, purple accent. */
+.auth-card .oauth-box-wrap{margin:0;}
+.auth-card .oauth-box{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:10px 14px;border:2px solid #8b5cf6;border-radius:8px;background:transparent;color:#8b5cf6;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;cursor:pointer;box-sizing:border-box;transition:all 180ms ease;}
+.auth-card .oauth-box:hover{background:rgba(139,92,246,.12);}
+.auth-card .oauth-box svg{flex:none;}
+.auth-card .oauth-box .oauth-text{flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-card .oauth-box.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
+.auth-card .oauth-box.is-pending:hover{background:transparent;}
+.auth-card .oauth-box .oauth-pending{flex:none;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+.auth-card .oauth-box:disabled{cursor:not-allowed;}
+.auth-card .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+/* Bottom reminder above Continue: icon + one-line text inside a box. */
+.auth-card .reminder-note{display:flex;align-items:center;gap:10px;margin:4px 0 16px 0;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-soft,rgba(0,0,0,.03));}
+.auth-card .reminder-note svg{flex:none;}
+.auth-card .reminder-note span{font-size:14px;font-weight:600;color:var(--text);}
+/* Signup single-select dropdowns — same language as the site filters:
+   pill button + panel of pill options, single pick per field. */
+.auth-card .su-wrap{position:relative;}
+.auth-card .su-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:42px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:14px;cursor:pointer;box-sizing:border-box;font-family:inherit;}
+.auth-card .su-btn:hover{border-color:#8b5cf6;}
+.auth-card .su-btn[aria-expanded="true"]{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.18);}
+.auth-card .su-btn .su-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-card .su-btn.is-placeholder .su-label{color:var(--muted);}
+.auth-card .su-btn svg{flex:none;}
+.auth-card .su-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:240px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.28);padding:6px;z-index:40;}
+.auth-card .su-opt{display:block;width:100%;text-align:left;padding:9px 12px;font-size:14px;color:var(--text);background:transparent;border:0;border-radius:8px;cursor:pointer;font-family:inherit;}
+.auth-card .su-opt:hover{background:rgba(139,92,246,.12);color:#8b5cf6;}
+.auth-card .su-opt[data-active="true"]{background:#8b5cf6;color:#fff;font-weight:700;}
+.auth-card .su-pills{display:flex;gap:8px;padding:6px;}
+.auth-card .su-pill{min-width:42px;padding:7px 12px;font-size:14px;font-weight:700;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;transition:all 180ms ease;}
+.auth-card .su-pill:hover{border-color:#8b5cf6;color:#8b5cf6;}
+.auth-card .su-pill[data-active="true"]{background:#8b5cf6;border-color:#8b5cf6;color:#fff;}
 </style>
 </head>
 <body style="background:var(--bg)">

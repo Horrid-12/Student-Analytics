@@ -78,6 +78,9 @@ _EXTRA_COLUMNS = (
     # HackerRank handle captured at onboarding (required) and shown on the
     # Students profile HackerRank tab.
     ("hackerrank_username", "TEXT NOT NULL DEFAULT ''"),
+    # Sign-up phase 2: specialisation track captured alongside the branch
+    # (empty for single-track branches).
+    ("specialisation", "TEXT NOT NULL DEFAULT ''"),
 )
 
 # OAuth providers a student can fetch their picture + username from (4.11 e).
@@ -87,8 +90,50 @@ LINK_SOURCES = ("github", "linkedin")
 #: <select> can never smuggle an unlisted value into the ledger).
 DEGREE_BRANCHES = ("Core", "AI/DS", "Cloud Computing", "Cyber Security and Forensics")
 
+#: Branch choices on sign-up phase 2 (full programme names, distinct from the
+#: legacy /onboarding short codes above).
+SIGNUP_BRANCHES = (
+    "Computer Science and Engineering",
+    "Electronics and Communication Engineering",
+    "Electrical & Computer Engineering",
+    "Electronics (Semiconductor and VLSI Design)",
+    "Renewable Energy Engineering",
+    "Mechanical Engineering",
+    "Chemical Engineering",
+    "Materials Science & Engineering",
+    "Petroleum Engineering",
+    "Civil Engineering",
+    "Bioengineering",
+)
+
+#: Sign-up branches that offer a specialisation track — every other branch is
+#: single-track, so the sign-up specialisation dropdown stays hidden for them.
+SIGNUP_BRANCH_SPECIALISATIONS = {
+    "Computer Science and Engineering": (
+        "Core",
+        "Artificial Intelligence & Data Science",
+        "Cyber Security & Forensics",
+        "Cloud Computing",
+    ),
+    "Electronics and Communication Engineering": (
+        "Core",
+        "Artificial Intelligence and Machine Learning",
+    ),
+    "Mechanical Engineering": (
+        "Core",
+        "Robotics and Automation",
+    ),
+    "Civil Engineering": (
+        "Core",
+        "Smart Infrastructure & Construction",
+    ),
+}
+
 #: Allowed division labels (1-14), matching the onboarding <select> options.
 DIVISIONS = tuple(str(n) for n in range(1, 15))
+
+#: Division range accepted by sign-up phase 2 (1-32).
+SIGNUP_DIVISIONS = tuple(str(n) for n in range(1, 33))
 
 #: Main batch = admission cohort (stored, never shown on the dashboard).
 MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
@@ -102,6 +147,10 @@ TEACHING_BATCHES = ("1", "2", "3")
 
 #: Current term options (1-8), matching the legacy "Semester N" labels.
 SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
+
+#: Division bands that map to the two sign-up practical-batch tracks.
+_PYTHON_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(1, 15))
+_COMPUTER_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(15, 33))
 
 ONBOARDING_STATUSES = ("none", "pending", "approved", "rejected")
 
@@ -707,6 +756,120 @@ def read_faculty_setup_token(token: str | None) -> str | None:
         return invite_email or None
     except (ValueError, json.JSONDecodeError, TypeError):
         return None
+
+
+#: Short-lived cookie holding only an opaque, server-generated progress
+#: token — the payload itself lives in the signup_progress table (a cookie
+#: built from user input is both a CodeQL magnet and client-visible PII).
+_SIGNUP_COOKIE = "gsad_signup"
+_SIGNUP_TTL_SECONDS = 60 * 60
+
+_SIGNUP_PROGRESS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS signup_progress (
+    token TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+"""
+
+
+def _ensure_signup_progress(conn) -> None:
+    conn.execute(_SIGNUP_PROGRESS_SCHEMA)
+
+
+def save_signup_progress(payload: dict) -> str | None:
+    """Store sign-up progress server-side; return the opaque cookie token.
+    Never raises — returns None when no backend can persist it."""
+    token = secrets.token_urlsafe(32)
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    expires_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(time.time() + _SIGNUP_TTL_SECONDS))
+    blob = json.dumps(payload)
+    if database.db_configured():
+        try:
+            with database.conn() as c:
+                if c is None:
+                    return None
+                c.execute(_SIGNUP_PROGRESS_SCHEMA)
+                c.execute(
+                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (token) DO UPDATE SET payload = EXCLUDED.payload, "
+                    "expires_at = EXCLUDED.expires_at",
+                    (token, blob, expires_at, now),
+                )
+            return token
+        except Exception:
+            logger.warning("save_signup_progress failed", exc_info=True)
+            return None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_signup_progress(conn)
+            with conn:
+                conn.execute(
+                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (token, blob, expires_at, now),
+                )
+        return token
+    except (sqlite3.Error, OSError):
+        logger.warning("save_signup_progress failed", exc_info=True)
+        return None
+
+
+def load_signup_progress(token: str | None) -> dict | None:
+    """Return the stored payload for a live progress token, else None."""
+    if not token:
+        return None
+    try:
+        if database.db_configured():
+            with database.read_conn() as c:
+                if c is None:
+                    return None
+                cur = c.execute(
+                    "SELECT payload, expires_at FROM signup_progress WHERE token = %s",
+                    (token,),
+                )
+                row = cur.fetchone()
+        else:
+            with closing(_connect()) as conn:
+                _ensure_signup_progress(conn)
+                cur = conn.execute(
+                    "SELECT payload, expires_at FROM signup_progress WHERE token = ?",
+                    (token,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        row_payload = row[0] if not isinstance(row, dict) else row["payload"]
+        row_expires = row[1] if not isinstance(row, dict) else row["expires_at"]
+        if str(row_expires) < time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()):
+            return None
+        data = json.loads(row_payload)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        # Fail-safe: missing table, unreachable pool, or corrupt row must
+        # never 500 the page — the caller treats None as "start over".
+        return None
+
+
+def delete_signup_progress(token: str | None) -> None:
+    """Drop a progress record (idempotent; best-effort)."""
+    if not token:
+        return
+    try:
+        if database.db_configured():
+            with database.conn() as c:
+                if c is None:
+                    return
+                c.execute("DELETE FROM signup_progress WHERE token = %s", (token,))
+            return
+        with closing(_connect()) as conn:
+            _ensure_signup_progress(conn)
+            with conn:
+                conn.execute("DELETE FROM signup_progress WHERE token = ?", (token,))
+    except Exception:
+        pass
 
 
 def authorize_domain(claims: dict) -> bool:
@@ -1657,6 +1820,19 @@ def valid_main_batch(value: str) -> bool:
 
 def valid_practical_batch(value: str) -> bool:
     return (value or "").strip() in PRACTICAL_BATCHES
+
+
+def valid_signup_practical_batch(value: str, division: str) -> bool:
+    """Sign-up practical-batch options depend on the division: divisions 1-14
+    take the Python practical (batches 1-2), divisions 15-32 the Computer
+    practical (batches 1-3)."""
+    value = (value or "").strip()
+    division = (division or "").strip()
+    if division in _PYTHON_PRACTICAL_DIVISIONS:
+        return value in ("1", "2")
+    if division in _COMPUTER_PRACTICAL_DIVISIONS:
+        return value in ("1", "2", "3")
+    return False
 
 
 def valid_semester(value: str) -> bool:

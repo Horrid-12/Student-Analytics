@@ -229,10 +229,23 @@ class TestPasswordDomainGate:
         assert str(r.url).endswith("?error=2")
 
     def test_college_email_signup_and_login_still_work(self, client):
+        # Phase 1 advances to phase 2 (progress rides the signed cookie).
         r = client.post(
             "/signup",
             data={"email": "stu1@mitwpu.edu.in", "name": "S", "password": "secret123", "confirm_password": "secret123"},
         )
-        assert "registered=1" in str(r.url)
+        assert "phase=2" in str(r.url)
+        # Phase 2 advances to phase 3 — the account exists either way.
+        r = client.post(
+            "/signup/phase/2",
+            data={
+                "prn": "1234567890",
+                "branch": "Computer Science and Engineering",
+                "specialisation": "Core",
+                "division": "3",
+                "practical_batch": "1",
+            },
+        )
+        assert "phase=3" in str(r.url)
         r = client.post("/login", data={"email": "stu1@mitwpu.edu.in", "password": "secret123"})
         assert "gsad_session" in client.cookies

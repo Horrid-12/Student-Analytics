@@ -1,24 +1,53 @@
 {% extends "pages/auth_base.html" %}
 {% block title %}Create Account{% endblock %}
 {% block auth_card %}
-<div class="auth-card">
-  <h1>Create an account</h1>
-  <p class="sub">Student sign-up — faculty and admin accounts are provisioned by your administrator.</p>
+<div class="auth-card auth-card-wide">
+  <h1>Create an Account</h1>
+
+  <div class="phase-steps" aria-label="Sign-up progress">
+    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% elif phase == 3 %}Profiles{% else %}&nbsp;{% endif %}</div>
+    <div class="phase-track">
+      <div class="phase-dot{% if phase == 1 %} is-now{% elif phase > 1 %} is-done{% endif %}"><i>1</i><small>Account</small></div>
+      <div class="phase-link" aria-hidden="true"></div>
+      <div class="phase-dot{% if phase == 2 %} is-now{% elif phase > 2 %} is-done{% endif %}"><i>2</i><small>Academic</small></div>
+      <div class="phase-link" aria-hidden="true"></div>
+      <div class="phase-dot{% if phase == 3 %} is-now{% elif phase > 3 %} is-done{% endif %}"><i>3</i><small>Profiles</small></div>
+      <div class="phase-link" aria-hidden="true"></div>
+      <div class="phase-dot{% if phase == 4 %} is-now{% endif %}"><i>4</i><small>&nbsp;</small></div>
+    </div>
+  </div>
+
+  {% if phase == 1 %}
 
   {% if show_error_banner %}
   <div class="banner-error">Sign-up failed — check your details or try a different email.</div>
   {% endif %}
   {% if show_domain_banner %}
-  <div class="banner-error">Only college email addresses can create an account.</div>
+  <div class="banner-error">Only @mitwpu.edu.in college email addresses can create an account.</div>
   {% endif %}
   {% if show_exists_banner %}
-  <div class="banner-error">This email already has an account — <a href="/login">sign in</a> instead. If you signed up with Google, use "Continue with Google" on the sign-in page.</div>
+  <div class="banner-error">This email already has an account — <a href="/login">sign in</a> instead. If you signed up with Google, use "Sign Up with Google" below.</div>
+  {% endif %}
+
+  {% if google_configured %}
+  <a href="/auth/google" class="btn-google">
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+    Sign Up with Google
+  </a>
+  <div class="signup-note">Google sign-up needs your college ID and may be temporarily unavailable — this will be resolved soon. If it doesn't work, continue with your college email below.</div>
+  <div class="auth-divider"><span>or with your college email</span></div>
   {% endif %}
 
   <form method="post" action="/signup">
     <div class="form-group">
       <label for="email">College email address</label>
-      <input type="email" id="email" name="email" placeholder="you@college.edu" required autofocus>
+      <input type="email" id="email" name="email" placeholder="you@mitwpu.edu.in" required autofocus pattern=".*@mitwpu\.edu\.in$" title="Use your @mitwpu.edu.in college email address">
+      <div class="field-error" id="email-error">Please use your @mitwpu.edu.in college email address.</div>
     </div>
     <div class="form-group">
       <label for="name">Full name</label>
@@ -27,14 +56,411 @@
     <div class="form-group">
       <label for="password">Password</label>
       <input type="password" id="password" name="password" placeholder="Min. 6 characters" required minlength="6">
+      <div class="field-error" id="password-error">Password must be at least 6 characters.</div>
     </div>
     <div class="form-group">
       <label for="confirm_password">Confirm password</label>
-      <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required>
+      <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required minlength="6">
+      <div class="field-error" id="confirm-error">Passwords do not match.</div>
     </div>
     <button type="submit" class="btn-primary">Create Account</button>
   </form>
 
-  <p class="foot-text">Already have an account? <a href="/login">Sign in</a></p>
+  <p class="foot-text" style="font-size: 15px;">Already have an account? <a href="/login">Sign in</a></p>
+
+  {% elif phase == 2 %}
+
+  {% if error == "prn" %}<div class="banner-error">PRN must be exactly 10 digits.</div>{% endif %}
+  {% if error == "branch" %}<div class="banner-error">Please select your branch.</div>{% endif %}
+  {% if error == "specialisation" %}<div class="banner-error">Please select a valid specialisation for your branch.</div>{% endif %}
+  {% if error == "division" %}<div class="banner-error">Division must be between 1 and 32.</div>{% endif %}
+  {% if error == "batch" %}<div class="banner-error">Please select a valid practical batch for your division.</div>{% endif %}
+  {% if error == "storage" %}<div class="banner-error">We couldn't save your progress — please try again.</div>{% endif %}
+
+  <form method="post" action="/signup/phase/2">
+    <div class="form-group">
+      <label for="prn">PRN number</label>
+      <input type="text" id="prn" name="prn" placeholder="10-digit PRN" inputmode="numeric" value="{{ progress.prn if progress.prn else '' }}">
+      <div class="field-error" id="prn-error">PRN must be exactly 10 digits.</div>
+    </div>
+    <div class="form-group">
+      <label id="branch-label">Branch</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="branch-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="branch-label branch-btn-label">
+          <span class="su-label" id="branch-btn-label">Select your branch</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="branch-panel" role="listbox" aria-labelledby="branch-label" hidden>
+          {% for b in branches %}
+          <button type="button" class="su-opt" role="option" data-value="{{ b }}">{{ b }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="branch" id="branch-input" value="{{ progress.branch if progress.branch else '' }}">
+      </div>
+    </div>
+    <div class="form-group" id="specialisation-group" style="display:none;">
+      <label id="spec-label">Specialisation</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="spec-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="spec-label spec-btn-label">
+          <span class="su-label" id="spec-btn-label">Select your specialisation</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="spec-panel" role="listbox" aria-labelledby="spec-label" hidden></div>
+        <input type="hidden" name="specialisation" id="spec-input" value="{{ progress.specialisation if progress.specialisation else '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="division">Division</label>
+      <input type="text" id="division" name="division" placeholder="Division (1-32)" inputmode="numeric" value="{{ progress.division if progress.division else '' }}">
+      <div class="field-error" id="division-error">Division must be between 1 and 32.</div>
+    </div>
+    <div class="form-group">
+      <label for="practical_batch" id="batch-label">Practical Batch</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="batch-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="batch-label batch-btn-label">
+          <span class="su-label" id="batch-btn-label">Select your division above to continue</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="batch-panel" role="listbox" aria-labelledby="batch-label" hidden>
+          <div class="su-pills" id="batch-pills"></div>
+        </div>
+        <input type="hidden" name="practical_batch" id="batch-input" value="{{ progress.practical_batch if progress.practical_batch else '' }}">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary">Continue</button>
+  </form>
+
+  {% elif phase == 3 %}
+
+  <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    <h2 style="font-size: 20px; font-weight: 800; margin: 0; color: var(--text); text-align: center;">Link Profiles</h2>
+  </div>
+  <p style="font-size: 13px; color: var(--muted); margin: 0 0 16px 0; text-align: center;">Linking your profiles allows verification for campus placements and repository audit logs.</p>
+  <div style="border-bottom: 1px solid var(--border); margin-bottom: 20px;"></div>
+
+  {% if error == "hr" %}<div class="banner-error">Please enter your HackerRank username.</div>{% endif %}
+  {% if error == "github" %}<div class="banner-error">Please link your GitHub profile to continue.</div>{% endif %}
+  {% if error == "linkedin" %}<div class="banner-error">Please link your LinkedIn profile to continue.</div>{% endif %}
+  {% if error == "oauth" %}<div class="banner-error">Profile linking failed — please try again.</div>{% endif %}
+  {% if error == "storage" %}<div class="banner-error">We couldn't save your progress — please try again.</div>{% endif %}
+
+  <form method="post" action="/signup/phase/3" id="phase3-form">
+    <input type="hidden" name="action" value="continue">
+    <div class="form-group">
+      <label for="hr-username">HackerRank Username *</label>
+      <div class="link-row">
+        {% if hr_locked %}
+        <input type="text" id="hr-username" name="hackerrank_username" value="{{ progress.hackerrank_username if progress.hackerrank_username else '' }}" readonly>
+        <button type="button" class="link-btn is-pending" id="hr-link-btn" disabled>Pending</button>
+        {% else %}
+        <input type="text" id="hr-username" name="hackerrank_username" placeholder="e.g. 1272261921_s" value="{{ progress.hackerrank_username if progress.hackerrank_username else '' }}">
+        <button type="button" class="link-btn" id="hr-link-btn">Link</button>
+        {% endif %}
+      </div>
+      <div class="field-error" id="hr-error">Please enter a valid HackerRank username.</div>
+      <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.<a id="hr-open-link" href="#" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none; margin-left: 6px; display: none;">Open profile &#8599;</a></div>
+    </div>
+    <div class="form-group">
+      <div class="oauth-box-wrap">
+        {% if linked_github %}
+        <button type="button" class="oauth-box is-pending" id="gh-link-btn" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          <span class="oauth-text">{{ linked_github }}</span>
+          <span class="oauth-pending">Pending</span>
+        </button>
+        {% else %}
+        <button type="button" class="oauth-box" id="gh-link-btn" data-oauth="/auth/github?mode=signuplink">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          <span class="oauth-text">Link GitHub Account</span>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="oauth-box-wrap">
+        {% if linked_linkedin %}
+        <button type="button" class="oauth-box is-pending" id="li-link-btn" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.25c-.96 0-1.74.77-1.74 1.73a1.74 1.74 0 0 0 1.74 1.74c.96 0 1.73-.78 1.73-1.74 0-.96-.77-1.73-1.73-1.73Z"/></svg>
+          <span class="oauth-text">{{ linked_linkedin }}</span>
+          <span class="oauth-pending">Pending</span>
+        </button>
+        {% else %}
+        <button type="button" class="oauth-box" id="li-link-btn" data-oauth="/auth/linkedin?mode=signuplink">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.25c-.96 0-1.74.77-1.74 1.73a1.74 1.74 0 0 0 1.74 1.74c.96 0 1.73-.78 1.73-1.74 0-.96-.77-1.73-1.73-1.73Z"/></svg>
+          <span class="oauth-text">Link LinkedIn Account</span>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="reminder-note">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <span>Your profile completes once your teacher verifies it.</span>
+    </div>
+
+    <button type="submit" class="btn-primary" id="phase3-continue" disabled>Continue</button>
+  </form>
+
+  {% else %}
+
+  <p class="sub">The next phase of sign-up is on its way.</p>
+
+  {% endif %}
 </div>
+{% if phase == 1 %}
+<script>
+(function () {
+  var email = document.getElementById('email');
+  var emailErr = document.getElementById('email-error');
+  var pwd = document.getElementById('password');
+  var pwdErr = document.getElementById('password-error');
+  var confirm = document.getElementById('confirm_password');
+  var confirmErr = document.getElementById('confirm-error');
+  function isCollegeId(v) { return /@mitwpu\.edu\.in$/i.test((v || '').trim()); }
+  if (email && emailErr) {
+    email.addEventListener('blur', function () {
+      var bad = email.value.trim() !== '' && !isCollegeId(email.value);
+      emailErr.style.display = bad ? 'block' : 'none';
+      email.classList.toggle('is-invalid', bad);
+    });
+    email.addEventListener('input', function () {
+      emailErr.style.display = 'none';
+      email.classList.remove('is-invalid');
+    });
+  }
+  function checkMatch() {
+    if (!confirm || !confirmErr) return;
+    var bad = confirm.value !== '' && confirm.value !== pwd.value;
+    confirmErr.style.display = bad ? 'block' : 'none';
+    confirm.classList.toggle('is-invalid', bad);
+  }
+  if (pwd && pwdErr) {
+    pwd.addEventListener('blur', function () {
+      var bad = pwd.value !== '' && pwd.value.length < 6;
+      pwdErr.style.display = bad ? 'block' : 'none';
+      pwd.classList.toggle('is-invalid', bad);
+      checkMatch();
+    });
+    pwd.addEventListener('input', function () {
+      pwdErr.style.display = 'none';
+      pwd.classList.remove('is-invalid');
+      if (confirm && confirm.value !== '') checkMatch();
+    });
+  }
+  if (confirm && confirmErr) {
+    confirm.addEventListener('blur', checkMatch);
+    confirm.addEventListener('input', function () {
+      confirmErr.style.display = 'none';
+      confirm.classList.remove('is-invalid');
+    });
+  }
+})();
+</script>
+{% elif phase == 2 %}
+<script>
+(function () {
+  var BRANCH_SPECIALISATIONS = {{ branch_specialisations | tojson }};
+  var prn = document.getElementById('prn');
+  var prnErr = document.getElementById('prn-error');
+  var branchBtn = document.getElementById('branch-btn');
+  var branchPanel = document.getElementById('branch-panel');
+  var branchLabel = document.getElementById('branch-btn-label');
+  var branchInput = document.getElementById('branch-input');
+  var specGroup = document.getElementById('specialisation-group');
+  var specBtn = document.getElementById('spec-btn');
+  var specPanel = document.getElementById('spec-panel');
+  var specLabel = document.getElementById('spec-btn-label');
+  var specInput = document.getElementById('spec-input');
+  var division = document.getElementById('division');
+  var divErr = document.getElementById('division-error');
+  var batchBtn = document.getElementById('batch-btn');
+  var batchPanel = document.getElementById('batch-panel');
+  var batchLabel = document.getElementById('batch-btn-label');
+  var batchInput = document.getElementById('batch-input');
+  var batchPills = document.getElementById('batch-pills');
+  var batchFieldLabel = document.getElementById('batch-label');
+
+  function setFieldError(input, err, bad) {
+    if (!input || !err) return;
+    err.style.display = bad ? 'block' : 'none';
+    input.classList.toggle('is-invalid', bad);
+  }
+
+  /* Generic single-select picker: pill button + panel, one hidden input. */
+  function initPicker(btn, panel, label, input, placeholder, onPick) {
+    function close() {
+      panel.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    function paint() {
+      var has = !!(input.value || '').trim();
+      btn.classList.toggle('is-placeholder', !has);
+      label.textContent = has ? input.value : placeholder;
+    }
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = panel.hidden;
+      document.querySelectorAll('.su-panel').forEach(function (p) { p.hidden = true; });
+      document.querySelectorAll('.su-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+      panel.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    panel.addEventListener('click', function (e) {
+      var opt = e.target.closest ? e.target.closest('[data-value]') : null;
+      if (!opt) return;
+      input.value = opt.getAttribute('data-value');
+      panel.querySelectorAll('[data-value]').forEach(function (o) {
+        if (o === opt) o.setAttribute('data-active', 'true');
+        else o.removeAttribute('data-active');
+      });
+      paint();
+      close();
+      if (onPick) onPick();
+    });
+    document.addEventListener('click', function (e) {
+      if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    paint();
+    return { paint: paint, close: close };
+  }
+
+  var branchPicker = initPicker(branchBtn, branchPanel, branchLabel, branchInput, 'Select your branch', rebuildSpecialisation);
+  var specPicker = initPicker(specBtn, specPanel, specLabel, specInput, 'Select your specialisation', null);
+  var batchPicker = initPicker(batchBtn, batchPanel, batchLabel, batchInput, 'Select batch', null);
+
+  function trackedBranch() {
+    return branchInput.value && Object.prototype.hasOwnProperty.call(BRANCH_SPECIALISATIONS, branchInput.value);
+  }
+
+  function rebuildSpecialisation() {
+    if (!trackedBranch()) {
+      specGroup.style.display = 'none';
+      specInput.value = '';
+      specPicker.paint();
+      return;
+    }
+    specGroup.style.display = '';
+    var keep = specInput.value;
+    var html = '';
+    BRANCH_SPECIALISATIONS[branchInput.value].forEach(function (name) {
+      html += '<button type="button" class="su-opt" role="option" data-value="' + name + '"' +
+        (keep === name ? ' data-active="true"' : '') + '>' + name + '</button>';
+    });
+    specPanel.innerHTML = html;
+    if (BRANCH_SPECIALISATIONS[branchInput.value].indexOf(keep) === -1) specInput.value = '';
+    specPicker.paint();
+  }
+
+  function batchOptions() {
+    var div = parseInt((division.value || '').trim(), 10);
+    if (div >= 1 && div <= 14) return { label: 'Python Practical Batch', values: ['1', '2'] };
+    if (div >= 15 && div <= 32) return { label: 'Computer Practical Batch', values: ['1', '2', '3'] };
+    return { label: 'Practical Batch', values: [] };
+  }
+
+  function rebuildBatch() {
+    var cfg = batchOptions();
+    batchFieldLabel.textContent = cfg.label;
+    if (cfg.values.indexOf(batchInput.value) === -1) batchInput.value = '';
+    var html = '';
+    cfg.values.forEach(function (v) {
+      html += '<button type="button" class="su-pill" role="option" data-value="' + v + '"' +
+        (batchInput.value === v ? ' data-active="true"' : '') + '>' + v + '</button>';
+    });
+    batchPills.innerHTML = html;
+    batchPicker.paint();
+    if (!cfg.values.length) batchLabel.textContent = 'Select your division above to continue';
+  }
+
+  if (prn && prnErr) {
+    prn.addEventListener('blur', function () {
+      var v = (prn.value || '').trim();
+      setFieldError(prn, prnErr, v !== '' && !/^\d{10}$/.test(v));
+    });
+    prn.addEventListener('input', function () { setFieldError(prn, prnErr, false); });
+  }
+  if (division && divErr) {
+    division.addEventListener('blur', function () {
+      var v = parseInt((division.value || '').trim(), 10);
+      setFieldError(division, divErr, (division.value || '').trim() !== '' && !(v >= 1 && v <= 32));
+    });
+    division.addEventListener('input', function () {
+      setFieldError(division, divErr, false);
+      rebuildBatch();
+    });
+  }
+  rebuildSpecialisation();
+  rebuildBatch();
+})();
+</script>
+{% elif phase == 3 %}
+<script>
+(function () {
+  var hr = document.getElementById('hr-username');
+  var hrBtn = document.getElementById('hr-link-btn');
+  var hrErr = document.getElementById('hr-error');
+  var hrOpen = document.getElementById('hr-open-link');
+  var cont = document.getElementById('phase3-continue');
+  /* Same normalization as the onboarding panel: a pasted profile URL,
+     "@handle" or bare handle all resolve to the canonical profile link. */
+  function handleOf(value) {
+    var raw = (value || '').trim();
+    if (!raw || raw === '-' || raw === '--') return '';
+    var fromUrl = raw.match(/hackerrank\.com\/profile\/([^/?#\s]+)/i);
+    if (fromUrl) return fromUrl[1].replace(/^@+/, '').replace(/[.,;:!\/]+$/, '');
+    var bare = raw.replace(/^@+/, '').replace(/[.,;:!]+$/, '');
+    return (/^[A-Za-z0-9_.@-]+$/.test(bare)) ? bare : '';
+  }
+  function hrLocked() { return hrBtn && hrBtn.textContent === 'Pending'; }
+  function ghLocked() { var b = document.getElementById('gh-link-btn'); return !!b && b.classList.contains('is-pending'); }
+  function liLocked() { var b = document.getElementById('li-link-btn'); return !!b && b.classList.contains('is-pending'); }
+  function refreshContinue() {
+    if (cont) cont.disabled = !(hrLocked() && ghLocked() && liLocked());
+  }
+  function lockHr(handle) {
+    hr.value = handle;
+    hr.setAttribute('readonly', 'readonly');
+    hrBtn.textContent = 'Pending';
+    hrBtn.classList.add('is-pending');
+    hrBtn.disabled = true;
+    if (hrErr) hrErr.style.display = 'none';
+    hr.classList.remove('is-invalid');
+    refreshContinue();
+  }
+  if (hrBtn && !hrBtn.disabled) hrBtn.addEventListener('click', function () {
+    var handle = handleOf(hr.value);
+    if (!handle) {
+      if (hrErr) hrErr.style.display = 'block';
+      hr.classList.add('is-invalid');
+      return;
+    }
+    var url = 'https://www.hackerrank.com/profile/' + encodeURIComponent(handle);
+    if (hrOpen) { hrOpen.href = url; hrOpen.style.display = ''; }
+    lockHr(handle);
+  });
+  if (hr && !hr.hasAttribute('readonly')) hr.addEventListener('input', function () {
+    var handle = handleOf(hr.value);
+    if (handle && hrOpen) { hrOpen.href = 'https://www.hackerrank.com/profile/' + encodeURIComponent(handle); hrOpen.style.display = ''; }
+    else if (hrOpen) hrOpen.style.display = 'none';
+  });
+  /* OAuth buttons stash the typed handle first (same as onboarding: save the
+     form, then ride to the portal) so the round-trip never wipes it. */
+  document.querySelectorAll('[data-oauth]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var form = document.getElementById('phase3-form');
+      var dest = b.getAttribute('data-oauth');
+      if (!form || !dest) { if (dest) window.location.href = dest; return; }
+      var data = new FormData(form);
+      data.set('action', 'save');
+      fetch('/signup/phase/3', { method: 'POST', body: data }).finally(function () {
+        window.location.href = dest;
+      });
+    });
+  });
+  refreshContinue();
+})();
+</script>
+{% endif %}
 {% endblock %}

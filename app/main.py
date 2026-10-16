@@ -1146,17 +1146,55 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
 
 
 @app.get("/signup", response_class=HTMLResponse)
-def signup_page(request: Request, error: int = 0):
-    if request.state.user:
-        return RedirectResponse("/", status_code=302)
+def signup_page(request: Request, error: str = "", phase: str = "1"):
+    try:
+        phase = max(1, min(4, int(phase)))
+    except (TypeError, ValueError):
+        phase = 1
+    user = getattr(request.state, "user", None)
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value) or {}
+    if user:
+        # In-progress signups stay in the flow (phase 3 links profiles through
+        # the OAuth portal, which needs the session); everyone else goes home.
+        token_email = (progress.get("email") or "").strip().lower()
+        if not progress or not token_email or token_email != (user.get("email") or "").strip().lower():
+            return RedirectResponse("/", status_code=302)
+    # Phases 2+ require completed earlier phases — the server-side progress
+    # record is the only phase gate (the cookie holds just an opaque token).
+    if phase > 1 and int(progress.get("phase") or 1) < phase:
+        return RedirectResponse("/signup", status_code=302)
+    # Phase 3 renders the OAuth-linked handles (GitHub/LinkedIn go through the
+    # portal, so their pending state lives on the user row, not the token).
+    linked_github = ""
+    linked_linkedin = ""
+    hr_locked = False
+    if phase == 3 and (progress.get("email") or "").strip():
+        row = auth.get_account(str(progress.get("email") or ""))
+        if row:
+            linked_github = str(row.get("linked_github_username") or "").strip()
+            linked_linkedin = str(row.get("linked_linkedin_name") or "").strip()
+        stored_hr = str(progress.get("hackerrank_username") or "").strip()
+        hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
         {
             "page_name": "signup",
-            "show_error_banner": bool(error == 1),
-            "show_domain_banner": bool(error == 2),
-            "show_exists_banner": bool(error == 3),
+            "phase": phase,
+            "error": error,
+            "progress": progress,
+            "branches": auth.SIGNUP_BRANCHES,
+            "branch_specialisations": auth.SIGNUP_BRANCH_SPECIALISATIONS,
+            "linked_github": linked_github,
+            "linked_linkedin": linked_linkedin,
+            "hr_locked": hr_locked,
+            "show_error_banner": error == "1",
+            "show_domain_banner": error == "2",
+            "show_exists_banner": error == "3",
+            "google_configured": google_oauth.configured(),
+            "github_configured": github_oauth.configured(),
+            "linkedin_configured": linkedin_oauth.configured(),
         },
     )
 
@@ -1173,7 +1211,8 @@ async def signup_submit(
         return RedirectResponse("/signup?error=1", status_code=302)
     if len(password) < 6:
         return RedirectResponse("/signup?error=1", status_code=302)
-    # Phase 4.7.2: signup is restricted to college addresses.
+    # College-only signup: the form constrains input to @mitwpu.edu.in and the
+    # server re-checks the configured allowlist (tests override it via env).
     if not auth.domain_allowed_email(email):
         return RedirectResponse("/signup?error=2", status_code=302)
     # Already-registered addresses (e.g. created via Google sign-in) get their
@@ -1185,7 +1224,154 @@ async def signup_submit(
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)
     _db_log_event("signup", email)
-    return RedirectResponse("/login?registered=1", status_code=302)
+    # Phase 1 done — the account exists, so sign them in straight away (phase
+    # 3 links GitHub/LinkedIn through the OAuth portal, which needs the
+    # session) and carry them into the academic phase. Gating still applies:
+    # nothing is approved yet, so the site stays locked down.
+    token = auth.save_signup_progress({"email": email, "name": name, "phase": 2})
+    if token is None:
+        return RedirectResponse("/signup?error=1", status_code=302)
+    response = RedirectResponse("/signup?phase=2", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        token,
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    session_user = dict(user)
+    session_user.pop("password_hash", None)
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(session_user),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/signup/phase/2", response_class=HTMLResponse)
+async def signup_phase_2_submit(
+    request: Request,
+    prn: str = Form(""),
+    branch: str = Form(""),
+    specialisation: str = Form(""),
+    division: str = Form(""),
+    practical_batch: str = Form(""),
+):
+    """Academic phase: PRN, branch (+ specialisation for tracked branches),
+    division, and the division-dependent practical batch."""
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 2:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=2&error={code}", status_code=302)
+
+    if not auth.valid_prn(prn):
+        return fail("prn")
+    if (branch or "").strip() not in auth.SIGNUP_BRANCHES:
+        return fail("branch")
+    if branch in auth.SIGNUP_BRANCH_SPECIALISATIONS:
+        if (specialisation or "").strip() not in auth.SIGNUP_BRANCH_SPECIALISATIONS[branch]:
+            return fail("specialisation")
+    elif (specialisation or "").strip():
+        return fail("specialisation")
+    if (division or "").strip() not in auth.SIGNUP_DIVISIONS:
+        return fail("division")
+    if not auth.valid_signup_practical_batch(practical_batch, division):
+        return fail("batch")
+    progress.update({
+        "phase": 3,
+        "prn": (prn or "").strip(),
+        "branch": (branch or "").strip(),
+        "specialisation": (specialisation or "").strip(),
+        "division": (division or "").strip(),
+        "practical_batch": (practical_batch or "").strip(),
+    })
+    token = auth.save_signup_progress(progress)
+    if token is None:
+        return fail("storage")
+    response = RedirectResponse("/signup?phase=3", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        token,
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/signup/phase/3", response_class=HTMLResponse)
+async def signup_phase_3_submit(
+    request: Request,
+    hackerrank_username: str = Form(""),
+    action: str = Form("continue"),
+):
+    """Profiles phase: HackerRank (typed, same normalization as onboarding)
+    plus GitHub and LinkedIn linked through the OAuth portal. Nothing
+    advances until all three are pending — the portal handles live on the
+    user row, so re-check them here instead of trusting the form."""
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 3:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=3&error={code}", status_code=302)
+
+    def persist() -> str | None:
+        token = auth.save_signup_progress(progress)
+        if token is None:
+            return None
+        response = RedirectResponse("/signup?phase=3", status_code=302)
+        response.set_cookie(
+            auth._SIGNUP_COOKIE,
+            token,
+            max_age=auth._SIGNUP_TTL_SECONDS,
+            httponly=True,
+            secure=auth._SECURE_COOKIES,
+            samesite="lax",
+        )
+        return response
+
+    handle = services.extract_hackerrank_username(hackerrank_username or "")
+    if action == "save":
+        # Stash the typed handle before the OAuth round-trip steals the page
+        # (no validation gate — Continue still enforces everything).
+        progress["hackerrank_username"] = handle or (hackerrank_username or "").strip()
+        saved = persist()
+        return saved if saved is not None else fail("storage")
+    if not handle:
+        return fail("hr")
+    row = auth.get_account(str(progress.get("email") or ""))
+    if not row or not (row.get("linked_github_username") or "").strip():
+        return fail("github")
+    if not (row.get("linked_linkedin_name") or "").strip():
+        return fail("linkedin")
+    progress.update({
+        "phase": 4,
+        "hackerrank_username": handle,
+    })
+    token = auth.save_signup_progress(progress)
+    if token is None:
+        return fail("storage")
+    response = RedirectResponse("/signup?phase=4", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        token,
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
 
 
 @app.get("/faculty-setup", response_class=HTMLResponse)
@@ -1385,9 +1571,11 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
 from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
-def auth_github(request: Request):
+def auth_github(request: Request, mode: str = "link"):
     if not request.state.user:
         return RedirectResponse("/login?oauth=link_required", status_code=302)
+    if mode not in ("link", "signuplink"):
+        mode = "link"
     if not github_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/github/callback"
@@ -1395,7 +1583,7 @@ def auth_github(request: Request):
     url = github_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
 
 @app.get("/auth/github/callback")
@@ -1403,9 +1591,13 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
     mode = request.cookies.get("gsad_oauth_mode", "signin")
     user = request.state.user
+    signup_next = "/signup?phase=3"
 
     def reject(kind: str) -> RedirectResponse:
-        target = f"/onboarding?github={kind}" if mode == "link" else f"/login?oauth={kind}"
+        if mode == "signuplink":
+            target = f"{signup_next}&error=oauth"
+        else:
+            target = f"/onboarding?github={kind}" if mode == "link" else f"/login?oauth={kind}"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
@@ -1417,7 +1609,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         logger.warning("GitHub OAuth state mismatch")
         return reject("error")
 
-    if mode != "link" or not user:
+    if mode not in ("link", "signuplink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?github=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -1431,7 +1623,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         logger.exception("GitHub OAuth code exchange failed")
         return reject("error")
 
-    if mode == "link" and user:
+    if mode in ("link", "signuplink") and user:
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
         # 4.11 (e): persist the fetched candidate (login + avatar) for user
@@ -1450,16 +1642,18 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
                 await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
         except Exception:
             logger.exception("Post-link sync failed for %s", user["email"])
-        response = RedirectResponse("/onboarding?linked=github", status_code=302)
+        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=github", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
 
 
 @app.get("/auth/linkedin")
-def auth_linkedin(request: Request):
+def auth_linkedin(request: Request, mode: str = "link"):
     if not request.state.user:
         return RedirectResponse("/login?oauth=link_required", status_code=302)
+    if mode not in ("link", "signuplink"):
+        mode = "link"
     if not linkedin_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/linkedin/callback"
@@ -1467,7 +1661,7 @@ def auth_linkedin(request: Request):
     url = linkedin_oauth.build_authorization_url(redirect_uri, state)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
-    response.set_cookie("gsad_oauth_mode", "link", max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
+    response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
 
 @app.get("/auth/linkedin/callback")
@@ -1475,9 +1669,13 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
     mode = request.cookies.get("gsad_oauth_mode", "signin")
     user = request.state.user
+    signup_next = "/signup?phase=3"
 
     def reject(kind: str) -> RedirectResponse:
-        target = f"/onboarding?linkedin={kind}" if mode == "link" else f"/login?oauth={kind}"
+        if mode == "signuplink":
+            target = f"{signup_next}&error=oauth"
+        else:
+            target = f"/onboarding?linkedin={kind}" if mode == "link" else f"/login?oauth={kind}"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
@@ -1489,7 +1687,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         logger.warning("LinkedIn OAuth state mismatch")
         return reject("error")
 
-    if mode != "link" or not user:
+    if mode not in ("link", "signuplink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?linkedin=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -1503,7 +1701,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         logger.exception("LinkedIn OAuth code exchange failed")
         return reject("error")
 
-    if mode == "link" and user:
+    if mode in ("link", "signuplink") and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
         # 4.11 (e): persist the fetched candidate (name + picture) for user
         # confirmation on onboarding.
@@ -1511,7 +1709,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             user["email"], "linkedin", claims.get("name"), claims.get("picture")
         )
         _db_log_event("linkedin_linked", user["email"])
-        response = RedirectResponse("/onboarding?linked=linkedin", status_code=302)
+        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=linkedin", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
