@@ -142,5 +142,37 @@
   });
 })();
 </script>
+<script>
+(function () {
+  'use strict';
+  // Info ("i") popovers: one delegated handler for every .info-btn on the page.
+  function closeTips(except) {
+    document.querySelectorAll('.info-tip:not([hidden])').forEach(function (tip) {
+      if (tip === except) return;
+      tip.hidden = true;
+      var btn = tip.parentNode && tip.parentNode.querySelector('.info-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.info-btn') : null;
+    if (btn) {
+      e.preventDefault();
+      var wrap = btn.closest('.info-wrap');
+      var tip = wrap && wrap.querySelector('.info-tip');
+      if (!tip) return;
+      var willOpen = tip.hidden;
+      closeTips(willOpen ? tip : null);
+      tip.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      return;
+    }
+    if (!e.target.closest || !e.target.closest('.info-tip')) closeTips(null);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeTips(null);
+  });
+})();
+</script>
 </body>
 </html>

@@ -1235,17 +1235,22 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
-    _avg_quality = float(_score_repos["Repository_Quality_Score"].mean()) if _score_repos is not None and not _score_repos.empty else 0.0
-
-    # Class-health headline for the Statistics doughnut hole: the share of the
-    # filtered cohort that is "Consistent" (the healthiest bucket) plus the
-    # cohort's average owned-repo quality. Both are already computed above.
+    # Class-health composite for the Statistics doughnut hole: a single 0-100
+    # score weighting each bucket (Consistent = 1.0, Doing Good = 0.5, Need
+    # Attention = 0) across the filtered cohort, tinted by band.
     _stat_total = _n_consistent + _n_doing_good + _n_attention
-    _consistent_pct = round(100 * _n_consistent / _stat_total) if _stat_total else 0
+    _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total) if _stat_total else 0
+    if _health_score >= 75:
+        _health_band, _health_tone = "Healthy", "green"
+    elif _health_score >= 50:
+        _health_band, _health_tone = "Moderate", "amber"
+    else:
+        _health_band, _health_tone = "At Risk", "red"
     stats_headline = {
-        "value": f"{_consistent_pct}%",
-        "label": "Consistent",
-        "sub": f"Avg quality {_avg_quality:.1f}",
+        "value": str(_health_score),
+        "label": "Class Health",
+        "sub": _health_band,
+        "tone": _health_tone,
     }
 
     # Cohort picker options: distinct (Batch × Division) combos in the roster.

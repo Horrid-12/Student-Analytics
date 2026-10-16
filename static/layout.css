@@ -1732,6 +1732,78 @@ button {
   color: var(--muted);
   margin: 14px 0 8px;
 }
+/* Title + info affordance on one row (Statistics, Repositories, Radar). */
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.panel-title-row .panel-title {
+  margin-bottom: 0;
+}
+/* ── Info ("i") button + popover ─────────────────────────────────────── */
+.info-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--icon-border, var(--border));
+  background: var(--subtle-bg, var(--card-soft));
+  color: var(--muted);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.info-btn:hover,
+.info-btn:focus-visible,
+.info-btn[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--blue);
+  outline: none;
+}
+.info-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(330px, 78vw);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+}
+.info-tip[hidden] { display: none; }
+.info-tip-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.info-tip-body { display: block; }
+.info-tip-body p { margin: 0 0 6px; color: var(--muted); }
+.info-tip-body p:last-child { margin-bottom: 0; }
+.info-tip-body ul { margin: 6px 0 0; padding-left: 16px; color: var(--muted); }
+.info-tip-body li { margin: 2px 0; }
+.info-tip-body b { color: var(--text); font-weight: 600; }
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

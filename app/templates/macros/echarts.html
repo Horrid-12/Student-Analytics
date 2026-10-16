@@ -828,6 +828,9 @@ window.__EC_THEME = (function () {
     };
 
     if (center && center.value) {
+      var toneColor = center.tone === 'green' ? p.success
+                    : center.tone === 'amber' ? p.warning
+                    : center.tone === 'red' ? p.danger : p.text;
       option.graphic = [
         {
           type: 'text',
@@ -835,7 +838,7 @@ window.__EC_THEME = (function () {
           top: '33%',
           silent: true,
           z: 10,
-          style: { text: String(center.value), fill: p.text, font: '700 30px Inter, sans-serif' }
+          style: { text: String(center.value), fill: toneColor, font: '700 30px Inter, sans-serif' }
         },
         {
           type: 'text',

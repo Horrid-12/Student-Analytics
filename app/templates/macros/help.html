@@ -1,0 +1,20 @@
+{# ── Info ("i") button + popover ──────────────────────────────────────────
+   A small reusable help affordance. Call it with block content for the
+   explanation body:
+
+     {% import "macros/help.html" as help %}
+     {% call help.info('class-health', 'Class Health Score') %}
+       <p>Explanatory text…</p>
+     {% endcall %}
+
+   The toggle behaviour is wired once, globally, in base.html.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro info(id, title, label="How is this calculated?") %}
+<span class="info-wrap">
+  <button type="button" class="info-btn" aria-label="{{ label }}" aria-expanded="false" aria-controls="info-{{ id }}">i</button>
+  <span class="info-tip" id="info-{{ id }}" role="tooltip" hidden>
+    <span class="info-tip-title">{{ title }}</span>
+    <span class="info-tip-body">{{ caller() }}</span>
+  </span>
+</span>
+{% endmacro %}
