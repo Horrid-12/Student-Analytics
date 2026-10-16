@@ -72,6 +72,16 @@
 .auth-card a.link-btn:hover{background:rgba(139,92,246,.12);}
 .auth-card .link-btn.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
 .auth-card .link-btn:disabled{cursor:not-allowed;}
+/* Whole-box OAuth buttons: logo left, centered text, purple accent. */
+.auth-card .oauth-box-wrap{margin:0;}
+.auth-card .oauth-box{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:10px 14px;border:2px solid #8b5cf6;border-radius:8px;background:transparent;color:#8b5cf6;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;cursor:pointer;box-sizing:border-box;transition:all 180ms ease;}
+.auth-card .oauth-box:hover{background:rgba(139,92,246,.12);}
+.auth-card .oauth-box svg{flex:none;}
+.auth-card .oauth-box .oauth-text{flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-card .oauth-box.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
+.auth-card .oauth-box.is-pending:hover{background:transparent;}
+.auth-card .oauth-box .oauth-pending{flex:none;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+.auth-card .oauth-box:disabled{cursor:not-allowed;}
 .auth-card .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
 /* Bottom reminder above Continue: icon + one-line text inside a box. */
 .auth-card .reminder-note{display:flex;align-items:center;gap:10px;margin:4px 0 16px 0;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-soft,rgba(0,0,0,.03));}
