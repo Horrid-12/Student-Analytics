@@ -1493,12 +1493,23 @@ def _oauth_base_url(request: Request) -> str:
 
 
 @app.get("/auth/google")
-def auth_google(request: Request):
+def auth_google(request: Request, mode: str = "login"):
     """Start Google sign-in: consent URL + opaque state nonce in a short-lived,
-    httponly cookie. The domain gate is enforced on the callback, never here."""
+    httponly cookie. The domain gate is enforced on the callback, never here.
+
+    ``mode=signup`` marks a sign-up-phase-1 entry: the button on /signup uses
+    it to skip only the password step. The mode rides a short-lived cookie
+    (same pattern as the GitHub/LinkedIn ``gsad_oauth_mode``) so the callback
+    can route new students to /signup?phase=2 instead of the main site."""
+    mode = (mode or "login").strip().lower()
+    if mode not in ("login", "signup"):
+        mode = "login"
     if not google_oauth.configured():
-        return RedirectResponse("/login?oauth=unconfigured", status_code=302)
+        target = "/signup?error=1" if mode == "signup" else "/login?oauth=unconfigured"
+        return RedirectResponse(target, status_code=302)
     if request.state.user:
+        if mode == "signup":
+            return RedirectResponse("/signup?phase=2", status_code=302)
         return RedirectResponse("/", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     domains = auth.allowed_domains()
@@ -1513,6 +1524,14 @@ def auth_google(request: Request):
         secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
+    response.set_cookie(
+        "gsad_oauth_mode",
+        mode,
+        max_age=auth._OAUTH_STATE_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
     return response
 
 
@@ -1520,12 +1539,29 @@ def auth_google(request: Request):
 async def auth_google_callback(request: Request, state: str = "", error: str = ""):
     """Complete Google sign-in: verify state, exchange the code, apply the
     server-side college-domain gate, resolve the role and mint the normal
-    ``gsad_session`` cookie. Rejections redirect to /login?oauth=domain."""
+    ``gsad_session`` cookie. Rejections redirect to /login?oauth=domain.
+
+    Sign-up entries (``mode=signup`` from the /signup phase-1 button) only skip
+    phase 1: a student with no onboarding submission yet is signed in AND given
+    a signup-progress token, then sent to /signup?phase=2. Returning students
+    (already submitted onboarding) and staff fall through to the normal login
+    destination."""
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
+    oauth_mode = (request.cookies.get("gsad_oauth_mode") or "login").strip().lower()
+    if oauth_mode not in ("login", "signup"):
+        oauth_mode = "login"
+    signup_mode = oauth_mode == "signup"
 
     def reject(kind: str) -> RedirectResponse:
-        response = RedirectResponse(f"/login?oauth={kind}", status_code=302)
+        if signup_mode:
+            # Signup page banners: error=2 is the college-domain banner,
+            # error=1 the generic failure banner.
+            code = "2" if kind == "domain" else "1"
+            response = RedirectResponse(f"/signup?error={code}", status_code=302)
+        else:
+            response = RedirectResponse(f"/login?oauth={kind}", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
         return response
 
     if error:
@@ -1559,9 +1595,57 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         full_user = auth.get_account(email) or user
     except Exception:
         full_user = user
+    if signup_mode and (full_user.get("role") or role) == "student":
+        # Sign-up via Google skips phase 1 only: fresh/incomplete students join
+        # the signup flow at phase 2 (mirrors POST /signup: session + progress
+        # token). Anyone who already submitted onboarding is a returning user
+        # and falls through to the normal login destination below.
+        if str(full_user.get("onboarding_status") or "none").strip().lower() == "none":
+            _db_log_event("signup", email)
+            existing = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+            target_phase = 2
+            if (
+                existing
+                and (existing.get("email") or "").strip().lower() == email
+                and int(existing.get("phase") or 1) > 2
+            ):
+                progress = dict(existing)
+                progress["email"] = email
+                if (claims.get("name") or "").strip():
+                    progress["name"] = (claims.get("name") or "").strip()
+                try:
+                    target_phase = max(2, min(4, int(progress.get("phase") or 2)))
+                except (TypeError, ValueError):
+                    target_phase = 2
+            else:
+                progress = {"email": email, "name": (claims.get("name") or "").strip(), "phase": 2}
+            token = auth.save_signup_progress(progress)
+            if token is None:
+                return reject("error")
+            response = RedirectResponse(f"/signup?phase={target_phase}", status_code=302)
+            response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+            response.delete_cookie("gsad_oauth_mode")
+            response.set_cookie(
+                auth._SIGNUP_COOKIE,
+                token,
+                max_age=auth._SIGNUP_TTL_SECONDS,
+                httponly=True,
+                secure=auth._SECURE_COOKIES,
+                samesite="lax",
+            )
+            response.set_cookie(
+                auth._COOKIE_NAME,
+                auth.create_session_token(user),
+                max_age=auth._SESSION_TTL_SECONDS,
+                httponly=True,
+                secure=auth._SECURE_COOKIES,
+                samesite="lax",
+            )
+            return response
     await asyncio.to_thread(_self_sync_on_login, full_user)
     response = RedirectResponse(_post_login_destination(full_user, "/onboarding"), status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    response.delete_cookie("gsad_oauth_mode")
     response.set_cookie(
         auth._COOKIE_NAME,
         auth.create_session_token(user),
