@@ -422,6 +422,71 @@ class TestFacultyTeachingOnboarding:
         assert r.status_code == 401
 
 
+class TestSignupRecordDisplay:
+    """Onboarding display for sign-up vocabulary records (full programme
+    names, specialisation track, divisions up to 32): the legacy Academic
+    Information selects cannot represent them, so stored values render as
+    read-only rows and the legacy resubmit (which would only fail validation)
+    is replaced by state text. The sign-up flow itself is untouched."""
+
+    def _signup_done(self, client, email="sig@college.edu"):
+        client.post(
+            "/signup",
+            data={"email": email, "name": "Sig", "password": "secret123", "confirm_password": "secret123"},
+        )
+        client.post(
+            "/signup/phase/2",
+            data={
+                "prn": "1234567890",
+                "semester": "Semester 3",
+                "branch": "Mechanical Engineering",
+                "specialisation": "Robotics and Automation",
+                "division": "20",
+                "practical_batch": "3",
+            },
+        )
+        auth.save_linked_profile(email, "github", "sig-handle", "")
+        auth.save_linked_profile(email, "linkedin", "sig-li", "")
+        client.post("/signup/phase/3", data={"hackerrank_username": "sig_hr"})
+        r = client.post("/signup/phase/4", data={"hide_github": "1"})
+        assert "saved=1" in str(r.url)
+        return email
+
+    def _page(self, client):
+        return client.get("/onboarding", headers={"Accept": "text/html"}).text
+
+    def test_academic_panel_shows_signup_values_as_text(self, client):
+        self._signup_done(client)
+        body = self._page(client)
+        assert "Mechanical Engineering" in body
+        assert "Robotics and Automation" in body
+        # Legacy selects (academic form) are gone; the admin edit modal keeps its own.
+        assert '<select name="degree_branch" required' not in body
+        assert '<select name="division" required' not in body
+
+    def test_no_dead_end_resubmit_for_signup_record(self, client):
+        self._signup_done(client)
+        body = self._page(client)
+        assert "Resubmit for Verification" not in body
+        assert "pending review" in body
+
+    def test_legacy_record_keeps_form_and_resubmit(self, client):
+        signup(client)
+        login(client)
+        submit(client)
+        body = self._page(client)
+        assert '<select name="degree_branch" required' in body
+        assert "Resubmit for Verification" in body
+        assert "Your submitted details" in body  # summary covers any pending record
+
+    def test_rejected_signup_record_points_to_support(self, client):
+        email = self._signup_done(client)
+        assert auth.set_onboarding_status(email, "rejected")[0]
+        body = self._page(client)
+        assert "Resubmit for Verification" not in body
+        assert "contact support" in body
+
+
 class TestApprovedStudentNav:
     """Approved students lose the standalone Onboarding nav tab — their
     verified record moves to Settings > General (the URL stays reachable)."""

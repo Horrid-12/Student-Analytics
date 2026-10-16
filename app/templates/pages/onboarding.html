@@ -463,6 +463,36 @@
                 {% endif %}
             </div>
             <div style="display: flex; flex-direction: column; gap: 20px;">
+                {% if signup_record %}
+                {# Sign-up vocabulary (full programme names, specialisation track, divisions up to 32) cannot be represented by the legacy selects below — show the stored values instead. #}
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Roll Number (PRN)</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.prn }}</div>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Branch</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.degree_branch }}</div>
+                </div>
+                {% if submission.specialisation %}
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Specialisation</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.specialisation }}</div>
+                </div>
+                {% endif %}
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.division }}</div>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Practical Batch</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.practical_batch }}</div>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Current Semester</label>
+                    <div style="font-size: 14px; color: var(--text);">{{ submission.semester }}</div>
+                </div>
+                <div style="font-size: 12px; color: var(--muted);">Submitted during sign-up — contact support if anything needs correcting.</div>
+                {% else %}
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Roll Number (PRN) *</label>
                     <input type="text" name="prn" value="{{ submission.prn or '' }}" maxlength="10" pattern="\d{10}" inputmode="numeric"
@@ -513,6 +543,7 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% endif %}
 
 
             </div>
@@ -654,7 +685,12 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-            {% if submission.onboarding_status == 'pending' %}
+            {% if signup_record and submission.onboarding_status == 'pending' %}
+            {# Sign-up details cannot round-trip through the legacy form below (different branch/division vocabulary) — a resubmit would only fail validation, so show state only. #}
+            <div style="text-align: center; font-size: 12px; color: var(--muted);">Submitted {{ submission.onboarding_submitted_at[:16] }} · pending review</div>
+            {% elif signup_record and submission.onboarding_status == 'rejected' %}
+            <div style="text-align: center; font-size: 12px; color: #ef4444;">Your previous record was rejected — please contact support to correct your sign-up details.</div>
+            {% elif submission.onboarding_status == 'pending' %}
             <button type="submit" form="onboarding-form" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Resubmit for Verification</button>
             <div style="text-align: center; font-size: 12px; color: var(--muted);">Submitted {{ submission.onboarding_submitted_at[:16] }} · pending review</div>
             {% elif submission.onboarding_status == 'rejected' %}

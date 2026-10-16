@@ -2208,10 +2208,20 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     # Profile Status preferences for the submitted-details summary (keyed by
     # PRN, like the /me popup and sign-up phase 4).
     ctx["profile_prefs"] = {field: 0 for field in auth.PRIVACY_FIELDS}
+    # Signup-originated records speak the sign-up vocabulary (full programme
+    # names, specialisation track, divisions up to 32) which the legacy
+    # Academic Information selects cannot represent — the template renders
+    # those rows read-only instead of mismatched dropdowns. Display flag only;
+    # the sign-up flow itself is untouched.
+    ctx["signup_record"] = False
     try:
         _summary_prn = str((ctx.get("submission") or {}).get("prn") or "").strip()
         if _summary_prn and role == "student":
             ctx["profile_prefs"] = auth.get_privacy_prefs(_summary_prn)
+        _sub_branch = str((ctx.get("submission") or {}).get("degree_branch") or "").strip()
+        _sub_spec = str((ctx.get("submission") or {}).get("specialisation") or "").strip()
+        if _summary_prn and (_sub_spec or (_sub_branch and _sub_branch not in auth.DEGREE_BRANCHES)):
+            ctx["signup_record"] = True
     except Exception:
         pass
     # Link Profiles panel: normalise the saved handle (tolerates a pasted
