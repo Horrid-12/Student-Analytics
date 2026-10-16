@@ -5,6 +5,7 @@
   [hidden] { display: none !important; }
   .filter-bar { align-items: flex-end; }
   .filter-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .filter-field .filter-select { min-width: 140px; }
   .filter-field.search-box-row { flex: 1 1 320px; }
   .filter-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
 
@@ -180,6 +181,14 @@
     </select>
   </div>
   <div class="filter-field">
+    <label class="filter-label" for="repo-language">Language</label>
+    <select id="repo-language" class="filter-select" name="language">
+      {% for value in payload.languages %}
+      <option value="{{ value }}" {% if value == language %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
     <label class="filter-label" for="repo-sort">Sort</label>
     <select id="repo-sort" class="filter-select" name="sort">
       {% for value, label in payload.sorts %}
@@ -264,6 +273,7 @@
   var form = document.getElementById('repo-filter-form');
   var viewInput = form.querySelector('input[name="view"]');
   var semSel = document.getElementById('repo-semester');
+  var langSel = document.getElementById('repo-language');
   var sortSel = document.getElementById('repo-sort');
   var clearBtn = document.getElementById('repo-clear');
   var btns = Array.prototype.slice.call(document.querySelectorAll('.vs-btn'));
@@ -290,6 +300,7 @@
         if (typeof p[key] === 'string' && optionsOf(sel).indexOf(p[key]) !== -1) { out[key] = p[key]; }
       }
       pick('semester', semSel);
+      pick('language', langSel);
       if (VALID_SORTS.indexOf(p.sort) !== -1) { out.sort = p.sort; }
       if (isValidView(p.view)) { out.view = p.view; }
       return out;
@@ -300,6 +311,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         semester: semSel.value,
+        language: langSel.value,
         sort: sortSel.value,
         view: viewInput.value
       }));
@@ -335,6 +347,7 @@
     var p = readPrefs() || {};
     searchInput.value = '';
     semSel.value = 'All';
+    langSel.value = 'All';
     sortSel.value = 'top';
     recencyInput.value = 'all';
     chips.forEach(function (chip) {
@@ -343,6 +356,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         semester: 'All',
+        language: 'All',
         sort: 'top',
         view: isValidView(p.view) ? p.view : 'grid'
       }));
@@ -353,6 +367,7 @@
     clearParams.delete('pair');
     clearParams.delete('q');
     clearParams.delete('semester');
+    clearParams.delete('language');
     clearParams.delete('sort');
     clearParams.delete('recency');
     window.location.search = clearParams.toString();
@@ -385,7 +400,7 @@
   if (saved) {
     var needSubmit = false;
     if (saved.view) { applyView(saved.view); }
-    [['semester', semSel], ['sort', sortSel]].forEach(function (pair) {
+    [['semester', semSel], ['language', langSel], ['sort', sortSel]].forEach(function (pair) {
       var key = pair[0], sel = pair[1];
       if (saved[key] && sel.value !== saved[key]) { sel.value = saved[key]; needSubmit = true; }
     });
