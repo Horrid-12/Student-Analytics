@@ -213,6 +213,142 @@ class TestSignupPhase3:
         assert "phase=4" in str(r.url)
 
 
+def _walk_to_phase4(client, email="stu1@college.edu"):
+    """Drive a fresh signup through phases 1-3 so phase 4 can be exercised."""
+    signup(client, email=email)
+    _phase2(client)
+    auth.save_linked_profile(email, "github", "stu-handle", "")
+    auth.save_linked_profile(email, "linkedin", "stu-li", "")
+    r = client.post("/signup/phase/3", data={"hackerrank_username": "stu_hr"})
+    assert "phase=4" in str(r.url)
+    return r
+
+
+class TestSignupPhase4:
+    def test_phase_4_blocked_before_phase_3(self, client):
+        r = client.post("/signup/phase/4", data={"hide_prn": "1"})
+        assert str(r.url).endswith("/signup")  # no progress cookie → back to phase 1
+
+    def test_phase_4_renders_profile_status(self, client):
+        _walk_to_phase4(client)
+        body = client.get("/signup?phase=4").text
+        assert "Profile Status" in body
+        assert "WARNING" in body
+        assert "Faculty and admins will still see all your information" in body
+        for field in ("hide_prn", "hide_github", "hide_linkedin", "hide_hackerrank"):
+            assert f'name="{field}"' in body
+        assert "Complete Setup" in body
+
+    def test_phase_4_finishes_signup_and_lands_on_onboarding(self, client):
+        _walk_to_phase4(client)
+        old_token = client.cookies.get(auth._SIGNUP_COOKIE)
+        assert old_token
+        r = client.post("/signup/phase/4", data={"hide_prn": "1", "hide_github": "1"})
+        assert "onboarding" in str(r.url) and "saved=1" in str(r.url)
+        assert "Record Submitted" in r.text  # verification banner on the landing
+        user = auth.get_user("stu1@college.edu")
+        assert user["onboarding_status"] == "pending"
+        assert user["prn"] == "1234567890"
+        assert user["degree_branch"] == "Computer Science and Engineering"
+        assert user["specialisation"] == "Core"
+        assert user["division"] == "3"
+        assert user["semester"] == "Semester 3"
+        assert user["hackerrank_username"] == "stu_hr"
+        prefs = auth.get_privacy_prefs("1234567890")
+        assert prefs == {"hide_prn": 1, "hide_github": 1, "hide_linkedin": 0, "hide_hackerrank": 0}
+        # Signup flow is over — the progress record is gone.
+        assert auth.load_signup_progress(old_token) is None
+
+    def test_phase_4_defaults_to_all_visible(self, client):
+        _walk_to_phase4(client)
+        client.post("/signup/phase/4", data={})
+        assert auth.get_privacy_prefs("1234567890") == {
+            "hide_prn": 0, "hide_github": 0, "hide_linkedin": 0, "hide_hackerrank": 0,
+        }
+
+    def test_phase_4_prn_taken_stays_on_phase_4(self, client):
+        assert auth.create_user("other@college.edu", "secret123", "student", "Other")
+        ok, err = auth.submit_onboarding(
+            "other@college.edu", "1234567890", "Core", "1",
+            main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+            hackerrank_username="other_hr",
+        )
+        assert ok, err
+        _walk_to_phase4(client)
+        r = client.post("/signup/phase/4", data={})
+        assert "phase=4" in str(r.url) and "error=prn_taken" in str(r.url)
+        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
+
+    def test_onboarding_shows_submitted_summary(self, client):
+        _walk_to_phase4(client)
+        client.post("/signup/phase/4", data={"hide_github": "1"})
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert "Your submitted details" in body
+        assert "1234567890" in body
+        assert "Computer Science and Engineering" in body
+        assert "GitHub hidden" in body
+        assert "PRN visible" in body
+        assert "Pending review" in body
+
+
+def _pending_student(client, email="pend@college.edu"):
+    """Legacy pending submission (same gate as a finished signup)."""
+    assert auth.create_user(email, "secret123", "student", "Pend")
+    ok, err = auth.submit_onboarding(
+        email, "1234567890", "Core", "1",
+        main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+        hackerrank_username="pend_hr",
+    )
+    assert ok, err
+    r = login(client, email)
+    assert r.status_code in (200, 302)
+    return email
+
+
+class TestPendingStudentGate:
+    def test_pending_sees_only_allowed_pages(self, client):
+        _pending_student(client)
+        for path in ("/onboarding", "/support", "/settings"):
+            assert client.get(path).status_code == 200, path
+
+    def test_pending_bounced_to_onboarding(self, client):
+        _pending_student(client)
+        for path in ("/", "/students", "/repositories", "/leaderboards", "/me"):
+            r = client.get(path, headers={"Accept": "text/html"}, follow_redirects=False)
+            assert r.status_code in (302, 303), path
+            assert r.headers["location"].endswith("/onboarding"), path
+
+    def test_pending_api_denied_with_403(self, client):
+        _pending_student(client)
+        r = client.get("/students")
+        assert r.status_code == 403
+
+    def test_pending_sidebar_shows_only_three_tabs(self, client):
+        _pending_student(client)
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        for label in ("Onboarding", "Support", "Settings"):
+            assert f"<span>{label}</span>" in body
+        for label in ("Overview", "Students", "Repositories", "Leaderboards", "My Profile"):
+            assert f"<span>{label}</span>" not in body
+
+    def test_rejected_gated_like_pending(self, client):
+        email = _pending_student(client)
+        assert auth.set_onboarding_status(email, "rejected")[0]
+        r = client.get("/", headers={"Accept": "text/html"}, follow_redirects=False)
+        assert r.status_code in (302, 303)
+        assert r.headers["location"].endswith("/onboarding")
+
+    def test_pages_for_role_unit(self, client):
+        assert auth.pages_for_role("student", "none") == auth.ROLE_PAGES["student"]
+        assert auth.pages_for_role("student", "approved") == auth.ROLE_PAGES["student"]
+        assert set(auth.pages_for_role("student", "pending")) == {"Onboarding", "Support", "Settings"}
+        assert set(auth.pages_for_role("student", "rejected")) == {"Onboarding", "Support", "Settings"}
+        assert auth.pages_for_role("admin", "pending") == auth.ROLE_PAGES["admin"]
+        assert auth.pages_for_role("faculty", "pending") == auth.ROLE_PAGES["faculty"]
+        assert auth.can_access_page({"role": "student"}, "Overview", "pending") is False
+        assert auth.can_access_page({"role": "student"}, "Onboarding", "pending") is True
+
+
 class TestLogin:
     def test_login_success_sets_session_cookie(self, client):
         signup(client)

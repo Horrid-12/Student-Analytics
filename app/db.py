@@ -1417,7 +1417,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
+                "main_batch, practical_batch, semester, specialisation, hackerrank_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )

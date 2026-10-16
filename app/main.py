@@ -92,8 +92,23 @@ async def auth_gate(request: Request, call_next):
             return RedirectResponse("/login", status_code=302)
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
-    if not auth.can_access(user.get("role"), page):
+    # Student verification gate: pending/rejected submissions only see
+    # Onboarding + Support + Settings until a teacher verifies them. The fresh
+    # status comes from the DB row (memoised on Postgres, exact on SQLite);
+    # a lookup failure fails open to the role gate so a storage hiccup never
+    # locks anyone out.
+    _ob_status: str | None = None
+    if (user.get("role") or "") == "student":
+        try:
+            _email = (user.get("email") or "").strip().lower()
+            _row = _memo(f"user:{_email}", lambda: auth.get_account(_email)) if _email else None
+            _ob_status = str((_row or {}).get("onboarding_status") or "none")
+        except Exception:
+            _ob_status = None
+    if not auth.can_access_page(user, page, _ob_status):
         if wants_html:
+            if (user.get("role") or "") == "student" and _ob_status is not None and page != "Onboarding":
+                return RedirectResponse("/onboarding", status_code=303)
             return RedirectResponse("/", status_code=303)
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     return await call_next(request)
@@ -828,6 +843,10 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         _ob_status = str(((user_row or {}).get("onboarding_status") or "")).strip().lower()
         if (role or "") == "student" and _ob_status == "approved":
             nav_items = [item for item in nav_items if item.get("label") != "Onboarding"]
+        # Unverified students (pending/rejected) only see Onboarding, Support
+        # and Settings until a teacher verifies them (mirrors auth_gate).
+        if (role or "") == "student" and _ob_status in ("pending", "rejected"):
+            nav_items = [item for item in nav_items if item.get("label") in auth.PENDING_STUDENT_PAGES]
     except Exception:
         pass
     return {
@@ -1176,6 +1195,16 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             linked_linkedin = str(row.get("linked_linkedin_name") or "").strip()
         stored_hr = str(progress.get("hackerrank_username") or "").strip()
         hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
+    # Phase 4 renders the Profile Status toggles (same four privacy fields as
+    # the /me popup), prefilled from any prefs already saved for this PRN.
+    privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
+    if phase == 4:
+        _phase4_prn = str(progress.get("prn") or "").strip()
+        if _phase4_prn:
+            try:
+                privacy_prefs = auth.get_privacy_prefs(_phase4_prn)
+            except Exception:
+                privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
@@ -1190,6 +1219,7 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "linked_github": linked_github,
             "linked_linkedin": linked_linkedin,
             "hr_locked": hr_locked,
+            "privacy_prefs": privacy_prefs,
             "show_error_banner": error == "1",
             "show_domain_banner": error == "2",
             "show_exists_banner": error == "3",
@@ -1376,6 +1406,61 @@ async def signup_phase_3_submit(
         secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
+    return response
+
+
+@app.post("/signup/phase/4", response_class=HTMLResponse)
+async def signup_phase_4_submit(
+    request: Request,
+    hide_prn: str = Form(""),
+    hide_github: str = Form(""),
+    hide_linkedin: str = Form(""),
+    hide_hackerrank: str = Form(""),
+):
+    """Profile Status phase: the four privacy toggles from the /me popup
+    (stored per PRN, so they apply the moment the fleet renders the student).
+
+    Finishing also finalizes the sign-up — the collected academic bundle is
+    submitted as a pending onboarding record for teacher verification — and
+    lands on /onboarding, which shows the submitted details + preferences and
+    the verification state. Until verified the student only sees Onboarding,
+    Support and Settings (see PENDING_STUDENT_PAGES)."""
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 4:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=4&error={code}", status_code=302)
+
+    def _checked(value: str) -> int:
+        return 1 if str(value or "").strip().lower() in ("1", "on", "true", "checked") else 0
+
+    email = str(progress.get("email") or "").strip().lower()
+    prn = str(progress.get("prn") or "").strip()
+    if not email or not prn:
+        return fail("storage")
+    prefs = {
+        "hide_prn": _checked(hide_prn),
+        "hide_github": _checked(hide_github),
+        "hide_linkedin": _checked(hide_linkedin),
+        "hide_hackerrank": _checked(hide_hackerrank),
+    }
+    if not auth.set_privacy_prefs(prn, prefs):
+        return fail("storage")
+    ok, code = auth.submit_signup_onboarding(email, progress)
+    if not ok:
+        if code == "prn_taken":
+            return fail("prn_taken")
+        return fail("storage")
+    _db_log_event("signup_complete", email)
+    auth.delete_signup_progress(token_value)
+    try:
+        view_cache.invalidate("privacy:all")
+    except Exception:
+        pass
+    response = RedirectResponse("/onboarding?saved=1", status_code=302)
+    response.delete_cookie(auth._SIGNUP_COOKIE)
     return response
 
 
@@ -2120,6 +2205,15 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
         except Exception:
             ctx["submission"] = {}
+    # Profile Status preferences for the submitted-details summary (keyed by
+    # PRN, like the /me popup and sign-up phase 4).
+    ctx["profile_prefs"] = {field: 0 for field in auth.PRIVACY_FIELDS}
+    try:
+        _summary_prn = str((ctx.get("submission") or {}).get("prn") or "").strip()
+        if _summary_prn and role == "student":
+            ctx["profile_prefs"] = auth.get_privacy_prefs(_summary_prn)
+    except Exception:
+        pass
     # Link Profiles panel: normalise the saved handle (tolerates a pasted
     # profile URL or an "@handle", like the roster importer does) and build the
     # canonical public profile URL so the HackerRank card always opens

@@ -184,6 +184,35 @@ ROLE_PAGES = {
     "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile"),
 }
 
+#: Pages a student with an unverified submission (pending/rejected) may use.
+#: Until a teacher verifies their record they only see the onboarding summary
+#: (their submitted details + verification state), support, and settings —
+#: every other page bounces them back to /onboarding. Verified (approved) and
+#: never-submitted (none) students keep the full ROLE_PAGES set.
+PENDING_STUDENT_PAGES = ("Onboarding", "Support", "Settings")
+
+#: Lifecycle states that keep a student inside the verification gate.
+_UNVERIFIED_STATUSES = ("pending", "rejected")
+
+
+def pages_for_role(role: str | None, onboarding_status: str | None = None) -> tuple:
+    """Page set for ``role``, narrowed for unverified students.
+
+    ``onboarding_status`` is the fresh DB value (the session cookie only
+    carries email/role/name, so callers pass the row they already fetched).
+    Students whose submission is pending/rejected see only
+    PENDING_STUDENT_PAGES; everyone else gets the full ROLE_PAGES set."""
+    pages = ROLE_PAGES.get(role or "", ())
+    if (role or "") == "student" and str(onboarding_status or "none").strip().lower() in _UNVERIFIED_STATUSES:
+        return tuple(page for page in pages if page in PENDING_STUDENT_PAGES)
+    return pages
+
+
+def can_access_page(user: dict | None, page: str, onboarding_status: str | None = None) -> bool:
+    """Status-aware page check: role gate plus the student verification gate."""
+    user = user or {}
+    return page in pages_for_role(user.get("role"), onboarding_status)
+
 _PBKDF2_ITERATIONS = 120_000
 _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 _COOKIE_NAME = "gsad_session"
@@ -1304,7 +1333,7 @@ def get_user(email: str) -> dict | None:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username FROM users WHERE email = ?",
+                "main_batch, practical_batch, semester, specialisation, hackerrank_username FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -1920,6 +1949,97 @@ def submit_onboarding(
     )
     if not stored:
         return False, "storage_unavailable"
+    return True, ""
+
+
+def submit_signup_onboarding(email: str, data: dict) -> tuple[bool, str]:
+    """Finalize the multi-phase sign-up: persist the collected academic bundle
+    on the user row and move the account to ``pending`` for teacher
+    verification (registrar ledger lists it like a legacy submission).
+
+    Unlike ``submit_onboarding`` (legacy /onboarding short codes), this path
+    speaks the sign-up vocabulary — full programme names in SIGNUP_BRANCHES,
+    divisions 1-32, division-dependent practical batches — and stores the
+    specialisation track alongside. ``data`` carries prn/branch/
+    specialisation/division/practical_batch/semester/hackerrank_username
+    (phase 2/3 already validated them; they are re-checked here because the
+    progress cookie is only a client pointer to server state).
+
+    Returns ``(ok, error_code)`` where error_code is "" on success and one of
+    ``prn``/``branch``/``specialisation``/``division``/``batch``/``semester``/
+    ``hr``/``prn_taken``/``bad_account``/``storage_unavailable`` otherwise.
+    Never raises."""
+    email = (email or "").strip().lower()
+    data = data if isinstance(data, dict) else {}
+    prn = str(data.get("prn") or "").strip()
+    branch = str(data.get("branch") or "").strip()
+    specialisation = str(data.get("specialisation") or "").strip()
+    division = str(data.get("division") or "").strip()
+    practical_batch = str(data.get("practical_batch") or "").strip()
+    semester = str(data.get("semester") or "").strip()
+    hackerrank_username = str(data.get("hackerrank_username") or "").strip()
+    if not valid_prn(prn):
+        return False, "prn"
+    if branch not in SIGNUP_BRANCHES:
+        return False, "branch"
+    if branch in SIGNUP_BRANCH_SPECIALISATIONS:
+        if specialisation not in SIGNUP_BRANCH_SPECIALISATIONS[branch]:
+            return False, "specialisation"
+    elif specialisation:
+        return False, "specialisation"
+    if division not in SIGNUP_DIVISIONS:
+        return False, "division"
+    if not valid_signup_practical_batch(practical_batch, division):
+        return False, "batch"
+    if not valid_semester(semester):
+        return False, "semester"
+    if not hackerrank_username:
+        return False, "hr"
+    account = get_account(email)
+    if account is None or (account.get("role") or "") != "student":
+        return False, "bad_account"
+    if prn_taken(prn, exclude_email=email):
+        return False, "prn_taken"
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        if database.db_configured():
+            with database.conn() as c:
+                if c is None:
+                    return False, "storage_unavailable"
+                cur = c.execute(
+                    "UPDATE users SET prn = %s, degree_branch = %s, division = %s, "
+                    "main_batch = %s, practical_batch = %s, semester = %s, "
+                    "specialisation = %s, onboarding_status = %s, "
+                    "onboarding_submitted_at = %s, hackerrank_username = %s "
+                    "WHERE email = %s",
+                    (prn, branch, division, "", practical_batch, semester,
+                     specialisation, "pending", now, hackerrank_username, email),
+                )
+                if (cur.rowcount or 0) < 1:
+                    return False, "storage_unavailable"
+        else:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        "UPDATE users SET prn = ?, degree_branch = ?, division = ?, "
+                        "main_batch = ?, practical_batch = ?, semester = ?, "
+                        "specialisation = ?, onboarding_status = ?, "
+                        "onboarding_submitted_at = ?, hackerrank_username = ? "
+                        "WHERE email = ?",
+                        (prn, branch, division, "", practical_batch, semester,
+                         specialisation, "pending", now, hackerrank_username, email),
+                    )
+                    if (cur.rowcount or 0) < 1:
+                        return False, "storage_unavailable"
+    except Exception as exc:
+        logger.warning("signup finalization failed for %s: %s", email, exc)
+        return False, "storage_unavailable"
+    _drop_user(email)
+    try:
+        view_cache.invalidate()
+    except Exception:
+        pass
     return True, ""
 
 def admin_edit_onboarding(

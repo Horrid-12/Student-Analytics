@@ -416,6 +416,40 @@
     </div>
 </div>
 
+{% if submission and submission.prn and submission.onboarding_status == 'pending' %}
+<div class="panel" style="padding: 24px; margin-bottom: 20px;">
+    <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <h2 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--text);">Your submitted details</h2>
+        <span style="margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25);">Pending review</span>
+    </div>
+    <div style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">Sent to your teacher for verification{% if submission.onboarding_submitted_at %} on {{ submission.onboarding_submitted_at[:16] }}{% endif %}. Only the onboarding, support and settings pages are available until your record is verified.</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">PRN</div><div style="font-size: 14px; color: var(--text);">{{ submission.prn }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Branch</div><div style="font-size: 14px; color: var(--text);">{{ submission.degree_branch or '—' }}</div></div>
+        {% if submission.specialisation %}<div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Specialisation</div><div style="font-size: 14px; color: var(--text);">{{ submission.specialisation }}</div></div>{% endif %}
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Division</div><div style="font-size: 14px; color: var(--text);">{{ submission.division or '—' }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Practical Batch</div><div style="font-size: 14px; color: var(--text);">{{ submission.practical_batch or '—' }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Semester</div><div style="font-size: 14px; color: var(--text);">{{ submission.semester or '—' }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text);">{{ submission.hackerrank_username or '—' }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text);">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
+        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text);">{{ submission.linked_linkedin_name or '—' }}</div></div>
+    </div>
+    <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Profile Status preferences</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {% for field, label in [('hide_prn', 'PRN'), ('hide_github', 'GitHub'), ('hide_linkedin', 'LinkedIn'), ('hide_hackerrank', 'HackerRank')] %}
+            {% if profile_prefs and profile_prefs[field] %}
+            <span style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.35);">{{ label }} hidden</span>
+            {% else %}
+            <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--card-soft); color: var(--muted); border: 1px solid var(--border);">{{ label }} visible</span>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="onboarding-grid" style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px;">
     <div style="display: flex; flex-direction: column; gap: 24px;">
         <form method="post" action="/onboarding" id="onboarding-form">
