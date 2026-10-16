@@ -903,7 +903,22 @@
 
 <section class="panel">
   <div class="radar-header">
-    <div class="panel-title">Class Metrics Radar</div>
+    <div class="panel-title-row" style="margin-bottom:0;">
+      <div class="panel-title">Class Metrics Radar</div>
+      {% call help.info('avg-quality', 'Average Quality Score', 'How the average quality score is calculated') %}
+        <p>The <b>Quality Score</b> axis averages the Repository Quality Score (0&ndash;100) across the cohort's owned repositories. Each repository is scored on nine categories:</p>
+        <ul>
+          <li><b>Commit volume</b> (15) &amp; <b>spread</b> (10)</li>
+          <li><b>Team collaboration</b> (12)</li>
+          <li><b>PR / issue activity</b> (8)</li>
+          <li><b>Originality</b> &amp; fork guard (10)</li>
+          <li><b>Code density</b> &amp; file quality (15)</li>
+          <li><b>Documentation</b> &amp; hygiene (10)</li>
+          <li><b>Community</b> &amp; popularity (10)</li>
+          <li><b>Recent maintenance</b> (10)</li>
+        </ul>
+      {% endcall %}
+    </div>
     <div id="radar-legend-box" class="radar-legend-box">
       <div id="radar-legend" class="radar-legend"></div>
     </div>
