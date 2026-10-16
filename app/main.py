@@ -2173,6 +2173,20 @@ def _filter_onboarding_rows(rows: list[dict], q: str) -> list[dict]:
     ]
 
 
+def _format_submitted_at(value: str | None) -> str:
+    """Render a stored ``YYYY-MM-DD HH:MM:SS ...`` UTC timestamp for display
+    as ``DD-MM-YYYY hh:MM AM/PM`` (12-hour clock). Falls back to the raw
+    leading ``YYYY-MM-DD HH:MM`` slice when the value does not parse."""
+    raw = str(value or "").strip()
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})", raw)
+    if not match:
+        return raw[:16]
+    year, month, day, hour, minute = (int(part) for part in match.groups())
+    suffix = "AM" if hour < 12 else "PM"
+    hour12 = hour % 12 or 12
+    return f"{day:02d}-{month:02d}-{year:04d} {hour12:02d}:{minute:02d} {suffix}"
+
+
 @app.get("/onboarding", response_class=HTMLResponse)
 def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = "", q: str = ""):
     """Onboarding page. Students see their own submission form + status;
@@ -2214,6 +2228,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     # those rows read-only instead of mismatched dropdowns. Display flag only;
     # the sign-up flow itself is untouched.
     ctx["signup_record"] = False
+    ctx["submitted_display"] = ""
     try:
         _summary_prn = str((ctx.get("submission") or {}).get("prn") or "").strip()
         if _summary_prn and role == "student":
@@ -2222,6 +2237,9 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         _sub_spec = str((ctx.get("submission") or {}).get("specialisation") or "").strip()
         if _summary_prn and (_sub_spec or (_sub_branch and _sub_branch not in auth.DEGREE_BRANCHES)):
             ctx["signup_record"] = True
+        ctx["submitted_display"] = _format_submitted_at(
+            (ctx.get("submission") or {}).get("onboarding_submitted_at")
+        )
     except Exception:
         pass
     # Link Profiles panel: normalise the saved handle (tolerates a pasted

@@ -437,18 +437,26 @@
         {% elif submission.onboarding_status == 'rejected' %}
         Your previous record was rejected — please contact support to correct your sign-up details.
         {% else %}
-        Sent to your teacher for verification{% if submission.onboarding_submitted_at %} on {{ submission.onboarding_submitted_at[:16] }}{% endif %}. Only the onboarding, support and settings pages are available until your record is verified.
+        <div>Sent to your teacher for verification{% if submitted_display %} on {{ submitted_display }}{% endif %}.</div>
+        <div>Full access to the website will be available once your profile is verified.</div>
         {% endif %}
     </div>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Personal Details</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 4px;">
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Full Name</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.name or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">University Email</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ auth_email }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">PRN</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.prn }}</div></div>
+    </div>
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin: 12px 0 8px;">Academic Details</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 4px;">
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Branch</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.degree_branch or '—' }}</div></div>
         {% if submission.specialisation %}<div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Specialisation</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.specialisation }}</div></div>{% endif %}
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Division</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.division or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Practical Batch</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.practical_batch or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Semester</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.semester or '—' }}</div></div>
+    </div>
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin: 12px 0 8px;">Linked Profiles</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.hackerrank_username or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_linkedin_name or '—' }}</div></div>

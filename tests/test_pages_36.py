@@ -1061,6 +1061,33 @@ class TestSettingsPage:
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         assert storage.storage_healthy() is True
 
+    def test_student_settings_has_no_tabs(self, tmp_path, monkeypatch):
+        """Students get a tab-free page: theme, profile/sign-out, legal only."""
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app, raise_server_exceptions=True)
+        make_user(client, "student")
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "data-tab-btn=" not in body
+        assert "data-tab-content=" not in body
+        for panel in ("Appearance", "Profile", "Legal"):
+            assert panel in body
+        assert "data-theme-btn" in body
+        assert "Sign out" in body
+        assert 'href="/privacy"' in body
+        for gone in ("Connections", "Storage Health", "Data Actions", "Academic Record"):
+            assert gone not in body
+
+    def test_faculty_settings_keeps_tabs(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
+        monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
+        client = TestClient(app, raise_server_exceptions=True)
+        make_user(client, "faculty")
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "data-tab-btn" in body
+        for tab in ("General", "Accounts", "Data", "Security"):
+            assert tab in body
+
 
 class TestSidebarIdentityContext:
     """BUG-098: sidebar/account identity must be context-driven, never hardcoded
