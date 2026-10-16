@@ -5,13 +5,13 @@
   <h1>Create an Account</h1>
 
   <div class="phase-steps" aria-label="Sign-up progress">
-    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% else %}&nbsp;{% endif %}</div>
+    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% elif phase == 3 %}Profiles{% else %}&nbsp;{% endif %}</div>
     <div class="phase-track">
       <div class="phase-dot{% if phase == 1 %} is-now{% elif phase > 1 %} is-done{% endif %}"><i>1</i><small>Account</small></div>
       <div class="phase-link" aria-hidden="true"></div>
       <div class="phase-dot{% if phase == 2 %} is-now{% elif phase > 2 %} is-done{% endif %}"><i>2</i><small>Academic</small></div>
       <div class="phase-link" aria-hidden="true"></div>
-      <div class="phase-dot{% if phase == 3 %} is-now{% elif phase > 3 %} is-done{% endif %}"><i>3</i><small>&nbsp;</small></div>
+      <div class="phase-dot{% if phase == 3 %} is-now{% elif phase > 3 %} is-done{% endif %}"><i>3</i><small>Profiles</small></div>
       <div class="phase-link" aria-hidden="true"></div>
       <div class="phase-dot{% if phase == 4 %} is-now{% endif %}"><i>4</i><small>&nbsp;</small></div>
     </div>
@@ -127,6 +127,51 @@
         <input type="hidden" name="practical_batch" id="batch-input" value="{{ progress.practical_batch if progress.practical_batch else '' }}">
       </div>
     </div>
+    <button type="submit" class="btn-primary">Continue</button>
+  </form>
+
+  {% elif phase == 3 %}
+
+  <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    <h2 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--text);">Link Profiles</h2>
+  </div>
+  <p style="font-size: 13px; color: var(--muted); margin: 0 0 8px 0;">Linking your profiles allows verification for campus placements and repository audit logs.</p>
+  <div class="signup-note" style="margin-top: 0; margin-bottom: 16px;">Your student profile would be complete once the details are verified by your teacher.</div>
+
+  {% if error == "hr" %}<div class="banner-error">Please enter your HackerRank username.</div>{% endif %}
+  {% if error == "storage" %}<div class="banner-error">We couldn't save your progress — please try again.</div>{% endif %}
+
+  <form method="post" action="/signup/phase/3">
+    <div class="form-group">
+      <label for="hr-username">HackerRank Username *</label>
+      <input type="text" id="hr-username" name="hackerrank_username" placeholder="e.g. 1272261921_s" required value="{{ progress.hackerrank_username if progress.hackerrank_username else '' }}">
+      <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your HackerRank handle for dashboard leaderboard stats.<a id="hr-open-link" href="#" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none; margin-left: 6px; display: none;">Open profile &#8599;</a></div>
+    </div>
+    <div class="form-group">
+      <label for="gh-handle">GitHub Username</label>
+      <input type="text" id="gh-handle" name="github_handle" placeholder="e.g. octocat" value="{{ progress.github_handle if progress.github_handle else '' }}">
+    </div>
+    <div class="form-group">
+      <label for="li-handle">LinkedIn Username</label>
+      <input type="text" id="li-handle" name="linkedin_handle" placeholder="e.g. jane-doe-123" value="{{ progress.linkedin_handle if progress.linkedin_handle else '' }}">
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; margin: 4px 0 16px 0;">
+      <div id="hr-card" style="display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
+        <span style="color: var(--text); font-size: 13px; font-weight: 500;">HackerRank · <a id="hr-card-link" href="#" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;"></a></span>
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a66b25;">Pending</span>
+      </div>
+      <div id="gh-card" style="display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
+        <span style="color: var(--text); font-size: 13px; font-weight: 500;">GitHub · <span id="gh-card-handle" style="color: var(--blue);"></span></span>
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a66b25;">Pending</span>
+      </div>
+      <div id="li-card" style="display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--card-soft); border-radius: 4px;">
+        <span style="color: var(--text); font-size: 13px; font-weight: 500;">LinkedIn · <span id="li-card-handle" style="color: var(--blue);"></span></span>
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a66b25;">Pending</span>
+      </div>
+    </div>
+
     <button type="submit" class="btn-primary">Continue</button>
   </form>
 
@@ -321,6 +366,57 @@
   }
   rebuildSpecialisation();
   rebuildBatch();
+})();
+</script>
+{% elif phase == 3 %}
+<script>
+(function () {
+  var hr = document.getElementById('hr-username');
+  var hrOpen = document.getElementById('hr-open-link');
+  var hrCard = document.getElementById('hr-card');
+  var hrCardLink = document.getElementById('hr-card-link');
+  var gh = document.getElementById('gh-handle');
+  var ghCard = document.getElementById('gh-card');
+  var ghCardHandle = document.getElementById('gh-card-handle');
+  var li = document.getElementById('li-handle');
+  var liCard = document.getElementById('li-card');
+  var liCardHandle = document.getElementById('li-card-handle');
+  /* Same normalization as the onboarding panel: a pasted profile URL,
+     "@handle" or bare handle all resolve to the canonical profile link. */
+  function handleOf(value) {
+    var raw = (value || '').trim();
+    if (!raw || raw === '-' || raw === '--') return '';
+    var fromUrl = raw.match(/hackerrank\.com\/profile\/([^/?#\s]+)/i);
+    if (fromUrl) return fromUrl[1].replace(/^@+/, '').replace(/[.,;:!\/]+$/, '');
+    var bare = raw.replace(/^@+/, '').replace(/[.,;:!]+$/, '');
+    return (/^[A-Za-z0-9_.@-]+$/.test(bare)) ? bare : '';
+  }
+  function showCard(card, show) { if (card) card.style.display = show ? 'flex' : 'none'; }
+  function refreshHr() {
+    if (!hr) return;
+    var handle = handleOf(hr.value);
+    if (!handle) {
+      if (hrOpen) hrOpen.style.display = 'none';
+      showCard(hrCard, false);
+      return;
+    }
+    var url = 'https://www.hackerrank.com/profile/' + encodeURIComponent(handle);
+    if (hrOpen) { hrOpen.href = url; hrOpen.style.display = ''; }
+    if (hrCardLink) { hrCardLink.href = url; hrCardLink.textContent = handle; }
+    showCard(hrCard, true);
+  }
+  function refreshSimple(input, card, handleEl) {
+    if (!input) return;
+    var v = (input.value || '').trim();
+    if (handleEl) handleEl.textContent = v;
+    showCard(card, v !== '');
+  }
+  if (hr) hr.addEventListener('input', refreshHr);
+  if (gh) gh.addEventListener('input', function () { refreshSimple(gh, ghCard, ghCardHandle); });
+  if (li) li.addEventListener('input', function () { refreshSimple(li, liCard, liCardHandle); });
+  refreshHr();
+  refreshSimple(gh, ghCard, ghCardHandle);
+  refreshSimple(li, liCard, liCardHandle);
 })();
 </script>
 {% endif %}

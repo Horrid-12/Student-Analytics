@@ -1275,6 +1275,48 @@ async def signup_phase_2_submit(
     return response
 
 
+@app.post("/signup/phase/3", response_class=HTMLResponse)
+async def signup_phase_3_submit(
+    request: Request,
+    hackerrank_username: str = Form(""),
+    github_handle: str = Form(""),
+    linkedin_handle: str = Form(""),
+):
+    """Profiles phase: HackerRank (required, same normalization as
+    onboarding), GitHub and LinkedIn handles (optional). Everything stays
+    pending until a teacher verifies it."""
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 3:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=3&error={code}", status_code=302)
+
+    handle = services.extract_hackerrank_username(hackerrank_username or "")
+    if not handle:
+        return fail("hr")
+    progress.update({
+        "phase": 4,
+        "hackerrank_username": handle,
+        "github_handle": (github_handle or "").strip(),
+        "linkedin_handle": (linkedin_handle or "").strip(),
+    })
+    token = auth.save_signup_progress(progress)
+    if token is None:
+        return fail("storage")
+    response = RedirectResponse("/signup?phase=4", status_code=302)
+    response.set_cookie(
+        auth._SIGNUP_COOKIE,
+        token,
+        max_age=auth._SIGNUP_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
+    return response
+
+
 @app.get("/faculty-setup", response_class=HTMLResponse)
 def faculty_setup_page(request: Request, welcome: int = 0, error: str = ""):
     """One-time faculty onboarding: requires the short-lived setup cookie minted

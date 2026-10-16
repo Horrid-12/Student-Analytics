@@ -150,6 +150,46 @@ class TestSignupPhase2:
         assert "phase=3" in str(r.url)
 
 
+def _phase3(client, **overrides):
+    data = {
+        "hackerrank_username": "stu_hr",
+        "github_handle": "stu-handle",
+        "linkedin_handle": "stu-handle-123",
+    }
+    data.update(overrides)
+    return client.post("/signup/phase/3", data=data)
+
+
+class TestSignupPhase3:
+    def test_phase_3_blocked_before_phase_2(self, client):
+        r = _phase3(client)
+        assert str(r.url).endswith("/signup")  # no progress cookie → back to phase 1
+
+    def test_hackerrank_required(self, client):
+        signup(client)
+        _phase2(client)
+        r = _phase3(client, hackerrank_username="")
+        assert "error=hr" in str(r.url)
+
+    def test_garbage_hackerrank_rejected(self, client):
+        signup(client)
+        _phase2(client)
+        r = _phase3(client, hackerrank_username="not a handle!!")
+        assert "error=hr" in str(r.url)
+
+    def test_handles_optional(self, client):
+        signup(client)
+        _phase2(client)
+        r = _phase3(client, github_handle="", linkedin_handle="")
+        assert "phase=4" in str(r.url)
+
+    def test_valid_phase_3_advances_to_phase_4(self, client):
+        signup(client)
+        _phase2(client)
+        r = _phase3(client)
+        assert "phase=4" in str(r.url)
+
+
 class TestLogin:
     def test_login_success_sets_session_cookie(self, client):
         signup(client)
