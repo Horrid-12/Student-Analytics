@@ -1186,6 +1186,7 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "progress": progress,
             "branches": auth.SIGNUP_BRANCHES,
             "branch_specialisations": auth.SIGNUP_BRANCH_SPECIALISATIONS,
+            "semesters": auth.SEMESTERS,
             "linked_github": linked_github,
             "linked_linkedin": linked_linkedin,
             "hr_locked": hr_locked,
@@ -1257,6 +1258,7 @@ async def signup_submit(
 async def signup_phase_2_submit(
     request: Request,
     prn: str = Form(""),
+    semester: str = Form(""),
     branch: str = Form(""),
     specialisation: str = Form(""),
     division: str = Form(""),
@@ -1274,6 +1276,8 @@ async def signup_phase_2_submit(
 
     if not auth.valid_prn(prn):
         return fail("prn")
+    if not auth.valid_semester(semester):
+        return fail("semester")
     if (branch or "").strip() not in auth.SIGNUP_BRANCHES:
         return fail("branch")
     if branch in auth.SIGNUP_BRANCH_SPECIALISATIONS:
@@ -1288,6 +1292,7 @@ async def signup_phase_2_submit(
     progress.update({
         "phase": 3,
         "prn": (prn or "").strip(),
+        "semester": (semester or "").strip(),
         "branch": (branch or "").strip(),
         "specialisation": (specialisation or "").strip(),
         "division": (division or "").strip(),

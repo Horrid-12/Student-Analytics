@@ -84,6 +84,7 @@ class TestSignup:
 def _phase2(client, **overrides):
     data = {
         "prn": "1234567890",
+        "semester": "Semester 3",
         "branch": "Computer Science and Engineering",
         "specialisation": "Core",
         "division": "3",
@@ -102,6 +103,13 @@ class TestSignupPhase2:
         signup(client)
         r = _phase2(client, prn="12345")
         assert "error=prn" in str(r.url)
+
+    def test_invalid_semester_rejected(self, client):
+        signup(client)
+        r = _phase2(client, semester="Semester 12")
+        assert "error=semester" in str(r.url)
+        r = _phase2(client, semester="")
+        assert "error=semester" in str(r.url)
 
     def test_invalid_branch_rejected(self, client):
         signup(client)

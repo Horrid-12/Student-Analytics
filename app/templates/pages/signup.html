@@ -71,6 +71,7 @@
   {% elif phase == 2 %}
 
   {% if error == "prn" %}<div class="banner-error">PRN must be exactly 10 digits.</div>{% endif %}
+  {% if error == "semester" %}<div class="banner-error">Please select your semester.</div>{% endif %}
   {% if error == "branch" %}<div class="banner-error">Please select your branch.</div>{% endif %}
   {% if error == "specialisation" %}<div class="banner-error">Please select a valid specialisation for your branch.</div>{% endif %}
   {% if error == "division" %}<div class="banner-error">Division must be between 1 and 32.</div>{% endif %}
@@ -82,6 +83,21 @@
       <label for="prn">PRN number</label>
       <input type="text" id="prn" name="prn" placeholder="10-digit PRN" inputmode="numeric" value="{{ progress.prn if progress.prn else '' }}">
       <div class="field-error" id="prn-error">PRN must be exactly 10 digits.</div>
+    </div>
+    <div class="form-group">
+      <label id="semester-label">Semester</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="semester-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="semester-label semester-btn-label">
+          <span class="su-label" id="semester-btn-label">Select your semester</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="semester-panel" role="listbox" aria-labelledby="semester-label" hidden>
+          {% for s in semesters %}
+          <button type="button" class="su-opt" role="option" data-value="{{ s }}">{{ s }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="semester" id="semester-input" value="{{ progress.semester if progress.semester else '' }}">
+      </div>
     </div>
     <div class="form-group">
       <label id="branch-label">Branch</label>
@@ -327,6 +343,14 @@
   }
 
   var branchPicker = initPicker(branchBtn, branchPanel, branchLabel, branchInput, 'Select your branch', rebuildSpecialisation);
+  var semesterPicker = initPicker(
+    document.getElementById('semester-btn'),
+    document.getElementById('semester-panel'),
+    document.getElementById('semester-btn-label'),
+    document.getElementById('semester-input'),
+    'Select your semester',
+    null
+  );
   var specPicker = initPicker(specBtn, specPanel, specLabel, specInput, 'Select your specialisation', null);
   var batchPicker = initPicker(batchBtn, batchPanel, batchLabel, batchInput, 'Select batch', null);
 
