@@ -402,6 +402,7 @@
     {% endif %}
 </div>
 {% else %}
+{% if not signup_record %}
 <div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: var(--card); border: 1px solid var(--border); padding: 16px; border-radius: 8px;">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
     <div>
@@ -415,34 +416,51 @@
         </div>
     </div>
 </div>
+{% endif %}
 
-{% if submission and submission.prn and submission.onboarding_status == 'pending' %}
-<div class="panel" style="padding: 24px; margin-bottom: 20px;">
-    <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
+{% if signup_record %}
+<div class="panel" style="padding: 20px 22px;">
+    <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 10px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <h2 style="font-size: 18px; font-weight: 600; margin: 0; color: var(--text);">Your submitted details</h2>
+        {% if submission.onboarding_status == 'approved' %}
+        <span style="margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2);">Approved</span>
+        {% elif submission.onboarding_status == 'rejected' %}
+        <span style="margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">Revisions needed</span>
+        {% else %}
         <span style="margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25);">Pending review</span>
+        {% endif %}
     </div>
-    <div style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">Sent to your teacher for verification{% if submission.onboarding_submitted_at %} on {{ submission.onboarding_submitted_at[:16] }}{% endif %}. Only the onboarding, support and settings pages are available until your record is verified.</div>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">PRN</div><div style="font-size: 14px; color: var(--text);">{{ submission.prn }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Branch</div><div style="font-size: 14px; color: var(--text);">{{ submission.degree_branch or '—' }}</div></div>
-        {% if submission.specialisation %}<div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Specialisation</div><div style="font-size: 14px; color: var(--text);">{{ submission.specialisation }}</div></div>{% endif %}
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Division</div><div style="font-size: 14px; color: var(--text);">{{ submission.division or '—' }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Practical Batch</div><div style="font-size: 14px; color: var(--text);">{{ submission.practical_batch or '—' }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Semester</div><div style="font-size: 14px; color: var(--text);">{{ submission.semester or '—' }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text);">{{ submission.hackerrank_username or '—' }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text);">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
-        <div><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text);">{{ submission.linked_linkedin_name or '—' }}</div></div>
+    <div style="font-size: 13px; color: var(--muted); margin-bottom: 12px;">
+        {% if submission.onboarding_status == 'approved' %}
+        Your record has been approved and your GitHub identity is verified for repository audit logs and campus placement reviews.
+        {% elif submission.onboarding_status == 'rejected' %}
+        Your previous record was rejected — please contact support to correct your sign-up details.
+        {% else %}
+        Sent to your teacher for verification{% if submission.onboarding_submitted_at %} on {{ submission.onboarding_submitted_at[:16] }}{% endif %}. Only the onboarding, support and settings pages are available until your record is verified.
+        {% endif %}
     </div>
-    <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Full Name</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.name or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">University Email</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ auth_email }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">PRN</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.prn }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Branch</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.degree_branch or '—' }}</div></div>
+        {% if submission.specialisation %}<div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Specialisation</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.specialisation }}</div></div>{% endif %}
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Division</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.division or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Practical Batch</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.practical_batch or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">Semester</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.semester or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.hackerrank_username or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_linkedin_name or '—' }}</div></div>
+    </div>
+    <div style="border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px;">
         <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Profile Status preferences</div>
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
             {% for field, label in [('hide_prn', 'PRN'), ('hide_github', 'GitHub'), ('hide_linkedin', 'LinkedIn'), ('hide_hackerrank', 'HackerRank')] %}
             {% if profile_prefs and profile_prefs[field] %}
-            <span style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.35);">{{ label }} hidden</span>
+            <span style="font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.35);">{{ label }} hidden</span>
             {% else %}
-            <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--card-soft); color: var(--muted); border: 1px solid var(--border);">{{ label }} visible</span>
+            <span style="font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; background: var(--card-soft); color: var(--muted); border: 1px solid var(--border);">{{ label }} visible</span>
             {% endif %}
             {% endfor %}
         </div>
@@ -450,6 +468,7 @@
 </div>
 {% endif %}
 
+{% if not signup_record %}
 <div class="onboarding-grid" style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px;">
     <div style="display: flex; flex-direction: column; gap: 24px;">
         <form method="post" action="/onboarding" id="onboarding-form">
@@ -463,36 +482,6 @@
                 {% endif %}
             </div>
             <div style="display: flex; flex-direction: column; gap: 20px;">
-                {% if signup_record %}
-                {# Sign-up vocabulary (full programme names, specialisation track, divisions up to 32) cannot be represented by the legacy selects below — show the stored values instead. #}
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Roll Number (PRN)</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.prn }}</div>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Branch</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.degree_branch }}</div>
-                </div>
-                {% if submission.specialisation %}
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Specialisation</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.specialisation }}</div>
-                </div>
-                {% endif %}
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Division</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.division }}</div>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Practical Batch</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.practical_batch }}</div>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Current Semester</label>
-                    <div style="font-size: 14px; color: var(--text);">{{ submission.semester }}</div>
-                </div>
-                <div style="font-size: 12px; color: var(--muted);">Submitted during sign-up — contact support if anything needs correcting.</div>
-                {% else %}
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">Roll Number (PRN) *</label>
                     <input type="text" name="prn" value="{{ submission.prn or '' }}" maxlength="10" pattern="\d{10}" inputmode="numeric"
@@ -543,7 +532,6 @@
                         {% endfor %}
                     </select>
                 </div>
-                {% endif %}
 
 
             </div>
@@ -685,12 +673,7 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-            {% if signup_record and submission.onboarding_status == 'pending' %}
-            {# Sign-up details cannot round-trip through the legacy form below (different branch/division vocabulary) — a resubmit would only fail validation, so show state only. #}
-            <div style="text-align: center; font-size: 12px; color: var(--muted);">Submitted {{ submission.onboarding_submitted_at[:16] }} · pending review</div>
-            {% elif signup_record and submission.onboarding_status == 'rejected' %}
-            <div style="text-align: center; font-size: 12px; color: #ef4444;">Your previous record was rejected — please contact support to correct your sign-up details.</div>
-            {% elif submission.onboarding_status == 'pending' %}
+            {% if submission.onboarding_status == 'pending' %}
             <button type="submit" form="onboarding-form" class="btn-primary" style="width: 100%; height: 44px; font-weight: 600; cursor: pointer; border-radius: 4px;">Resubmit for Verification</button>
             <div style="text-align: center; font-size: 12px; color: var(--muted);">Submitted {{ submission.onboarding_submitted_at[:16] }} · pending review</div>
             {% elif submission.onboarding_status == 'rejected' %}
@@ -705,6 +688,7 @@
         </div>
         </div>
     </div>
+{% endif %}
 {% endif %}
 
 

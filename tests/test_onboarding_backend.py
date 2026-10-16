@@ -464,11 +464,24 @@ class TestSignupRecordDisplay:
         assert '<select name="degree_branch" required' not in body
         assert '<select name="division" required' not in body
 
+    def test_signup_view_is_single_rich_panel(self, client):
+        self._signup_done(client)
+        body = self._page(client)
+        assert "Your submitted details" in body
+        # One info card only: no notice, no academic/identity/link boxes.
+        assert "Official Notice" not in body
+        assert 'id="onboarding-form"' not in body
+        assert ">Link Profiles<" not in body
+        assert ">Identity<" not in body
+        # Every datum sits in its own tile (name + email included).
+        assert "Sig" in body and "sig@college.edu" in body
+        assert body.count("overflow-wrap: anywhere") >= 11
+
     def test_no_dead_end_resubmit_for_signup_record(self, client):
         self._signup_done(client)
         body = self._page(client)
         assert "Resubmit for Verification" not in body
-        assert "pending review" in body
+        assert "Pending review" in body
 
     def test_legacy_record_keeps_form_and_resubmit(self, client):
         signup(client)
@@ -477,7 +490,8 @@ class TestSignupRecordDisplay:
         body = self._page(client)
         assert '<select name="degree_branch" required' in body
         assert "Resubmit for Verification" in body
-        assert "Your submitted details" in body  # summary covers any pending record
+        assert "Official Notice" in body
+        assert "Your submitted details" not in body  # rich panel is signup-only
 
     def test_rejected_signup_record_points_to_support(self, client):
         email = self._signup_done(client)
