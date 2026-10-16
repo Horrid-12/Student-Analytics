@@ -1146,7 +1146,7 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
 
 
 @app.get("/signup", response_class=HTMLResponse)
-def signup_page(request: Request, error: str = "", phase: int = 1):
+def signup_page(request: Request, error: str = "", phase: str = "1"):
     if request.state.user:
         return RedirectResponse("/", status_code=302)
     try:

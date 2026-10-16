@@ -847,7 +847,9 @@ def load_signup_progress(token: str | None) -> dict | None:
             return None
         data = json.loads(row_payload)
         return data if isinstance(data, dict) else None
-    except (sqlite3.Error, OSError, ValueError, TypeError, json.JSONDecodeError):
+    except Exception:
+        # Fail-safe: missing table, unreachable pool, or corrupt row must
+        # never 500 the page — the caller treats None as "start over".
         return None
 
 
@@ -866,7 +868,7 @@ def delete_signup_progress(token: str | None) -> None:
             _ensure_signup_progress(conn)
             with conn:
                 conn.execute("DELETE FROM signup_progress WHERE token = ?", (token,))
-    except (sqlite3.Error, OSError):
+    except Exception:
         pass
 
 
