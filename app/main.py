@@ -1153,12 +1153,12 @@ def signup_page(request: Request, error: str = "", phase: int = 1):
         phase = max(1, min(4, int(phase)))
     except (TypeError, ValueError):
         phase = 1
-    token = auth.read_signup_token(request.cookies.get(auth._SIGNUP_COOKIE))
-    # Phases 2+ require the signed progress cookie — the stateless session
-    # carries no sign-up state, so the cookie is the only phase gate.
-    if phase > 1 and (not token or int(token.get("phase") or 1) < phase):
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value) or {}
+    # Phases 2+ require completed earlier phases — the server-side progress
+    # record is the only phase gate (the cookie holds just an opaque token).
+    if phase > 1 and int(progress.get("phase") or 1) < phase:
         return RedirectResponse("/signup", status_code=302)
-    progress = {k: v for k, v in (token or {}).items() if k not in ("purpose", "exp")}
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
@@ -1202,12 +1202,16 @@ async def signup_submit(
     if user is None:
         return RedirectResponse("/signup?error=1", status_code=302)
     _db_log_event("signup", email)
-    # Phase 1 done — carry the new account into the academic phase through a
-    # signed progress cookie (same HMAC pattern as the faculty-setup token).
+    # Phase 1 done — carry the new account into the academic phase. The cookie
+    # holds only an opaque server-generated token; the payload lives in the
+    # signup_progress table (never construct a cookie from user input).
+    token = auth.save_signup_progress({"email": email, "name": name, "phase": 2})
+    if token is None:
+        return RedirectResponse("/signup?error=1", status_code=302)
     response = RedirectResponse("/signup?phase=2", status_code=302)
     response.set_cookie(
         auth._SIGNUP_COOKIE,
-        auth.create_signup_token({"email": email, "name": name, "phase": 2}),
+        token,
         max_age=auth._SIGNUP_TTL_SECONDS,
         httponly=True,
         secure=auth._SECURE_COOKIES,
@@ -1227,8 +1231,9 @@ async def signup_phase_2_submit(
 ):
     """Academic phase: PRN, branch (+ specialisation for tracked branches),
     division, and the division-dependent practical batch."""
-    token = auth.read_signup_token(request.cookies.get(auth._SIGNUP_COOKIE))
-    if not token or int(token.get("phase") or 1) < 2:
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 2:
         return RedirectResponse("/signup", status_code=302)
 
     def fail(code: str) -> RedirectResponse:
@@ -1247,7 +1252,7 @@ async def signup_phase_2_submit(
         return fail("division")
     if not auth.valid_signup_practical_batch(practical_batch, division):
         return fail("batch")
-    token.update({
+    progress.update({
         "phase": 3,
         "prn": (prn or "").strip(),
         "branch": (branch or "").strip(),
@@ -1255,10 +1260,13 @@ async def signup_phase_2_submit(
         "division": (division or "").strip(),
         "practical_batch": (practical_batch or "").strip(),
     })
+    token = auth.save_signup_progress(progress)
+    if token is None:
+        return fail("storage")
     response = RedirectResponse("/signup?phase=3", status_code=302)
     response.set_cookie(
         auth._SIGNUP_COOKIE,
-        auth.create_signup_token(token),
+        token,
         max_age=auth._SIGNUP_TTL_SECONDS,
         httponly=True,
         secure=auth._SECURE_COOKIES,

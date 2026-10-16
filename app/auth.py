@@ -758,45 +758,116 @@ def read_faculty_setup_token(token: str | None) -> str | None:
         return None
 
 
-#: Short-lived cookie carrying multi-phase sign-up progress (phase 1 → 4).
-#: Same HMAC shape as the faculty-setup token — the stateless session carries
-#: no sign-up state, so progress rides in this signed cookie instead.
+#: Short-lived cookie holding only an opaque, server-generated progress
+#: token — the payload itself lives in the signup_progress table (a cookie
+#: built from user input is both a CodeQL magnet and client-visible PII).
 _SIGNUP_COOKIE = "gsad_signup"
 _SIGNUP_TTL_SECONDS = 60 * 60
 
-
-def create_signup_token(payload: dict) -> str:
-    """Short-lived proof of in-flight sign-up progress."""
-    data = dict(payload or {})
-    data["purpose"] = "signup"
-    data["exp"] = int(time.time()) + _SIGNUP_TTL_SECONDS
-    body = base64.urlsafe_b64encode(json.dumps(data).encode("utf-8")).decode("ascii").rstrip("=")
-    digest = base64.urlsafe_b64encode(
-        hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
-    ).decode("ascii").rstrip("=")
-    return f"{body}.{digest}"
+_SIGNUP_PROGRESS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS signup_progress (
+    token TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+"""
 
 
-def read_signup_token(token: str | None) -> dict | None:
-    """Return the sign-up payload when ``token`` is a live sign-up token."""
+def _ensure_signup_progress(conn) -> None:
+    conn.execute(_SIGNUP_PROGRESS_SCHEMA)
+
+
+def save_signup_progress(payload: dict) -> str | None:
+    """Store sign-up progress server-side; return the opaque cookie token.
+    Never raises — returns None when no backend can persist it."""
+    token = secrets.token_urlsafe(32)
+    now = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    expires_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(time.time() + _SIGNUP_TTL_SECONDS))
+    blob = json.dumps(payload)
+    if database.db_configured():
+        try:
+            with database.conn() as c:
+                if c is None:
+                    return None
+                c.execute(_SIGNUP_PROGRESS_SCHEMA)
+                c.execute(
+                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (token) DO UPDATE SET payload = EXCLUDED.payload, "
+                    "expires_at = EXCLUDED.expires_at",
+                    (token, blob, expires_at, now),
+                )
+            return token
+        except Exception:
+            logger.warning("save_signup_progress failed", exc_info=True)
+            return None
+    try:
+        with closing(_connect()) as conn:
+            _ensure_signup_progress(conn)
+            with conn:
+                conn.execute(
+                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (token, blob, expires_at, now),
+                )
+        return token
+    except (sqlite3.Error, OSError):
+        logger.warning("save_signup_progress failed", exc_info=True)
+        return None
+
+
+def load_signup_progress(token: str | None) -> dict | None:
+    """Return the stored payload for a live progress token, else None."""
     if not token:
         return None
     try:
-        body, digest = token.split(".", 1)
-        expected = base64.urlsafe_b64encode(
-            hmac.new(_secret().encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
-        ).decode("ascii").rstrip("=")
-        if not hmac.compare_digest(digest, expected):
+        if database.db_configured():
+            with database.read_conn() as c:
+                if c is None:
+                    return None
+                cur = c.execute(
+                    "SELECT payload, expires_at FROM signup_progress WHERE token = %s",
+                    (token,),
+                )
+                row = cur.fetchone()
+        else:
+            with closing(_connect()) as conn:
+                _ensure_signup_progress(conn)
+                cur = conn.execute(
+                    "SELECT payload, expires_at FROM signup_progress WHERE token = ?",
+                    (token,),
+                )
+                row = cur.fetchone()
+        if not row:
             return None
-        padded = body + "=" * (-len(body) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
-        if payload.get("purpose") != "signup":
+        row_payload = row[0] if not isinstance(row, dict) else row["payload"]
+        row_expires = row[1] if not isinstance(row, dict) else row["expires_at"]
+        if str(row_expires) < time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()):
             return None
-        if int(payload.get("exp", 0)) < time.time():
-            return None
-        return payload
-    except (ValueError, json.JSONDecodeError, TypeError):
+        data = json.loads(row_payload)
+        return data if isinstance(data, dict) else None
+    except (sqlite3.Error, OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def delete_signup_progress(token: str | None) -> None:
+    """Drop a progress record (idempotent; best-effort)."""
+    if not token:
+        return
+    try:
+        if database.db_configured():
+            with database.conn() as c:
+                if c is None:
+                    return
+                c.execute("DELETE FROM signup_progress WHERE token = %s", (token,))
+            return
+        with closing(_connect()) as conn:
+            _ensure_signup_progress(conn)
+            with conn:
+                conn.execute("DELETE FROM signup_progress WHERE token = ?", (token,))
+    except (sqlite3.Error, OSError):
+        pass
 
 
 def authorize_domain(claims: dict) -> bool:

@@ -60,6 +60,23 @@
 .auth-card .phase-link{flex:1;height:2px;background:var(--border);opacity:.45;margin:0 6px 20px}
 .auth-card .phase-note{font-size:12px;color:var(--muted);margin-top:10px}
 .auth-card .signup-note{font-size:12px;color:var(--muted);background:var(--card-soft,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-top:12px}
+/* Signup single-select dropdowns — same language as the site filters:
+   pill button + panel of pill options, single pick per field. */
+.auth-card .su-wrap{position:relative;}
+.auth-card .su-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:42px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-size:14px;cursor:pointer;box-sizing:border-box;font-family:inherit;}
+.auth-card .su-btn:hover{border-color:#8b5cf6;}
+.auth-card .su-btn[aria-expanded="true"]{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.18);}
+.auth-card .su-btn .su-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-card .su-btn.is-placeholder .su-label{color:var(--muted);}
+.auth-card .su-btn svg{flex:none;}
+.auth-card .su-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:240px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.28);padding:6px;z-index:40;}
+.auth-card .su-opt{display:block;width:100%;text-align:left;padding:9px 12px;font-size:14px;color:var(--text);background:transparent;border:0;border-radius:8px;cursor:pointer;font-family:inherit;}
+.auth-card .su-opt:hover{background:rgba(139,92,246,.12);color:#8b5cf6;}
+.auth-card .su-opt[data-active="true"]{background:#8b5cf6;color:#fff;font-weight:700;}
+.auth-card .su-pills{display:flex;gap:8px;padding:6px;}
+.auth-card .su-pill{min-width:42px;padding:7px 12px;font-size:14px;font-weight:700;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;transition:all 180ms ease;}
+.auth-card .su-pill:hover{border-color:#8b5cf6;color:#8b5cf6;}
+.auth-card .su-pill[data-active="true"]{background:#8b5cf6;border-color:#8b5cf6;color:#fff;}
 </style>
 </head>
 <body style="background:var(--bg)">

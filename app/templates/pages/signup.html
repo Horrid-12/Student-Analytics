@@ -75,6 +75,7 @@
   {% if error == "specialisation" %}<div class="banner-error">Please select a valid specialisation for your branch.</div>{% endif %}
   {% if error == "division" %}<div class="banner-error">Division must be between 1 and 32.</div>{% endif %}
   {% if error == "batch" %}<div class="banner-error">Please select a valid practical batch for your division.</div>{% endif %}
+  {% if error == "storage" %}<div class="banner-error">We couldn't save your progress — please try again.</div>{% endif %}
 
   <form method="post" action="/signup/phase/2">
     <div class="form-group">
@@ -83,19 +84,30 @@
       <div class="field-error" id="prn-error">PRN must be exactly 10 digits.</div>
     </div>
     <div class="form-group">
-      <label for="branch">Branch</label>
-      <select id="branch" name="branch" required>
-        <option value="" disabled{% if not progress.branch %} selected{% endif %}>Select your branch</option>
-        {% for b in branches %}
-        <option value="{{ b }}"{% if progress.branch == b %} selected{% endif %}>{{ b }}</option>
-        {% endfor %}
-      </select>
+      <label id="branch-label">Branch</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="branch-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="branch-label branch-btn-label">
+          <span class="su-label" id="branch-btn-label">Select your branch</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="branch-panel" role="listbox" aria-labelledby="branch-label" hidden>
+          {% for b in branches %}
+          <button type="button" class="su-opt" role="option" data-value="{{ b }}">{{ b }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="branch" id="branch-input" value="{{ progress.branch if progress.branch else '' }}">
+      </div>
     </div>
     <div class="form-group" id="specialisation-group" style="display:none;">
-      <label for="specialisation">Specialisation</label>
-      <select id="specialisation" name="specialisation">
-        <option value="">Select your specialisation</option>
-      </select>
+      <label id="spec-label">Specialisation</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="spec-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="spec-label spec-btn-label">
+          <span class="su-label" id="spec-btn-label">Select your specialisation</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="spec-panel" role="listbox" aria-labelledby="spec-label" hidden></div>
+        <input type="hidden" name="specialisation" id="spec-input" value="{{ progress.specialisation if progress.specialisation else '' }}">
+      </div>
     </div>
     <div class="form-group">
       <label for="division">Division</label>
@@ -104,9 +116,16 @@
     </div>
     <div class="form-group">
       <label for="practical_batch" id="batch-label">Practical Batch</label>
-      <select id="practical_batch" name="practical_batch" required>
-        <option value="" disabled selected>Select your division above to continue</option>
-      </select>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="batch-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="batch-label batch-btn-label">
+          <span class="su-label" id="batch-btn-label">Select your division above to continue</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="batch-panel" role="listbox" aria-labelledby="batch-label" hidden>
+          <div class="su-pills" id="batch-pills"></div>
+        </div>
+        <input type="hidden" name="practical_batch" id="batch-input" value="{{ progress.practical_batch if progress.practical_batch else '' }}">
+      </div>
     </div>
     <button type="submit" class="btn-primary">Continue</button>
   </form>
@@ -172,13 +191,23 @@
   var BRANCH_SPECIALISATIONS = {{ branch_specialisations | tojson }};
   var prn = document.getElementById('prn');
   var prnErr = document.getElementById('prn-error');
-  var branch = document.getElementById('branch');
+  var branchBtn = document.getElementById('branch-btn');
+  var branchPanel = document.getElementById('branch-panel');
+  var branchLabel = document.getElementById('branch-btn-label');
+  var branchInput = document.getElementById('branch-input');
   var specGroup = document.getElementById('specialisation-group');
-  var spec = document.getElementById('specialisation');
+  var specBtn = document.getElementById('spec-btn');
+  var specPanel = document.getElementById('spec-panel');
+  var specLabel = document.getElementById('spec-btn-label');
+  var specInput = document.getElementById('spec-input');
   var division = document.getElementById('division');
   var divErr = document.getElementById('division-error');
-  var batch = document.getElementById('practical_batch');
-  var batchLabel = document.getElementById('batch-label');
+  var batchBtn = document.getElementById('batch-btn');
+  var batchPanel = document.getElementById('batch-panel');
+  var batchLabel = document.getElementById('batch-btn-label');
+  var batchInput = document.getElementById('batch-input');
+  var batchPills = document.getElementById('batch-pills');
+  var batchFieldLabel = document.getElementById('batch-label');
 
   function setFieldError(input, err, bad) {
     if (!input || !err) return;
@@ -186,39 +215,91 @@
     input.classList.toggle('is-invalid', bad);
   }
 
+  /* Generic single-select picker: pill button + panel, one hidden input. */
+  function initPicker(btn, panel, label, input, placeholder, onPick) {
+    function close() {
+      panel.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    function paint() {
+      var has = !!(input.value || '').trim();
+      btn.classList.toggle('is-placeholder', !has);
+      label.textContent = has ? input.value : placeholder;
+    }
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = panel.hidden;
+      document.querySelectorAll('.su-panel').forEach(function (p) { p.hidden = true; });
+      document.querySelectorAll('.su-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+      panel.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    panel.addEventListener('click', function (e) {
+      var opt = e.target.closest ? e.target.closest('[data-value]') : null;
+      if (!opt) return;
+      input.value = opt.getAttribute('data-value');
+      panel.querySelectorAll('[data-value]').forEach(function (o) {
+        if (o === opt) o.setAttribute('data-active', 'true');
+        else o.removeAttribute('data-active');
+      });
+      paint();
+      close();
+      if (onPick) onPick();
+    });
+    document.addEventListener('click', function (e) {
+      if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    paint();
+    return { paint: paint, close: close };
+  }
+
+  var branchPicker = initPicker(branchBtn, branchPanel, branchLabel, branchInput, 'Select your branch', rebuildSpecialisation);
+  var specPicker = initPicker(specBtn, specPanel, specLabel, specInput, 'Select your specialisation', null);
+  var batchPicker = initPicker(batchBtn, batchPanel, batchLabel, batchInput, 'Select batch', null);
+
+  function trackedBranch() {
+    return branchInput.value && Object.prototype.hasOwnProperty.call(BRANCH_SPECIALISATIONS, branchInput.value);
+  }
+
   function rebuildSpecialisation() {
-    var tracked = branch.value && Object.prototype.hasOwnProperty.call(BRANCH_SPECIALISATIONS, branch.value);
-    if (!tracked) {
+    if (!trackedBranch()) {
       specGroup.style.display = 'none';
-      spec.value = '';
+      specInput.value = '';
+      specPicker.paint();
       return;
     }
     specGroup.style.display = '';
-    var options = BRANCH_SPECIALISATIONS[branch.value];
-    var html = '<option value="">Select your specialisation</option>';
-    for (var i = 0; i < options.length; i++) {
-      html += '<option value="' + options[i] + '"' + (spec.value === options[i] ? ' selected' : '') + '>' + options[i] + '</option>';
-    }
-    spec.innerHTML = html;
+    var keep = specInput.value;
+    var html = '';
+    BRANCH_SPECIALISATIONS[branchInput.value].forEach(function (name) {
+      html += '<button type="button" class="su-opt" role="option" data-value="' + name + '"' +
+        (keep === name ? ' data-active="true"' : '') + '>' + name + '</button>';
+    });
+    specPanel.innerHTML = html;
+    if (BRANCH_SPECIALISATIONS[branchInput.value].indexOf(keep) === -1) specInput.value = '';
+    specPicker.paint();
+  }
+
+  function batchOptions() {
+    var div = parseInt((division.value || '').trim(), 10);
+    if (div >= 1 && div <= 14) return { label: 'Python Practical Batch', values: ['1', '2'] };
+    if (div >= 15 && div <= 32) return { label: 'Computer Practical Batch', values: ['1', '2', '3'] };
+    return { label: 'Practical Batch', values: [] };
   }
 
   function rebuildBatch() {
-    var div = parseInt((division.value || '').trim(), 10);
-    if (div >= 1 && div <= 14) {
-      batchLabel.textContent = 'Python Practical Batch';
-      batch.innerHTML = '<option value="" disabled selected>Select batch</option>' +
-        '<option value="1"' + (batch.value === '1' ? ' selected' : '') + '>1</option>' +
-        '<option value="2"' + (batch.value === '2' ? ' selected' : '') + '>2</option>';
-    } else if (div >= 15 && div <= 32) {
-      batchLabel.textContent = 'Computer Practical Batch';
-      batch.innerHTML = '<option value="" disabled selected>Select batch</option>' +
-        '<option value="1"' + (batch.value === '1' ? ' selected' : '') + '>1</option>' +
-        '<option value="2"' + (batch.value === '2' ? ' selected' : '') + '>2</option>' +
-        '<option value="3"' + (batch.value === '3' ? ' selected' : '') + '>3</option>';
-    } else {
-      batchLabel.textContent = 'Practical Batch';
-      batch.innerHTML = '<option value="" disabled selected>Select your division above to continue</option>';
-    }
+    var cfg = batchOptions();
+    batchFieldLabel.textContent = cfg.label;
+    if (cfg.values.indexOf(batchInput.value) === -1) batchInput.value = '';
+    var html = '';
+    cfg.values.forEach(function (v) {
+      html += '<button type="button" class="su-pill" role="option" data-value="' + v + '"' +
+        (batchInput.value === v ? ' data-active="true"' : '') + '>' + v + '</button>';
+    });
+    batchPills.innerHTML = html;
+    batchPicker.paint();
+    if (!cfg.values.length) batchLabel.textContent = 'Select your division above to continue';
   }
 
   if (prn && prnErr) {
@@ -237,9 +318,6 @@
       setFieldError(division, divErr, false);
       rebuildBatch();
     });
-  }
-  if (branch) {
-    branch.addEventListener('change', rebuildSpecialisation);
   }
   rebuildSpecialisation();
   rebuildBatch();
