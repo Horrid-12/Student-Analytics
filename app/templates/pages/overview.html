@@ -748,20 +748,8 @@
   })();
 </script>
 
-<section class="panel">
-  <div class="panel-title-row">
-    <div class="panel-title">Statistics</div>
-    {% call help.info('class-health', 'Class Health Score', 'How the class health score is calculated') %}
-      <p>A single 0&ndash;100 score summarising how healthy the filtered cohort is, weighting each activity bucket in the donut:</p>
-      <ul>
-        <li><b>Consistent</b> counts 1.0</li>
-        <li><b>Doing Good</b> counts 0.5</li>
-        <li><b>Need Attention</b> counts 0</li>
-      </ul>
-      <p>Score = 100 &times; (Consistent + 0.5 &times; Doing Good) &divide; students.</p>
-      <p>Bands: <b>&ge;75 Healthy</b>, <b>50&ndash;74 Moderate</b>, <b>&lt;50 At Risk</b>.</p>
-    {% endcall %}
-  </div>
+<section class="panel panel--info">
+  <div class="panel-title">Statistics</div>
   <div class="stats-grid">
     <div class="stats-list-wrap">
       <div class="panel-minor-title stats-list-title" id="stats-list-title">Need Attention ({{ payload.need_attention_students|length }})</div>
@@ -793,6 +781,18 @@
     <div class="stats-chart-wrap">
       {{ ec.pie('statistics-pie', payload.statistics_data, payload.stats_headline) }}
     </div>
+  </div>
+  <div class="panel-info-corner">
+    {% call help.info('class-health', 'Class Health Score', 'How the class health score is calculated') %}
+      <p>A single 0&ndash;100 score summarising how healthy the filtered cohort is, weighting each activity bucket in the donut:</p>
+      <ul>
+        <li><b>Consistent</b> counts 1.0</li>
+        <li><b>Doing Good</b> counts 0.5</li>
+        <li><b>Need Attention</b> counts 0</li>
+      </ul>
+      <p>Score = 100 &times; (Consistent + 0.5 &times; Doing Good) &divide; students.</p>
+      <p>Bands: <b>&ge;75 Healthy</b>, <b>50&ndash;74 Moderate</b>, <b>&lt;50 At Risk</b>.</p>
+    {% endcall %}
   </div>
 </section>
 <script>
@@ -901,23 +901,10 @@
   })();
 </script>
 
-<section class="panel">
+<section class="panel panel--info">
   <div class="radar-header">
     <div class="panel-title-row" style="margin-bottom:0;">
       <div class="panel-title">Class Metrics Radar</div>
-      {% call help.info('avg-quality', 'Average Quality Score', 'How the average quality score is calculated') %}
-        <p>The <b>Quality Score</b> axis averages the Repository Quality Score (0&ndash;100) across the cohort's owned repositories. Each repository is scored on nine categories:</p>
-        <ul>
-          <li><b>Commit volume</b> (15) &amp; <b>spread</b> (10)</li>
-          <li><b>Team collaboration</b> (12)</li>
-          <li><b>PR / issue activity</b> (8)</li>
-          <li><b>Originality</b> &amp; fork guard (10)</li>
-          <li><b>Code density</b> &amp; file quality (15)</li>
-          <li><b>Documentation</b> &amp; hygiene (10)</li>
-          <li><b>Community</b> &amp; popularity (10)</li>
-          <li><b>Recent maintenance</b> (10)</li>
-        </ul>
-      {% endcall %}
     </div>
     <div id="radar-legend-box" class="radar-legend-box">
       <div id="radar-legend" class="radar-legend"></div>
@@ -960,6 +947,21 @@
       {{ ec.radar('metrics-radar', payload.radar_data) }}
     </div>
     <div class="system-grid" id="radar-compare-cards" aria-live="polite"></div>
+  </div>
+  <div class="panel-info-corner">
+    {% call help.info('avg-quality', 'Average Quality Score', 'How the average quality score is calculated') %}
+      <p>The <b>Quality Score</b> axis averages the Repository Quality Score (0&ndash;100) across the cohort's owned repositories. Each repository is scored on nine categories:</p>
+      <ul>
+        <li><b>Commit volume</b> (15) &amp; <b>spread</b> (10)</li>
+        <li><b>Team collaboration</b> (12)</li>
+        <li><b>PR / issue activity</b> (8)</li>
+        <li><b>Originality</b> &amp; fork guard (10)</li>
+        <li><b>Code density</b> &amp; file quality (15)</li>
+        <li><b>Documentation</b> &amp; hygiene (10)</li>
+        <li><b>Community</b> &amp; popularity (10)</li>
+        <li><b>Recent maintenance</b> (10)</li>
+      </ul>
+    {% endcall %}
   </div>
 </section>
 <script>

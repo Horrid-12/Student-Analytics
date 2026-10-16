@@ -145,32 +145,42 @@
 <script>
 (function () {
   'use strict';
-  // Info ("i") popovers: one delegated handler for every .info-btn on the page.
-  function closeTips(except) {
-    document.querySelectorAll('.info-tip:not([hidden])').forEach(function (tip) {
-      if (tip === except) return;
-      tip.hidden = true;
-      var btn = tip.parentNode && tip.parentNode.querySelector('.info-btn');
-      if (btn) btn.setAttribute('aria-expanded', 'false');
-    });
+  // Info ("i") buttons: one delegated handler opens a centred modal card.
+  function closeModal(backdrop, restoreFocus) {
+    backdrop.hidden = true;
+    var trigger = backdrop._infoTrigger;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && trigger && trigger.focus) trigger.focus();
   }
   document.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('.info-btn') : null;
     if (btn) {
       e.preventDefault();
-      var wrap = btn.closest('.info-wrap');
-      var tip = wrap && wrap.querySelector('.info-tip');
-      if (!tip) return;
-      var willOpen = tip.hidden;
-      closeTips(willOpen ? tip : null);
-      tip.hidden = !willOpen;
-      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      var backdrop = document.getElementById(btn.getAttribute('aria-controls'));
+      if (!backdrop) return;
+      backdrop._infoTrigger = btn;
+      backdrop.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      var close = backdrop.querySelector('.info-modal-close');
+      if (close) close.focus();
       return;
     }
-    if (!e.target.closest || !e.target.closest('.info-tip')) closeTips(null);
+    if (e.target.classList && e.target.classList.contains('info-modal-backdrop')) {
+      closeModal(e.target, true);
+      return;
+    }
+    var closeBtn = e.target.closest ? e.target.closest('.info-modal-close') : null;
+    if (closeBtn) {
+      var bd = closeBtn.closest('.info-modal-backdrop');
+      if (bd) closeModal(bd, true);
+    }
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeTips(null);
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.info-modal-backdrop:not([hidden])').forEach(function (bd) {
+        closeModal(bd, true);
+      });
+    }
   });
 })();
 </script>

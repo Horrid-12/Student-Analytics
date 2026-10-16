@@ -1742,25 +1742,20 @@ button {
 .panel-title-row .panel-title {
   margin-bottom: 0;
 }
-/* ── Info ("i") button + popover ─────────────────────────────────────── */
-.info-wrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-}
+/* ── Info ("i") button + modal ──────────────────────────────────────── */
 .info-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 17px;
-  height: 17px;
+  width: 15px;
+  height: 15px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid var(--icon-border, var(--border));
-  background: var(--subtle-bg, var(--card-soft));
+  border: 1px solid var(--border);
+  background: var(--card-soft);
   color: var(--muted);
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 11px;
+  font-size: 10px;
   font-style: italic;
   font-weight: 700;
   line-height: 1;
@@ -1774,36 +1769,77 @@ button {
   border-color: var(--blue);
   outline: none;
 }
-.info-tip {
+/* Bottom-right anchor for a card's info button. */
+.panel--info {
+  position: relative;
+  padding-bottom: 44px;
+}
+.panel-info-corner {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 40;
-  width: min(330px, 78vw);
-  padding: 12px 14px;
+  right: 16px;
+  bottom: 16px;
+}
+/* Modal card — same look as the student profile modal, theme-aware. */
+.info-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.55);
+}
+.info-modal-backdrop[hidden] { display: none; }
+.info-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 16px;
   background: var(--card);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+}
+.info-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.info-modal-title {
+  font-size: 18px;
+  font-weight: 800;
   color: var(--text);
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.5;
-  text-align: left;
 }
-.info-tip[hidden] { display: none; }
-.info-tip-title {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 700;
+.info-modal-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
 }
-.info-tip-body { display: block; }
-.info-tip-body p { margin: 0 0 6px; color: var(--muted); }
-.info-tip-body p:last-child { margin-bottom: 0; }
-.info-tip-body ul { margin: 6px 0 0; padding-left: 16px; color: var(--muted); }
-.info-tip-body li { margin: 2px 0; }
-.info-tip-body b { color: var(--text); font-weight: 600; }
+.info-modal-close:hover { border-color: var(--blue); }
+.info-modal-body {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.info-modal-body p { margin: 0 0 8px; }
+.info-modal-body p:last-child { margin-bottom: 0; }
+.info-modal-body ul { margin: 8px 0 0; padding-left: 18px; }
+.info-modal-body li { margin: 3px 0; }
+.info-modal-body b { color: var(--text); font-weight: 600; }
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
