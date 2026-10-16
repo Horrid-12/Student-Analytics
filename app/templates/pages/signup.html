@@ -5,7 +5,7 @@
   <h1>Create an Account</h1>
 
   <div class="phase-steps" aria-label="Sign-up progress">
-    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% elif phase == 3 %}Profiles{% else %}&nbsp;{% endif %}</div>
+    <div class="phase-label">Phase {{ phase }} of 4 &middot; {% if phase == 1 %}Account{% elif phase == 2 %}Academic{% elif phase == 3 %}Profiles{% else %}Privacy{% endif %}</div>
     <div class="phase-track">
       <div class="phase-dot{% if phase == 1 %} is-now{% elif phase > 1 %} is-done{% endif %}"><i>1</i><small>Account</small></div>
       <div class="phase-link" aria-hidden="true"></div>
@@ -13,7 +13,7 @@
       <div class="phase-link" aria-hidden="true"></div>
       <div class="phase-dot{% if phase == 3 %} is-now{% elif phase > 3 %} is-done{% endif %}"><i>3</i><small>Profiles</small></div>
       <div class="phase-link" aria-hidden="true"></div>
-      <div class="phase-dot{% if phase == 4 %} is-now{% endif %}"><i>4</i><small>&nbsp;</small></div>
+      <div class="phase-dot{% if phase == 4 %} is-now{% endif %}"><i>4</i><small>Privacy</small></div>
     </div>
   </div>
 
@@ -30,7 +30,7 @@
   {% endif %}
 
   {% if google_configured %}
-  <a href="/auth/google" class="btn-google">
+  <a href="/auth/google?mode=signup" class="btn-google">
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
       <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -71,6 +71,7 @@
   {% elif phase == 2 %}
 
   {% if error == "prn" %}<div class="banner-error">PRN must be exactly 10 digits.</div>{% endif %}
+  {% if error == "semester" %}<div class="banner-error">Please select your semester.</div>{% endif %}
   {% if error == "branch" %}<div class="banner-error">Please select your branch.</div>{% endif %}
   {% if error == "specialisation" %}<div class="banner-error">Please select a valid specialisation for your branch.</div>{% endif %}
   {% if error == "division" %}<div class="banner-error">Division must be between 1 and 32.</div>{% endif %}
@@ -82,6 +83,21 @@
       <label for="prn">PRN number</label>
       <input type="text" id="prn" name="prn" placeholder="10-digit PRN" inputmode="numeric" value="{{ progress.prn if progress.prn else '' }}">
       <div class="field-error" id="prn-error">PRN must be exactly 10 digits.</div>
+    </div>
+    <div class="form-group">
+      <label id="semester-label">Semester</label>
+      <div class="su-wrap">
+        <button type="button" class="su-btn is-placeholder" id="semester-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="semester-label semester-btn-label">
+          <span class="su-label" id="semester-btn-label">Select your semester</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel" id="semester-panel" role="listbox" aria-labelledby="semester-label" hidden>
+          {% for s in semesters %}
+          <button type="button" class="su-opt" role="option" data-value="{{ s }}">{{ s }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="semester" id="semester-input" value="{{ progress.semester if progress.semester else '' }}">
+      </div>
     </div>
     <div class="form-group">
       <label id="branch-label">Branch</label>
@@ -200,6 +216,46 @@
     </div>
 
     <button type="submit" class="btn-primary" id="phase3-continue" disabled>Continue</button>
+  </form>
+
+  {% elif phase == 4 %}
+
+  <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+    <h2 style="font-size: 20px; font-weight: 800; margin: 0; color: var(--text); text-align: center;">Profile Status</h2>
+  </div>
+  <p style="font-size: 13px; color: var(--muted); margin: 0 0 16px 0; text-align: center;">Choose what other students can see on your profile. You can change this later from your profile.</p>
+
+  <div class="privacy-disclaimer" role="alert"><strong>WARNING:</strong> hiding your GitHub profile will automatically remove you from all GitHub leaderboards. Hiding your HackerRank profile will remove you from the HackerRank leaderboards. Faculty and admins will still see all your information.</div>
+
+  {% if error == "storage" %}<div class="banner-error">We couldn't save your choices — please try again.</div>{% endif %}
+  {% if error == "prn_taken" %}<div class="banner-error">This PRN is already registered to another account under review — please check your PRN in phase 2.</div>{% endif %}
+
+  <form method="post" action="/signup/phase/4" id="phase4-form">
+    <div class="privacy-rows">
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my PRN</span><span class="privacy-desc">Other students see &ldquo;Hidden&rdquo; instead of your student ID.</span></span>
+        <span class="privacy-switch"><input type="checkbox" name="hide_prn" value="1" {% if privacy_prefs and privacy_prefs['hide_prn'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my GitHub profile</span><span class="privacy-desc">Hides your GitHub link and removes you from GitHub leaderboards.</span></span>
+        <span class="privacy-switch"><input type="checkbox" name="hide_github" value="1" {% if privacy_prefs and privacy_prefs['hide_github'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my LinkedIn profile</span><span class="privacy-desc">Hides your LinkedIn link from other students.</span></span>
+        <span class="privacy-switch"><input type="checkbox" name="hide_linkedin" value="1" {% if privacy_prefs and privacy_prefs['hide_linkedin'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+      <label class="privacy-row">
+        <span class="privacy-text"><span class="privacy-label">Hide my HackerRank profile</span><span class="privacy-desc">Hides your HackerRank link and removes you from HackerRank leaderboards.</span></span>
+        <span class="privacy-switch"><input type="checkbox" name="hide_hackerrank" value="1" {% if privacy_prefs and privacy_prefs['hide_hackerrank'] %}checked{% endif %}><span class="privacy-knob" aria-hidden="true"></span></span>
+      </label>
+    </div>
+
+    <div class="reminder-note" style="margin-top: 16px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <span>Finishing sends your details to your teacher for verification.</span>
+    </div>
+
+    <button type="submit" class="btn-primary">Complete Setup</button>
   </form>
 
   {% else %}
@@ -327,6 +383,14 @@
   }
 
   var branchPicker = initPicker(branchBtn, branchPanel, branchLabel, branchInput, 'Select your branch', rebuildSpecialisation);
+  var semesterPicker = initPicker(
+    document.getElementById('semester-btn'),
+    document.getElementById('semester-panel'),
+    document.getElementById('semester-btn-label'),
+    document.getElementById('semester-input'),
+    'Select your semester',
+    null
+  );
   var specPicker = initPicker(specBtn, specPanel, specLabel, specInput, 'Select your specialisation', null);
   var batchPicker = initPicker(batchBtn, batchPanel, batchLabel, batchInput, 'Select batch', null);
 

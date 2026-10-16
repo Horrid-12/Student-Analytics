@@ -92,8 +92,23 @@ async def auth_gate(request: Request, call_next):
             return RedirectResponse("/login", status_code=302)
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
-    if not auth.can_access(user.get("role"), page):
+    # Student verification gate: pending/rejected submissions only see
+    # Onboarding + Support + Settings until a teacher verifies them. The fresh
+    # status comes from the DB row (memoised on Postgres, exact on SQLite);
+    # a lookup failure fails open to the role gate so a storage hiccup never
+    # locks anyone out.
+    _ob_status: str | None = None
+    if (user.get("role") or "") == "student":
+        try:
+            _email = (user.get("email") or "").strip().lower()
+            _row = _memo(f"user:{_email}", lambda: auth.get_account(_email)) if _email else None
+            _ob_status = str((_row or {}).get("onboarding_status") or "none")
+        except Exception:
+            _ob_status = None
+    if not auth.can_access_page(user, page, _ob_status):
         if wants_html:
+            if (user.get("role") or "") == "student" and _ob_status is not None and page != "Onboarding":
+                return RedirectResponse("/onboarding", status_code=303)
             return RedirectResponse("/", status_code=303)
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     return await call_next(request)
@@ -828,6 +843,10 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
         _ob_status = str(((user_row or {}).get("onboarding_status") or "")).strip().lower()
         if (role or "") == "student" and _ob_status == "approved":
             nav_items = [item for item in nav_items if item.get("label") != "Onboarding"]
+        # Unverified students (pending/rejected) only see Onboarding, Support
+        # and Settings until a teacher verifies them (mirrors auth_gate).
+        if (role or "") == "student" and _ob_status in ("pending", "rejected"):
+            nav_items = [item for item in nav_items if item.get("label") in auth.PENDING_STUDENT_PAGES]
     except Exception:
         pass
     return {
@@ -1176,6 +1195,16 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             linked_linkedin = str(row.get("linked_linkedin_name") or "").strip()
         stored_hr = str(progress.get("hackerrank_username") or "").strip()
         hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
+    # Phase 4 renders the Profile Status toggles (same four privacy fields as
+    # the /me popup), prefilled from any prefs already saved for this PRN.
+    privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
+    if phase == 4:
+        _phase4_prn = str(progress.get("prn") or "").strip()
+        if _phase4_prn:
+            try:
+                privacy_prefs = auth.get_privacy_prefs(_phase4_prn)
+            except Exception:
+                privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
@@ -1186,9 +1215,11 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "progress": progress,
             "branches": auth.SIGNUP_BRANCHES,
             "branch_specialisations": auth.SIGNUP_BRANCH_SPECIALISATIONS,
+            "semesters": auth.SEMESTERS,
             "linked_github": linked_github,
             "linked_linkedin": linked_linkedin,
             "hr_locked": hr_locked,
+            "privacy_prefs": privacy_prefs,
             "show_error_banner": error == "1",
             "show_domain_banner": error == "2",
             "show_exists_banner": error == "3",
@@ -1257,6 +1288,7 @@ async def signup_submit(
 async def signup_phase_2_submit(
     request: Request,
     prn: str = Form(""),
+    semester: str = Form(""),
     branch: str = Form(""),
     specialisation: str = Form(""),
     division: str = Form(""),
@@ -1274,6 +1306,8 @@ async def signup_phase_2_submit(
 
     if not auth.valid_prn(prn):
         return fail("prn")
+    if not auth.valid_semester(semester):
+        return fail("semester")
     if (branch or "").strip() not in auth.SIGNUP_BRANCHES:
         return fail("branch")
     if branch in auth.SIGNUP_BRANCH_SPECIALISATIONS:
@@ -1288,6 +1322,7 @@ async def signup_phase_2_submit(
     progress.update({
         "phase": 3,
         "prn": (prn or "").strip(),
+        "semester": (semester or "").strip(),
         "branch": (branch or "").strip(),
         "specialisation": (specialisation or "").strip(),
         "division": (division or "").strip(),
@@ -1371,6 +1406,61 @@ async def signup_phase_3_submit(
         secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
+    return response
+
+
+@app.post("/signup/phase/4", response_class=HTMLResponse)
+async def signup_phase_4_submit(
+    request: Request,
+    hide_prn: str = Form(""),
+    hide_github: str = Form(""),
+    hide_linkedin: str = Form(""),
+    hide_hackerrank: str = Form(""),
+):
+    """Profile Status phase: the four privacy toggles from the /me popup
+    (stored per PRN, so they apply the moment the fleet renders the student).
+
+    Finishing also finalizes the sign-up — the collected academic bundle is
+    submitted as a pending onboarding record for teacher verification — and
+    lands on /onboarding, which shows the submitted details + preferences and
+    the verification state. Until verified the student only sees Onboarding,
+    Support and Settings (see PENDING_STUDENT_PAGES)."""
+    token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token_value)
+    if not progress or int(progress.get("phase") or 1) < 4:
+        return RedirectResponse("/signup", status_code=302)
+
+    def fail(code: str) -> RedirectResponse:
+        return RedirectResponse(f"/signup?phase=4&error={code}", status_code=302)
+
+    def _checked(value: str) -> int:
+        return 1 if str(value or "").strip().lower() in ("1", "on", "true", "checked") else 0
+
+    email = str(progress.get("email") or "").strip().lower()
+    prn = str(progress.get("prn") or "").strip()
+    if not email or not prn:
+        return fail("storage")
+    prefs = {
+        "hide_prn": _checked(hide_prn),
+        "hide_github": _checked(hide_github),
+        "hide_linkedin": _checked(hide_linkedin),
+        "hide_hackerrank": _checked(hide_hackerrank),
+    }
+    if not auth.set_privacy_prefs(prn, prefs):
+        return fail("storage")
+    ok, code = auth.submit_signup_onboarding(email, progress)
+    if not ok:
+        if code == "prn_taken":
+            return fail("prn_taken")
+        return fail("storage")
+    _db_log_event("signup_complete", email)
+    auth.delete_signup_progress(token_value)
+    try:
+        view_cache.invalidate("privacy:all")
+    except Exception:
+        pass
+    response = RedirectResponse("/onboarding?saved=1", status_code=302)
+    response.delete_cookie(auth._SIGNUP_COOKIE)
     return response
 
 
@@ -1488,12 +1578,23 @@ def _oauth_base_url(request: Request) -> str:
 
 
 @app.get("/auth/google")
-def auth_google(request: Request):
+def auth_google(request: Request, mode: str = "login"):
     """Start Google sign-in: consent URL + opaque state nonce in a short-lived,
-    httponly cookie. The domain gate is enforced on the callback, never here."""
+    httponly cookie. The domain gate is enforced on the callback, never here.
+
+    ``mode=signup`` marks a sign-up-phase-1 entry: the button on /signup uses
+    it to skip only the password step. The mode rides a short-lived cookie
+    (same pattern as the GitHub/LinkedIn ``gsad_oauth_mode``) so the callback
+    can route new students to /signup?phase=2 instead of the main site."""
+    mode = (mode or "login").strip().lower()
+    if mode not in ("login", "signup"):
+        mode = "login"
     if not google_oauth.configured():
-        return RedirectResponse("/login?oauth=unconfigured", status_code=302)
+        target = "/signup?error=1" if mode == "signup" else "/login?oauth=unconfigured"
+        return RedirectResponse(target, status_code=302)
     if request.state.user:
+        if mode == "signup":
+            return RedirectResponse("/signup?phase=2", status_code=302)
         return RedirectResponse("/", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     domains = auth.allowed_domains()
@@ -1508,6 +1609,14 @@ def auth_google(request: Request):
         secure=auth._SECURE_COOKIES,
         samesite="lax",
     )
+    response.set_cookie(
+        "gsad_oauth_mode",
+        mode,
+        max_age=auth._OAUTH_STATE_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
     return response
 
 
@@ -1515,12 +1624,29 @@ def auth_google(request: Request):
 async def auth_google_callback(request: Request, state: str = "", error: str = ""):
     """Complete Google sign-in: verify state, exchange the code, apply the
     server-side college-domain gate, resolve the role and mint the normal
-    ``gsad_session`` cookie. Rejections redirect to /login?oauth=domain."""
+    ``gsad_session`` cookie. Rejections redirect to /login?oauth=domain.
+
+    Sign-up entries (``mode=signup`` from the /signup phase-1 button) only skip
+    phase 1: a student with no onboarding submission yet is signed in AND given
+    a signup-progress token, then sent to /signup?phase=2. Returning students
+    (already submitted onboarding) and staff fall through to the normal login
+    destination."""
     expected = request.cookies.get(auth._OAUTH_STATE_COOKIE)
+    oauth_mode = (request.cookies.get("gsad_oauth_mode") or "login").strip().lower()
+    if oauth_mode not in ("login", "signup"):
+        oauth_mode = "login"
+    signup_mode = oauth_mode == "signup"
 
     def reject(kind: str) -> RedirectResponse:
-        response = RedirectResponse(f"/login?oauth={kind}", status_code=302)
+        if signup_mode:
+            # Signup page banners: error=2 is the college-domain banner,
+            # error=1 the generic failure banner.
+            code = "2" if kind == "domain" else "1"
+            response = RedirectResponse(f"/signup?error={code}", status_code=302)
+        else:
+            response = RedirectResponse(f"/login?oauth={kind}", status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
         return response
 
     if error:
@@ -1554,9 +1680,57 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         full_user = auth.get_account(email) or user
     except Exception:
         full_user = user
+    if signup_mode and (full_user.get("role") or role) == "student":
+        # Sign-up via Google skips phase 1 only: fresh/incomplete students join
+        # the signup flow at phase 2 (mirrors POST /signup: session + progress
+        # token). Anyone who already submitted onboarding is a returning user
+        # and falls through to the normal login destination below.
+        if str(full_user.get("onboarding_status") or "none").strip().lower() == "none":
+            _db_log_event("signup", email)
+            existing = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+            target_phase = 2
+            if (
+                existing
+                and (existing.get("email") or "").strip().lower() == email
+                and int(existing.get("phase") or 1) > 2
+            ):
+                progress = dict(existing)
+                progress["email"] = email
+                if (claims.get("name") or "").strip():
+                    progress["name"] = (claims.get("name") or "").strip()
+                try:
+                    target_phase = max(2, min(4, int(progress.get("phase") or 2)))
+                except (TypeError, ValueError):
+                    target_phase = 2
+            else:
+                progress = {"email": email, "name": (claims.get("name") or "").strip(), "phase": 2}
+            token = auth.save_signup_progress(progress)
+            if token is None:
+                return reject("error")
+            response = RedirectResponse(f"/signup?phase={target_phase}", status_code=302)
+            response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+            response.delete_cookie("gsad_oauth_mode")
+            response.set_cookie(
+                auth._SIGNUP_COOKIE,
+                token,
+                max_age=auth._SIGNUP_TTL_SECONDS,
+                httponly=True,
+                secure=auth._SECURE_COOKIES,
+                samesite="lax",
+            )
+            response.set_cookie(
+                auth._COOKIE_NAME,
+                auth.create_session_token(user),
+                max_age=auth._SESSION_TTL_SECONDS,
+                httponly=True,
+                secure=auth._SECURE_COOKIES,
+                samesite="lax",
+            )
+            return response
     await asyncio.to_thread(_self_sync_on_login, full_user)
     response = RedirectResponse(_post_login_destination(full_user, "/onboarding"), status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+    response.delete_cookie("gsad_oauth_mode")
     response.set_cookie(
         auth._COOKIE_NAME,
         auth.create_session_token(user),
@@ -2031,6 +2205,25 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
         except Exception:
             ctx["submission"] = {}
+    # Profile Status preferences for the submitted-details summary (keyed by
+    # PRN, like the /me popup and sign-up phase 4).
+    ctx["profile_prefs"] = {field: 0 for field in auth.PRIVACY_FIELDS}
+    # Signup-originated records speak the sign-up vocabulary (full programme
+    # names, specialisation track, divisions up to 32) which the legacy
+    # Academic Information selects cannot represent — the template renders
+    # those rows read-only instead of mismatched dropdowns. Display flag only;
+    # the sign-up flow itself is untouched.
+    ctx["signup_record"] = False
+    try:
+        _summary_prn = str((ctx.get("submission") or {}).get("prn") or "").strip()
+        if _summary_prn and role == "student":
+            ctx["profile_prefs"] = auth.get_privacy_prefs(_summary_prn)
+        _sub_branch = str((ctx.get("submission") or {}).get("degree_branch") or "").strip()
+        _sub_spec = str((ctx.get("submission") or {}).get("specialisation") or "").strip()
+        if _summary_prn and (_sub_spec or (_sub_branch and _sub_branch not in auth.DEGREE_BRANCHES)):
+            ctx["signup_record"] = True
+    except Exception:
+        pass
     # Link Profiles panel: normalise the saved handle (tolerates a pasted
     # profile URL or an "@handle", like the roster importer does) and build the
     # canonical public profile URL so the HackerRank card always opens

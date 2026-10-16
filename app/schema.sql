@@ -360,6 +360,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS practical_batch TEXT NOT NULL DEFAULT
 ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT 'Semester 1';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
 
+-- Backfill sign-up specialisation track (sign-up phase 2/4 finalization).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS specialisation TEXT NOT NULL DEFAULT '';
+
 -- 12. Per-account analytics snapshots (Phase 5.1 account-driven redesign).
 --     One row per synced account: JSONB holds the dashboard-shaped student
 --     record + the REPO_COLS repository list + the TEAM_REPOS_COLS

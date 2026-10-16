@@ -240,6 +240,7 @@ class TestPasswordDomainGate:
             "/signup/phase/2",
             data={
                 "prn": "1234567890",
+                "semester": "Semester 3",
                 "branch": "Computer Science and Engineering",
                 "specialisation": "Core",
                 "division": "3",
