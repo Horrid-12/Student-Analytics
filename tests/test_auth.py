@@ -151,11 +151,7 @@ class TestSignupPhase2:
 
 
 def _phase3(client, **overrides):
-    data = {
-        "hackerrank_username": "stu_hr",
-        "github_handle": "stu-handle",
-        "linkedin_handle": "stu-handle-123",
-    }
+    data = {"hackerrank_username": "stu_hr"}
     data.update(overrides)
     return client.post("/signup/phase/3", data=data)
 
@@ -177,15 +173,34 @@ class TestSignupPhase3:
         r = _phase3(client, hackerrank_username="not a handle!!")
         assert "error=hr" in str(r.url)
 
-    def test_handles_optional(self, client):
+    def test_github_link_required(self, client):
         signup(client)
         _phase2(client)
-        r = _phase3(client, github_handle="", linkedin_handle="")
-        assert "phase=4" in str(r.url)
+        auth.save_linked_profile("stu1@college.edu", "linkedin", "stu-li", "")
+        r = _phase3(client)
+        assert "error=github" in str(r.url)
+
+    def test_linkedin_link_required(self, client):
+        signup(client)
+        _phase2(client)
+        auth.save_linked_profile("stu1@college.edu", "github", "stu-handle", "")
+        r = _phase3(client)
+        assert "error=linkedin" in str(r.url)
+
+    def test_save_action_stashes_handle_without_advancing(self, client):
+        signup(client)
+        _phase2(client)
+        r = client.post(
+            "/signup/phase/3",
+            data={"hackerrank_username": "stu_hr", "action": "save"},
+        )
+        assert "phase=3" in str(r.url) and "error" not in str(r.url)
 
     def test_valid_phase_3_advances_to_phase_4(self, client):
         signup(client)
         _phase2(client)
+        auth.save_linked_profile("stu1@college.edu", "github", "stu-handle", "")
+        auth.save_linked_profile("stu1@college.edu", "linkedin", "stu-li", "")
         r = _phase3(client)
         assert "phase=4" in str(r.url)
 
@@ -198,7 +213,8 @@ class TestLogin:
         assert "gsad_session" in client.cookies
 
     def test_wrong_password_redirects_with_error(self, client):
-        signup(client)
+        signup(client)  # phase 1 signs the new account in straight away
+        client.get("/logout")
         r = login(client, "stu1@college.edu", "wrongpass")
         assert "error=1" in str(r.url)
 

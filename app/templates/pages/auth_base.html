@@ -60,6 +60,20 @@
 .auth-card .phase-link{flex:1;height:2px;background:var(--border);opacity:.45;margin:0 6px 20px}
 .auth-card .phase-note{font-size:12px;color:var(--muted);margin-top:10px}
 .auth-card .signup-note{font-size:12px;color:var(--muted);background:var(--card-soft,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-top:12px}
+/* Phase-3 link rows: handle box + inline Link/Pending button on the right. */
+.auth-card .link-row{display:flex;gap:8px;align-items:stretch;}
+.auth-card .link-row input{flex:1;min-width:0;}
+.auth-card .link-row input[readonly]{opacity:.75;}
+.auth-card .link-static{flex:1;min-width:0;display:flex;align-items:center;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;box-sizing:border-box;}
+.auth-card .link-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:0 16px;border:2px solid #8b5cf6;border-radius:8px;background:transparent;color:#8b5cf6;font-weight:800;font-size:13px;font-family:Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap;text-decoration:none;transition:all 180ms ease;}
+.auth-card a.link-btn:hover{background:rgba(139,92,246,.12);}
+.auth-card .link-btn.is-pending{border-color:#a66b25;color:#a66b25;cursor:default;}
+.auth-card .link-btn:disabled{cursor:not-allowed;}
+.auth-card .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+/* Bottom reminder above Continue: icon + bigger text, no box. */
+.auth-card .reminder-note{display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px 0;}
+.auth-card .reminder-note svg{flex:none;margin-top:2px;}
+.auth-card .reminder-note span{font-size:15px;font-weight:600;color:var(--text);}
 /* Signup single-select dropdowns — same language as the site filters:
    pill button + panel of pill options, single pick per field. */
 .auth-card .su-wrap{position:relative;}
