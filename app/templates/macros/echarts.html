@@ -470,7 +470,20 @@ window.__EC_THEME = (function () {
   var divisions = Object.keys(divMap).map(function (k) {
     return { name: k, high: divMap[k].high, medium: divMap[k].medium, low: divMap[k].low, total: divMap[k].total };
   });
-  divisions.sort(function (a, b) { return b.total - a.total; });
+  /* Ascending by division number (mirrors views._div_sort_key): numeric
+     divisions sort 1, 2, 10; non-numeric fall back to alphabetical. */
+  function divKey(name) {
+    var m = String(name).match(/\d+/);
+    return m ? [0, parseInt(m[0], 10), String(name).toLowerCase()] : [1, 0, String(name).toLowerCase()];
+  }
+  divisions.sort(function (a, b) {
+    var ka = divKey(a.name), kb = divKey(b.name);
+    if (ka[0] !== kb[0]) return ka[0] - kb[0];
+    if (ka[1] !== kb[1]) return ka[1] - kb[1];
+    if (ka[2] < kb[2]) return -1;
+    if (ka[2] > kb[2]) return 1;
+    return 0;
+  });
 
   var DEFAULT_SHOW = 8;
   var expanded = false;
