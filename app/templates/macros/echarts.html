@@ -963,7 +963,7 @@ window.__EC_THEME = (function () {
       grid: {
         left: 12,
         right: 16,
-        top: 16,
+        top: 32,
         bottom: showLegend ? (seriesList.length > 8 ? 50 : 36) : 24,
         containLabel: true
       },
@@ -985,7 +985,9 @@ window.__EC_THEME = (function () {
       yAxis: {
         type: 'value',
         name: 'Avg Activity / Student',
-        nameTextStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        nameLocation: 'end',
+        nameGap: 10,
+        nameTextStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11, align: 'left' },
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
