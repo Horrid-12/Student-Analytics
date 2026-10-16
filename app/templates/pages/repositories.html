@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "macros/help.html" as help %}
 {% block title %}Repositories — GitHub Student Analytics Platform{% endblock %}
 {% block head %}
 <style>
@@ -213,7 +214,23 @@
 <section class="panel">
   {# ── View Switcher ── #}
   <div class="repo-panel-header">
-    <div class="panel-title" style="margin-bottom:0;">Repositories</div>
+    <div class="panel-title-row" style="margin-bottom:0;">
+      <div class="panel-title">Repositories</div>
+      {% call help.info('repo-score', 'Repository Quality Score', 'How the repository score is calculated') %}
+        <p>Every repository gets a 0&ndash;100 score from nine categories (the same score averaged on the Overview radar):</p>
+        <ul>
+          <li><b>Commit volume</b> (15) &amp; <b>spread</b> (10)</li>
+          <li><b>Team collaboration</b> (12)</li>
+          <li><b>PR / issue activity</b> (8)</li>
+          <li><b>Originality</b> &amp; fork guard (10) &mdash; unedited forks score 0</li>
+          <li><b>Code density</b> &amp; file quality (15)</li>
+          <li><b>Documentation</b> &amp; hygiene (10)</li>
+          <li><b>Community</b> &amp; popularity (10)</li>
+          <li><b>Recent maintenance</b> (10)</li>
+        </ul>
+        <p>Bands: <b>&ge;90</b> Exceptional, <b>&ge;70</b> Strong, <b>&ge;40</b> Developing, otherwise Needs Attention.</p>
+      {% endcall %}
+    </div>
     <div class="repo-header-controls">
       <details class="export-dropdown" aria-label="Export">
         <summary class="btn" aria-haspopup="menu">Export &#9662;</summary>
