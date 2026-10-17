@@ -1667,6 +1667,14 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         return reject("domain")
 
     email = claims["email"].lower()
+    if signup_mode and auth.get_account(email) is not None:
+        # Account already exists — the signup button only skips phase 1 for new
+        # students. Returning accounts get the "already registered" banner
+        # instead of being marched into phase 2.
+        response = RedirectResponse("/signup?error=3", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
     role = auth.resolve_google_role(email)
     user = auth.upsert_google_user(email, claims.get("name", ""), claims.get("sub", ""), role)
     if user is None:
