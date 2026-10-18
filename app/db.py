@@ -483,8 +483,8 @@ def upsert_batch_results(
                             "(roster_id,username,repository,language,stars,forks,description,license,"
                             "created_at,updated_at,repository_url,maintenance_status,"
                             "repository_quality_score,quality_band,commits,commits_30d,commits_90d,"
-                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits,is_fork) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -509,6 +509,7 @@ def upsert_batch_results(
                                 1 if r.get("Has_README") else 0,
                                 int(r.get("Topics_Count") or 0),
                                 int(r.get("Total_Commits") or 0),
+                                1 if r.get("Is_Fork") else 0,
                             ),
                         )
                     except Exception:
@@ -778,7 +779,8 @@ def get_repositories_data(roster_id: str) -> list[dict]:
                     'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d", '
                     'pull_requests AS "Pull_Requests", issues AS "Issues", '
                     'contributors AS "Contributors", has_readme AS "Has_README", '
-                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits" '
+                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits", '
+                    'is_fork AS "Is_Fork" '
                     "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
                     (roster_id,),
                 )
@@ -1903,7 +1905,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     students, repos, team_repos and issues are DataFrames with the canonical
     column ordering. Reconstructs the state dict from run_summary + result
     tables so callers need no changes."""
-    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS, TEAM_REPOS_COLS
+    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_DISPLAY_COLS, TEAM_REPOS_COLS
 
     try:
         from app.views import _enrich_students_with_records
@@ -1912,7 +1914,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
         records = get_roster_records(roster_id)
         students = _frame(get_dashboard_data(roster_id), DASHBOARD_COLS)
         students = _enrich_students_with_records(students, records)
-        repos = _frame(get_repositories_data(roster_id), REPO_COLS)
+        repos = _frame(get_repositories_data(roster_id), REPO_DISPLAY_COLS)
         team_repos = _frame(get_team_repos_data(roster_id), TEAM_REPOS_COLS)
         issues = _frame(get_issues_data(roster_id), ISSUE_COLS)
         state = dict(summary) if summary else None

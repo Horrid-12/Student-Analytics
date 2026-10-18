@@ -293,6 +293,10 @@ REPO_COLS = [
     "Topics_Count",
     "Total_Commits",
 ]
+#: REPO_COLS plus the display-only fork flag. Views carry Is_Fork through so
+#: repository cards can mark forks; it is never written back to the DB (sync
+#: persists it separately) and exports rebuild their own column list.
+REPO_DISPLAY_COLS = REPO_COLS + ["Is_Fork"]
 ISSUE_COLS = [
     STUDENT_ID_COL,
     "Student Name",
@@ -415,7 +419,7 @@ def analysis_view(roster_store, roster_id: str):
         "records": records,
         "state": state,
         "students": students,
-        "repos": _frame(state, "repos", REPO_COLS),
+        "repos": _frame(state, "repos", REPO_DISPLAY_COLS),
         "team_repos": _frame(state, "team_repos", TEAM_REPOS_COLS),
         "issues": _frame(state, "issues", ISSUE_COLS),
     }
@@ -485,10 +489,10 @@ def account_view(email: str):
     students = students[columns]
     students = _backfill_profile_links(students)
     repos = pd.DataFrame(snapshot.get("repos") or [])
-    for column in REPO_COLS:
+    for column in REPO_DISPLAY_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    repos = repos[REPO_DISPLAY_COLS] if not repos.empty else pd.DataFrame(columns=REPO_DISPLAY_COLS)
     team_repos = pd.DataFrame(snapshot.get("team_repos") or [])
     for column in TEAM_REPOS_COLS:
         if column not in team_repos.columns:
@@ -606,10 +610,10 @@ def fleet_view():
     students = _backfill_profile_links(students)
 
     repos = pd.DataFrame(repo_rows)
-    for column in REPO_COLS:
+    for column in REPO_DISPLAY_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    repos = repos[REPO_DISPLAY_COLS] if not repos.empty else pd.DataFrame(columns=REPO_DISPLAY_COLS)
 
     team_repos = pd.DataFrame(team_rows)
     for column in TEAM_REPOS_COLS:
@@ -2688,6 +2692,7 @@ def _repo_card(row) -> dict:
         status = ""
     stars = int(_repo_number(row.get("Stars"), int) or 0)
     forks = int(_repo_number(row.get("Forks"), int) or 0)
+    is_fork = int(_repo_number(row.get("Is_Fork"), float) or 0) == 1
     score = _repo_number(row.get("Repository_Quality_Score"), float)
     tokens = _dept_tokens(row.get("Division"), row.get("Batch"))
     band_label, band_tone = _repo_band(row, score)
@@ -2697,6 +2702,7 @@ def _repo_card(row) -> dict:
         "lang": lang,
         "stars": stars,
         "forks": forks,
+        "is_fork": is_fork,
         "score": round(score, 1) if score is not None else None,
         "band": band_label,
         "band_tone": band_tone,
