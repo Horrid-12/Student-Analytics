@@ -1490,6 +1490,27 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
         return False
 
 
+def set_profile_source(email: str, source: str) -> bool:
+    """Set profile_source ('github' or 'linkedin') directly for an account (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET profile_source = %s WHERE email = %s",
+                (source, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_profile_source failed: %s", exc)
+        return False
+
+
 def confirm_profile_source(email: str, source: str) -> bool:
     """4.11 (e): activate a previously fetched candidate for sidebar display.
     Refuses when the candidate is missing (Postgres leg)."""
@@ -1504,18 +1525,8 @@ def confirm_profile_source(email: str, source: str) -> bool:
     handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
     if not (user.get(handle_col) or "").strip():
         return False
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "UPDATE users SET profile_source = %s WHERE email = %s",
-                (source, email),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("confirm_profile_source failed: %s", exc)
-        return False
+    return set_profile_source(email, source)
+
 
 
 def upsert_user(
@@ -1685,7 +1696,8 @@ def get_approved_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub, "
+                "linked_linkedin_avatar, linked_github_username, linked_github_avatar, profile_source "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
             return [dict(row) for row in cur.fetchall()]

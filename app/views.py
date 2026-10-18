@@ -478,6 +478,15 @@ def account_view(email: str):
             from app import auth
             user_row = auth.get_user(email)
         student["Semester"] = (user_row or {}).get("semester") or "Semester 1"
+    if user_row is None:
+        from app import auth
+        user_row = auth.get_account(email)
+    if user_row:
+        if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+            student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+        elif not student.get("Avatar_URL"):
+            gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+            student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
     student[ROSTER_EMAIL_COL] = email
     student["Roster_Email"] = email
     records = [student]
@@ -570,6 +579,11 @@ def fleet_view():
                 "Profile_URL": f"https://github.com/{user_row.get('github_username')}" if user_row.get("github_username") else "",
                 "Avatar_URL": ""
             }
+            if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+                student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+            elif not student.get("Avatar_URL"):
+                gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+                student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
             all_rows.append(student)
             continue
         student = dict(snapshot.get("student") or {})
@@ -579,6 +593,11 @@ def fleet_view():
             student["Semester"] = user_row.get("semester") or "Semester 1"
         student[ROSTER_EMAIL_COL] = email
         student["Roster_Email"] = email
+        if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+            student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+        elif not student.get("Avatar_URL"):
+            gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+            student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
         all_rows.append(student)
         repo_rows.extend(snapshot.get("repos") or [])
         # Old snapshots (pre-team persistence) lack the key: default to [].

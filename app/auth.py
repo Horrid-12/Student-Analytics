@@ -1798,27 +1798,20 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
         _drop_user(email)
 
 
-def confirm_profile_source(email: str, source: str) -> bool:
-    """4.11 (e): activate a previously fetched candidate for sidebar display.
-    Refuses when the candidate is missing (confirm requires a fetch first)."""
+def set_profile_source(email: str, source: str) -> bool:
+    """Set profile_source ('github' or 'linkedin') directly for an account."""
     if source not in LINK_SOURCES:
         return False
     email = (email or "").strip().lower()
     if not email:
         return False
-    user = get_account(email)
-    if user is None:
-        return False
-    faculty_owned = (user.get("role") or "") == "faculty"
+    faculty_owned = _owns_faculty_row(email)
     table = "faculty" if faculty_owned else "users"
-    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
-    if not (user.get(handle_col) or "").strip():
-        return False
     if database.db_configured():
         try:
             if faculty_owned:
                 return db.confirm_faculty_profile_source(email, source)
-            return db.confirm_profile_source(email, source)
+            return db.set_profile_source(email, source)
         finally:
             _drop_user(email)
     try:
@@ -1833,6 +1826,24 @@ def confirm_profile_source(email: str, source: str) -> bool:
         ok = False
     _drop_user(email)
     return ok
+
+
+def confirm_profile_source(email: str, source: str) -> bool:
+    """4.11 (e): activate a previously fetched candidate for sidebar display.
+    Refuses when the candidate is missing (confirm requires a fetch first)."""
+    if source not in LINK_SOURCES:
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    user = get_account(email)
+    if user is None:
+        return False
+    handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
+    if not (user.get(handle_col) or "").strip():
+        return False
+    return set_profile_source(email, source)
+
 
 
 def valid_degree_branch(value: str) -> bool:
@@ -2196,7 +2207,8 @@ def get_approved_accounts() -> list[dict]:
             rows = conn.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub FROM users "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub, "
+                "linked_linkedin_avatar, linked_github_username, linked_github_avatar, profile_source FROM users "
                 "WHERE onboarding_status = 'approved' ORDER BY email ASC"
             ).fetchall()
         return [dict(row) for row in rows]
