@@ -1235,23 +1235,27 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
-    # Class-health composite for the Statistics doughnut hole: a single 0-100
-    # score weighting each bucket (Consistent = 1.0, Doing Good = 0.5, Need
-    # Attention = 0) across the filtered cohort, tinted by band.
+    # Class-health composite for the Statistics doughnut hole. It only makes
+    # sense for a specific class, so it renders when a class filter (Division /
+    # Batch / Semester / Pair) is active; the whole-cohort view leaves the hole
+    # empty. `_class_selected` doubles as the radar's "filtered" flag below.
+    _class_selected = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
     _stat_total = _n_consistent + _n_doing_good + _n_attention
-    _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total) if _stat_total else 0
-    if _health_score >= 75:
-        _health_band, _health_tone = "Healthy", "green"
-    elif _health_score >= 50:
-        _health_band, _health_tone = "Moderate", "amber"
-    else:
-        _health_band, _health_tone = "At Risk", "red"
-    stats_headline = {
-        "value": str(_health_score),
-        "label": "Class Health",
-        "sub": _health_band,
-        "tone": _health_tone,
-    }
+    stats_headline = {}
+    if _class_selected and _stat_total:
+        _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total)
+        if _health_score >= 75:
+            _health_band, _health_tone = "Healthy", "green"
+        elif _health_score >= 50:
+            _health_band, _health_tone = "Moderate", "amber"
+        else:
+            _health_band, _health_tone = "At Risk", "red"
+        stats_headline = {
+            "value": str(_health_score),
+            "label": "Class Health",
+            "sub": _health_band,
+            "tone": _health_tone,
+        }
 
     # Cohort picker options: distinct (Batch × Division) combos in the roster.
     # Labels are user-friendly ("Batch 2026" groups + "Division A" items) and the
@@ -1334,7 +1338,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _radar_active = []
     _has_current = False
     _current_label = ""
-    _filtered = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
+    _filtered = _class_selected
     if radar_students is not None and not radar_students.empty:
         # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
