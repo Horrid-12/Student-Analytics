@@ -646,7 +646,7 @@ h1, h2, h3 {
     letter-spacing: 0;
 }
 
-.badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple, .badge-hackerrank {
+.badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -662,8 +662,7 @@ h1, h2, h3 {
 .badge-amber { color: var(--badge-amber-color); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.25); }
 .badge-red { color: var(--badge-red-color); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
 .badge-blue { color: var(--badge-blue-color); background: var(--blue-active-bg); border-color: var(--blue-badge-border); }
-.badge-purple { color: var(--badge-purple-color); background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
-.badge-hackerrank { color: var(--hackerrank); background: var(--hackerrank-soft); border-color: var(--hackerrank-border); }
+.badge-purple { color: var(--badge-purple-color); background: var(--accent-red-soft); border-color: var(--accent-red-border); }
 .badge-muted { color: var(--muted); background: var(--icon-bg); border-color: var(--border); }
 
 /* Feature 87: GitHub | HackerRank platform toggle + stat strip (Overview
@@ -708,9 +707,9 @@ h1, h2, h3 {
     color: var(--text);
 }
 .platform-switch-btn.is-active[data-platform="github"] {
-    color: #8b5cf6;
-    border-color: rgba(139, 92, 246, 0.45);
-    background: rgba(139, 92, 246, 0.12);
+    color: var(--accent-red);
+    border-color: var(--accent-red-border);
+    background: var(--accent-red-soft);
 }
 .platform-switch-btn.is-active[data-platform="hackerrank"] {
     color: var(--hackerrank);
@@ -722,14 +721,9 @@ h1, h2, h3 {
 .stat-strip-grid[hidden] {
     display: none;
 }
-/* HackerRank metric grid gets the platform's green accent edge + wash. */
-.metric-grid--hackerrank .metric-card {
-    border-color: var(--hackerrank-border);
-    background: linear-gradient(180deg, var(--hackerrank-soft), var(--card) 58%);
-}
-.metric-grid--hackerrank .metric-card:hover {
-    border-color: var(--hackerrank);
-}
+/* Feature 87: both grids share one neutral card style (the GitHub grid look),
+   so switching platforms never restyles the panel - only the numbers and
+   the label pills change. */
 /* Students page stat strip: switch on the left, four platform stats right. */
 .stat-strip {
     display: flex;
@@ -769,9 +763,6 @@ h1, h2, h3 {
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--muted);
-}
-.stat-strip-grid--hackerrank .stat-strip-value {
-    color: var(--hackerrank);
 }
 @media (max-width: 760px) {
     .stat-strip {
@@ -1375,10 +1366,10 @@ div[data-testid="stPopover"] > button:hover {
     align-items: center;
     min-height: 34px;
     padding: 0 16px;
-    border: 2px solid #8b5cf6;
+    border: 2px solid var(--accent-red);
     border-radius: 8px;
     background: transparent;
-    color: #8b5cf6;
+    color: var(--accent-red);
     font-weight: 800;
     font-size: 13px;
     font-family: Inter, system-ui, sans-serif;
@@ -1387,7 +1378,7 @@ div[data-testid="stPopover"] > button:hover {
     transition: all 180ms ease;
 }
 .profile-status-btn:hover {
-    background: rgba(139, 92, 246, 0.12);
+    background: var(--accent-red-soft);
 }
 .privacy-backdrop {
     position: fixed;
@@ -1478,7 +1469,7 @@ div[data-testid="stPopover"] > button:hover {
     height: 26px;
     box-sizing: border-box;
     border-radius: 999px;
-    border: 2px solid #8b5cf6;
+    border: 2px solid var(--accent-red);
     background: transparent;
     position: relative;
     transition: all 180ms ease;
@@ -1492,18 +1483,18 @@ div[data-testid="stPopover"] > button:hover {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #8b5cf6;
+    background: var(--accent-red);
     transition: all 180ms ease;
 }
 .privacy-switch input:checked + .privacy-knob {
-    background: #8b5cf6;
+    background: var(--accent-red);
 }
 .privacy-switch input:checked + .privacy-knob::after {
     left: 22px;
     background: #fff;
 }
 .privacy-switch input:focus-visible + .privacy-knob {
-    outline: 2px solid #8b5cf6;
+    outline: 2px solid var(--accent-red);
     outline-offset: 2px;
 }
 .privacy-error {
@@ -1529,7 +1520,7 @@ div[data-testid="stPopover"] > button:hover {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .04em;
-    color: #8b5cf6;
+    color: var(--accent-red);
 }
 .pfp-select-title .sub-label {
     font-size: 12px;
@@ -1558,14 +1549,14 @@ div[data-testid="stPopover"] > button:hover {
     box-sizing: border-box;
 }
 .pfp-card:hover {
-    border-color: #8b5cf6;
-    background: rgba(139, 92, 246, .04);
+    border-color: var(--accent-red);
+    background: var(--accent-red-faint);
 }
 .pfp-card.is-active,
 .pfp-card:has(input:checked) {
-    border-color: #8b5cf6;
-    background: rgba(139, 92, 246, .08);
-    box-shadow: 0 0 0 1px #8b5cf6;
+    border-color: var(--accent-red);
+    background: var(--accent-red-soft);
+    box-shadow: 0 0 0 1px var(--accent-red);
 }
 .pfp-card input[type="radio"] {
     position: absolute;
@@ -1593,8 +1584,8 @@ div[data-testid="stPopover"] > button:hover {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: rgba(139, 92, 246, .15);
-    color: #8b5cf6;
+    background: var(--accent-red-soft-strong);
+    color: var(--accent-red);
     font-size: 15px;
     font-weight: 700;
     display: flex;
@@ -1651,8 +1642,8 @@ div[data-testid="stPopover"] > button:hover {
 }
 .pfp-card.is-active .pfp-radio-circle,
 .pfp-card:has(input:checked) .pfp-radio-circle {
-    border-color: #8b5cf6;
-    background: #8b5cf6;
+    border-color: var(--accent-red);
+    background: var(--accent-red);
 }
 .pfp-card.is-active .pfp-radio-circle::after,
 .pfp-card:has(input:checked) .pfp-radio-circle::after {

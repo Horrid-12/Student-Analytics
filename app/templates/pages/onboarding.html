@@ -336,7 +336,7 @@
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
             {% for field, label in [('hide_prn', 'PRN'), ('hide_github', 'GitHub'), ('hide_linkedin', 'LinkedIn'), ('hide_hackerrank', 'HackerRank')] %}
             {% if profile_prefs and profile_prefs[field] %}
-            <span style="font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.35);">{{ label }} hidden</span>
+            <span style="font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--accent-red-soft); color: var(--accent-red); border: 1px solid var(--accent-red-border);">{{ label }} hidden</span>
             {% else %}
             <span style="font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; background: var(--card-soft); color: var(--muted); border: 1px solid var(--border);">{{ label }} visible</span>
             {% endif %}

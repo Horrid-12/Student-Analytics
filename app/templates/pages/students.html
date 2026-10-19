@@ -197,7 +197,7 @@
   }
   /* Feature 87: platform-coloured handle hovers (same brand accents as the
      profile icon buttons). */
-  .student-table a.handle-github:hover { color: #8b5cf6; }
+  .student-table a.handle-github:hover { color: var(--accent-red); }
   .student-table a.handle-linkedin:hover { color: #0a66c2; }
   .student-table a.handle-hackerrank:hover { color: #2ec866; }
 </style>
@@ -280,7 +280,7 @@
       <span class="stat-strip-label">Active Repositories</span>
     </div>
   </div>
-  <div class="stat-strip-grid stat-strip-grid--hackerrank" data-platform-grid="hackerrank" hidden>
+  <div class="stat-strip-grid" data-platform-grid="hackerrank" hidden>
     <div class="stat-strip-item">
       <span class="stat-strip-value">{{ payload.summary.hackerrank.linked }}</span>
       <span class="stat-strip-label">HR Linked</span>

@@ -35,12 +35,12 @@
     margin-bottom: 0;
   }
 
-  /* Scope toggle switch: My Classes | All students in one purple-bordered
+  /* Scope toggle switch: My Classes | All students in one red-bordered
      pill. Both options stay visible so the state never has to be guessed
      (replaces the old single button that swapped its label on click). */
   .scope-toggle {
     display: inline-flex;
-    border: 3px solid #8b5cf6;
+    border: 3px solid var(--accent-red);
     border-radius: 10px;
     overflow: hidden;
     min-height: 42px;
@@ -56,13 +56,13 @@
     font-size: 15px;
     font-family: Inter, system-ui, sans-serif;
     text-decoration: none;
-    color: #8b5cf6;
+    color: var(--accent-red);
     background: transparent;
     white-space: nowrap;
     transition: all 180ms ease;
   }
-  .scope-opt:hover:not(.is-active) { background: rgba(139, 92, 246, 0.12); }
-  .scope-opt.is-active { background: #8b5cf6; color: #fff; }
+  .scope-opt:hover:not(.is-active) { background: var(--accent-red-soft); }
+  .scope-opt.is-active { background: var(--accent-red); color: #fff; }
 
   /* Promoted trend heading + Weekly/Monthly capsule toggle row. */
   .trend-header {
@@ -228,10 +228,10 @@
     gap: 8px;
     min-height: 42px;
     padding: 0 24px;
-    border: 3px solid #8b5cf6;
+    border: 3px solid var(--accent-red);
     border-radius: 10px;
     background: transparent;
-    color: #8b5cf6;
+    color: var(--accent-red);
     font-weight: 800;
     font-size: 15px;
     font-family: Inter, system-ui, sans-serif;
@@ -240,10 +240,10 @@
     transition: all 180ms ease;
   }
   .radar-compare-btn:hover {
-    background: rgba(139, 92, 246, 0.12);
+    background: var(--accent-red-soft);
   }
   .radar-compare-btn[aria-expanded="true"] {
-    background: #8b5cf6;
+    background: var(--accent-red);
     color: #fff;
   }
   .radar-compare-btn[aria-expanded="true"] svg {
@@ -341,12 +341,12 @@
     transition: all 180ms ease;
   }
   .radar-compare-batch:hover {
-    border-color: #8b5cf6;
-    color: #8b5cf6;
+    border-color: var(--accent-red);
+    color: var(--accent-red);
   }
   .radar-compare-batch[data-active="true"] {
-    background: #8b5cf6;
-    border-color: #8b5cf6;
+    background: var(--accent-red);
+    border-color: var(--accent-red);
     color: #fff;
   }
   .radar-compare-semesters {
@@ -363,22 +363,22 @@
     margin: 0 0 8px;
     padding: 4px;
   }
-  /* Faculty's taught division gets a light purple wash; its batches go deeper. */
+  /* Faculty's taught division gets a light red wash; its batches go deeper. */
   .radar-compare-divrow.taught {
-    background: rgba(139, 92, 246, 0.10);
+    background: var(--accent-red-soft);
     border-radius: 8px;
   }
   .radar-compare-divrow.taught .radar-compare-div {
-    color: #8b5cf6;
+    color: var(--accent-red);
   }
   .radar-compare-batch.taught {
     background: transparent;
-    border-color: #7c3aed;
-    color: #7c3aed;
+    border-color: var(--accent-red-hover);
+    color: var(--accent-red-hover);
   }
   .radar-compare-batch.taught[data-active="true"] {
-    background: #7c3aed;
-    border-color: #7c3aed;
+    background: var(--accent-red-hover);
+    border-color: var(--accent-red-hover);
     color: #fff;
   }
   @media (max-width: 700px) {
@@ -753,29 +753,30 @@
     </div>
   </div>
   {# Feature 87: HackerRank side of the toggle — pre-rendered like the GitHub
-     grid, revealed client-side (no fetch on switch). Counts follow the same
-     cohort filters as the rest of the page; only synced (non-tombstone)
-     snapshots contribute solved/practice/badges. #}
-  <div class="metric-grid metric-grid-4 metric-grid--hackerrank" data-platform-grid="hackerrank" hidden>
+     grid, revealed client-side (no fetch on switch). Card and badge styling
+     mirrors the GitHub grid; only the numbers and labels change. Counts
+     follow the same cohort filters as the rest of the page; only synced
+     (non-tombstone) snapshots contribute solved/practice/badges. #}
+  <div class="metric-grid metric-grid-4" data-platform-grid="hackerrank" hidden>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.hackerrank.linked }}</div>
-      <div class="metric-label"><span class="badge-hackerrank metric-pill">Linked Profiles</span></div>
+      <div class="metric-label"><span class="badge-blue metric-pill">Linked Profiles</span></div>
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.hackerrank.synced }}</div>
-      <div class="metric-label"><span class="badge-hackerrank metric-pill">Synced Profiles</span></div>
+      <div class="metric-label"><span class="badge-green metric-pill">Synced Profiles</span></div>
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.hackerrank.solved }}</div>
-      <div class="metric-label"><span class="badge-hackerrank metric-pill">Problems Solved</span></div>
+      <div class="metric-label"><span class="badge-amber metric-pill">Problems Solved</span></div>
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
       <div class="metric-value">{{ payload.hackerrank.badges }}</div>
-      <div class="metric-label"><span class="badge-hackerrank metric-pill">Badges Earned</span></div>
+      <div class="metric-label"><span class="badge-purple metric-pill">Badges Earned</span></div>
     </div>
   </div>
 </section>
@@ -990,7 +991,7 @@
     <div class="radar-controls">
       <button type="button" id="radar-compare-btn" class="radar-compare-btn" aria-haspopup="true" aria-expanded="false">
         Compare
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="radar-compare-panel" class="radar-compare-panel" hidden>
         {% if payload.radar_data.has_current %}

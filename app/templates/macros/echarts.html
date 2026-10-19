@@ -575,7 +575,7 @@ window.__EC_THEME = (function () {
 
    Styling: kind == 'overall' (the institutional benchmark) renders as a muted,
    dashed slate baseline (fill 0.12). Every other series follows activation
-   order — 1st = Sky (#38bdf8, fill 0.25), 2nd = Violet (#a855f7, fill 0.2).
+   order — 1st = Sky (#38bdf8, fill 0.25), 2nd = Red (#e0564b, fill 0.2).
    Axis order is NEVER rearranged. Points illuminate on hover; the tooltip is
    disabled because per-series values are shown in the comparison cards beside
    the chart. The page-level cohort picker drives addSeries/removeSeries through
@@ -593,7 +593,7 @@ window.__EC_THEME = (function () {
   var chart = echarts.init(el);
 
   var BENCH_KEY = 'overall';
-  var ACCENTS = ['#38bdf8', '#a855f7', '#f59e0b'];
+  var ACCENTS = ['#38bdf8', '#e0564b', '#f59e0b'];
   var SLATE = '#94a3b8';
 
   var byKey = {};
@@ -614,7 +614,7 @@ window.__EC_THEME = (function () {
       return { color: SLATE, dash: true, fill: 'rgba(148,163,184,0.14)', symbol: 4 };
     }
     if (key === 'current') {
-      return { color: '#8b5cf6', dash: false, fill: hexToRgba('#8b5cf6', 0.22), symbol: 6 };
+      return { color: '#e0564b', dash: false, fill: hexToRgba('#e0564b', 0.22), symbol: 6 };
     }
     var non = active.filter(function (k) { return k !== BENCH_KEY && k !== 'current'; });
     var pos = non.indexOf(key);
