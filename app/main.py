@@ -2472,16 +2472,90 @@ def _safe_redirect_url(target: str | None, default: str = "/me", **extra_params:
 
 
 @app.get("/autocad", response_class=HTMLResponse)
-def autocad_page(request: Request, notice: str = "", error: str = ""):
+def autocad_page(
+    request: Request,
+    notice: str = "",
+    error: str = "",
+    q: str = "",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+    mine: str = "1",
+    pair: str = "All",
+):
     """Student DWG upload page and faculty/admin submission inbox."""
     user = getattr(request.state, "user", None) or {}
     role = (user.get("role") or "").lower()
     student_email = (user.get("email") or "").strip().lower()
     is_staff = role in ("faculty", "admin")
-    submissions = autocad.list_submissions(
-        student_email="" if is_staff else student_email,
-        limit=200,
-    )
+    submissions = autocad.list_submissions(student_email="" if is_staff else student_email, limit=500 if is_staff else 200)
+    payload = {"total": len(submissions), "showing": len(submissions), "semesters": ["All"], "division_groups": []}
+    teaching_active = False
+    taught_map = {}
+    mine_value = "1"
+    filter_state = _filter_context(request, division, batch, pair)
+    if is_staff:
+        try:
+            account_rows = auth.get_student_accounts() or []
+        except Exception:
+            account_rows = []
+        account_by_email = {
+            str(row.get("email") or "").strip().lower(): row
+            for row in account_rows
+            if str(row.get("email") or "").strip()
+        }
+        for submission in submissions:
+            email = str(submission.get("student_email") or "").strip().lower()
+            account = account_by_email.get(email) or {}
+            submission["division"] = str(account.get("division") or "").strip()
+            submission["batch"] = str(account.get("practical_batch") or "").strip()
+            submission["semester"] = str(account.get("semester") or "").strip()
+
+        if role == "faculty":
+            try:
+                taught_map = auth.get_faculty_teaching(student_email) or {}
+            except Exception:
+                taught_map = {}
+            teaching_active = bool(taught_map)
+            mine_value = "0" if (mine or "1") == "0" else "1"
+
+        def in_taught_scope(row: dict) -> bool:
+            div = str(row.get("division") or "").strip()
+            bat = str(row.get("practical_batch") or "").strip()
+            return div in taught_map and bat in set(taught_map.get(div) or [])
+
+        filter_accounts = account_rows
+        if role == "faculty" and teaching_active and mine_value != "0":
+            filter_accounts = [row for row in account_rows if in_taught_scope(row)]
+            submissions = [
+                row for row in submissions
+                if str(row.get("division") or "").strip() in taught_map
+                and str(row.get("batch") or "").strip() in set(taught_map.get(str(row.get("division") or "").strip()) or [])
+            ]
+
+        available_semesters = sorted({
+            str(row.get("semester") or "").strip()
+            for row in filter_accounts
+            if str(row.get("semester") or "").strip()
+        }, key=lambda value: (int(re.search(r"\d+", value).group(0)) if re.search(r"\d+", value) else 999, value.lower()))
+        semester_options = ["All", *available_semesters]
+        if semester not in semester_options and semester and semester != "All":
+            semester_options.append(semester)
+        payload = {
+            "total": len(submissions),
+            "semesters": semester_options,
+            "division_groups": autocad.division_batch_groups(filter_accounts),
+        }
+        submissions = autocad.filter_submissions(
+            submissions,
+            query=q,
+            divisions=filter_state["divisions"],
+            batches=filter_state["batches"],
+            pairs=filter_state["pairs"],
+            semester=semester,
+        )
+        payload["showing"] = len(submissions)
+
     ctx = _base_context(request, "AutoCAD")
     ctx.update({
         "page_name": "AutoCAD",
@@ -2492,6 +2566,13 @@ def autocad_page(request: Request, notice: str = "", error: str = ""):
         "notice": notice,
         "error": error,
         "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
+        "payload": payload,
+        "q": q,
+        "semester": semester,
+        "teaching_active": teaching_active,
+        "taught_map": taught_map,
+        "mine": mine_value,
+        **filter_state,
     })
     return templates.TemplateResponse(request, "pages/autocad.html", ctx)
 

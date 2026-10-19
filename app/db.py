@@ -1672,6 +1672,23 @@ def get_onboarding_users() -> list[dict]:
         return []
 
 
+def get_student_accounts() -> list[dict]:
+    """Cohort fields for every student account, including onboarding_status=none."""
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            cur = c.execute(
+                "SELECT email, role, name, prn, division, onboarding_status, "
+                "main_batch, practical_batch, semester FROM users "
+                "WHERE role = 'student' ORDER BY email ASC"
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("get_student_accounts failed: %s", exc)
+        return []
+
+
 # ── account snapshots (Phase 5.1 account-driven redesign) ─────────────────────
 
 def get_approved_users() -> list[dict]:

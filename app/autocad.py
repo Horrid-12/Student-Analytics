@@ -194,3 +194,69 @@ def get_submission_file(submission_id: int) -> Optional[tuple[str, bytes]]:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("AutoCAD file retrieval failed: %s", exc)
         return None
+
+
+def division_batch_groups(account_rows: list[dict]) -> list[dict]:
+    """Build the same Division → Batch picker model used by analytics pages."""
+    grouped: dict[str, set[str]] = {}
+    for row in account_rows or []:
+        division = str((row or {}).get("division") or "").strip()
+        batch = str((row or {}).get("practical_batch") or "").strip()
+        if not division or division.lower() in {"nan", "none", "unknown"}:
+            continue
+        grouped.setdefault(division, set())
+        if batch and batch.lower() not in {"nan", "none", "unknown"}:
+            grouped[division].add(batch)
+
+    def sort_key(value: str):
+        match = re.search(r"\d+", str(value))
+        return (0, int(match.group(0)), str(value).lower()) if match else (1, 0, str(value).lower())
+
+    groups = []
+    for division in sorted(grouped, key=sort_key):
+        batches = sorted(grouped[division], key=sort_key)
+        groups.append({
+            "division": division,
+            "label": f"Division {division}",
+            "key": division,
+            "batches": batches,
+            "batch_keys": batches,
+        })
+    return groups
+
+
+def filter_submissions(
+    submissions: list[dict],
+    *,
+    query: str = "",
+    divisions: list[str] | None = None,
+    batches: list[str] | None = None,
+    pairs: list[str] | None = None,
+    semester: str = "All",
+) -> list[dict]:
+    """Apply the Repositories page's search and class/semester filters."""
+    query = (query or "").strip().lower()
+    selected_divisions = {str(value).strip() for value in divisions or [] if str(value).strip()}
+    selected_batches = {str(value).strip() for value in batches or [] if str(value).strip()}
+    selected_pairs = {str(value).strip() for value in pairs or [] if "|" in str(value)}
+    semester = (semester or "All").strip()
+    filtered = []
+    for source in submissions or []:
+        row = dict(source)
+        division = str(row.get("division") or "").strip()
+        batch = str(row.get("batch") or "").strip()
+        if selected_pairs:
+            if f"{division}|{batch}" not in selected_pairs:
+                continue
+        elif (selected_divisions and division not in selected_divisions) or (selected_batches and batch not in selected_batches):
+            continue
+        if semester.lower() != "all" and str(row.get("semester") or "").strip() != semester:
+            continue
+        if query:
+            haystack = " ".join(str(row.get(key) or "") for key in (
+                "filename", "student_name", "student_email", "student_id", "division", "batch", "semester"
+            )).lower()
+            if query not in haystack:
+                continue
+        filtered.append(row)
+    return filtered

@@ -29,7 +29,7 @@ Browser request
 - **Analytics:** approved accounts are synchronized from GitHub into account snapshots. Scheduled Vercel and GitHub Actions jobs refresh account and HackerRank data; page payloads are assembled in `app/views.py` and cached through `app/view_cache.py`.
 - **Certificates:** students submit credential details and small file proofs from their profile; administrators approve or reject those records in `/verification`. This is a separate workflow from CAD submissions.
 - **Support:** students and staff exchange support tickets, replies, and image attachments; notifications and the sidebar bell use the support notification storage.
-- **Faculty scope:** the current role model grants faculty shared dashboard access. It does not yet establish a per-faculty course assignment that AutoCAD can safely use as a class filter. The MVP therefore gives faculty/admin a global recent-submissions list, and class-scoped visibility should be added only with an explicit teaching-assignment relationship.
+- **Faculty scope:** AutoCAD uses the same faculty teaching map as the Repositories page when one is configured. The role model remains broader than per-course access, and the **All students** scope is intentionally available to faculty just as it is on Repositories. Tighter access should wait for a clear course/assignment ownership model.
 - **Hosting:** `vercel.json` routes the FastAPI app through a Vercel Python Function. `DATABASE_URL` selects Neon in production; SQLite is the local fallback. Do not rely on a local uploaded file being durable on Vercel.
 
 ## AutoCAD MVP flow
@@ -44,15 +44,16 @@ Student /autocad page
   → redirect back to /autocad
 
 Faculty/admin /autocad page
-  → latest 200 submissions
+  → latest 500 submissions
+  → Repositories-style class/semester/search filters
   → GET /autocad/submissions/{id}/file
   → ownership-or-staff authorization
   → attachment download
 ```
 
-The current upload limit is **4 MiB**. DWG file contents are stored with their metadata in `autocad_submissions`; the browser never supplies the student email or PRN. Those identity values come from the signed-in account and its account row. The stored file is only returned by an authenticated download route. A student's list is filtered to that student's email; faculty and admins currently see the latest 200 uploads across the whole app.
+The current upload limit is **4 MiB**. DWG file contents are stored with their metadata in `autocad_submissions`; the browser never supplies the student email or PRN. Those identity values come from the signed-in account and its account row. The stored file is only returned by an authenticated download route. A student's list is filtered to that student's email. Staff see up to the latest 500 uploads; the Division/Batch picker, Semester select, and search filter that list. Faculty with teaching assignments start in **My Classes** scope and can switch to **All students**, matching the Repositories page; admins can filter across all classes.
 
-The page supports a basic student upload and faculty download inbox. It does not yet create assignments, filter faculty by class, render DWG files in a browser, allow deletion, or record grades and remarks. Each upload is an independent row, so repeated uploads do not overwrite earlier files.
+The page supports a basic student upload and faculty download inbox. It does not yet create assignments, render DWG files in a browser, allow deletion, or record grades and remarks. Each upload is an independent row, so repeated uploads do not overwrite earlier files. Class filtering currently reads the student's current division, practical batch, and semester from their account record; future assignments should store the assigned cohort on the assignment/submission so class changes cannot move historical work into a different class.
 
 ## Why the initial limit and storage choice are small
 

@@ -3,7 +3,6 @@
 {% block head %}
 <style>
   .autocad-page{max-width:1080px;margin:0 auto;padding:24px 0 48px}
-  .autocad-intro{margin:0 0 20px;color:var(--muted);line-height:1.55}
   .autocad-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;margin:0 0 20px;box-shadow:0 4px 18px rgba(20,34,53,.04)}
   .autocad-panel h2{font-size:17px;margin:0 0 8px;color:var(--text)}
   .autocad-muted{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 16px}
@@ -20,15 +19,24 @@
   .autocad-file{color:var(--blue);font-weight:700;text-decoration:none;overflow-wrap:anywhere}
   .autocad-file:hover{text-decoration:underline}
   .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
+  .filter-bar{align-items:flex-end;margin:0 0 16px}
+  .filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .filter-field .filter-select{min-width:140px}
+  .filter-field.search-box-row{flex:1 1 320px}
+  .filter-label{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
   @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}}
 </style>
 {% endblock %}
 {% block content %}
 <div class="autocad-page">
-  <div class="topbar">
-    <div>
-      <div class="topbar-title">AutoCAD</div>
-      <div class="topbar-subtitle">Upload and review student DWG submissions.</div>
+  <div class="topbar-card">
+    <div class="topbar">
+      <div style="display:flex;flex-direction:column;justify-content:center;min-width:0;">
+        <div class="topbar-title">AutoCAD</div>
+        <div class="topbar-meta" style="margin-top:3px;font-size:13px;">
+          {% if is_staff %}<span>{{ payload.total }} submissions in scope</span>{% else %}<span>Upload and manage your DWG submissions</span>{% endif %}
+        </div>
+      </div>
     </div>
   </div>
 
@@ -53,8 +61,29 @@
   {% elif is_staff %}
   <section class="autocad-panel">
     <h2>Faculty submission inbox</h2>
-    <p class="autocad-muted">This initial inbox shows the latest 200 student uploads. Class filters, grading, and remarks can be added in a later phase.</p>
+    <p class="autocad-muted">This inbox shows up to the latest 500 uploads. Use the class filters to narrow the list; DWG previews, grades, and remarks can be added in a later phase.</p>
   </section>
+  {% endif %}
+
+  {% if is_staff %}
+  <form class="filter-bar" method="get" id="autocad-filter-form">
+    <div class="filter-field search-box-row">
+      <label class="filter-label" for="autocad-search">Search</label>
+      <input id="autocad-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search student, PRN, or file name…">
+    </div>
+    {% include "partials/class_filter_dropdown.html" %}
+    <div class="filter-field">
+      <label class="filter-label" for="autocad-semester">Semester</label>
+      <select id="autocad-semester" class="filter-select" name="semester">
+        {% for value in payload.semesters %}
+        <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Apply</button>
+    <a class="btn" href="/autocad">Clear</a>
+    <span class="filter-count" role="status" aria-live="polite">{{ payload.showing }} of {{ payload.total }} shown</span>
+  </form>
   {% endif %}
 
   <section class="autocad-panel" aria-labelledby="autocad-submissions-title">
@@ -64,14 +93,14 @@
       <table class="autocad-table">
         <thead>
           <tr>
-            {% if is_staff %}<th>Student</th><th>PRN</th>{% endif %}
+            {% if is_staff %}<th>Student</th><th>PRN</th><th>Division</th><th>Batch</th><th>Semester</th>{% endif %}
             <th>File</th><th>Size</th><th>Uploaded</th>
           </tr>
         </thead>
         <tbody>
           {% for submission in submissions %}
           <tr>
-            {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td>{% endif %}
+            {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td><td>{{ submission.division or '—' }}</td><td>{{ submission.batch or '—' }}</td><td>{{ submission.semester or '—' }}</td>{% endif %}
             <td><a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a></td>
             <td>{{ '%.1f'|format(submission.file_size / 1048576) }} MB</td>
             <td>{{ submission.created_at|replace('T', ' ') }}</td>
@@ -81,7 +110,7 @@
       </table>
     </div>
     {% else %}
-    <div class="autocad-empty">{{ 'No student DWG files have been uploaded yet.' if is_staff else 'You have not uploaded a DWG file yet.' }}</div>
+    <div class="autocad-empty">{% if is_staff %}No submissions match the current filters.{% else %}You have not uploaded a DWG file yet.{% endif %}</div>
     {% endif %}
   </section>
 </div>

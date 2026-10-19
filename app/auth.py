@@ -2184,6 +2184,25 @@ def get_onboarding_users() -> list[dict]:
         return []
 
 
+def get_student_accounts() -> list[dict]:
+    """Cohort fields for all student accounts, including pre-onboarding users."""
+    if database.db_configured():
+        return db.get_student_accounts()
+    try:
+        with closing(_connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            _ensure_schema(conn)
+            rows = conn.execute(
+                "SELECT email, role, name, prn, division, onboarding_status, "
+                "main_batch, practical_batch, semester FROM users "
+                "WHERE role = 'student' ORDER BY email ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("student cohort lookup failed: %s", exc)
+        return []
+
+
 def get_approved_accounts() -> list[dict]:
     """Accounts with an approved onboarding submission — the sync fleet.
     Returns user rows (email/role/name/github_username/prn/degree_branch/
