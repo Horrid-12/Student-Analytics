@@ -2488,7 +2488,15 @@ def autocad_page(
     role = (user.get("role") or "").lower()
     student_email = (user.get("email") or "").strip().lower()
     is_staff = role in ("faculty", "admin")
+    student_details = {}
+    if role == "student":
+        try:
+            student_details = auth.get_account(student_email) or {}
+        except Exception:
+            student_details = {}
     submissions = autocad.list_submissions(student_email="" if is_staff else student_email, limit=500 if is_staff else 200)
+    for submission in submissions:
+        submission["uploaded_display"] = autocad.format_uploaded_at(submission.get("created_at"))
     payload = {"total": len(submissions), "showing": len(submissions), "semesters": ["All"], "division_groups": []}
     teaching_active = False
     taught_map = {}
@@ -2507,9 +2515,11 @@ def autocad_page(
         for submission in submissions:
             email = str(submission.get("student_email") or "").strip().lower()
             account = account_by_email.get(email) or {}
-            submission["division"] = str(account.get("division") or "").strip()
-            submission["batch"] = str(account.get("practical_batch") or "").strip()
-            submission["semester"] = str(account.get("semester") or "").strip()
+            # New submissions retain the student details as they were at upload.
+            # Fall back to the live account only for rows created before the snapshot fields existed.
+            submission["division"] = str(submission.get("division") or account.get("division") or "").strip()
+            submission["batch"] = str(submission.get("batch") or account.get("practical_batch") or "").strip()
+            submission["semester"] = str(submission.get("semester") or account.get("semester") or "").strip()
 
         if role == "faculty":
             try:
@@ -2524,9 +2534,17 @@ def autocad_page(
             bat = str(row.get("practical_batch") or "").strip()
             return div in taught_map and bat in set(taught_map.get(div) or [])
 
-        filter_accounts = account_rows
+        submission_cohorts = [
+            {
+                "division": row.get("division") or "",
+                "practical_batch": row.get("batch") or "",
+                "semester": row.get("semester") or "",
+            }
+            for row in submissions
+        ]
+        filter_accounts = [*account_rows, *submission_cohorts]
         if role == "faculty" and teaching_active and mine_value != "0":
-            filter_accounts = [row for row in account_rows if in_taught_scope(row)]
+            filter_accounts = [row for row in filter_accounts if in_taught_scope(row)]
             submissions = [
                 row for row in submissions
                 if str(row.get("division") or "").strip() in taught_map
@@ -2563,6 +2581,7 @@ def autocad_page(
         "submissions": submissions,
         "is_staff": is_staff,
         "can_upload": role == "student",
+        "student_details": student_details,
         "notice": notice,
         "error": error,
         "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
@@ -2578,7 +2597,14 @@ def autocad_page(
 
 
 @app.post("/autocad/upload")
-async def autocad_upload(request: Request, file: UploadFile = File(...)):
+async def autocad_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    student_id: str = Form(""),
+    division: str = Form(""),
+    batch: str = Form(""),
+    semester: str = Form(""),
+):
     """Accept a single small DWG upload from the signed-in student."""
     user = getattr(request.state, "user", None) or {}
     if (user.get("role") or "").lower() != "student":
@@ -2598,12 +2624,26 @@ async def autocad_upload(request: Request, file: UploadFile = File(...)):
         user_row = auth.get_account(student_email) or {}
     except Exception:
         user_row = {}
+    submission_details = {
+        "student_id": str(user_row.get("prn") or student_id).strip(),
+        "division": str(user_row.get("division") or division).strip(),
+        "batch": str(user_row.get("practical_batch") or batch).strip(),
+        "semester": str(user_row.get("semester") or semester).strip(),
+    }
+    if not all(submission_details.values()):
+        return RedirectResponse(
+            "/autocad?" + urlencode({"error": "Enter your PRN, division, batch, and semester before uploading."}),
+            status_code=303,
+        )
     submission = autocad.create_submission(
         student_email=student_email,
-        student_id=str(user_row.get("prn") or "").strip(),
+        student_id=submission_details["student_id"],
         student_name=str(user.get("name") or user_row.get("name") or "Student"),
         filename=filename,
         file_data=file_data,
+        division=submission_details["division"],
+        batch=submission_details["batch"],
+        semester=submission_details["semester"],
     )
     if not submission:
         return RedirectResponse("/autocad?error=save_failed", status_code=303)

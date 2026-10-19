@@ -521,11 +521,19 @@ CREATE TABLE IF NOT EXISTS autocad_submissions (
     student_email   TEXT NOT NULL,
     student_id      TEXT NOT NULL DEFAULT '',
     student_name    TEXT NOT NULL DEFAULT '',
+    division        TEXT NOT NULL DEFAULT '',
+    batch           TEXT NOT NULL DEFAULT '',
+    semester        TEXT NOT NULL DEFAULT '',
     filename        TEXT NOT NULL,
     file_size       INTEGER NOT NULL,
     file_data       BYTEA NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Keep existing deployments compatible as student cohort details are added.
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS division TEXT NOT NULL DEFAULT '';
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS batch TEXT NOT NULL DEFAULT '';
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_autocad_submissions_email
     ON autocad_submissions (lower(student_email));

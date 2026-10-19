@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS autocad_submissions (
     student_email TEXT NOT NULL,
     student_id TEXT NOT NULL DEFAULT '',
     student_name TEXT NOT NULL DEFAULT '',
+    division TEXT NOT NULL DEFAULT '',
+    batch TEXT NOT NULL DEFAULT '',
+    semester TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     file_data BLOB NOT NULL,
@@ -56,6 +59,28 @@ def _connect() -> sqlite3.Connection:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(autocad_submissions)")}
+    for name in ("division", "batch", "semester"):
+        if name not in columns:
+            conn.execute(
+                f"ALTER TABLE autocad_submissions ADD COLUMN {name} TEXT NOT NULL DEFAULT ''"
+            )
+
+
+def format_uploaded_at(value: object) -> str:
+    """Format a stored timestamp in IST as dd-mm-yy and a 12-hour time."""
+    if not value:
+        return "—"
+    try:
+        if isinstance(value, datetime):
+            created = value
+        else:
+            created = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=IST)
+        return created.astimezone(IST).strftime("%d-%m-%y %I:%M %p")
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
 
 
 def clean_filename(filename: str) -> str:
@@ -96,10 +121,16 @@ def create_submission(
     student_name: str,
     filename: str,
     file_data: bytes,
+    division: str = "",
+    batch: str = "",
+    semester: str = "",
 ) -> Optional[dict]:
     student_email = (student_email or "").strip().lower()
     student_id = (student_id or "").strip()
     student_name = (student_name or "").strip()[:160]
+    division = (division or "").strip()[:80]
+    batch = (batch or "").strip()[:80]
+    semester = (semester or "").strip()[:80]
     filename = clean_filename(filename)
     file_data = bytes(file_data or b"")
     if not student_email or not filename or validate_upload(filename, file_data):
@@ -107,7 +138,8 @@ def create_submission(
 
     if database.db_configured():
         return db.create_autocad_submission(
-            student_email, student_id, student_name, filename, file_data
+            student_email, student_id, student_name, filename, file_data,
+            division, batch, semester,
         )
 
     try:
@@ -116,9 +148,9 @@ def create_submission(
                 _ensure_schema(conn)
                 cur = conn.execute(
                     "INSERT INTO autocad_submissions "
-                    "(student_email, student_id, student_name, filename, file_size, file_data, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (student_email, student_id, student_name, filename, len(file_data), file_data, _now()),
+                    "(student_email, student_id, student_name, division, batch, semester, filename, file_size, file_data, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (student_email, student_id, student_name, division, batch, semester, filename, len(file_data), file_data, _now()),
                 )
                 submission_id = cur.lastrowid
         return get_submission(submission_id)
@@ -137,13 +169,13 @@ def list_submissions(student_email: str = "", limit: int = 200) -> list[dict]:
             _ensure_schema(conn)
             if student_email:
                 rows = conn.execute(
-                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    "SELECT id, student_email, student_id, student_name, division, batch, semester, filename, file_size, created_at "
                     "FROM autocad_submissions WHERE lower(student_email) = ? ORDER BY id DESC LIMIT ?",
                     (student_email, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    "SELECT id, student_email, student_id, student_name, division, batch, semester, filename, file_size, created_at "
                     "FROM autocad_submissions ORDER BY id DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
@@ -164,7 +196,7 @@ def get_submission(submission_id: int) -> Optional[dict]:
         with closing(_connect()) as conn:
             _ensure_schema(conn)
             row = conn.execute(
-                "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                "SELECT id, student_email, student_id, student_name, division, batch, semester, filename, file_size, created_at "
                 "FROM autocad_submissions WHERE id = ?",
                 (submission_id,),
             ).fetchone()

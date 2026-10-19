@@ -8,6 +8,9 @@
   .autocad-muted{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 16px}
   .autocad-form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .autocad-form input[type=file]{max-width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
+  .autocad-details{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin:0 0 14px}
+  .autocad-details label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .autocad-details input{min-width:0;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
   .autocad-submit{border:0;border-radius:9px;background:var(--red);color:#fff;padding:11px 17px;font:inherit;font-weight:700;cursor:pointer}
   .autocad-alert{padding:12px 15px;border-radius:10px;margin:0 0 18px;font-size:14px}
   .autocad-alert.success{background:rgba(30,140,90,.1);color:#16734a}
@@ -18,13 +21,15 @@
   .autocad-table th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
   .autocad-file{color:var(--blue);font-weight:700;text-decoration:none;overflow-wrap:anywhere}
   .autocad-file:hover{text-decoration:underline}
+  .autocad-student-link{color:var(--text);font-weight:600;text-decoration:none}
+  .autocad-student-link:hover{color:var(--blue);text-decoration:underline}
   .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
   .filter-bar{align-items:flex-end;margin:0 0 16px}
   .filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
   .filter-field .filter-select{min-width:140px}
   .filter-field.search-box-row{flex:1 1 320px}
   .filter-label{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
-  @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}}
+  @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}.autocad-details{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 {% endblock %}
 {% block content %}
@@ -52,8 +57,14 @@
   {% if can_upload %}
   <section class="autocad-panel" aria-labelledby="autocad-upload-title">
     <h2 id="autocad-upload-title">Submit a DWG file</h2>
-    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Your faculty can download it from this page. Browser preview, assignment grouping, grades, and remarks are not included yet.</p>
+    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Confirm your student details so faculty can identify and filter your submission.</p>
     <form class="autocad-form" method="post" action="/autocad/upload" enctype="multipart/form-data">
+      <div class="autocad-details" aria-label="Student details for this submission">
+        <label>PRN<input name="student_id" value="{{ student_details.prn or '' }}" required maxlength="40" autocomplete="off" {% if student_details.prn %}readonly{% endif %}></label>
+        <label>Division<input name="division" value="{{ student_details.division or '' }}" required maxlength="80" autocomplete="off" {% if student_details.division %}readonly{% endif %}></label>
+        <label>Batch<input name="batch" value="{{ student_details.practical_batch or '' }}" required maxlength="80" autocomplete="off" {% if student_details.practical_batch %}readonly{% endif %}></label>
+        <label>Semester<input name="semester" value="{{ student_details.semester or '' }}" required maxlength="80" autocomplete="off" {% if student_details.semester %}readonly{% endif %}></label>
+      </div>
       <input type="file" name="file" accept=".dwg,application/acad" required aria-label="Choose a DWG file">
       <button class="autocad-submit" type="submit">Upload DWG</button>
     </form>
@@ -100,10 +111,10 @@
         <tbody>
           {% for submission in submissions %}
           <tr>
-            {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td><td>{{ submission.division or '—' }}</td><td>{{ submission.batch or '—' }}</td><td>{{ submission.semester or '—' }}</td>{% endif %}
+            {% if is_staff %}<td>{% if submission.student_id %}<a class="autocad-student-link" href="/students?select={{ submission.student_id|urlencode }}&amp;mine=0" aria-label="View profile for {{ submission.student_name or 'Student' }}">{{ submission.student_name or 'Student' }}</a>{% else %}{{ submission.student_name or 'Student' }}{% endif %}</td><td>{{ submission.student_id or '—' }}</td><td>{{ submission.division or '—' }}</td><td>{{ submission.batch or '—' }}</td><td>{{ submission.semester or '—' }}</td>{% endif %}
             <td><a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a></td>
             <td>{{ '%.1f'|format(submission.file_size / 1048576) }} MB</td>
-            <td>{{ submission.created_at|replace('T', ' ') }}</td>
+            <td>{{ submission.uploaded_display }}</td>
           </tr>
           {% endfor %}
         </tbody>

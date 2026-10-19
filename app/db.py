@@ -2863,7 +2863,7 @@ def count_certificates(status: Optional[str] = None) -> int:
 # ---------------------------------------------------------------------------
 
 _AUTOCAD_COLUMNS = (
-    "id, student_email, student_id, student_name, filename, file_size, created_at"
+    "id, student_email, student_id, student_name, division, batch, semester, filename, file_size, created_at"
 )
 
 
@@ -2884,6 +2884,9 @@ def create_autocad_submission(
     student_name: str,
     filename: str,
     file_data: bytes,
+    division: str = "",
+    batch: str = "",
+    semester: str = "",
 ) -> Optional[dict]:
     try:
         with database.conn() as c:
@@ -2891,9 +2894,9 @@ def create_autocad_submission(
                 return None
             cur = c.execute(
                 "INSERT INTO autocad_submissions "
-                "(student_email, student_id, student_name, filename, file_size, file_data) "
-                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING " + _AUTOCAD_COLUMNS,
-                (student_email, student_id, student_name, filename, len(file_data), bytes(file_data)),
+                "(student_email, student_id, student_name, division, batch, semester, filename, file_size, file_data) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING " + _AUTOCAD_COLUMNS,
+                (student_email, student_id, student_name, division, batch, semester, filename, len(file_data), bytes(file_data)),
             )
             return _format_autocad_submission(cur.fetchone())
     except Exception as exc:
