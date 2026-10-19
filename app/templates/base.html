@@ -36,6 +36,9 @@
   <div class="nav-overlay" id="navOverlay"></div>
   <aside class="app-sidebar" id="sidebar">
     <div class="sidebar-stack">
+    <div class="sidebar-brand-panel">
+      <img src="{{ url_for('static', path='/mit-wpu-logo.png') }}" alt="MIT World Peace University, Pune">
+    </div>
     <div class="sidebar-identity">
       {% if auth_role == 'Faculty' or auth_role == 'Admin' %}
       <span class="sidebar-avatar-link" aria-hidden="true">

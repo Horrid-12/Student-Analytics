@@ -83,6 +83,22 @@ button {
   margin: 0;
 }
 
+.sidebar-brand-panel {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 24px;
+  padding: 9px;
+  border: 1px solid var(--icon-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 50%, transparent);
+  box-shadow: 0 4px 12px var(--shadow);
+}
+.sidebar-brand-panel img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* 4.11: unboxed sidebar identity — plain clickable avatar, no card chrome. */
 .sidebar-stack .sidebar-identity {
   display: flex;
