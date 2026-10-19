@@ -25,6 +25,64 @@
   </div>
 </section>
 
+{% if auth_role == "Student" and pfp_options is defined and pfp_options and pfp_options.available %}
+{# Feature 85: choose which linked photo is displayed everywhere. #}
+<section class="panel">
+  <div class="panel-title">Profile Picture</div>
+  <p style="font-size:13px; color:var(--muted); margin:0 0 14px;">Choose which photo is displayed across your profile, cards, and leaderboards.</p>
+  {% if pfp_status == "saved" %}
+  <div class="badge-green" style="display:inline-block; margin-bottom:14px;">Profile picture updated.</div>
+  {% elif pfp_status == "invalid" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">That profile picture choice isn't available for your account.</div>
+  {% elif pfp_status == "unavailable" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">We couldn't save your profile picture. Please try again.</div>
+  {% endif %}
+  <form method="post" action="/settings/pfp" id="settings-pfp-form">
+    <div class="pfp-grid">
+      <label class="pfp-card{% if pfp_options.source != 'linkedin' %} is-active{% endif %}" id="settings-pfp-card-github">
+        <input type="radio" name="source" value="github" {% if pfp_options.source != 'linkedin' %}checked{% endif %}>
+        <div class="pfp-avatar-wrap">
+          {% if pfp_options.github.avatar %}
+          <img src="{{ pfp_options.github.avatar|avatar }}" class="pfp-img" alt="GitHub Avatar" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="pfp-fallback" style="display: none;">{{ (pfp_options.github.handle or 'GH')[0:1]|upper }}</div>
+          {% else %}
+          <div class="pfp-fallback">{{ (pfp_options.github.handle or 'GH')[0:1]|upper }}</div>
+          {% endif %}
+          <span class="pfp-badge" title="GitHub">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          </span>
+        </div>
+        <div class="pfp-info">
+          <span class="pfp-platform">GitHub</span>
+          <span class="pfp-handle">@{{ pfp_options.github.handle or 'username' }}</span>
+        </div>
+        <span class="pfp-radio-circle" aria-hidden="true"></span>
+      </label>
+      <label class="pfp-card{% if pfp_options.source == 'linkedin' %} is-active{% endif %}" id="settings-pfp-card-linkedin">
+        <input type="radio" name="source" value="linkedin" {% if pfp_options.source == 'linkedin' %}checked{% endif %}>
+        <div class="pfp-avatar-wrap">
+          {% if pfp_options.linkedin.avatar %}
+          <img src="{{ pfp_options.linkedin.avatar|avatar }}" class="pfp-img" alt="LinkedIn Avatar" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="pfp-fallback" style="display: none;">{{ (pfp_options.linkedin.handle or 'LI')[0:1]|upper }}</div>
+          {% else %}
+          <div class="pfp-fallback">{{ (pfp_options.linkedin.handle or 'LI')[0:1]|upper }}</div>
+          {% endif %}
+          <span class="pfp-badge" title="LinkedIn">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.2a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/></svg>
+          </span>
+        </div>
+        <div class="pfp-info">
+          <span class="pfp-platform">LinkedIn</span>
+          <span class="pfp-handle">{{ pfp_options.linkedin.handle or 'LinkedIn' }}</span>
+        </div>
+        <span class="pfp-radio-circle" aria-hidden="true"></span>
+      </label>
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-top:14px;">Save profile picture</button>
+  </form>
+</section>
+{% endif %}
+
 {% if auth_role == "Faculty" %}
 <section class="panel">
   <div class="panel-title">Teaching Assignments</div>
@@ -339,6 +397,17 @@
     b.addEventListener('click', function () { apply(b.getAttribute('data-theme-btn')); });
   });
   refresh();
+
+  // Feature 85: PFP picker — clicking a card selects + highlights it.
+  var pfpCards = document.querySelectorAll('#settings-pfp-form .pfp-card');
+  pfpCards.forEach(function (card) {
+    card.addEventListener('click', function () {
+      pfpCards.forEach(function (other) { other.classList.remove('is-active'); });
+      card.classList.add('is-active');
+      var radio = card.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+    });
+  });
 
   // Faculty teaching assignments in Settings.
   var batchesByDivision = {{ practical_batches_by_division | tojson }};
