@@ -516,6 +516,20 @@ class TestFacultyOverviewPersonalization:
         admin, _ = make_client("admin")
         assert 'id="my-classes-btn"' not in self._overview(admin)
 
+    def test_class_health_grade_graded_for_my_classes_scope(self, class_fleet):
+        """The Statistics doughnut centre ("Class Health") grades the scoped
+        My Classes cohort, and stays empty for the whole-fleet view."""
+        import re
+
+        pattern = re.compile(r'"label"\s*:\s*"Class Health"')
+        client = self._faculty_client({"3": ["1"]})
+        # My Classes scope on -> the donut centre is graded.
+        on = client.get("/", headers={"accept": "text/html"}).text
+        assert pattern.search(on)
+        # Toggle off (whole fleet, no finer filter) -> no grade.
+        off = client.get("/?mine=0", headers={"accept": "text/html"}).text
+        assert not pattern.search(off)
+
 
 class TestPairFilter:
     """Explicit (Division, Batch) multi-select: staged ?pair=D|B picks.

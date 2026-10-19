@@ -748,7 +748,7 @@ window.__EC_THEME = (function () {
 {% macro pie(id, data, center=None) %}
 {% if data %}
 {{ _theme_bridge() }}
-<div id="{{ id }}" class="echart-box" style="height:340px;"></div>
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
 <script>
 (function () {
   'use strict';
@@ -787,7 +787,7 @@ window.__EC_THEME = (function () {
       },
       series: [{
         type: 'pie',
-        radius: ['46%', '68%'],
+        radius: ['50%', '72%'],
         center: ['50%', '46%'],
         data: raw.map(function (d, i) {
           return {
