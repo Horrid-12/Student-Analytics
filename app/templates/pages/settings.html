@@ -10,8 +10,12 @@
   </div>
 </div>
 
-{% if auth_role == "Student" %}
-{# Students get a tab-free page: theme, profile/sign-out, and legal only. #}
+{% if auth_role in ("Student", "Faculty") %}
+{# Students and faculty get a tab-free page: theme, profile/sign-out, and legal. #}
+<style>
+  .settings-teaching-select { width:100%; min-height:40px; padding:0 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); box-sizing:border-box; }
+  @media (max-width:620px) { .settings-teaching-row { grid-template-columns:1fr !important; } .settings-teaching-row .settings-teaching-remove { width:100%; } }
+</style>
 <section class="panel">
   <div class="panel-title">Appearance</div>
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -20,6 +24,64 @@
     <button class="btn" type="button" data-theme-btn="light" aria-pressed="false">Light</button>
   </div>
 </section>
+
+{% if auth_role == "Faculty" %}
+<section class="panel">
+  <div class="panel-title">Teaching Assignments</div>
+  <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Update the divisions and practical batches you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3.</p>
+  {% if classes_status == "saved" %}
+  <div class="badge-green" style="display:inline-block; margin-bottom:14px;">Teaching assignments updated.</div>
+  {% elif classes_status == "invalid" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">Choose a valid division and practical batch for every row.</div>
+  {% elif classes_status == "unavailable" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">We couldn't save your teaching assignments. Please try again.</div>
+  {% endif %}
+  <form method="post" action="/settings/faculty-teaching" id="settings-faculty-teaching-form">
+    <div id="settings-faculty-teaching-rows" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+      {% for row in faculty_teaching_rows %}
+      <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label>Division</label>
+          <select name="division" class="settings-teaching-select settings-teaching-division" required>
+            <option value="">Select division</option>
+            {% for division in range(1, 33) %}
+            <option value="{{ division }}" {% if row.division == division|string %}selected{% endif %}>{{ division }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Practical Batch</label>
+          <select name="batch" class="settings-teaching-select settings-teaching-batch" data-selected="{{ row.batch }}" required>
+            <option value="">Select division first</option>
+          </select>
+        </div>
+        <button type="button" class="btn settings-teaching-remove">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="button" class="btn" id="settings-teaching-add">+ Add class</button>
+      <button type="submit" class="btn btn-primary">Save teaching assignments</button>
+    </div>
+  </form>
+  <template id="settings-teaching-row-template">
+    <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
+      <div class="form-group" style="margin:0;">
+        <label>Division</label>
+        <select name="division" class="settings-teaching-select settings-teaching-division" required>
+          <option value="">Select division</option>
+          {% for division in range(1, 33) %}<option value="{{ division }}">{{ division }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Practical Batch</label>
+        <select name="batch" class="settings-teaching-select settings-teaching-batch" required><option value="">Select division first</option></select>
+      </div>
+      <button type="button" class="btn settings-teaching-remove">Remove</button>
+    </div>
+  </template>
+</section>
+{% endif %}
 
 <section class="panel">
   <div class="panel-title">Profile</div>
@@ -277,6 +339,49 @@
     b.addEventListener('click', function () { apply(b.getAttribute('data-theme-btn')); });
   });
   refresh();
+
+  // Faculty teaching assignments in Settings.
+  var batchesByDivision = {{ practical_batches_by_division | tojson }};
+  var teachingRows = document.getElementById('settings-faculty-teaching-rows');
+  var teachingTemplate = document.getElementById('settings-teaching-row-template');
+  var teachingAdd = document.getElementById('settings-teaching-add');
+  function configureTeachingRow(row) {
+    var division = row.querySelector('.settings-teaching-division');
+    var batch = row.querySelector('.settings-teaching-batch');
+    function refreshBatches() {
+      var selected = batch.value || batch.getAttribute('data-selected') || '';
+      var values = batchesByDivision[division.value] || [];
+      batch.textContent = '';
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = values.length ? 'Select batch' : 'Select division first';
+      batch.appendChild(placeholder);
+      values.forEach(function (value) {
+        var option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        batch.appendChild(option);
+      });
+      batch.value = values.indexOf(selected) !== -1 ? selected : '';
+      batch.removeAttribute('data-selected');
+      batch.disabled = !values.length;
+    }
+    division.addEventListener('change', refreshBatches);
+    refreshBatches();
+  }
+  if (teachingRows && teachingTemplate && teachingAdd) {
+    teachingRows.querySelectorAll('.settings-teaching-row').forEach(configureTeachingRow);
+    teachingAdd.addEventListener('click', function () {
+      var row = teachingTemplate.content.firstElementChild.cloneNode(true);
+      teachingRows.appendChild(row);
+      configureTeachingRow(row);
+    });
+    teachingRows.addEventListener('click', function (event) {
+      if (event.target.closest('.settings-teaching-remove') && teachingRows.querySelectorAll('.settings-teaching-row').length > 1) {
+        event.target.closest('.settings-teaching-row').remove();
+      }
+    });
+  }
 
   // Tab logic
   var tabs = document.querySelectorAll('.profile-tab');

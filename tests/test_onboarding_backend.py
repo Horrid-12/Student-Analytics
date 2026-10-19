@@ -372,6 +372,41 @@ def _teaching_post(client, body: str):
 
 
 class TestFacultyTeachingSetup:
+    def test_faculty_settings_match_student_layout_and_show_teaching_assignments(self, client):
+        email = _faculty_session(client)
+        assert auth.set_faculty_teaching(email, {"14": ["2"], "15": ["1", "3"]}) == (True, "")
+
+        response = client.get("/settings")
+        assert response.status_code == 200
+        body = response.text
+        assert 'data-tab-content="general"' not in body
+        assert "Appearance" in body and "Profile" in body and "Legal" in body
+        assert "Teaching Assignments" in body
+        assert 'value="14" selected' in body
+        assert 'value="15" selected' in body
+        assert 'data-selected="3"' in body
+
+    def test_faculty_can_update_teaching_assignments_in_settings(self, client):
+        email = _faculty_session(client)
+        response = client.post(
+            "/settings/faculty-teaching",
+            content="division=14&batch=2&division=15&batch=3",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/settings?classes=saved"
+        assert auth.get_faculty_teaching(email) == {"14": ["2"], "15": ["3"]}
+
+    def test_non_faculty_cannot_update_teaching_assignments_in_settings(self, client):
+        _session(client, "student")
+        response = client.post(
+            "/settings/faculty-teaching",
+            data={"division": "1", "batch": "1"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 403
+
     def test_faculty_onboarding_page_is_removed_and_phase_2_is_setup(self, client):
         _faculty_session(client)
         response = client.get(

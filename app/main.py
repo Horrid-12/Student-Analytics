@@ -4779,7 +4779,7 @@ async def profile_confirm(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, linked: str = ""):
+def settings_page(request: Request, linked: str = "", classes: str = ""):
     """Settings â€” storage health (honest about serverless read-only), theme
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
@@ -4857,6 +4857,14 @@ def settings_page(request: Request, linked: str = ""):
             "hackerrank_username": str(row.get("hackerrank_username") or hackerrank_handle or "").strip(),
             "status": str(row.get("onboarding_status") or "").strip(),
         }
+    faculty_teaching_rows = []
+    if (user.get("role") or "") == "faculty":
+        assignments = auth.get_faculty_teaching(user.get("email", ""))
+        faculty_teaching_rows = [
+            {"division": division, "batch": batch}
+            for division, batches in sorted(assignments.items(), key=lambda item: int(item[0]))
+            for batch in batches
+        ] or [{"division": "", "batch": ""}]
     return templates.TemplateResponse(
         request,
         "pages/settings.html",
@@ -4871,8 +4879,48 @@ def settings_page(request: Request, linked: str = ""):
             "link_profile": link_profile,
             "onboarding_approved": onboarding_approved,
             "onboarding_record": onboarding_record,
+            "faculty_teaching_rows": faculty_teaching_rows,
+            "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+            "classes_status": (classes or "").strip(),
         },
     )
+
+
+@app.post("/settings/faculty-teaching", response_class=HTMLResponse)
+async def settings_faculty_teaching_submit(request: Request):
+    """Update a faculty member's division and practical-batch assignments."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") != "faculty":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    try:
+        form = await request.form()
+        divisions = [str(value or "").strip() for value in form.getlist("division")]
+        batches = [str(value or "").strip() for value in form.getlist("batch")]
+    except Exception:
+        return RedirectResponse("/settings?classes=invalid", status_code=303)
+
+    pairs = list(zip(divisions, batches))
+    if (
+        len(divisions) != len(batches)
+        or not pairs
+        or len(pairs) > 50
+        or any(not division or not batch for division, batch in pairs)
+    ):
+        return RedirectResponse("/settings?classes=invalid", status_code=303)
+
+    mapping: dict[str, list[str]] = {}
+    for division, batch in pairs:
+        mapping.setdefault(division, [])
+        if batch not in mapping[division]:
+            mapping[division].append(batch)
+    ok, error_code = auth.set_faculty_teaching(user.get("email", ""), mapping)
+    if ok:
+        _db_log_event("faculty_teaching_updated", user.get("email", ""))
+        return RedirectResponse("/settings?classes=saved", status_code=303)
+    status = "invalid" if error_code in ("bad_division", "bad_batch", "empty") else "unavailable"
+    return RedirectResponse(f"/settings?classes={status}", status_code=303)
 
 @app.post("/api/settings/clear-cache")
 def api_clear_cache(request: Request):
