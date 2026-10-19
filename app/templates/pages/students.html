@@ -286,12 +286,12 @@
       <span class="stat-strip-label">HR Linked</span>
     </div>
     <div class="stat-strip-item">
-      <span class="stat-strip-value">{{ payload.summary.hackerrank.practice }}</span>
-      <span class="stat-strip-label">Practice Score</span>
+      <span class="stat-strip-value">{{ "%.1f"|format(payload.summary.hackerrank.practice) }}</span>
+      <span class="stat-strip-label">Avg Practice Score</span>
     </div>
     <div class="stat-strip-item">
-      <span class="stat-strip-value">{{ payload.summary.hackerrank.solved }}</span>
-      <span class="stat-strip-label">Problems Solved</span>
+      <span class="stat-strip-value">{{ "%.1f"|format(payload.summary.hackerrank.solved) }}</span>
+      <span class="stat-strip-label">Avg Problems Solved</span>
     </div>
     <div class="stat-strip-item">
       <span class="stat-strip-value">{{ payload.summary.hackerrank.badges }}</span>

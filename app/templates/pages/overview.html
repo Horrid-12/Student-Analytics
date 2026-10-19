@@ -765,13 +765,13 @@
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
-      <div class="metric-value">{{ payload.hackerrank.practice }}</div>
-      <div class="metric-label"><span class="badge-green metric-pill">Practice Score</span></div>
+      <div class="metric-value">{{ "%.1f"|format(payload.hackerrank.practice) }}</div>
+      <div class="metric-label"><span class="badge-green metric-pill">Avg Practice Score</span></div>
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>
-      <div class="metric-value">{{ payload.hackerrank.solved }}</div>
-      <div class="metric-label"><span class="badge-amber metric-pill">Problems Solved</span></div>
+      <div class="metric-value">{{ "%.1f"|format(payload.hackerrank.solved) }}</div>
+      <div class="metric-label"><span class="badge-amber metric-pill">Avg Problems Solved</span></div>
     </div>
     <div class="metric-card">
       <div class="metric-top metric-top-spacer" aria-hidden="true"></div>

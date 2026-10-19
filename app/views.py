@@ -964,8 +964,11 @@ def _hr_summary(students, hr_snapshots: dict | None) -> dict:
     loaded sit in ``linked`` but not ``synced`` — the same progressive-cache
     rule the HackerRank leaderboards use (row 73): unsynced students are
     omitted, never ranked as zeros.
+
+    ``solved`` and ``practice`` are per-student averages over the synced
+    profiles (not fleet totals); ``badges`` stays a total.
     """
-    summary = {"linked": 0, "synced": 0, "solved": 0, "practice": 0, "badges": 0}
+    summary = {"linked": 0, "synced": 0, "solved": 0.0, "practice": 0.0, "badges": 0}
     try:
         columns = getattr(students, "columns", [])
     except Exception:
@@ -994,6 +997,9 @@ def _hr_summary(students, hr_snapshots: dict | None) -> dict:
                 summary[key] += int(snap.get(field) or 0)
             except (TypeError, ValueError):
                 pass
+    if summary["synced"]:
+        for key in ("solved", "practice"):
+            summary[key] = round(summary[key] / summary["synced"], 1)
     return summary
 
 

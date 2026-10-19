@@ -86,7 +86,7 @@ def _grid(html, platform):
 
 
 class TestHrSummary:
-    def test_counts_linked_synced_and_totals(self):
+    def test_counts_linked_synced_and_averages(self):
         students = pd.DataFrame([
             {"HackerRank_Username": "alice_hr"},
             {"HackerRank_Username": "bob_hr"},
@@ -100,7 +100,7 @@ class TestHrSummary:
             "bob_hr": {"practice_score": 900, "total_solved": 30, "badges": 5, "invalid": True},
             "cara_hr": {"practice_score": 12, "total_solved": 0, "badges": 1},
         })
-        assert summary == {"linked": 3, "synced": 2, "solved": 50, "practice": 512, "badges": 4}
+        assert summary == {"linked": 3, "synced": 2, "solved": 25.0, "practice": 256.0, "badges": 4}
 
     def test_missing_handles_and_empty_frame(self):
         assert views._hr_summary(None, SNAPS)["linked"] == 0
@@ -111,7 +111,7 @@ class TestHrSummary:
     def test_unknown_snapshot_counts_as_linked_only(self):
         students = pd.DataFrame([{"HackerRank_Username": "never-synced"}])
         assert views._hr_summary(students, SNAPS) == {
-            "linked": 1, "synced": 0, "solved": 0, "practice": 0, "badges": 0,
+            "linked": 1, "synced": 0, "solved": 0.0, "practice": 0.0, "badges": 0,
         }
 
 
@@ -119,13 +119,13 @@ class TestOverviewToggle:
     def test_payload_carries_hr_summary(self, fleet2):
         payload = views.overview_payload(views.fleet_view(), hr_snapshots=SNAPS)
         assert payload["hackerrank"] == {
-            "linked": 2, "synced": 2, "solved": 80, "practice": 1400, "badges": 8,
+            "linked": 2, "synced": 2, "solved": 40.0, "practice": 700.0, "badges": 8,
         }
 
     def test_payload_respects_cohort_filter(self, fleet2):
         payload = views.overview_payload(views.fleet_view(), division="3", hr_snapshots=SNAPS)
         assert payload["hackerrank"] == {
-            "linked": 1, "synced": 1, "solved": 50, "practice": 500, "badges": 3,
+            "linked": 1, "synced": 1, "solved": 50.0, "practice": 500.0, "badges": 3,
         }
 
     def test_page_renders_switch_and_both_grids(self, fleet2):
@@ -136,10 +136,10 @@ class TestOverviewToggle:
         assert 'class="platform-switch-btn is-active" role="tab" aria-selected="true" data-platform="github"' in body
         grid = _grid(body, "hackerrank")
         assert "Linked Profiles" in grid
-        assert "Practice Score" in grid
-        assert "Problems Solved" in grid
+        assert "Avg Practice Score" in grid
+        assert "Avg Problems Solved" in grid
         assert "Badges Earned" in grid
-        assert ">1400<" in grid and ">80<" in grid and ">8<" in grid
+        assert ">700.0<" in grid and ">40.0<" in grid and ">8<" in grid
         # Inactive by default; the client-side script reveals it on switch.
         assert 'data-platform-grid="hackerrank" hidden' in body
 
@@ -151,14 +151,14 @@ class TestStudentsStrip:
             "students": 2, "github_linked": 2, "repos": 0, "active": 0,
         }
         assert payload["summary"]["hackerrank"] == {
-            "linked": 2, "synced": 2, "solved": 80, "practice": 1400, "badges": 8,
+            "linked": 2, "synced": 2, "solved": 40.0, "practice": 700.0, "badges": 8,
         }
 
     def test_payload_summary_respects_filters(self, fleet2):
         payload = views.students_payload(views.fleet_view(), division="3", hr_snapshots=SNAPS)
         assert payload["summary"]["github"]["students"] == 1
         assert payload["summary"]["hackerrank"]["linked"] == 1
-        assert payload["summary"]["hackerrank"]["solved"] == 50
+        assert payload["summary"]["hackerrank"]["solved"] == 50.0
 
     def test_page_renders_strip_and_both_grids(self, fleet2):
         body = login().get("/students", headers={"Accept": "text/html"}).text
@@ -169,9 +169,9 @@ class TestStudentsStrip:
         assert "Total Repositories" in github
         hr = _grid(body, "hackerrank")
         assert "HR Linked" in hr
-        assert "Practice Score" in hr
-        assert "Problems Solved" in hr
-        assert ">1400<" in hr and ">80<" in hr and ">8<" in hr
+        assert "Avg Practice Score" in hr
+        assert "Avg Problems Solved" in hr
+        assert ">700.0<" in hr and ">40.0<" in hr and ">8<" in hr
         assert 'data-platform-grid="hackerrank" hidden' in body
 
     def test_handle_accent_classes(self, fleet2):
