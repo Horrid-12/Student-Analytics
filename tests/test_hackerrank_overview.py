@@ -136,10 +136,10 @@ class TestOverviewToggle:
         assert 'class="platform-switch-btn is-active" role="tab" aria-selected="true" data-platform="github"' in body
         grid = _grid(body, "hackerrank")
         assert "Linked Profiles" in grid
-        assert "Synced Profiles" in grid
+        assert "Practice Score" in grid
         assert "Problems Solved" in grid
         assert "Badges Earned" in grid
-        assert ">80<" in grid and ">8<" in grid
+        assert ">1400<" in grid and ">80<" in grid and ">8<" in grid
         # Inactive by default; the client-side script reveals it on switch.
         assert 'data-platform-grid="hackerrank" hidden' in body
 
@@ -169,8 +169,9 @@ class TestStudentsStrip:
         assert "Total Repositories" in github
         hr = _grid(body, "hackerrank")
         assert "HR Linked" in hr
+        assert "Practice Score" in hr
         assert "Problems Solved" in hr
-        assert ">80<" in hr and ">8<" in hr
+        assert ">1400<" in hr and ">80<" in hr and ">8<" in hr
         assert 'data-platform-grid="hackerrank" hidden' in body
 
     def test_handle_accent_classes(self, fleet2):
