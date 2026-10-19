@@ -6,7 +6,11 @@
   .faculty-review-search input { flex:1; min-width:0; }
   .faculty-review-card { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:22px; align-items:stretch; padding:20px; margin-bottom:14px; }
   .faculty-review-profile { min-width:0; }
-  .faculty-review-identity { display:flex; align-items:center; gap:12px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .faculty-review-identity { display:flex; align-items:center; gap:18px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .faculty-review-identity-main { display:flex; align-items:center; gap:12px; min-width:0; flex:1; }
+  .faculty-review-submitted { display:flex; align-items:baseline; gap:6px; flex:none; align-self:flex-end; margin-left:auto; padding-bottom:2px; color:var(--muted); text-align:right; white-space:nowrap; }
+  .faculty-review-submitted span { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .faculty-review-submitted time { color:var(--muted); font-size:12px; font-weight:500; }
   .faculty-review-avatar { display:grid; place-items:center; width:48px; height:48px; flex:none; border-radius:14px; background:var(--card-soft); color:var(--blue); font-size:18px; font-weight:700; }
   .faculty-review-details { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px 18px; }
   .faculty-review-detail { min-width:0; }
@@ -18,13 +22,53 @@
   .faculty-review-action-link { padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--text); cursor:pointer; font-weight:600; }
   .faculty-review-reject { border-color:rgba(239,68,68,.35); color:#ef4444; }
   .faculty-review-approve { border:0; border-radius:6px; background:var(--blue); color:#fff; cursor:pointer; font-weight:700; }
+  .faculty-edit-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(12,18,26,.62); backdrop-filter:blur(5px); }
+  .faculty-edit-backdrop[hidden] { display:none; }
+  .faculty-edit-dialog { width:min(100%,780px); max-height:min(88vh,820px); overflow:auto; padding:0; margin:0; background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:0 28px 90px rgba(0,0,0,.28); }
+  .faculty-edit-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:24px 28px 20px; border-bottom:1px solid var(--border); }
+  .faculty-edit-heading { display:flex; align-items:flex-start; gap:14px; min-width:0; }
+  .faculty-edit-icon { display:grid; place-items:center; width:42px; height:42px; flex:none; border-radius:12px; background:var(--blue-active-bg); color:var(--blue); }
+  .faculty-edit-eyebrow { margin:0 0 4px; color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+  .faculty-edit-title { margin:0; color:var(--text); font-size:22px; line-height:1.2; }
+  .faculty-edit-student { margin:6px 0 0; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+  .faculty-edit-close { display:grid; place-items:center; width:36px; height:36px; flex:none; padding:0; border:1px solid var(--border); border-radius:10px; background:transparent; color:var(--muted); cursor:pointer; }
+  .faculty-edit-close:hover { color:var(--text); background:var(--hover-bg); }
+  .faculty-edit-body { padding:22px 28px 26px; }
+  .faculty-edit-section-title { margin:0 0 14px; color:var(--text); font-size:14px; font-weight:750; }
+  .faculty-edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 18px; }
+  .faculty-edit-field { display:flex; flex-direction:column; gap:7px; min-width:0; margin:0; }
+  .faculty-edit-label { color:var(--muted); font-size:11px; font-weight:750; letter-spacing:.045em; }
+  .faculty-edit-control { display:block; width:100%; min-width:0; min-height:44px; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card-soft); color:var(--text); font:500 14px/1.35 var(--font-sans); transition:border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+  .faculty-edit-control:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-active-bg); }
+  .faculty-edit-control[aria-invalid="true"] { border-color:var(--red); }
+  .faculty-edit-help { margin:0; color:var(--muted); font-size:11px; line-height:1.45; }
+  .faculty-edit-divider { height:1px; margin:22px 0; border:0; background:var(--border); opacity:.6; }
+  .faculty-edit-footer { position:sticky; bottom:0; display:flex; justify-content:flex-end; gap:10px; padding:16px 28px 20px; border-top:1px solid var(--border); background:var(--card); }
+  .faculty-edit-footer .btn { min-width:112px; min-height:44px; }
   @media(max-width:760px) {
     .faculty-review-card { grid-template-columns:1fr; gap:16px; }
     .faculty-review-details { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .faculty-review-actions { flex-direction:row; flex-wrap:wrap; padding:14px 0 0; border-left:0; border-top:1px solid var(--border); }
     .faculty-review-actions form, .faculty-review-actions button { flex:1 1 130px; width:auto; }
+    .faculty-review-identity { align-items:flex-start; }
+    .faculty-review-submitted { padding-top:0; }
+    .faculty-edit-backdrop { align-items:flex-end; padding:10px; }
+    .faculty-edit-dialog { width:100%; max-height:92vh; border-radius:18px 18px 12px 12px; }
+    .faculty-edit-head { padding:20px 20px 16px; }
+    .faculty-edit-body { padding:20px; }
+    .faculty-edit-footer { padding:14px 20px 18px; }
   }
-  @media(max-width:440px) { .faculty-review-search { flex-wrap:wrap; } .faculty-review-search input { flex-basis:100%; } }
+  @media(max-width:440px) {
+    .faculty-review-search { flex-wrap:wrap; }
+    .faculty-review-search input { flex-basis:100%; }
+    .faculty-edit-grid { grid-template-columns:1fr; gap:13px; }
+    .faculty-edit-footer { display:grid; grid-template-columns:1fr 1.3fr; }
+    .faculty-edit-footer .btn { min-width:0; width:100%; }
+    .faculty-edit-title { font-size:19px; }
+    .faculty-review-identity { flex-wrap:wrap; gap:10px; }
+    .faculty-review-identity-main { flex:1 1 100%; }
+    .faculty-review-submitted { align-self:flex-end; margin-left:60px; text-align:left; }
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -66,14 +110,17 @@
 <article class="panel faculty-review-card">
   <div class="faculty-review-profile">
     <div class="faculty-review-identity">
-      <div class="faculty-review-avatar">{{ (row.name or row.email)[:1]|upper }}</div>
-      <div style="min-width:0; flex:1;">
-        <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
-          <h2 style="margin:0; font-size:18px; color:var(--text);">{{ row.name or 'Student' }}</h2>
-          <span style="padding:3px 8px; border-radius:20px; background:rgba(245,158,11,.12); color:#f59e0b; font-size:10px; font-weight:700; text-transform:uppercase;">Pending review</span>
+      <div class="faculty-review-identity-main">
+        <div class="faculty-review-avatar">{{ (row.name or row.email)[:1]|upper }}</div>
+        <div style="min-width:0; flex:1;">
+          <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
+            <h2 style="margin:0; font-size:18px; color:var(--text);">{{ row.name or 'Student' }}</h2>
+            <span style="padding:3px 8px; border-radius:20px; background:rgba(245,158,11,.12); color:#f59e0b; font-size:10px; font-weight:700; text-transform:uppercase;">Pending review</span>
+          </div>
+          <div style="margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere;">{{ row.email }}</div>
         </div>
-        <div style="margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere;">{{ row.email }}</div>
       </div>
+      <div class="faculty-review-submitted"><span>Submitted</span><time>{{ row.onboarding_submitted_at[:16] if row.onboarding_submitted_at else '—' }}</time></div>
     </div>
     <div class="faculty-review-details">
       <div class="faculty-review-detail"><span>PRN</span><strong>{{ row.prn or (row.email|prn_from_email) or '—' }}</strong></div>
@@ -81,7 +128,6 @@
       <div class="faculty-review-detail"><span>Division</span><strong>{{ row.division or '—' }}</strong></div>
       <div class="faculty-review-detail"><span>Practical batch</span><strong>{{ row.practical_batch or '—' }}</strong></div>
       <div class="faculty-review-detail"><span>Semester</span><strong>{{ row.semester or '—' }}</strong></div>
-      <div class="faculty-review-detail"><span>Submitted</span><strong>{{ row.onboarding_submitted_at[:16] if row.onboarding_submitted_at else '—' }}</strong></div>
       <div class="faculty-review-detail"><span>GitHub</span>
         {% if row.github_username %}<a href="https://github.com/{{ row.github_username }}" target="_blank" rel="noopener">@{{ row.github_username }}</a>
         {% elif row.linked_github_username %}<strong>@{{ row.linked_github_username }} · unverified</strong>{% else %}<strong>Not linked</strong>{% endif %}
@@ -95,12 +141,12 @@
     </div>
   </div>
   <aside class="faculty-review-actions" aria-label="Review actions for {{ row.name or row.email }}">
-    <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
+    <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-name="{{ row.name or 'Student' }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
     <form method="post" action="/onboarding/reject" onsubmit="return confirm('Reject this student onboarding?');">
       <input type="hidden" name="email" value="{{ row.email }}">
       <button class="faculty-review-action-link faculty-review-reject" type="submit">Reject</button>
     </form>
-    <form method="post" action="/onboarding/approve" onsubmit="return confirm('Approve this student onboarding?');">
+    <form method="post" action="/onboarding/approve">
       <input type="hidden" name="email" value="{{ row.email }}">
       <button class="faculty-review-approve" type="submit">Approve</button>
     </form>
@@ -111,34 +157,65 @@
 <div class="panel" style="padding:24px; color:var(--muted);">{% if q %}No pending students match “{{ q }}”.{% else %}No pending onboarding submissions in your assigned classes.{% endif %}</div>
 {% endif %}
 
-<div id="faculty-edit-modal" role="dialog" aria-modal="true" aria-labelledby="faculty-edit-title" style="display:none; position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.55);">
-  <div class="panel" style="width:620px; max-width:100%; max-height:90vh; overflow:auto; padding:22px;">
-    <h2 id="faculty-edit-title" style="margin:0 0 16px;">Edit Student Details</h2>
-    <form method="post" action="/onboarding/admin_edit">
+<div id="faculty-edit-modal" class="faculty-edit-backdrop" role="presentation" hidden onclick="if(event.target===this)closeFacultyEdit()">
+  <section class="faculty-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="faculty-edit-title" aria-describedby="faculty-edit-student">
+    <header class="faculty-edit-head">
+      <div class="faculty-edit-heading">
+        <span class="faculty-edit-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></span>
+        <div>
+          <p class="faculty-edit-eyebrow">Student record</p>
+          <h2 id="faculty-edit-title" class="faculty-edit-title">Edit Student Details</h2>
+          <p id="faculty-edit-student" class="faculty-edit-student">Update academic and profile information.</p>
+        </div>
+      </div>
+      <button type="button" class="faculty-edit-close" aria-label="Close edit student details" onclick="closeFacultyEdit()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 6-12 12M6 6l12 12"/></svg></button>
+    </header>
+    <form method="post" action="/onboarding/admin_edit" id="faculty-edit-form">
       <input type="hidden" name="email" id="faculty-edit-email">
-      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
-        <label class="form-group">PRN<input id="faculty-edit-prn" name="prn" required pattern="\d{10}"></label>
-        <label class="form-group">Branch<input id="faculty-edit-branch" name="degree_branch"></label>
-        <label class="form-group">Division<input id="faculty-edit-division" name="division"></label>
-        <label class="form-group">Practical batch<input id="faculty-edit-batch" name="practical_batch"></label>
-        <label class="form-group">Semester<input id="faculty-edit-semester" name="semester"></label>
-        <label class="form-group">HackerRank username<input id="faculty-edit-hackerrank" name="hackerrank_username"></label>
-        <label class="form-group">GitHub username<input id="faculty-edit-github" name="github_username"></label>
+      <div class="faculty-edit-body">
+        <h3 class="faculty-edit-section-title">Academic information</h3>
+        <div class="faculty-edit-grid">
+          <label class="faculty-edit-field"><span class="faculty-edit-label">PRN</span><input class="faculty-edit-control" id="faculty-edit-prn" name="prn" required inputmode="numeric" autocomplete="off" pattern="\d{10}" maxlength="10" aria-describedby="faculty-edit-prn-help"><span class="faculty-edit-help" id="faculty-edit-prn-help">Enter the student’s 10-digit roll number.</span></label>
+          <label class="faculty-edit-field"><span class="faculty-edit-label">BRANCH</span><input class="faculty-edit-control" id="faculty-edit-branch" name="degree_branch" required autocomplete="off"></label>
+          <label class="faculty-edit-field"><span class="faculty-edit-label">DIVISION</span><input class="faculty-edit-control" id="faculty-edit-division" name="division" required inputmode="numeric" autocomplete="off"></label>
+          <label class="faculty-edit-field"><span class="faculty-edit-label">PRACTICAL BATCH</span><input class="faculty-edit-control" id="faculty-edit-batch" name="practical_batch" required inputmode="numeric" autocomplete="off"></label>
+          <label class="faculty-edit-field"><span class="faculty-edit-label">SEMESTER</span><input class="faculty-edit-control" id="faculty-edit-semester" name="semester" required autocomplete="off"></label>
+        </div>
+        <hr class="faculty-edit-divider">
+        <h3 class="faculty-edit-section-title">Profile links</h3>
+        <div class="faculty-edit-grid">
+          <label class="faculty-edit-field"><span class="faculty-edit-label">HACKERRANK USERNAME</span><input class="faculty-edit-control" id="faculty-edit-hackerrank" name="hackerrank_username" autocomplete="off"></label>
+          <label class="faculty-edit-field"><span class="faculty-edit-label">GITHUB USERNAME</span><input class="faculty-edit-control" id="faculty-edit-github" name="github_username" autocomplete="off"></label>
+        </div>
       </div>
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px;">
-        <button type="button" class="btn" onclick="document.getElementById('faculty-edit-modal').style.display='none'">Cancel</button>
+      <footer class="faculty-edit-footer">
+        <button type="button" class="btn" onclick="closeFacultyEdit()">Cancel</button>
         <button type="submit" class="btn btn-primary">Save changes</button>
-      </div>
+      </footer>
     </form>
-  </div>
+  </section>
 </div>
 <script>
+var facultyEditTrigger = null;
 function openFacultyEdit(button) {
+  facultyEditTrigger = button;
   var fields = {email:'email', prn:'prn', branch:'branch', division:'division', batch:'batch', semester:'semester', hackerrank:'hackerrank', github:'github'};
   Object.keys(fields).forEach(function (key) {
     document.getElementById('faculty-edit-' + fields[key]).value = button.dataset[key] || '';
   });
-  document.getElementById('faculty-edit-modal').style.display = 'flex';
+  document.getElementById('faculty-edit-student').textContent = (button.dataset.name || 'Student') + ' · ' + (button.dataset.email || '');
+  var modal = document.getElementById('faculty-edit-modal');
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.getElementById('faculty-edit-prn').focus();
 }
+function closeFacultyEdit() {
+  document.getElementById('faculty-edit-modal').hidden = true;
+  document.body.style.overflow = '';
+  if (facultyEditTrigger) facultyEditTrigger.focus();
+}
+document.addEventListener('keydown', function (event) {
+  if (event.key === 'Escape' && !document.getElementById('faculty-edit-modal').hidden) closeFacultyEdit();
+});
 </script>
 {% endblock %}
