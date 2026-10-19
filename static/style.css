@@ -646,7 +646,7 @@ h1, h2, h3 {
     letter-spacing: 0;
 }
 
-.badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple {
+.badge, .badge-green, .badge-amber, .badge-red, .badge-blue, .badge-purple, .badge-hackerrank {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -663,7 +663,127 @@ h1, h2, h3 {
 .badge-red { color: var(--badge-red-color); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.25); }
 .badge-blue { color: var(--badge-blue-color); background: var(--blue-active-bg); border-color: var(--blue-badge-border); }
 .badge-purple { color: var(--badge-purple-color); background: rgba(139, 92, 246, 0.10); border-color: rgba(139, 92, 246, 0.25); }
+.badge-hackerrank { color: var(--hackerrank); background: var(--hackerrank-soft); border-color: var(--hackerrank-border); }
 .badge-muted { color: var(--muted); background: var(--icon-bg); border-color: var(--border); }
+
+/* Feature 87: GitHub | HackerRank platform toggle + stat strip (Overview
+   metric cards and the Students summary). The switch is a client-side pill
+   pair — both grids are server-rendered and the inactive one stays hidden,
+   so no data is fetched on toggle. Distinct class names from the
+   Leaderboards page-local .platform-switcher so the two never collide. */
+.platform-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-soft);
+}
+.platform-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 16px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    font-family: inherit;
+    line-height: 1.3;
+    color: var(--muted);
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.platform-switch-btn svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: currentColor;
+}
+.platform-switch-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+.platform-switch-btn.is-active[data-platform="github"] {
+    color: #8b5cf6;
+    border-color: rgba(139, 92, 246, 0.45);
+    background: rgba(139, 92, 246, 0.12);
+}
+.platform-switch-btn.is-active[data-platform="hackerrank"] {
+    color: var(--hackerrank);
+    border-color: var(--hackerrank-border);
+    background: var(--hackerrank-soft);
+}
+/* Grids toggled by the switch: the attribute value drives visibility. */
+.metric-grid[hidden],
+.stat-strip-grid[hidden] {
+    display: none;
+}
+/* HackerRank metric grid gets the platform's green accent edge + wash. */
+.metric-grid--hackerrank .metric-card {
+    border-color: var(--hackerrank-border);
+    background: linear-gradient(180deg, var(--hackerrank-soft), var(--card) 58%);
+}
+.metric-grid--hackerrank .metric-card:hover {
+    border-color: var(--hackerrank);
+}
+/* Students page stat strip: switch on the left, four platform stats right. */
+.stat-strip {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+}
+.stat-strip .platform-switch {
+    flex: none;
+}
+.stat-strip-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px 24px;
+    flex: 1;
+    min-width: 0;
+}
+.stat-strip-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.stat-strip-value {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.15;
+}
+.stat-strip-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.stat-strip-grid--hackerrank .stat-strip-value {
+    color: var(--hackerrank);
+}
+@media (max-width: 760px) {
+    .stat-strip {
+        align-items: stretch;
+    }
+    .stat-strip .platform-switch {
+        align-self: flex-start;
+    }
+    .stat-strip-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
 
 /* BUG-096: full-bleed rows inside the overview metric grid */
 .full-width { grid-column: 1 / -1; }

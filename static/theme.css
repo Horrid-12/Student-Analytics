@@ -43,6 +43,12 @@
     --badge-blue-color: #41546c;
     --badge-purple-color: #41546c;
     --ext-link-color: #176545;
+    /* Feature 87: HackerRank platform accent (brand green, theme-adjusted
+       for contrast on the cream/dark surfaces). */
+    --hackerrank: #17884a;
+    --hackerrank-accent: #2ec866;
+    --hackerrank-soft: rgba(46, 200, 102, 0.12);
+    --hackerrank-border: rgba(46, 200, 102, 0.42);
     /* Capsule segment colors */
     --capsule-connected: #3d7a7a;
     --capsule-invalid: #c4553a;
@@ -92,6 +98,11 @@
     --badge-blue-color: #93C5FD;
     --badge-purple-color: #b8c8da;
     --ext-link-color: #7bd6aa;
+    /* Feature 87: HackerRank platform accent (dark theme). */
+    --hackerrank: #57d68d;
+    --hackerrank-accent: #2ec866;
+    --hackerrank-soft: rgba(46, 200, 102, 0.16);
+    --hackerrank-border: rgba(46, 200, 102, 0.48);
     /* Capsule segment colors */
     --capsule-connected: #6bcfcf;
     --capsule-invalid: #e06b6b;

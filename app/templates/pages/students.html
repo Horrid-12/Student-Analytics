@@ -195,6 +195,11 @@
     color: var(--blue);
     text-decoration: underline;
   }
+  /* Feature 87: platform-coloured handle hovers (same brand accents as the
+     profile icon buttons). */
+  .student-table a.handle-github:hover { color: #8b5cf6; }
+  .student-table a.handle-linkedin:hover { color: #0a66c2; }
+  .student-table a.handle-hackerrank:hover { color: #2ec866; }
 </style>
 {% endblock %}
 {% block content %}
@@ -243,6 +248,58 @@
   <span class="filter-count"><span id="shown-count">{{ payload.showing }}</span> of {{ payload.total }} shown</span>
 </form>
 
+{# Feature 87: platform stat strip — GitHub | HackerRank toggle. Both grids
+   are server-rendered; the switch only flips visibility (persisted in
+   localStorage, shared with the Overview page switch). #}
+<div class="stat-strip" data-platform-switch>
+  <div class="platform-switch" role="tablist" aria-label="Summary platform">
+    <button type="button" class="platform-switch-btn is-active" role="tab" aria-selected="true" data-platform="github">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.84 1.237 1.84 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.418-1.305.762-1.605-2.665-.3-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.322 3.3 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.29-1.552 3.297-1.23 3.297-1.23.655 1.652.243 2.873.12 3.176.77.84 1.235 1.91 1.235 3.221 0 4.61-2.807 5.628-5.48 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      GitHub
+    </button>
+    <button type="button" class="platform-switch-btn" role="tab" aria-selected="false" data-platform="hackerrank">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5 7.75 2 11 5.5Z M6 5h3.5v14H6Z M6 10.5h12v3H6Z M14.5 5H18v14h-3.5Z M13 18.5l3.25 3.5 3.25-3.5Z"/></svg>
+      HackerRank
+    </button>
+  </div>
+  <div class="stat-strip-grid" data-platform-grid="github">
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.github.students }}</span>
+      <span class="stat-strip-label">Students</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.github.github_linked }}</span>
+      <span class="stat-strip-label">GitHub Linked</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.github.repos }}</span>
+      <span class="stat-strip-label">Total Repositories</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.github.active }}</span>
+      <span class="stat-strip-label">Active Repositories</span>
+    </div>
+  </div>
+  <div class="stat-strip-grid stat-strip-grid--hackerrank" data-platform-grid="hackerrank" hidden>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.hackerrank.linked }}</span>
+      <span class="stat-strip-label">HR Linked</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.hackerrank.synced }}</span>
+      <span class="stat-strip-label">HR Synced</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.hackerrank.solved }}</span>
+      <span class="stat-strip-label">Problems Solved</span>
+    </div>
+    <div class="stat-strip-item">
+      <span class="stat-strip-value">{{ payload.summary.hackerrank.badges }}</span>
+      <span class="stat-strip-label">Badges Earned</span>
+    </div>
+  </div>
+</div>
+
 <section class="panel">
   <div class="panel-title">Student Explorer</div>
   <div class="data-table-wrap">
@@ -283,6 +340,35 @@
     var shown = {{ payload.showing }};
     var tbody = document.getElementById('student-tbody');
     var sentinel = document.getElementById('scroll-sentinel');
+
+    // Feature 87: GitHub | HackerRank stat-strip toggle. Same behaviour and
+    // localStorage key as the Overview metric switch, so the selected
+    // platform follows you between the two pages.
+    var platformPills = document.querySelectorAll('[data-platform-switch] [data-platform]');
+    var platformGrids = document.querySelectorAll('[data-platform-grid]');
+    if (platformPills.length && platformGrids.length) {
+      var platformKey = 'gsad_stats_platform_v1';
+      var showPlatform = function (platform) {
+        platformPills.forEach(function (pill) {
+          var active = pill.getAttribute('data-platform') === platform;
+          pill.classList.toggle('is-active', active);
+          pill.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        platformGrids.forEach(function (grid) {
+          grid.hidden = grid.getAttribute('data-platform-grid') !== platform;
+        });
+      };
+      platformPills.forEach(function (pill) {
+        pill.addEventListener('click', function () {
+          var platform = pill.getAttribute('data-platform');
+          try { localStorage.setItem(platformKey, platform); } catch (e) {}
+          showPlatform(platform);
+        });
+      });
+      var savedPlatform = null;
+      try { savedPlatform = localStorage.getItem(platformKey); } catch (e) {}
+      showPlatform(savedPlatform === 'hackerrank' ? 'hackerrank' : 'github');
+    }
 
     // Preserve scroll depth when opening a student popup.
     document.addEventListener('click', function (event) {

@@ -955,7 +955,49 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False) -> dict:
+def _hr_summary(students, hr_snapshots: dict | None) -> dict:
+    """Feature 87: fleet-level HackerRank roll-up for the platform toggle.
+
+    ``students`` is the already-filtered roster frame, so the numbers always
+    match the page's cohort filters. Tombstone snapshots (``invalid``) count
+    as not-synced and contribute nothing, and students whose snapshot never
+    loaded sit in ``linked`` but not ``synced`` — the same progressive-cache
+    rule the HackerRank leaderboards use (row 73): unsynced students are
+    omitted, never ranked as zeros.
+    """
+    summary = {"linked": 0, "synced": 0, "solved": 0, "practice": 0, "badges": 0}
+    try:
+        columns = getattr(students, "columns", [])
+    except Exception:
+        columns = []
+    if students is None or getattr(students, "empty", True) or "HackerRank_Username" not in columns:
+        return summary
+    snapshots = hr_snapshots if isinstance(hr_snapshots, dict) else {}
+    try:
+        handles = students["HackerRank_Username"].dropna().astype(str)
+    except Exception:
+        return summary
+    for raw in handles:
+        try:
+            handle = str(extract_hackerrank_username(raw) or "").strip().lower()
+        except Exception:
+            handle = ""
+        if not handle:
+            continue
+        summary["linked"] += 1
+        snap = snapshots.get(handle)
+        if not isinstance(snap, dict) or snap.get("invalid"):
+            continue
+        summary["synced"] += 1
+        for key, field in (("solved", "total_solved"), ("practice", "practice_score"), ("badges", "badges")):
+            try:
+                summary[key] += int(snap.get(field) or 0)
+            except (TypeError, ValueError):
+                pass
+    return summary
+
+
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False, hr_snapshots: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1502,6 +1544,9 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
         "valid_users": valid,
+        # Feature 87: HackerRank roll-up for the GitHub | HackerRank toggle
+        # (same filtered cohort as every other card above).
+        "hackerrank": _hr_summary(students, hr_snapshots),
     }
 
 
@@ -1957,7 +2002,7 @@ def linkedin_display_name(slug) -> str:
 STUDENT_BATCH_SIZE = 30
 
 
-def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None, pairs="All") -> dict:
+def students_payload(view, query="", division="All", batch="All", year="All", semester="All", rows=None, selected_id=None, pairs="All", hr_snapshots: dict | None = None) -> dict:
     students = view["students"].copy()
     # Guarantee the 8 table columns + 4 URL helpers even for legacy runs.
     for _col in STUDENT_TABLE_COLS + STUDENT_URL_COLS:
@@ -2051,6 +2096,32 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
     # shipped hidden and revealed client-side.
     page_rows = display.head(page_size) if total else display
 
+    # Feature 87: GitHub | HackerRank stat strip. Both summaries are measured
+    # on the SAME filtered frame the table shows, so the strip always matches
+    # the current search/division/batch/semester filters.
+    _summary_students = _with_combined_metrics(filtered) if not filtered.empty else filtered
+    try:
+        _gh_linked = int(
+            filtered["GitHub_Username"].fillna("").astype(str).str.strip().ne("").sum()
+        ) if "GitHub_Username" in filtered.columns else 0
+    except Exception:
+        _gh_linked = 0
+
+    def _combined_sum(column: str) -> int:
+        if _summary_students is None or _summary_students.empty or column not in _summary_students.columns:
+            return 0
+        try:
+            return int(pd.to_numeric(_summary_students[column], errors="coerce").fillna(0).sum())
+        except Exception:
+            return 0
+
+    github_summary = {
+        "students": total,
+        "github_linked": _gh_linked,
+        "repos": _combined_sum("Combined_Repos"),
+        "active": _combined_sum("Combined_Active"),
+    }
+
     return {
         "total": total,
         "showing": min(page_size, total),
@@ -2076,6 +2147,11 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "selected_pairs": _pairs_list(pairs),
         "division_groups": division_batch_groups(students),
         "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester, pairs=pairs),
+        # Feature 87: platform stat strip (GitHub | HackerRank toggle).
+        "summary": {
+            "github": github_summary,
+            "hackerrank": _hr_summary(filtered, hr_snapshots),
+        },
     }
 
 

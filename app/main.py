@@ -2358,12 +2358,18 @@ def overview(
             ctx["view"] = view
             _overall_view = _full_view if "_full_view" in locals() else None
             _taught_view_for_radar = _taught_view if "_taught_view" in locals() else None
+            try:
+                _hr_state = _hr_snapshots_state()
+            except Exception:
+                _hr_state = {}
             ctx["payload"] = views.overview_payload(
                 view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
                 scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
+                # Feature 87: HackerRank side of the Overview platform toggle.
+                hr_snapshots=_hr_state,
             )
         except Exception:
             ctx["view"] = None
@@ -3858,7 +3864,11 @@ def students_page(
     _privacy = _privacy_state() if _student_viewer else {}
     _own_sid = _own_student_id(view, request) if _student_viewer else None
     effective_select = (select or "").strip() or (request.query_params.get("student") or "").strip()
-    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All")
+    try:
+        _hr_state = _hr_snapshots_state()
+    except Exception:
+        _hr_state = {}
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All", hr_snapshots=_hr_state)
     if payload.get("profile"):
         payload["profile"] = _attach_profile_certificates(payload["profile"], request)
     payload["export_query"] += f"&mine={ctx['mine']}"
