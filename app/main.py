@@ -105,7 +105,12 @@ async def auth_gate(request: Request, call_next):
             _ob_status = str((_row or {}).get("onboarding_status") or "none")
         except Exception:
             _ob_status = None
-    if not auth.can_access_page(user, page, _ob_status):
+    faculty_review_action = (
+        (user.get("role") or "") == "faculty"
+        and request.method == "POST"
+        and path in ("/onboarding/approve", "/onboarding/reject", "/onboarding/disapprove")
+    )
+    if not faculty_review_action and not auth.can_access_page(user, page, _ob_status):
         if wants_html:
             if (user.get("role") or "") == "student" and _ob_status is not None and page != "Onboarding":
                 return RedirectResponse("/onboarding", status_code=303)
@@ -1244,6 +1249,7 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "branches": auth.SIGNUP_BRANCHES,
             "branch_specialisations": auth.SIGNUP_BRANCH_SPECIALISATIONS,
             "semesters": auth.SEMESTERS,
+            "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
             "linked_github": linked_github,
             "linked_linkedin": linked_linkedin,
             "hr_locked": hr_locked,
@@ -1511,13 +1517,32 @@ async def signup_phase_4_submit(
 
 
 @app.get("/faculty-setup", response_class=HTMLResponse)
-def faculty_setup_page(request: Request, welcome: int = 0, error: str = ""):
+def faculty_setup_page(request: Request, welcome: int = 0, error: str = "", phase: int = 1):
     """One-time faculty onboarding: requires the short-lived setup cookie minted
-    by a successful invite login. Shows the 'Welcome faculty!' popup and the
-    new-email + password form. Faculty sees the same pages as admin after this
-    (ROLE_PAGES already maps faculty → ALL_PAGES)."""
-    if request.state.user:
-        return RedirectResponse("/", status_code=302)
+    by a successful invite login. Phase 1 creates the permanent account;
+    authenticated faculty continue to phase 2 to choose their teaching scope."""
+    signed_in = getattr(request.state, "user", None)
+    if signed_in:
+        if signed_in.get("role") != "faculty" or phase != 2:
+            return RedirectResponse("/", status_code=302)
+        assignments = auth.get_faculty_teaching(signed_in.get("email", ""))
+        teaching_rows = [
+            {"division": division, "batch": batch}
+            for division, batches in sorted(assignments.items(), key=lambda item: int(item[0]))
+            for batch in batches
+        ] or [{"division": "", "batch": ""}]
+        return templates.TemplateResponse(
+            request,
+            "pages/faculty_teaching_setup.html",
+            {
+                "page_name": "faculty-setup",
+                "teaching_rows": teaching_rows,
+                "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+                "error_code": (error or "").strip(),
+            },
+        )
+    if phase != 1:
+        return RedirectResponse("/login", status_code=302)
     invite_email = auth.read_faculty_setup_token(request.cookies.get(auth._FACULTY_SETUP_COOKIE))
     if not invite_email:
         return RedirectResponse("/login", status_code=302)
@@ -1565,9 +1590,8 @@ async def faculty_setup_submit(
             return RedirectResponse("/faculty-setup?error=storage_unavailable", status_code=302)
         return RedirectResponse(f"/faculty-setup?error={code}", status_code=302)
     _db_log_event("faculty_setup_complete", user.get("email", ""))
-    # Fresh faculty accounts land on their own onboarding step (divisions +
-    # batches they teach) before the Overview.
-    response = RedirectResponse("/onboarding", status_code=302)
+    # The invite flow continues into phase 2 under the newly created session.
+    response = RedirectResponse("/faculty-setup?phase=2", status_code=302)
     response.delete_cookie(auth._FACULTY_SETUP_COOKIE)
     response.set_cookie(
         auth._COOKIE_NAME,
@@ -1578,6 +1602,70 @@ async def faculty_setup_submit(
         samesite="lax",
     )
     return response
+
+
+@app.post("/faculty-setup/phase/2", response_class=HTMLResponse)
+async def faculty_teaching_setup_submit(request: Request):
+    """Save the division and practical-batch pairs selected during faculty setup."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("role") != "faculty":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    try:
+        form = await request.form()
+        divisions = [str(value or "").strip() for value in form.getlist("division")]
+        batches = [str(value or "").strip() for value in form.getlist("batch")]
+    except Exception:
+        return RedirectResponse("/faculty-setup?phase=2&error=invalid_teaching", status_code=303)
+
+    pairs = list(zip(divisions, batches))
+    entered_rows = [{"division": division, "batch": batch} for division, batch in pairs]
+    if (
+        len(divisions) != len(batches)
+        or not pairs
+        or len(pairs) > 50
+        or any(not d or not b for d, b in pairs)
+    ):
+        entered_rows = entered_rows[:50]
+        if not entered_rows:
+            entered_rows = [{"division": "", "batch": ""}]
+        return templates.TemplateResponse(
+            request,
+            "pages/faculty_teaching_setup.html",
+            {
+                "page_name": "faculty-setup",
+                "teaching_rows": entered_rows,
+                "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+                "error_code": "invalid_teaching",
+            },
+            status_code=400,
+        )
+
+    mapping: dict[str, list[str]] = {}
+    for division, batch in pairs:
+        mapping.setdefault(division, [])
+        if batch not in mapping[division]:
+            mapping[division].append(batch)
+    ok, error_code = auth.set_faculty_teaching(user.get("email", ""), mapping)
+    if ok:
+        _db_log_event("faculty_teaching_saved", user.get("email", ""))
+        return RedirectResponse("/", status_code=303)
+    if error_code in ("bad_division", "bad_batch", "empty"):
+        error_code = "invalid_teaching"
+    elif error_code != "storage_unavailable":
+        error_code = "storage_unavailable"
+    return templates.TemplateResponse(
+        request,
+        "pages/faculty_teaching_setup.html",
+        {
+            "page_name": "faculty-setup",
+            "teaching_rows": entered_rows or [{"division": "", "batch": ""}],
+            "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+            "error_code": error_code,
+        },
+        status_code=400,
+    )
 
 
 def _require_admin_api(request: Request):
@@ -1956,13 +2044,17 @@ def logout(request: Request):
 def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
     """Where to land after a successful login (Phase 5.4).
 
-    Honors an explicit ``next`` target from the login form; otherwise approved
-    students and faculty/admins go to the Overview (the synced account fleet
-    now supplies the data — Excel is going away), while first-time and pending
-    students continue into the onboarding flow."""
+    New faculty without saved teaching assignments resume phase 2 of setup.
+    Otherwise, honors an explicit ``next`` target; approved students and
+    faculty/admins go to the Overview, while first-time and pending students
+    continue into the onboarding flow."""
+    user = user or {}
+    if user.get("role") == "faculty":
+        email = str(user.get("email") or "").strip().lower()
+        if email and not auth.get_faculty_teaching(email):
+            return "/faculty-setup?phase=2"
     if next_dest and next_dest not in ("", "/", "/onboarding"):
         return next_dest
-    user = user or {}
     if user.get("role") != "student" or str(user.get("onboarding_status") or "") == "approved":
         return "/"
     return "/onboarding"
@@ -2244,28 +2336,18 @@ def _format_submitted_at(value: str | None) -> str:
 
 @app.get("/onboarding", response_class=HTMLResponse)
 def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = "", q: str = ""):
-    """Onboarding page. Students see their own submission form + status;
-    faculty see their teaching-assignment form (divisions + batches taught);
-    admins see the registrar ledger with approve/reject actions (searchable
-    via ?q=, same filter-bar pattern as the Students page)."""
+    """Students see their submission form + status; admins see the registrar
+    ledger with approve/reject actions. Faculty set teaching assignments in
+    phase 2 of their one-time account setup and have no Onboarding page."""
     ctx = _base_context(request, "Onboarding")
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
-    ctx["manager"] = role in ("admin", "faculty")
+    ctx["manager"] = role == "admin"
     ctx["is_admin"] = role == "admin"
-    ctx["is_faculty"] = role == "faculty"
     ctx["auth_email"] = (user or {}).get("email", "")
     ctx["submission"] = {}
-    ctx["teaching"] = {}
-    ctx["teaching_divisions"] = list(auth.DIVISIONS)
-    ctx["teaching_batches"] = list(auth.TEACHING_BATCHES)
     ctx["q"] = q
-    if role == "faculty" and user:
-        try:
-            ctx["teaching"] = auth.get_faculty_teaching(user.get("email", ""))
-        except Exception:
-            ctx["teaching"] = {}
-    elif ctx["manager"]:
+    if ctx["manager"]:
         _rows = auth.get_onboarding_users()
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
@@ -2312,42 +2394,6 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["action_email"] = email
     ctx["oauth"] = oauth
     return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
-
-
-@app.post("/onboarding/faculty", response_class=HTMLResponse)
-async def onboarding_faculty_submit(request: Request):
-    """Faculty teaching-assignment submission. Accepts repeated
-    ``division``/``batch`` row pairs, validates them server-side, and stores
-    the ``{division: [batches]}`` mapping on the faculty account."""
-    user = getattr(request.state, "user", None)
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-    if user.get("role") != "faculty":
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-    try:
-        form = await request.form()
-        divisions = [str(v or "").strip() for v in form.getlist("division")]
-        batches = [str(v or "").strip() for v in form.getlist("batch")]
-    except Exception:
-        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
-    pairs = [(d, b) for d, b in zip(divisions, batches) if d or b][:50]
-    if not pairs:
-        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
-    mapping: dict[str, list[str]] = {}
-    for division, batch in pairs:
-        if not division or not batch:
-            return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
-        mapping.setdefault(division, [])
-        if batch not in mapping[division]:
-            mapping[division].append(batch)
-    ok, err = auth.set_faculty_teaching(user["email"], mapping)
-    if ok:
-        _db_log_event("faculty_teaching_saved", user["email"])
-        return RedirectResponse("/", status_code=303)
-    _db_log_event("faculty_teaching_rejected", f"{user['email']}; {err}")
-    if err in ("bad_division", "bad_batch", "empty"):
-        return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
-    return RedirectResponse("/onboarding?error=storage_unavailable", status_code=303)
 
 
 @app.post("/onboarding", response_class=HTMLResponse)

@@ -141,16 +141,28 @@ MAIN_BATCHES = tuple(f"Batch {year}" for year in range(2021, 2030))
 #: Practical batch = the lab-section batch that fills the dashboard "Batch".
 PRACTICAL_BATCHES = ("1", "2", "3") + tuple(f"P{n}" for n in range(1, 9))
 
-#: Batches a faculty member can claim on the teaching form — just the three
-#: lab-section batches shown on the dashboard (subset of PRACTICAL_BATCHES).
-TEACHING_BATCHES = ("1", "2", "3")
-
 #: Current term options (1-8), matching the legacy "Semester N" labels.
 SEMESTERS = tuple(f"Semester {n}" for n in range(1, 9))
 
 #: Division bands that map to the two sign-up practical-batch tracks.
 _PYTHON_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(1, 15))
 _COMPUTER_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(15, 33))
+
+
+def signup_practical_batches(division: str) -> tuple[str, ...]:
+    """Return the practical batches shown by student sign-up for a division."""
+    division = str(division or "").strip()
+    if division in _PYTHON_PRACTICAL_DIVISIONS:
+        return ("1", "2")
+    if division in _COMPUTER_PRACTICAL_DIVISIONS:
+        return ("1", "2", "3")
+    return ()
+
+
+SIGNUP_PRACTICAL_BATCHES_BY_DIVISION = {
+    division: list(signup_practical_batches(division))
+    for division in SIGNUP_DIVISIONS
+}
 
 ONBOARDING_STATUSES = ("none", "pending", "approved", "rejected")
 
@@ -177,11 +189,12 @@ _PAGE_BY_PREFIX = (
 ALL_PAGES = ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile")
 
 # RBAC: Verification is admin-only (Phase 19 certificate verification ledger).
-# Faculty see Overview + Onboarding + Students + Repositories + Leaderboards + Support + Settings + My Profile.
+# Faculty choose teaching divisions and batches during one-time account setup,
+# so they do not use the standalone Onboarding page.
 # Students see Overview + Onboarding + Students + Repositories + Leaderboards + Settings + Support + My Profile.
 ROLE_PAGES = {
     "student": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Settings", "Support", "My Profile"),
-    "faculty": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
+    "faculty": ("Overview", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
     "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
 }
 
@@ -1496,13 +1509,17 @@ def parse_faculty_teaching(raw: str | None) -> dict[str, list[str]]:
     cleaned: dict[str, list[str]] = {}
     for division, batches in data.items():
         division = str(division or "").strip()
-        if division not in DIVISIONS:
+        if division not in SIGNUP_DIVISIONS:
             continue
         if isinstance(batches, str):
             batches = [batches]
         if not isinstance(batches, (list, tuple)):
             continue
-        kept = sorted({str(b).strip() for b in batches if str(b).strip() in TEACHING_BATCHES})
+        kept = sorted({
+            str(batch).strip()
+            for batch in batches
+            if valid_signup_practical_batch(str(batch), division)
+        })
         if kept:
             cleaned[division] = kept
     return cleaned
@@ -1519,8 +1536,9 @@ def get_faculty_teaching(email: str) -> dict[str, list[str]]:
 def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
     """Validate and store a faculty account's teaching assignments.
 
-    ``mapping`` is ``{division: [batches]}`` (divisions 1-14, batches from the
-    practical-batch list). Returns ``(True, "")`` on success, ``(False, code)``
+    ``mapping`` is ``{division: [batches]}`` using sign-up's divisions 1-32
+    and division-dependent practical batches. Returns ``(True, "")`` on
+    success, ``(False, code)``
     otherwise where code is one of ``no_user``, ``empty`` (no valid rows),
     ``bad_division``, ``bad_batch``, ``storage_unavailable``. Never raises."""
     email = (email or "").strip().lower()
@@ -1531,7 +1549,7 @@ def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
     cleaned: dict[str, list[str]] = {}
     for division, batches in mapping.items():
         division = str(division or "").strip()
-        if division not in DIVISIONS:
+        if division not in SIGNUP_DIVISIONS:
             return False, "bad_division"
         if isinstance(batches, str):
             batches = [batches]
@@ -1540,7 +1558,7 @@ def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
         kept = []
         for batch in batches:
             batch = str(batch or "").strip()
-            if batch not in TEACHING_BATCHES:
+            if not valid_signup_practical_batch(batch, division):
                 return False, "bad_batch"
             if batch not in kept:
                 kept.append(batch)
@@ -1867,13 +1885,7 @@ def valid_signup_practical_batch(value: str, division: str) -> bool:
     """Sign-up practical-batch options depend on the division: divisions 1-14
     take the Python practical (batches 1-2), divisions 15-32 the Computer
     practical (batches 1-3)."""
-    value = (value or "").strip()
-    division = (division or "").strip()
-    if division in _PYTHON_PRACTICAL_DIVISIONS:
-        return value in ("1", "2")
-    if division in _COMPUTER_PRACTICAL_DIVISIONS:
-        return value in ("1", "2", "3")
-    return False
+    return (value or "").strip() in signup_practical_batches(division)
 
 
 def valid_semester(value: str) -> bool:

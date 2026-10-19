@@ -369,6 +369,7 @@
 <script>
 (function () {
   var BRANCH_SPECIALISATIONS = {{ branch_specialisations | tojson }};
+  var PRACTICAL_BATCHES_BY_DIVISION = {{ practical_batches_by_division | tojson }};
   var prn = document.getElementById('prn');
   var prnErr = document.getElementById('prn-error');
   var branchBtn = document.getElementById('branch-btn');
@@ -470,9 +471,10 @@
   }
 
   function batchOptions() {
-    var div = parseInt((division.value || '').trim(), 10);
-    if (div >= 1 && div <= 14) return { label: 'Python Practical Batch', values: ['1', '2'] };
-    if (div >= 15 && div <= 32) return { label: 'Computer Practical Batch', values: ['1', '2', '3'] };
+    var div = (division.value || '').trim();
+    var values = PRACTICAL_BATCHES_BY_DIVISION[div] || [];
+    if (values.length && parseInt(div, 10) <= 14) return { label: 'Python Practical Batch', values: values };
+    if (values.length) return { label: 'Computer Practical Batch', values: values };
     return { label: 'Practical Batch', values: [] };
   }
 

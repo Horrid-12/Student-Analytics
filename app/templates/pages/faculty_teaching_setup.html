@@ -1,0 +1,214 @@
+{% extends "pages/auth_base.html" %}
+{% block title %}Faculty Teaching Setup{% endblock %}
+{% block auth_card %}
+<style>
+@media (max-width: 620px) {
+  .faculty-teaching-row { grid-template-columns: 1fr !important; }
+  .faculty-teaching-row .faculty-remove-row { width: 100%; }
+}
+</style>
+<div class="auth-card auth-card-wide">
+  <h1>Set up your teaching assignments</h1>
+  <div class="phase-steps" aria-label="Faculty setup progress">
+    <div class="phase-label">Phase 2 of 2 · Teaching assignments</div>
+    <div class="phase-track">
+      <div class="phase-dot is-done"><i>1</i><small>Account</small></div>
+      <div class="phase-link" aria-hidden="true"></div>
+      <div class="phase-dot is-now"><i>2</i><small>Teaching</small></div>
+    </div>
+  </div>
+  <p class="sub">Choose every division and practical batch you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3.</p>
+
+  {% if error_code == "invalid_teaching" %}
+  <div class="banner-error">Choose a valid division and practical batch for every row.</div>
+  {% elif error_code == "storage_unavailable" %}
+  <div class="banner-error">We couldn't save your teaching assignments. Please try again.</div>
+  {% endif %}
+
+  <form method="post" action="/faculty-setup/phase/2" id="faculty-teaching-setup-form">
+    <div id="faculty-teaching-rows" style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;">
+      {% for row in teaching_rows %}
+      <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label>Division</label>
+          <input class="faculty-division-input" type="text" inputmode="numeric" pattern="(?:[1-9]|[12][0-9]|3[0-2])" placeholder="Division (1–32)" value="{{ row.division }}" required>
+          <input class="faculty-division-value" type="hidden" name="division" value="{{ row.division }}">
+          <div class="field-error faculty-division-error">Enter a division from 1 to 32.</div>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="faculty-batch-kind">Practical Batch</label>
+          <div class="su-wrap">
+            <button class="su-btn is-placeholder faculty-batch-button" type="button" aria-haspopup="listbox" aria-expanded="false" disabled>
+              <span class="su-label faculty-batch-label">Select your division above to continue</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="su-panel faculty-batch-panel" role="listbox" hidden><div class="su-pills"></div></div>
+            <input class="faculty-batch-value" type="hidden" name="batch" value="{{ row.batch }}">
+          </div>
+        </div>
+        <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn" id="faculty-add-row" type="button">+ Add another division</button>
+      <button class="btn-primary" type="submit" style="flex:1;min-width:180px;">Save and continue</button>
+    </div>
+  </form>
+</div>
+
+<template id="faculty-teaching-row-template">
+  <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>Division</label>
+      <input class="faculty-division-input" type="text" inputmode="numeric" pattern="(?:[1-9]|[12][0-9]|3[0-2])" placeholder="Division (1–32)" required>
+      <input class="faculty-division-value" type="hidden" name="division" value="">
+      <div class="field-error faculty-division-error">Enter a division from 1 to 32.</div>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label class="faculty-batch-kind">Practical Batch</label>
+      <div class="su-wrap">
+        <button class="su-btn is-placeholder faculty-batch-button" type="button" aria-haspopup="listbox" aria-expanded="false" disabled>
+          <span class="su-label faculty-batch-label">Select your division above to continue</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="su-panel faculty-batch-panel" role="listbox" hidden><div class="su-pills"></div></div>
+        <input class="faculty-batch-value" type="hidden" name="batch" value="">
+      </div>
+    </div>
+    <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
+  </div>
+</template>
+
+<script>
+(function () {
+  var batchesByDivision = {{ practical_batches_by_division | tojson }};
+  var rows = document.getElementById('faculty-teaching-rows');
+  var rowTemplate = document.getElementById('faculty-teaching-row-template');
+  var form = document.getElementById('faculty-teaching-setup-form');
+  var addButton = document.getElementById('faculty-add-row');
+  if (!rows || !rowTemplate || !form || !addButton) return;
+
+  function closeMenus(except) {
+    rows.querySelectorAll('.faculty-batch-panel').forEach(function (panel) {
+      if (panel !== except) panel.hidden = true;
+    });
+    rows.querySelectorAll('.faculty-batch-button').forEach(function (button) {
+      if (!except || button.nextElementSibling !== except) button.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function updateRemoveButtons() {
+    var allRows = rows.querySelectorAll('.faculty-teaching-row');
+    allRows.forEach(function (row) {
+      row.querySelector('.faculty-remove-row').disabled = allRows.length === 1;
+    });
+  }
+
+  function setupRow(row) {
+    var divisionInput = row.querySelector('.faculty-division-input');
+    var divisionValue = row.querySelector('.faculty-division-value');
+    var divisionError = row.querySelector('.faculty-division-error');
+    var batchKind = row.querySelector('.faculty-batch-kind');
+    var batchButton = row.querySelector('.faculty-batch-button');
+    var batchLabel = row.querySelector('.faculty-batch-label');
+    var batchPanel = row.querySelector('.faculty-batch-panel');
+    var batchPills = batchPanel.querySelector('.su-pills');
+    var batchValue = row.querySelector('.faculty-batch-value');
+
+    function rebuildBatchOptions() {
+      var division = (divisionInput.value || '').trim();
+      var allowed = batchesByDivision[division] || [];
+      var validDivision = allowed.length > 0;
+      divisionError.style.display = division && !validDivision ? 'block' : 'none';
+      divisionInput.classList.toggle('is-invalid', !!division && !validDivision);
+      divisionValue.value = validDivision ? division : '';
+      batchKind.textContent = validDivision && parseInt(division, 10) <= 14
+        ? 'Python Practical Batch'
+        : (validDivision ? 'Computer Practical Batch' : 'Practical Batch');
+      batchButton.disabled = !validDivision;
+      if (allowed.indexOf(batchValue.value) === -1) batchValue.value = '';
+      batchPills.textContent = '';
+      allowed.forEach(function (value) {
+        var option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'su-pill';
+        option.setAttribute('role', 'option');
+        option.setAttribute('data-value', value);
+        option.setAttribute('aria-selected', batchValue.value === value ? 'true' : 'false');
+        if (batchValue.value === value) option.setAttribute('data-active', 'true');
+        option.textContent = value;
+        batchPills.appendChild(option);
+      });
+      batchButton.classList.toggle('is-placeholder', !batchValue.value);
+      batchLabel.textContent = batchValue.value ? batchValue.value :
+        (validDivision ? 'Select a batch' : 'Select your division above to continue');
+      if (!validDivision) {
+        batchPanel.hidden = true;
+        batchButton.setAttribute('aria-expanded', 'false');
+      }
+    }
+
+    divisionInput.addEventListener('input', rebuildBatchOptions);
+    divisionInput.addEventListener('blur', rebuildBatchOptions);
+    batchButton.addEventListener('click', function () {
+      if (batchButton.disabled) return;
+      var shouldOpen = batchPanel.hidden;
+      closeMenus(batchPanel);
+      batchPanel.hidden = !shouldOpen;
+      batchButton.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    });
+    batchPanel.addEventListener('click', function (event) {
+      var option = event.target.closest('[data-value]');
+      if (!option) return;
+      batchValue.value = option.getAttribute('data-value');
+      rebuildBatchOptions();
+      batchPanel.hidden = true;
+      batchButton.setAttribute('aria-expanded', 'false');
+    });
+    row.querySelector('.faculty-remove-row').addEventListener('click', function () {
+      if (rows.querySelectorAll('.faculty-teaching-row').length > 1) row.remove();
+      else {
+        divisionInput.value = '';
+        batchValue.value = '';
+        rebuildBatchOptions();
+      }
+      updateRemoveButtons();
+    });
+    rebuildBatchOptions();
+  }
+
+  addButton.addEventListener('click', function () {
+    var row = rowTemplate.content.firstElementChild.cloneNode(true);
+    rows.appendChild(row);
+    setupRow(row);
+    updateRemoveButtons();
+    row.querySelector('.faculty-division-input').focus();
+  });
+  rows.addEventListener('click', function (event) {
+    if (!event.target.closest('.faculty-batch-button')) return;
+    event.stopPropagation();
+  });
+  document.addEventListener('click', function (event) {
+    if (!rows.contains(event.target)) closeMenus(null);
+  });
+  form.addEventListener('submit', function (event) {
+    var valid = true;
+    rows.querySelectorAll('.faculty-teaching-row').forEach(function (row) {
+      var division = row.querySelector('.faculty-division-value').value;
+      var batch = row.querySelector('.faculty-batch-value').value;
+      if (!division || !batch) valid = false;
+    });
+    if (!valid) {
+      event.preventDefault();
+      var firstIncomplete = Array.from(rows.querySelectorAll('.faculty-teaching-row')).find(function (row) {
+        return !row.querySelector('.faculty-division-value').value || !row.querySelector('.faculty-batch-value').value;
+      });
+      if (firstIncomplete) firstIncomplete.querySelector('.faculty-division-input').focus();
+    }
+  });
+  rows.querySelectorAll('.faculty-teaching-row').forEach(setupRow);
+  updateRemoveButtons();
+})();
+</script>
+{% endblock %}
