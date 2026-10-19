@@ -2189,6 +2189,7 @@ def overview(
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
+                scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
             )
         except Exception:
             ctx["view"] = None

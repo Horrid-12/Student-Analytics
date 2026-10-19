@@ -954,7 +954,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None) -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1259,13 +1259,15 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
     # Class-health composite for the Statistics doughnut hole. It only makes
-    # sense for a specific class, so it renders when a class filter (Division /
-    # Batch / Semester / Pair) is active; the whole-cohort view leaves the hole
-    # empty. `_class_selected` doubles as the radar's "filtered" flag below.
+    # sense for a specific class, so it renders whenever the viewed cohort is
+    # scoped: an explicit class filter (Division / Batch / Semester / Pair), or
+    # the faculty "My Classes" scope (callers pass scoped=True). Only the
+    # whole-college view leaves the hole empty. `_class_selected` stays the
+    # filter-only flag and doubles as the radar's "filtered" flag below.
     _class_selected = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
     _stat_total = _n_consistent + _n_doing_good + _n_attention
     stats_headline = {}
-    if _class_selected and _stat_total:
+    if (_class_selected or scoped) and _stat_total:
         _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total)
         if _health_score >= 75:
             _health_band, _health_tone = "Healthy", "green"

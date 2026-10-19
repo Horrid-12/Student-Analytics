@@ -362,6 +362,39 @@ class TestPageRenderingWithData:
         assert payload["most_used_language"] == "Python"
         assert [row["name"] for row in payload["bubble_data"]] == ["Python"]
 
+    def test_stats_headline_grades_scoped_cohort_only(self):
+        """The Statistics doughnut hole grades any scoped cohort — an explicit
+        class filter (Division / Batch / Semester / Pair) or the faculty
+        "My Classes" scope (scoped=True) — while the whole-college view leaves
+        the hole empty."""
+        from app import views as app_views
+
+        students = pd.DataFrame([
+            {"Student_ID": "1", "Student Name": "A", "GitHub_Username": "a-dev",
+             "Division": "A", "Batch": "2026", "Semester": "S1",
+             "Repository_Count": 2, "Followers": 5, "Pull_Requests": 1, "Issues_Opened": 0},
+        ])
+        repos = pd.DataFrame([
+            {"Username": "a-dev", "Repository": "r1", "Language": "Python", "Stars": 1, "Forks": 0,
+             "Updated": "2026-07-01T00:00:00Z", "Repository_Quality_Score": 80},
+        ])
+        view = {
+            "students": students,
+            "repos": repos,
+            "team_repos": pd.DataFrame(),
+            "records": [{"GitHub_Username": "a-dev"}],
+            "state": {"status": "complete", "valid": 1, "invalid": 0, "errors": 0},
+        }
+        # Whole college: no grade.
+        assert app_views.overview_payload(view)["stats_headline"] == {}
+        # My Classes scope: graded even with no explicit Division/Batch/Semester/Pair.
+        scoped = app_views.overview_payload(view, scoped=True)["stats_headline"]
+        assert scoped.get("label") == "Class Health"
+        assert scoped.get("value")
+        # Explicit class filter still grades (unchanged behaviour).
+        filtered = app_views.overview_payload(view, division="A")["stats_headline"]
+        assert filtered.get("label") == "Class Health"
+
     def test_overview_complete_render_supports_re_run_over_existing(self, tmp_path):
         """BUG-107 regression (updated for upload removal): a complete Overview
         carries no run-trigger UI — no Run Analysis button, no upload bar, no
