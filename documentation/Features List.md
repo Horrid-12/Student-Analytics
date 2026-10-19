@@ -108,6 +108,13 @@
 | 82 | HackerRank Stats on Overview            | HackerRank cards/charts on Overview: total solved, practice score, badges, top performers | P1 — High     | HackerRank data is already synced, cached and rendered on leaderboards and profile tabs (row 73), but Overview reports GitHub-only numbers (row 10) — this is a rendering change on existing data, not new collection                                                                                                                                                                                              |
 | 83 | Expanded Overview & Global Stats        | Render the already-computed hidden payload fields + more distributions/averages | P2 — Medium   | `views.overview_payload` computes submission rate, avg quality, avg followers, most-used language, account/API status breakdowns and a treemap (`views.py:1099-1123`) that the template never renders — the cheapest "more stats overall" win available (with rows 82, 84)                                                                                                                                        |
 | 84 | Students Stat Columns & Percentiles     | Sortable numeric columns (commits, PRs, stars, streak, HR solved) + class/college percentiles | P2 — Medium   | The Students roster is identity-only today (`partials/student_rows.html`); stat columns with percentile bands make peer comparison (row 54) and faculty at-a-glance triage possible, using stats that `analysis_results` already stores                                                                                                                                                                          |
+| 85 | PFP Toggle | Add in Status and User Settings |
+
+| 86 | Faculty Headouts | Same as Above |
+
+| 87 | Overview Overhaul for Students Page | Colour Accent Changes and HackerRank Toggle |
+
+| 88 | Settings Page | Rework Faculty Settings |
 
 ## Recommended Development Order
 
