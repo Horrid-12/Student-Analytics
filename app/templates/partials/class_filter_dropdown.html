@@ -1,4 +1,4 @@
-{# Combined Division & Batch filter: single purple button + Division rows
+{# Combined Division & Batch filter: single red button + Division rows
    with Batch toggle buttons. Multiple pairs can stay picked at once
    (Compare-style); nothing reloads until the parent form's Apply button
    submits the checked `pair` (DIV|BATCH) values together. Legacy
@@ -20,14 +20,14 @@
   .cf-btn {
     display: inline-flex; align-items: center; gap: 8px;
     min-height: 42px; padding: 0 24px;
-    border: 3px solid #8b5cf6; border-radius: 10px;
-    background: transparent; color: #8b5cf6;
+    border: 3px solid var(--accent-red); border-radius: 10px;
+    background: transparent; color: var(--accent-red);
     font-weight: 800; font-size: 15px;
     font-family: Inter, system-ui, sans-serif;
     cursor: pointer; white-space: nowrap; transition: all 180ms ease;
   }
-  .cf-btn:hover { background: rgba(139, 92, 246, 0.12); }
-  .cf-btn[aria-expanded="true"] { background: #8b5cf6; color: #fff; }
+  .cf-btn:hover { background: var(--accent-red-soft); }
+  .cf-btn[aria-expanded="true"] { background: var(--accent-red); color: #fff; }
   .cf-btn[aria-expanded="true"] svg { stroke: #fff; }
   .cf-panel {
     position: absolute; top: calc(100% + 8px); left: 0;
@@ -42,12 +42,12 @@
     background: var(--card-soft, rgba(128, 128, 128, 0.04));
     margin: 0 0 8px; padding: 4px;
   }
-  /* Scope toggle switch: My Classes | All students in one purple-bordered
+  /* Scope toggle switch: My Classes | All students in one red-bordered
      pill. Both options stay visible so the state never has to be guessed
-     (replaces the old radio list). Active side is filled purple. */
+     (replaces the old radio list). Active side is filled red. */
   .cf-scope-toggle {
     display: flex;
-    border: 3px solid #8b5cf6; border-radius: 10px;
+    border: 3px solid var(--accent-red); border-radius: 10px;
     overflow: hidden; min-height: 42px;
   }
   .cf-scope-seg {
@@ -55,11 +55,11 @@
     padding: 0 16px; min-height: 42px;
     font-size: 14px; font-weight: 800;
     font-family: Inter, system-ui, sans-serif;
-    color: #8b5cf6; background: transparent;
+    color: var(--accent-red); background: transparent;
     cursor: pointer; white-space: nowrap; transition: all 180ms ease;
   }
-  .cf-scope-seg:hover:not(.is-active) { background: rgba(139, 92, 246, 0.12); }
-  .cf-scope-seg.is-active { background: #8b5cf6; color: #fff; }
+  .cf-scope-seg:hover:not(.is-active) { background: var(--accent-red-soft); }
+  .cf-scope-seg.is-active { background: var(--accent-red); color: #fff; }
   .cf-scope-seg input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
   .cf-divrow {
     display: flex; align-items: center; justify-content: space-between;
@@ -71,7 +71,7 @@
     background: transparent; border: 0; padding: 0; cursor: pointer;
     font-family: Inter, system-ui, sans-serif; text-align: left;
   }
-  .cf-div:hover { color: #8b5cf6; }
+  .cf-div:hover { color: var(--accent-red); }
   .cf-batches { display: flex; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
   .cf-batch {
     min-width: 42px; padding: 7px 12px; font-size: 14px; font-weight: 700;
@@ -79,19 +79,19 @@
     border: 1px solid var(--border); background: transparent; color: var(--text);
     cursor: pointer; transition: all 180ms ease;
   }
-  .cf-batch:hover { border-color: #8b5cf6; color: #8b5cf6; }
-  .cf-batch[data-active="true"] { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
-  .cf-divrow.taught { background: rgba(139, 92, 246, 0.10); }
-  .cf-divrow.taught .cf-div { color: #8b5cf6; }
-  .cf-batch.taught { background: transparent; border-color: #7c3aed; color: #7c3aed; }
-  .cf-batch.taught[data-active="true"] { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  .cf-batch:hover { border-color: var(--accent-red); color: var(--accent-red); }
+  .cf-batch[data-active="true"] { background: var(--accent-red); border-color: var(--accent-red); color: #fff; }
+  .cf-divrow.taught { background: var(--accent-red-soft); }
+  .cf-divrow.taught .cf-div { color: var(--accent-red); }
+  .cf-batch.taught { background: transparent; border-color: var(--accent-red-hover); color: var(--accent-red-hover); }
+  .cf-batch.taught[data-active="true"] { background: var(--accent-red-hover); border-color: var(--accent-red-hover); color: #fff; }
 </style>
 
 <div class="filter-field cf-wrap">
   <label class="filter-label" id="cf-label">Division / Batch</label>
   <button type="button" class="cf-btn" id="cf-btn" aria-haspopup="true" aria-expanded="false">
     <span id="cf-label-text">{% if _ns.initial == 0 %}Division &amp; Batch{% elif _ns.initial == 1 %}1 selected{% else %}{{ _ns.initial }} selected{% endif %}</span>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
   </button>
   <div id="cf-panel" class="cf-panel" hidden>
     {% if teaching_active %}

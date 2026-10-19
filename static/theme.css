@@ -22,6 +22,13 @@
     --red: #be342b;
     --red-hover: #a52c25;
     --purple: #60738a;
+    /* Site accent: replaces the old violet UI accent across every page. */
+    --accent-red: #be342b;
+    --accent-red-hover: #a52c25;
+    --accent-red-faint: rgba(190, 52, 43, 0.05);
+    --accent-red-soft: rgba(190, 52, 43, 0.12);
+    --accent-red-soft-strong: rgba(190, 52, 43, 0.18);
+    --accent-red-border: rgba(190, 52, 43, 0.42);
     --hover-bg: rgba(20, 34, 53, 0.055);
     --subtle-bg: rgba(255, 255, 255, 0.28);
     --icon-bg: rgba(20, 34, 53, 0.06);
@@ -43,6 +50,11 @@
     --badge-blue-color: #41546c;
     --badge-purple-color: #41546c;
     --ext-link-color: #176545;
+    /* Feature 87: HackerRank platform accent (brand green, theme-adjusted
+       for contrast on the cream/dark surfaces). */
+    --hackerrank: #17884a;
+    --hackerrank-soft: rgba(46, 200, 102, 0.12);
+    --hackerrank-border: rgba(46, 200, 102, 0.42);
     /* Capsule segment colors */
     --capsule-connected: #3d7a7a;
     --capsule-invalid: #c4553a;
@@ -71,6 +83,14 @@
     --red: #5B9CF6;
     --red-hover: #3B82F6;
     --purple: #9aaabd;
+    /* Site accent: red on dark surfaces (kept mid-tone so filled accents
+       still carry white text, and still read as text on dark cards). */
+    --accent-red: #ef6a5e;
+    --accent-red-hover: #e2564b;
+    --accent-red-faint: rgba(239, 106, 94, 0.10);
+    --accent-red-soft: rgba(239, 106, 94, 0.18);
+    --accent-red-soft-strong: rgba(239, 106, 94, 0.26);
+    --accent-red-border: rgba(239, 106, 94, 0.50);
     --hover-bg: rgba(255, 255, 255, 0.06);
     --subtle-bg: rgba(255, 255, 255, 0.04);
     --icon-bg: rgba(255, 255, 255, 0.08);
@@ -92,6 +112,10 @@
     --badge-blue-color: #93C5FD;
     --badge-purple-color: #b8c8da;
     --ext-link-color: #7bd6aa;
+    /* Feature 87: HackerRank platform accent (dark theme). */
+    --hackerrank: #57d68d;
+    --hackerrank-soft: rgba(46, 200, 102, 0.16);
+    --hackerrank-border: rgba(46, 200, 102, 0.48);
     /* Capsule segment colors */
     --capsule-connected: #6bcfcf;
     --capsule-invalid: #e06b6b;

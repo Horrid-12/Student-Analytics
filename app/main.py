@@ -805,6 +805,50 @@ def _short_sidebar_name(display: str, has_real_name: bool) -> str:
     return f"{parts[0]} {parts[-1]}"
 
 
+def _pfp_options(user_row: dict | None) -> dict:
+    """Feature 85: profile-picture choices for the PFP toggle.
+
+    Students who linked BOTH GitHub and LinkedIn can choose which photo is
+    displayed across the app (cards, popups, leaderboards). Resolves both
+    avatars from the account row (GitHub falls back to the public
+    ``https://github.com/<handle>.png`` URL) and reports whether the choice
+    is available at all plus the currently stored source. Pure function of
+    the row — no I/O, safe on every page render.
+    """
+    row = user_row or {}
+    gh_handle = str(row.get("github_username") or row.get("linked_github_username") or "").strip()
+    gh_avatar = str(row.get("linked_github_avatar") or "").strip()
+    if not gh_avatar and gh_handle:
+        gh_avatar = f"https://github.com/{gh_handle}.png"
+    li_handle = str(row.get("linked_linkedin_name") or "").strip()
+    li_avatar = str(row.get("linked_linkedin_avatar") or "").strip()
+    source = str(row.get("profile_source") or "").strip().lower()
+    if source not in auth.LINK_SOURCES:
+        source = "github"
+    return {
+        "available": bool(gh_avatar and li_avatar),
+        "source": source,
+        "github": {"handle": gh_handle, "avatar": gh_avatar},
+        "linkedin": {"handle": li_handle, "avatar": li_avatar},
+    }
+
+
+def _set_profile_source(email: str, source: str) -> bool:
+    """Persist a PFP-source switch and drop the memoised account row.
+
+    The user row feeds the sidebar avatar on every page render (see
+    ``_base_context``), so a stale ``user:{email}`` memo would keep showing
+    the old photo for up to the cache TTL after the switch.
+    """
+    if not auth.set_profile_source(email, source):
+        return False
+    try:
+        view_cache.invalidate(f"user:{(email or '').strip().lower()}")
+    except Exception:
+        pass
+    return True
+
+
 def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict:
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
@@ -2314,12 +2358,18 @@ def overview(
             ctx["view"] = view
             _overall_view = _full_view if "_full_view" in locals() else None
             _taught_view_for_radar = _taught_view if "_taught_view" in locals() else None
+            try:
+                _hr_state = _hr_snapshots_state()
+            except Exception:
+                _hr_state = {}
             ctx["payload"] = views.overview_payload(
                 view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
                 scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
+                # Feature 87: HackerRank side of the Overview platform toggle.
+                hr_snapshots=_hr_state,
             )
         except Exception:
             ctx["view"] = None
@@ -3814,7 +3864,11 @@ def students_page(
     _privacy = _privacy_state() if _student_viewer else {}
     _own_sid = _own_student_id(view, request) if _student_viewer else None
     effective_select = (select or "").strip() or (request.query_params.get("student") or "").strip()
-    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All")
+    try:
+        _hr_state = _hr_snapshots_state()
+    except Exception:
+        _hr_state = {}
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All", hr_snapshots=_hr_state)
     if payload.get("profile"):
         payload["profile"] = _attach_profile_certificates(payload["profile"], request)
     payload["export_query"] += f"&mine={ctx['mine']}"
@@ -3935,11 +3989,14 @@ def my_profile_page(request: Request, roster: str = "", tab: str = "", notice: s
     profile = _attach_profile_certificates(profile, request)
     show_privacy = bool(profile) and (user.get("role") or "") == "student"
     privacy_prefs = auth.get_privacy_prefs(profile.get("student_id")) if show_privacy and profile else {f: 0 for f in auth.PRIVACY_FIELDS}
+    # Feature 85: the PFP toggle lives inside the Profile Status popup and is
+    # offered only when both GitHub and LinkedIn avatars are linked.
+    pfp_options = _pfp_options(getattr(request.state, "user_row", None)) if show_privacy else {}
     return templates.TemplateResponse(
         request,
         "pages/me.html",
         {**ctx, "profile": profile, "blacklist": _blacklist_state(roster) if roster else {}, "hidden_repos": _hidden_repos_state(roster) if roster else {}, "has_roster": bool(roster),
-         "show_privacy_button": show_privacy, "privacy_prefs": privacy_prefs},
+         "show_privacy_button": show_privacy, "privacy_prefs": privacy_prefs, "pfp_options": pfp_options},
     )
 
 
@@ -3984,15 +4041,25 @@ async def my_privacy_save(request: Request):
             prefs[field] = 1 if int(body.get(field) or 0) else 0
         except (TypeError, ValueError):
             prefs[field] = 0
+    # Feature 85: optional profile-picture source, saved in the same popup.
+    # Only offered when both avatars exist; unknown sources are rejected.
+    source = str(body.get("profile_source") or "").strip().lower()
+    if source and source not in auth.LINK_SOURCES:
+        raise HTTPException(status_code=400, detail="Invalid profile source")
+    pfp = _pfp_options(auth.get_account(email))
+    if source and not pfp.get("available"):
+        raise HTTPException(status_code=400, detail="Link both GitHub and LinkedIn to switch your profile picture")
     if not auth.set_privacy_prefs(student_id, prefs):
         raise HTTPException(status_code=500, detail="Could not save privacy settings")
+    if source and source != pfp.get("source") and not _set_profile_source(email, source):
+        raise HTTPException(status_code=500, detail="Could not switch profile picture")
     try:
         # Drop only the prefs memo (NOT the fleet frames — privacy applies at
         # render time, so no rebuild is needed for the save to take effect).
         view_cache.invalidate("privacy:all")
     except Exception:
         pass
-    return {"status": "ok", "privacy": prefs}
+    return {"status": "ok", "privacy": prefs, "profile_source": source or pfp.get("source") or "github"}
 
 
 @app.get("/students/export")
@@ -4849,7 +4916,7 @@ async def profile_confirm(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, linked: str = "", classes: str = ""):
+def settings_page(request: Request, linked: str = "", classes: str = "", pfp: str = ""):
     """Settings â€” storage health (honest about serverless read-only), theme
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
@@ -4952,8 +5019,38 @@ def settings_page(request: Request, linked: str = "", classes: str = ""):
             "faculty_teaching_rows": faculty_teaching_rows,
             "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
             "classes_status": (classes or "").strip(),
+            # Feature 85: PFP toggle in User Settings (students with both
+            # avatars linked only).
+            "pfp_options": _pfp_options(row),
+            "pfp_status": (pfp or "").strip(),
         },
     )
+
+
+@app.post("/settings/pfp")
+async def settings_pfp_submit(request: Request):
+    """Feature 85: switch the profile-picture source from User Settings.
+
+    Form-encoded (``source=github|linkedin``) and mirror-styled after the
+    faculty-teaching submit: redirects back to /settings with a status flag.
+    Only students whose account has both a GitHub and a LinkedIn avatar can
+    switch; everyone else gets the invalid flag and no write.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "") != "student":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    form = await request.form()
+    source = str(form.get("source") or "").strip().lower()
+    options = _pfp_options(auth.get_account(user.get("email", "")))
+    if source not in auth.LINK_SOURCES or not options.get("available"):
+        return RedirectResponse("/settings?pfp=invalid", status_code=303)
+    if options.get("source") != source and not _set_profile_source(user.get("email", ""), source):
+        return RedirectResponse("/settings?pfp=unavailable", status_code=303)
+    if options.get("source") != source:
+        _db_log_event("profile_picture_switched", f"{user.get('email', '')}:{source}")
+    return RedirectResponse("/settings?pfp=saved", status_code=303)
 
 
 @app.post("/settings/faculty-teaching", response_class=HTMLResponse)
