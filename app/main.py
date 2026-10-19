@@ -1424,9 +1424,8 @@ async def signup_phase_4_submit(
 
     Finishing also finalizes the sign-up — the collected academic bundle is
     submitted as a pending onboarding record for teacher verification — and
-    lands on /onboarding, which shows the submitted details + preferences and
-    the verification state. Until verified the student only sees Onboarding,
-    Support and Settings (see PENDING_STUDENT_PAGES)."""
+    lands on the pending onboarding status page. Until verified the student
+    only sees Onboarding, Support and Settings (see PENDING_STUDENT_PAGES)."""
     token_value = request.cookies.get(auth._SIGNUP_COOKIE)
     progress = auth.load_signup_progress(token_value)
     if not progress or int(progress.get("phase") or 1) < 4:
@@ -2240,6 +2239,55 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ctx["action"] = action
     ctx["action_email"] = email
     ctx["oauth"] = oauth
+    if role == "student":
+        onboarding_status = str((ctx.get("submission") or {}).get("onboarding_status") or "none").strip().lower()
+        if onboarding_status == "approved":
+            return RedirectResponse("/settings", status_code=303)
+        if onboarding_status == "pending":
+            return templates.TemplateResponse(request, "pages/onboarding_pending.html", ctx)
+        if onboarding_status in ("none", "rejected"):
+            student_email = str((user or {}).get("email") or "").strip().lower()
+            token_value = request.cookies.get(auth._SIGNUP_COOKIE)
+            progress = auth.load_signup_progress(token_value) or {}
+            progress_email = str(progress.get("email") or "").strip().lower()
+            try:
+                progress_phase = int(progress.get("phase") or 1)
+            except (TypeError, ValueError):
+                progress_phase = 1
+            if progress_email != student_email or progress_phase < 2:
+                account = ctx.get("submission") or {}
+                progress = {
+                    "email": student_email,
+                    "name": str(account.get("name") or (user or {}).get("name") or "").strip(),
+                    "phase": 2,
+                }
+                if onboarding_status == "rejected":
+                    progress.update({
+                        "prn": str(account.get("prn") or "").strip(),
+                        "branch": str(account.get("degree_branch") or "").strip(),
+                        "specialisation": str(account.get("specialisation") or "").strip(),
+                        "division": str(account.get("division") or "").strip(),
+                        "practical_batch": str(account.get("practical_batch") or "").strip(),
+                        "semester": str(account.get("semester") or "").strip(),
+                        "hackerrank_username": str(account.get("hackerrank_username") or "").strip(),
+                    })
+                token_value = auth.save_signup_progress(progress)
+                if token_value is None:
+                    raise HTTPException(status_code=503, detail="The sign-up flow is temporarily unavailable.")
+            try:
+                phase = max(2, min(4, int(progress.get("phase") or 2)))
+            except (TypeError, ValueError):
+                phase = 2
+            response = RedirectResponse(f"/signup?phase={phase}", status_code=303)
+            response.set_cookie(
+                auth._SIGNUP_COOKIE,
+                token_value,
+                max_age=auth._SIGNUP_TTL_SECONDS,
+                httponly=True,
+                secure=auth._SECURE_COOKIES,
+                samesite="lax",
+            )
+            return response
     return templates.TemplateResponse(request, "pages/onboarding.html", ctx)
 
 
@@ -2277,36 +2325,6 @@ async def onboarding_faculty_submit(request: Request):
     if err in ("bad_division", "bad_batch", "empty"):
         return RedirectResponse("/onboarding?error=invalid_teaching", status_code=303)
     return RedirectResponse("/onboarding?error=storage_unavailable", status_code=303)
-
-
-@app.post("/onboarding", response_class=HTMLResponse)
-async def onboarding_submit(
-    request: Request,
-    prn: str = Form(""),
-    degree_branch: str = Form(""),
-    division: str = Form(""),
-    main_batch: str = Form(""),
-    practical_batch: str = Form(""),
-    semester: str = Form(""),
-    hackerrank_username: str = Form(""),
-):
-    """Student submission endpoint (Phase 4.12). Validates the form server-side,
-    persists the academic identity, and moves the account to ``pending``."""
-    user = getattr(request.state, "user", None)
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-    if user.get("role") not in ("student",):
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-    ok, err = auth.submit_onboarding(
-        user["email"], prn, degree_branch, division,
-        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
-        hackerrank_username=hackerrank_username,
-    )
-    if ok:
-        _db_log_event("onboarding_submit", user["email"])
-        return RedirectResponse("/onboarding?saved=1", status_code=303)
-    _db_log_event("onboarding_rejected_input", f"{user['email']}; {err}")
-    return RedirectResponse(f"/onboarding?error={err}", status_code=303)
 
 
 @app.post("/onboarding/approve", response_class=HTMLResponse)
@@ -2488,12 +2506,6 @@ def autocad_page(
     role = (user.get("role") or "").lower()
     student_email = (user.get("email") or "").strip().lower()
     is_staff = role in ("faculty", "admin")
-    student_details = {}
-    if role == "student":
-        try:
-            student_details = auth.get_account(student_email) or {}
-        except Exception:
-            student_details = {}
     submissions = autocad.list_submissions(student_email="" if is_staff else student_email, limit=500 if is_staff else 200)
     for submission in submissions:
         submission["uploaded_display"] = autocad.format_uploaded_at(submission.get("created_at"))
@@ -2581,7 +2593,6 @@ def autocad_page(
         "submissions": submissions,
         "is_staff": is_staff,
         "can_upload": role == "student",
-        "student_details": student_details,
         "notice": notice,
         "error": error,
         "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
@@ -2600,10 +2611,6 @@ def autocad_page(
 async def autocad_upload(
     request: Request,
     file: UploadFile = File(...),
-    student_id: str = Form(""),
-    division: str = Form(""),
-    batch: str = Form(""),
-    semester: str = Form(""),
 ):
     """Accept a single small DWG upload from the signed-in student."""
     user = getattr(request.state, "user", None) or {}
@@ -2624,26 +2631,15 @@ async def autocad_upload(
         user_row = auth.get_account(student_email) or {}
     except Exception:
         user_row = {}
-    submission_details = {
-        "student_id": str(user_row.get("prn") or student_id).strip(),
-        "division": str(user_row.get("division") or division).strip(),
-        "batch": str(user_row.get("practical_batch") or batch).strip(),
-        "semester": str(user_row.get("semester") or semester).strip(),
-    }
-    if not all(submission_details.values()):
-        return RedirectResponse(
-            "/autocad?" + urlencode({"error": "Enter your PRN, division, batch, and semester before uploading."}),
-            status_code=303,
-        )
     submission = autocad.create_submission(
         student_email=student_email,
-        student_id=submission_details["student_id"],
+        student_id=str(user_row.get("prn") or "").strip(),
         student_name=str(user.get("name") or user_row.get("name") or "Student"),
         filename=filename,
         file_data=file_data,
-        division=submission_details["division"],
-        batch=submission_details["batch"],
-        semester=submission_details["semester"],
+        division=str(user_row.get("division") or "").strip(),
+        batch=str(user_row.get("practical_batch") or "").strip(),
+        semester=str(user_row.get("semester") or "").strip(),
     )
     if not submission:
         return RedirectResponse("/autocad?error=save_failed", status_code=303)

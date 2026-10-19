@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Onboarding · Student Analytics{% endblock %}
+{% block head %}
+<style>
+  .onboarding-status-page{max-width:1000px;margin:0 auto;padding-bottom:40px}
+  .onboarding-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .onboarding-status-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 4px 18px rgba(20,34,53,.04)}
+  .onboarding-status-card h2{font-size:17px;margin:0;color:var(--text)}
+  .onboarding-status-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:15px;margin-bottom:17px;border-bottom:1px solid var(--border)}
+  .onboarding-pending-badge{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#b77906;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+  .onboarding-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 22px}
+  .onboarding-detail-label{display:block;margin-bottom:4px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .onboarding-detail-value{color:var(--text);font-size:14px;overflow-wrap:anywhere}
+  .onboarding-status-note{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.6}
+  .onboarding-profile-list{display:flex;flex-direction:column;gap:10px}
+  .onboarding-profile-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--card-soft);font-size:13px}
+  .onboarding-profile-item strong{font-weight:700}
+  .onboarding-profile-item a{color:var(--blue);text-decoration:none;overflow-wrap:anywhere}
+  .onboarding-profile-item a:hover{text-decoration:underline}
+  @media(max-width:700px){.onboarding-status-page{padding-top:14px}.onboarding-status-grid{grid-template-columns:1fr}.onboarding-status-card{padding:17px}.onboarding-details{gap:13px}}
+</style>
+{% endblock %}
+{% block content %}
+{% set s = submission or {} %}
+{% set github_handle = s.linked_github_username or s.github_username or '' %}
+{% set linkedin_handle = s.linked_linkedin_name or '' %}
+<div class="onboarding-status-page">
+  <div class="topbar-card" style="margin-bottom:18px;">
+    <div class="topbar">
+      <div style="min-width:0;">
+        <div class="topbar-title">Onboarding</div>
+        <div class="topbar-meta" style="margin-top:4px;font-size:13px;">Your submitted information is awaiting verification.</div>
+      </div>
+      <span class="onboarding-pending-badge"><span aria-hidden="true">●</span> Pending review</span>
+    </div>
+  </div>
+
+  <div class="onboarding-status-grid">
+    <section class="onboarding-status-card" aria-labelledby="onboarding-academic-title">
+      <div class="onboarding-status-head"><h2 id="onboarding-academic-title">Academic Information</h2></div>
+      <p class="onboarding-status-note">Your details were submitted{% if s.onboarding_submitted_at %} on {{ s.onboarding_submitted_at[:16]|replace('T', ' ') }}{% endif %}. They will appear in your account after your record is approved.</p>
+      <div class="onboarding-details">
+        <div><span class="onboarding-detail-label">Roll Number (PRN)</span><span class="onboarding-detail-value">{{ s.prn or '—' }}</span></div>
+        <div><span class="onboarding-detail-label">Branch</span><span class="onboarding-detail-value">{{ s.degree_branch or '—' }}</span></div>
+        {% if s.specialisation %}<div><span class="onboarding-detail-label">Specialisation</span><span class="onboarding-detail-value">{{ s.specialisation }}</span></div>{% endif %}
+        <div><span class="onboarding-detail-label">Division</span><span class="onboarding-detail-value">{{ s.division or '—' }}</span></div>
+        {% if s.main_batch %}<div><span class="onboarding-detail-label">Batch</span><span class="onboarding-detail-value">{{ s.main_batch }}</span></div>{% endif %}
+        <div><span class="onboarding-detail-label">Practical Batch</span><span class="onboarding-detail-value">{{ s.practical_batch or '—' }}</span></div>
+        <div><span class="onboarding-detail-label">Current Semester</span><span class="onboarding-detail-value">{{ s.semester or '—' }}</span></div>
+      </div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <section class="onboarding-status-card" aria-labelledby="onboarding-identity-title">
+        <div class="onboarding-status-head"><h2 id="onboarding-identity-title">Identity</h2><span class="badge-green">Email verified</span></div>
+        <div><span class="onboarding-detail-label">University Email</span><span class="onboarding-detail-value">{{ auth_email or s.email or '—' }}</span></div>
+        <p class="onboarding-status-note" style="margin:12px 0 0;">Your email is verified through sign-in. Your academic record is waiting for staff review.</p>
+      </section>
+
+      <section class="onboarding-status-card" aria-labelledby="onboarding-profiles-title">
+        <div class="onboarding-status-head"><h2 id="onboarding-profiles-title">Linked Profiles</h2></div>
+        <div class="onboarding-profile-list">
+          <div class="onboarding-profile-item"><strong>HackerRank</strong>{% if hackerrank_url %}<a href="{{ hackerrank_url }}" target="_blank" rel="noopener">{{ hackerrank_handle }}</a>{% else %}<span>{{ s.hackerrank_username or '—' }}</span>{% endif %}</div>
+          <div class="onboarding-profile-item"><strong>GitHub</strong>{% if github_handle %}<a href="https://github.com/{{ github_handle|urlencode }}" target="_blank" rel="noopener">@{{ github_handle }}</a>{% else %}<span>—</span>{% endif %}</div>
+          <div class="onboarding-profile-item"><strong>LinkedIn</strong>{% if linkedin_handle %}<span>{{ linkedin_handle }}</span>{% else %}<span>—</span>{% endif %}</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
