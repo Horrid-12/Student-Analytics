@@ -83,14 +83,14 @@
     --red: #5B9CF6;
     --red-hover: #3B82F6;
     --purple: #9aaabd;
-    /* Site accent: red on dark surfaces (kept mid-tone so filled accents
-       still carry white text, and still read as text on dark cards). */
-    --accent-red: #ef6a5e;
-    --accent-red-hover: #e2564b;
-    --accent-red-faint: rgba(239, 106, 94, 0.10);
-    --accent-red-soft: rgba(239, 106, 94, 0.18);
-    --accent-red-soft-strong: rgba(239, 106, 94, 0.26);
-    --accent-red-border: rgba(239, 106, 94, 0.50);
+    /* Site accent: blue on dark surfaces (matches the dark --blue token so
+       selected states, outlines, and accent text stay on-brand). */
+    --accent-red: #5B9CF6;
+    --accent-red-hover: #3B82F6;
+    --accent-red-faint: rgba(91, 156, 246, 0.10);
+    --accent-red-soft: rgba(91, 156, 246, 0.18);
+    --accent-red-soft-strong: rgba(91, 156, 246, 0.26);
+    --accent-red-border: rgba(91, 156, 246, 0.50);
     --hover-bg: rgba(255, 255, 255, 0.06);
     --subtle-bg: rgba(255, 255, 255, 0.04);
     --icon-bg: rgba(255, 255, 255, 0.08);
