@@ -104,11 +104,33 @@
 .auth-card .su-pill{min-width:42px;padding:7px 12px;font-size:14px;font-weight:700;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;transition:all 180ms ease;}
 .auth-card .su-pill:hover{border-color:#8b5cf6;color:#8b5cf6;}
 .auth-card .su-pill[data-active="true"]{background:#8b5cf6;border-color:#8b5cf6;color:#fff;}
+/* Phase-4 Profile picture selector (when LinkedIn is connected) */
+.auth-card .pfp-select-section{margin-bottom:20px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft,rgba(0,0,0,.02))}
+.auth-card .pfp-select-title{display:flex;flex-direction:column;gap:3px;margin-bottom:12px}
+.auth-card .pfp-select-title .main-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8b5cf6}
+.auth-card .pfp-select-title .sub-label{font-size:12px;color:var(--muted)}
+.auth-card .pfp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.auth-card .pfp-grid{grid-template-columns:1fr}}
+.auth-card .pfp-card{position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;background:var(--card-bg);cursor:pointer;transition:all 180ms ease;user-select:none;box-sizing:border-box}
+.auth-card .pfp-card:hover{border-color:#8b5cf6;background:rgba(139,92,246,.04)}
+.auth-card .pfp-card.is-active,.auth-card .pfp-card:has(input:checked){border-color:#8b5cf6;background:rgba(139,92,246,.08);box-shadow:0 0 0 1px #8b5cf6}
+.auth-card .pfp-card input[type="radio"]{position:absolute;opacity:0;pointer-events:none;width:0;height:0;margin:0}
+.auth-card .pfp-avatar-wrap{position:relative;width:40px;height:40px;flex:none}
+.auth-card .pfp-img{width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--border);display:block}
+.auth-card .pfp-fallback{width:40px;height:40px;border-radius:50%;background:rgba(139,92,246,.15);color:#8b5cf6;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
+.auth-card .pfp-badge{position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--card-bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.auth-card .pfp-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.auth-card .pfp-platform{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auth-card .pfp-handle{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auth-card .pfp-radio-circle{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none;transition:all 180ms ease}
+.auth-card .pfp-card.is-active .pfp-radio-circle,.auth-card .pfp-card:has(input:checked) .pfp-radio-circle{border-color:#8b5cf6;background:#8b5cf6}
+.auth-card .pfp-card.is-active .pfp-radio-circle::after,.auth-card .pfp-card:has(input:checked) .pfp-radio-circle::after{content:"";width:6px;height:6px;border-radius:50%;background:#fff}
 </style>
 </head>
 <body style="background:var(--bg)">
 <div class="auth-page">
   {% block auth_card %}{% endblock %}
 </div>
+<div style="position:fixed; bottom:0; left:0; width:100%; text-align:center; font-size:12px; color:var(--muted); padding:12px 0; letter-spacing:.02em; pointer-events:none;">Department of FY Engineering</div>
 </body>
 </html>

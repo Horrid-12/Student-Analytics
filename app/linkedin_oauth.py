@@ -59,6 +59,8 @@ async def exchange_code(url: str, state: str, redirect_uri: str) -> dict:
         "sub": user_info.get("sub"),
         "email": user_info.get("email"),
         "email_verified": user_info.get("email_verified", False),
-        "name": user_info.get("name")
+        "name": user_info.get("name"),
+        "picture": user_info.get("picture") or "",
     }
+
 

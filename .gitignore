@@ -33,3 +33,4 @@ documentation/Taskflow.md
 documentation/Lag Fix.md
 documentation/Bridge.md
 graphify-out/
+scripts/run_heavy_sync.py

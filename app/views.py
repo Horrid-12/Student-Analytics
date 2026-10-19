@@ -64,6 +64,7 @@ DASHBOARD_COLS = [
     "Owned_Commits",
     "Owned_Commits_30d",
     "Owned_Commits_90d",
+    "Owned_Active_Dates",
     "Commit_Fetch_Status",
     "Followers",
     "Following",
@@ -293,6 +294,10 @@ REPO_COLS = [
     "Topics_Count",
     "Total_Commits",
 ]
+#: REPO_COLS plus the display-only fork flag. Views carry Is_Fork through so
+#: repository cards can mark forks; it is never written back to the DB (sync
+#: persists it separately) and exports rebuild their own column list.
+REPO_DISPLAY_COLS = REPO_COLS + ["Is_Fork"]
 ISSUE_COLS = [
     STUDENT_ID_COL,
     "Student Name",
@@ -415,7 +420,7 @@ def analysis_view(roster_store, roster_id: str):
         "records": records,
         "state": state,
         "students": students,
-        "repos": _frame(state, "repos", REPO_COLS),
+        "repos": _frame(state, "repos", REPO_DISPLAY_COLS),
         "team_repos": _frame(state, "team_repos", TEAM_REPOS_COLS),
         "issues": _frame(state, "issues", ISSUE_COLS),
     }
@@ -474,6 +479,15 @@ def account_view(email: str):
             from app import auth
             user_row = auth.get_user(email)
         student["Semester"] = (user_row or {}).get("semester") or "Semester 1"
+    if user_row is None:
+        from app import auth
+        user_row = auth.get_account(email)
+    if user_row:
+        if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+            student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+        elif not student.get("Avatar_URL"):
+            gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+            student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
     student[ROSTER_EMAIL_COL] = email
     student["Roster_Email"] = email
     records = [student]
@@ -485,10 +499,10 @@ def account_view(email: str):
     students = students[columns]
     students = _backfill_profile_links(students)
     repos = pd.DataFrame(snapshot.get("repos") or [])
-    for column in REPO_COLS:
+    for column in REPO_DISPLAY_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    repos = repos[REPO_DISPLAY_COLS] if not repos.empty else pd.DataFrame(columns=REPO_DISPLAY_COLS)
     team_repos = pd.DataFrame(snapshot.get("team_repos") or [])
     for column in TEAM_REPOS_COLS:
         if column not in team_repos.columns:
@@ -566,6 +580,11 @@ def fleet_view():
                 "Profile_URL": f"https://github.com/{user_row.get('github_username')}" if user_row.get("github_username") else "",
                 "Avatar_URL": ""
             }
+            if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+                student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+            elif not student.get("Avatar_URL"):
+                gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+                student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
             all_rows.append(student)
             continue
         student = dict(snapshot.get("student") or {})
@@ -575,6 +594,11 @@ def fleet_view():
             student["Semester"] = user_row.get("semester") or "Semester 1"
         student[ROSTER_EMAIL_COL] = email
         student["Roster_Email"] = email
+        if user_row.get("profile_source") == "linkedin" and user_row.get("linked_linkedin_avatar"):
+            student["Avatar_URL"] = user_row.get("linked_linkedin_avatar")
+        elif not student.get("Avatar_URL"):
+            gh_u = user_row.get("linked_github_username") or user_row.get("github_username") or student.get("GitHub_Username")
+            student["Avatar_URL"] = user_row.get("linked_github_avatar") or (f"https://github.com/{gh_u}.png" if gh_u else "")
         all_rows.append(student)
         repo_rows.extend(snapshot.get("repos") or [])
         # Old snapshots (pre-team persistence) lack the key: default to [].
@@ -606,10 +630,10 @@ def fleet_view():
     students = _backfill_profile_links(students)
 
     repos = pd.DataFrame(repo_rows)
-    for column in REPO_COLS:
+    for column in REPO_DISPLAY_COLS:
         if column not in repos.columns:
             repos[column] = None
-    repos = repos[REPO_COLS] if not repos.empty else pd.DataFrame(columns=REPO_COLS)
+    repos = repos[REPO_DISPLAY_COLS] if not repos.empty else pd.DataFrame(columns=REPO_DISPLAY_COLS)
 
     team_repos = pd.DataFrame(team_rows)
     for column in TEAM_REPOS_COLS:
@@ -931,7 +955,7 @@ def _radar_metric_values(students: pd.DataFrame, score_repos: pd.DataFrame) -> l
     ]
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None) -> dict:
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1235,23 +1259,29 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _repo_haves = students[students[_repos_col] > 0] if not students.empty and _repos_col in students.columns else pd.DataFrame()
     _avg_repos = float(_repo_haves[_repos_col].mean()) if not _repo_haves.empty else 0.0
     _avg_followers = float(students["Followers"].mean()) if not students.empty else 0.0
-    # Class-health composite for the Statistics doughnut hole: a single 0-100
-    # score weighting each bucket (Consistent = 1.0, Doing Good = 0.5, Need
-    # Attention = 0) across the filtered cohort, tinted by band.
+    # Class-health composite for the Statistics doughnut hole. It only makes
+    # sense for a specific class, so it renders whenever the viewed cohort is
+    # scoped: an explicit class filter (Division / Batch / Semester / Pair), or
+    # the faculty "My Classes" scope (callers pass scoped=True). Only the
+    # whole-college view leaves the hole empty. `_class_selected` stays the
+    # filter-only flag and doubles as the radar's "filtered" flag below.
+    _class_selected = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
     _stat_total = _n_consistent + _n_doing_good + _n_attention
-    _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total) if _stat_total else 0
-    if _health_score >= 75:
-        _health_band, _health_tone = "Healthy", "green"
-    elif _health_score >= 50:
-        _health_band, _health_tone = "Moderate", "amber"
-    else:
-        _health_band, _health_tone = "At Risk", "red"
-    stats_headline = {
-        "value": str(_health_score),
-        "label": "Class Health",
-        "sub": _health_band,
-        "tone": _health_tone,
-    }
+    stats_headline = {}
+    if (_class_selected or scoped) and _stat_total:
+        _health_score = round(100 * (_n_consistent + 0.5 * _n_doing_good) / _stat_total)
+        if _health_score >= 75:
+            _health_band, _health_tone = "Healthy", "green"
+        elif _health_score >= 50:
+            _health_band, _health_tone = "Moderate", "amber"
+        else:
+            _health_band, _health_tone = "At Risk", "red"
+        stats_headline = {
+            "value": str(_health_score),
+            "label": "Class Health",
+            "sub": _health_band,
+            "tone": _health_tone,
+        }
 
     # Cohort picker options: distinct (Batch × Division) combos in the roster.
     # Labels are user-friendly ("Batch 2026" groups + "Division A" items) and the
@@ -1334,7 +1364,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _radar_active = []
     _has_current = False
     _current_label = ""
-    _filtered = bool(_pairs_list(pairs)) or _filter_active(division) or _filter_active(batch) or str(semester or "All") != "All"
+    _filtered = _class_selected
     if radar_students is not None and not radar_students.empty:
         # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
@@ -2143,7 +2173,10 @@ def _recent_activity(
             updated_ist = (updated + ist_offset).dt.normalize()
             days_ago = (today - updated_ist).dt.days
             owned_contrib = int(((days_ago >= 0) & (days_ago <= 30)).sum())
-            active_days |= set(updated_ist[updated_ist <= today].dt.date)
+            # Repo "Updated" timestamps are NOT reliable streak signals: they
+            # reflect repo metadata changes (stars, pushes, etc.) and create
+            # phantom streaks for inactive users. They only feed the 30-day
+            # contribution count above. Streaks walk commit days instead.
     # Merge per-day commit days (already YYYY-MM-DD dates, treat as IST days).
     # One repo contributes a single Updated date, so without these a student
     # pushing daily to the same repos can never streak past their repo count.
@@ -2684,6 +2717,7 @@ def _repo_card(row) -> dict:
         status = ""
     stars = int(_repo_number(row.get("Stars"), int) or 0)
     forks = int(_repo_number(row.get("Forks"), int) or 0)
+    is_fork = int(_repo_number(row.get("Is_Fork"), float) or 0) == 1
     score = _repo_number(row.get("Repository_Quality_Score"), float)
     tokens = _dept_tokens(row.get("Division"), row.get("Batch"))
     band_label, band_tone = _repo_band(row, score)
@@ -2693,6 +2727,7 @@ def _repo_card(row) -> dict:
         "lang": lang,
         "stars": stars,
         "forks": forks,
+        "is_fork": is_fork,
         "score": round(score, 1) if score is not None else None,
         "band": band_label,
         "band_tone": band_tone,
