@@ -214,10 +214,23 @@ class TestApprovalFlow:
     def test_faculty_can_approve(self, client):
         self._submit_and_link(client)
         client.get("/logout")
-        _session(client, "faculty")
+        faculty_email = _session(client, "faculty")
+        assert auth.set_faculty_teaching(faculty_email, {"1": ["1"]}) == (True, "")
         r = client.post("/onboarding/approve", data={"email": "stu1@college.edu"})
         assert "action=approved" in str(r.url)
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "approved"
+
+    def test_faculty_cannot_review_students_outside_assigned_classes(self, client):
+        signup(client)
+        login(client)
+        submit(client, division="2", practical_batch="1")
+        client.get("/logout")
+        faculty_email = _session(client, "faculty")
+        assert auth.set_faculty_teaching(faculty_email, {"1": ["1"]}) == (True, "")
+
+        response = client.post("/onboarding/approve", data={"email": "stu1@college.edu"})
+        assert response.status_code == 403
+        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "pending"
 
 
 class TestLinkProfilesPanel:
@@ -274,6 +287,41 @@ class TestLedgerView:
         assert ">PRN</th>" not in body  # standalone PRN column removed
         assert "overflow-x: auto" not in body
         assert 'id="ledger-more-btn"' not in body  # only 1 row — no batching
+
+    def test_faculty_gets_wide_searchable_review_profiles_for_assigned_classes(self, client):
+        signup(client, "in-scope@college.edu", "In Scope")
+        login(client, "in-scope@college.edu")
+        submit(client, prn="1234567890", division="14", practical_batch="2")
+        client.get("/logout")
+        signup(client, "out-of-scope@college.edu", "Out of Scope")
+        login(client, "out-of-scope@college.edu")
+        submit(client, prn="1234567891", division="15", practical_batch="3")
+        client.get("/logout")
+        faculty_email = _session(client, "faculty")
+        assert auth.set_faculty_teaching(faculty_email, {"14": ["2"]}) == (True, "")
+
+        response = client.get("/onboarding", headers={"Accept": "text/html"})
+        assert response.status_code == 200
+        body = response.text
+        assert "Approve Student Onboarding" in body
+        assert "Verify student details and approve access for your students." in body
+        assert "Search students" in body
+        assert "in-scope@college.edu" in body
+        assert "out-of-scope@college.edu" not in body
+        assert "faculty-review-card" in body and "grid-template-columns:minmax(0,1fr) 220px" in body
+        assert ">Edit</button>" in body and ">Reject</button>" in body and ">Approve</button>" in body
+
+    def test_faculty_review_search_filters_their_pending_students(self, client):
+        signup(client, "search1@college.edu", "First Search")
+        login(client, "search1@college.edu")
+        submit(client, prn="1234567890", division="1", practical_batch="1")
+        client.get("/logout")
+        _session(client, "faculty")
+        auth.set_faculty_teaching("faculty@college.edu", {"1": ["1"]})
+
+        body = client.get("/onboarding?q=NoMatch", headers={"Accept": "text/html"}).text
+        assert "No pending students match" in body
+        assert "search1@college.edu" not in body
 
     def test_ledger_shows_hackerrank_and_linkedin(self, client):
         signup(client)
@@ -407,22 +455,18 @@ class TestFacultyTeachingSetup:
         )
         assert response.status_code == 403
 
-    def test_faculty_onboarding_page_is_removed_and_phase_2_is_setup(self, client):
-        _faculty_session(client)
+    def test_faculty_onboarding_page_shows_review_workspace(self, client):
+        faculty_email = _faculty_session(client)
+        assert auth.set_faculty_teaching(faculty_email, {"1": ["1"]}) == (True, "")
         response = client.get(
             "/onboarding",
             headers={"Accept": "text/html"},
             follow_redirects=False,
         )
-        assert response.status_code == 303
-        assert response.headers["location"] == "/"
-
-        body = client.get("/faculty-setup?phase=2").text
-        assert "Phase 2 of 2" in body
-        assert "Set up your teaching assignments" in body
-        assert 'name="division"' in body and 'name="batch"' in body
-        assert "Computer Practical Batch" in body
-        assert 'id="ledger-table"' not in body
+        assert response.status_code == 200
+        assert "Approve Student Onboarding" in response.text
+        assert "Verify student details and approve access for your students." in response.text
+        assert "Search students" in response.text
 
     def test_invite_setup_continues_to_phase_2_before_overview(self, client):
         assert auth.create_faculty_invite("faculty5@dashboard.local", "invite-pass")

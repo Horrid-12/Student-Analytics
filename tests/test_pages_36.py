@@ -1112,15 +1112,16 @@ class TestSettingsPage:
         for gone in ("Connections", "Storage Health", "Data Actions", "Academic Record"):
             assert gone not in body
 
-    def test_faculty_settings_keeps_tabs(self, tmp_path, monkeypatch):
+    def test_faculty_settings_matches_student_simple_layout(self, tmp_path, monkeypatch):
         monkeypatch.setattr(storage, "DB_PATH", tmp_path / "settings.db")
         monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
         client = TestClient(app, raise_server_exceptions=True)
         make_user(client, "faculty")
         body = client.get("/settings", headers={"Accept": "text/html"}).text
-        assert "data-tab-btn" in body
-        for tab in ("General", "Accounts", "Data", "Security"):
-            assert tab in body
+        assert 'class="profile-tabs"' not in body
+        assert 'data-tab-content="general"' not in body
+        for section in ("Appearance", "Teaching Assignments", "Profile", "Legal"):
+            assert section in body
 
 
 class TestSidebarIdentityContext:

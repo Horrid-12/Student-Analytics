@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Approve Student Onboarding{% endblock %}
+{% block head %}
+<style>
+  .faculty-review-search { display:flex; gap:10px; margin:0 0 18px; }
+  .faculty-review-search input { flex:1; min-width:0; }
+  .faculty-review-card { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:22px; align-items:stretch; padding:20px; margin-bottom:14px; }
+  .faculty-review-profile { min-width:0; }
+  .faculty-review-identity { display:flex; align-items:center; gap:12px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .faculty-review-avatar { display:grid; place-items:center; width:48px; height:48px; flex:none; border-radius:14px; background:var(--card-soft); color:var(--blue); font-size:18px; font-weight:700; }
+  .faculty-review-details { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px 18px; }
+  .faculty-review-detail { min-width:0; }
+  .faculty-review-detail span { display:block; margin-bottom:4px; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .faculty-review-detail strong, .faculty-review-detail a { display:block; overflow-wrap:anywhere; color:var(--text); font-size:13px; font-weight:600; }
+  .faculty-review-actions { display:flex; flex-direction:column; justify-content:center; gap:9px; padding-left:20px; border-left:1px solid var(--border); }
+  .faculty-review-actions form, .faculty-review-actions button { width:100%; }
+  .faculty-review-actions button { min-height:40px; }
+  .faculty-review-action-link { padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--text); cursor:pointer; font-weight:600; }
+  .faculty-review-reject { border-color:rgba(239,68,68,.35); color:#ef4444; }
+  .faculty-review-approve { border:0; border-radius:6px; background:var(--blue); color:#fff; cursor:pointer; font-weight:700; }
+  @media(max-width:760px) {
+    .faculty-review-card { grid-template-columns:1fr; gap:16px; }
+    .faculty-review-details { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .faculty-review-actions { flex-direction:row; flex-wrap:wrap; padding:14px 0 0; border-left:0; border-top:1px solid var(--border); }
+    .faculty-review-actions form, .faculty-review-actions button { flex:1 1 130px; width:auto; }
+  }
+  @media(max-width:440px) { .faculty-review-search { flex-wrap:wrap; } .faculty-review-search input { flex-basis:100%; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar-card">
+  <div class="topbar">
+    <div style="min-width:0;">
+      <div class="topbar-title">Approve Student Onboarding</div>
+      <div class="topbar-subtitle">Verify student details and approve access for your students.</div>
+    </div>
+  </div>
+</div>
+
+{% if action in ('approved', 'rejected', 'error', 'edited') %}
+<div class="panel" role="status" style="padding:14px 18px; margin-bottom:16px;">
+  {% if action == 'approved' %}Approved onboarding for <strong>{{ action_email }}</strong>.
+  {% elif action == 'rejected' %}Rejected onboarding for <strong>{{ action_email }}</strong>.
+  {% elif action == 'edited' %}Updated the student record for <strong>{{ action_email }}</strong>.
+  {% else %}Could not update onboarding for <strong>{{ action_email or email }}</strong>.{% endif %}
+</div>
+{% endif %}
+
+<form class="filter-bar faculty-review-search" method="get" action="/onboarding">
+  <label class="filter-field" style="flex:1; min-width:0;">
+    <span class="filter-label">Search students</span>
+    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Name, PRN, email, branch…" aria-label="Search your students">
+  </label>
+  <button class="btn btn-primary" type="submit">Search</button>
+  {% if q %}<a class="btn" href="/onboarding">Clear</a>{% endif %}
+</form>
+
+{% if not teaching_scope %}
+<div class="panel" style="padding:24px; color:var(--muted);">No teaching assignments are set up for your account. Add your classes in Settings to review student onboarding.</div>
+{% elif onboarding_users %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin:0 2px 10px; color:var(--muted); font-size:12px;">
+  <span>{{ onboarding_users|length }} matching pending student{% if onboarding_users|length != 1 %}s{% endif %}</span>
+  <span>Assigned classes: {% for division, batches in teaching_scope|dictsort %}Div {{ division }} · Batch {{ batches|join(', ') }}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+</div>
+{% for row in onboarding_users %}
+<article class="panel faculty-review-card">
+  <div class="faculty-review-profile">
+    <div class="faculty-review-identity">
+      <div class="faculty-review-avatar">{{ (row.name or row.email)[:1]|upper }}</div>
+      <div style="min-width:0; flex:1;">
+        <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
+          <h2 style="margin:0; font-size:18px; color:var(--text);">{{ row.name or 'Student' }}</h2>
+          <span style="padding:3px 8px; border-radius:20px; background:rgba(245,158,11,.12); color:#f59e0b; font-size:10px; font-weight:700; text-transform:uppercase;">Pending review</span>
+        </div>
+        <div style="margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere;">{{ row.email }}</div>
+      </div>
+    </div>
+    <div class="faculty-review-details">
+      <div class="faculty-review-detail"><span>PRN</span><strong>{{ row.prn or (row.email|prn_from_email) or '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>Branch</span><strong>{{ row.degree_branch or '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>Division</span><strong>{{ row.division or '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>Practical batch</span><strong>{{ row.practical_batch or '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>Semester</span><strong>{{ row.semester or '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>Submitted</span><strong>{{ row.onboarding_submitted_at[:16] if row.onboarding_submitted_at else '—' }}</strong></div>
+      <div class="faculty-review-detail"><span>GitHub</span>
+        {% if row.github_username %}<a href="https://github.com/{{ row.github_username }}" target="_blank" rel="noopener">@{{ row.github_username }}</a>
+        {% elif row.linked_github_username %}<strong>@{{ row.linked_github_username }} · unverified</strong>{% else %}<strong>Not linked</strong>{% endif %}
+      </div>
+      <div class="faculty-review-detail"><span>HackerRank</span>
+        {% if row.hackerrank_username %}<a href="https://www.hackerrank.com/profile/{{ row.hackerrank_username }}" target="_blank" rel="noopener">@{{ row.hackerrank_username }}</a>{% else %}<strong>Not linked</strong>{% endif %}
+      </div>
+      <div class="faculty-review-detail"><span>LinkedIn</span>
+        {% if row.linked_linkedin_name %}<a href="https://www.linkedin.com/in/{{ row.linked_linkedin_name }}" target="_blank" rel="noopener">{{ row.linked_linkedin_name }}</a>{% else %}<strong>Not linked</strong>{% endif %}
+      </div>
+    </div>
+  </div>
+  <aside class="faculty-review-actions" aria-label="Review actions for {{ row.name or row.email }}">
+    <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
+    <form method="post" action="/onboarding/reject" onsubmit="return confirm('Reject this student onboarding?');">
+      <input type="hidden" name="email" value="{{ row.email }}">
+      <button class="faculty-review-action-link faculty-review-reject" type="submit">Reject</button>
+    </form>
+    <form method="post" action="/onboarding/approve" onsubmit="return confirm('Approve this student onboarding?');">
+      <input type="hidden" name="email" value="{{ row.email }}">
+      <button class="faculty-review-approve" type="submit">Approve</button>
+    </form>
+  </aside>
+</article>
+{% endfor %}
+{% else %}
+<div class="panel" style="padding:24px; color:var(--muted);">{% if q %}No pending students match “{{ q }}”.{% else %}No pending onboarding submissions in your assigned classes.{% endif %}</div>
+{% endif %}
+
+<div id="faculty-edit-modal" role="dialog" aria-modal="true" aria-labelledby="faculty-edit-title" style="display:none; position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.55);">
+  <div class="panel" style="width:620px; max-width:100%; max-height:90vh; overflow:auto; padding:22px;">
+    <h2 id="faculty-edit-title" style="margin:0 0 16px;">Edit Student Details</h2>
+    <form method="post" action="/onboarding/admin_edit">
+      <input type="hidden" name="email" id="faculty-edit-email">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
+        <label class="form-group">PRN<input id="faculty-edit-prn" name="prn" required pattern="\d{10}"></label>
+        <label class="form-group">Branch<input id="faculty-edit-branch" name="degree_branch"></label>
+        <label class="form-group">Division<input id="faculty-edit-division" name="division"></label>
+        <label class="form-group">Practical batch<input id="faculty-edit-batch" name="practical_batch"></label>
+        <label class="form-group">Semester<input id="faculty-edit-semester" name="semester"></label>
+        <label class="form-group">HackerRank username<input id="faculty-edit-hackerrank" name="hackerrank_username"></label>
+        <label class="form-group">GitHub username<input id="faculty-edit-github" name="github_username"></label>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px;">
+        <button type="button" class="btn" onclick="document.getElementById('faculty-edit-modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function openFacultyEdit(button) {
+  var fields = {email:'email', prn:'prn', branch:'branch', division:'division', batch:'batch', semester:'semester', hackerrank:'hackerrank', github:'github'};
+  Object.keys(fields).forEach(function (key) {
+    document.getElementById('faculty-edit-' + fields[key]).value = button.dataset[key] || '';
+  });
+  document.getElementById('faculty-edit-modal').style.display = 'flex';
+}
+</script>
+{% endblock %}

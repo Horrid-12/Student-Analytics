@@ -105,12 +105,7 @@ async def auth_gate(request: Request, call_next):
             _ob_status = str((_row or {}).get("onboarding_status") or "none")
         except Exception:
             _ob_status = None
-    faculty_review_action = (
-        (user.get("role") or "") == "faculty"
-        and request.method == "POST"
-        and path in ("/onboarding/approve", "/onboarding/reject", "/onboarding/disapprove")
-    )
-    if not faculty_review_action and not auth.can_access_page(user, page, _ob_status):
+    if not auth.can_access_page(user, page, _ob_status):
         if wants_html:
             if (user.get("role") or "") == "student" and _ob_status is not None and page != "Onboarding":
                 return RedirectResponse("/onboarding", status_code=303)
@@ -2334,23 +2329,53 @@ def _format_submitted_at(value: str | None) -> str:
     return f"{day:02d}-{month:02d}-{year:04d} {hour12:02d}:{minute:02d} {suffix}"
 
 
+def _faculty_can_review_student(faculty_email: str, student_email: str) -> bool:
+    """Check that a student belongs to one of the faculty member's assigned classes."""
+    try:
+        assignments = auth.get_faculty_teaching(faculty_email)
+        student = auth.get_user(student_email) or {}
+        division = str(student.get("division") or "").strip()
+        batch = str(student.get("practical_batch") or "").strip()
+        return batch in assignments.get(division, [])
+    except Exception:
+        return False
+
+
 @app.get("/onboarding", response_class=HTMLResponse)
 def onboarding(request: Request, saved: str = "", error: str = "", action: str = "", email: str = "", oauth: str = "", q: str = ""):
-    """Students see their submission form + status; admins see the registrar
-    ledger with approve/reject actions. Faculty set teaching assignments in
-    phase 2 of their one-time account setup and have no Onboarding page."""
+    """Students manage their own submission; faculty and admins review submissions."""
     ctx = _base_context(request, "Onboarding")
     user = getattr(request.state, "user", None)
     role = (user or {}).get("role")
-    ctx["manager"] = role == "admin"
+    ctx["manager"] = role in ("admin", "faculty")
+    ctx["faculty_review"] = role == "faculty"
     ctx["is_admin"] = role == "admin"
     ctx["auth_email"] = (user or {}).get("email", "")
     ctx["submission"] = {}
     ctx["q"] = q
-    if ctx["manager"]:
+    if role == "admin":
         _rows = auth.get_onboarding_users()
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
+    elif role == "faculty":
+        try:
+            teaching = auth.get_faculty_teaching(user.get("email", ""))
+            _rows = [
+                row for row in auth.get_onboarding_users()
+                if str(row.get("onboarding_status") or "") == "pending"
+                if str(row.get("division") or "").strip() in teaching
+                and str(row.get("practical_batch") or "").strip()
+                in teaching.get(str(row.get("division") or "").strip(), [])
+            ]
+        except Exception:
+            _rows = []
+        ctx["onboarding_total"] = len(_rows)
+        ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
+        ctx["teaching_scope"] = teaching if "teaching" in locals() else {}
+        ctx["q"] = q
+        ctx["action"] = action
+        ctx["action_email"] = email
+        return templates.TemplateResponse(request, "pages/faculty_onboarding.html", ctx)
     elif user:
         try:
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
@@ -2458,8 +2483,10 @@ async def onboarding_admin_edit(
     github_username: str = Form(""),
 ):
     user = getattr(request.state, "user", None)
-    if not user or user.get("role") != "admin":
+    if not user or user.get("role") not in ("admin", "faculty"):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    if user.get("role") == "faculty" and not _faculty_can_review_student(user.get("email", ""), email):
+        return JSONResponse(status_code=403, content={"detail": "Student is outside your assigned classes"})
         
     ok, err = auth.admin_edit_onboarding(
         email, prn, degree_branch, division,
@@ -2468,7 +2495,7 @@ async def onboarding_admin_edit(
     )
     if ok:
         _db_log_event("onboarding_admin_edit", f"{user['email']} edited {email}")
-        return RedirectResponse("/onboarding?action=edited&action_email=" + email, status_code=303)
+        return RedirectResponse("/onboarding?action=edited&email=" + email, status_code=303)
     
     _db_log_event("onboarding_admin_edit_failed", f"{user['email']} editing {email}; {err}")
     return RedirectResponse(f"/onboarding?error={err}", status_code=303)
@@ -2510,6 +2537,8 @@ async def _onboarding_review(request: Request, email: str, status: str, promote_
     if user.get("role") not in ("admin", "faculty"):
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     email = (email or "").strip().lower()
+    if user.get("role") == "faculty" and not _faculty_can_review_student(user.get("email", ""), email):
+        return JSONResponse(status_code=403, content={"detail": "Student is outside your assigned classes"})
     ok, reason = auth.set_onboarding_status(email, status, promote_github=promote_github)
     _db_log_event(
         f"onboarding_{status}" if ok else "onboarding_action_failed",
