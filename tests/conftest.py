@@ -35,10 +35,11 @@ def _isolate_databases(tmp_path, monkeypatch):
     Baseline allowlist so legacy seed/login helpers (@college.edu, @test.local)
     keep authenticating; the strict Phase 4.7.2 domain gate is asserted by
     dedicated tests (test_google_auth / test_auth) that override this env."""
-    from app import accounts, auth, storage, support
+    from app import accounts, auth, autocad, storage, support
 
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "history.db")
     monkeypatch.setattr(auth, "USERS_DB", tmp_path / "users.db")
     monkeypatch.setattr(support, "DB_PATH", tmp_path / "support.db")
+    monkeypatch.setattr(autocad, "DB_PATH", tmp_path / "autocad.db")
     monkeypatch.setattr(accounts, "ACCOUNTS_DB", tmp_path / "accounts.db")
     monkeypatch.setenv("ALLOWED_OAUTH_DOMAINS", "college.edu mitwpu.edu.in test.local")

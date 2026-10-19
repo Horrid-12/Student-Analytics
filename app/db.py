@@ -2839,3 +2839,99 @@ def count_certificates(status: Optional[str] = None) -> int:
     except Exception as exc:
         logger.warning("db.count_certificates failed: %s", exc)
         return 0
+
+
+# ---------------------------------------------------------------------------
+# AutoCAD DWG submissions
+# ---------------------------------------------------------------------------
+
+_AUTOCAD_COLUMNS = (
+    "id, student_email, student_id, student_name, filename, file_size, created_at"
+)
+
+
+def _format_autocad_submission(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    data = dict(row)
+    created = data.get("created_at")
+    if created is not None and not isinstance(created, str):
+        data["created_at"] = created.isoformat()
+    data["file_size"] = int(data.get("file_size") or 0)
+    return data
+
+
+def create_autocad_submission(
+    student_email: str,
+    student_id: str,
+    student_name: str,
+    filename: str,
+    file_data: bytes,
+) -> Optional[dict]:
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "INSERT INTO autocad_submissions "
+                "(student_email, student_id, student_name, filename, file_size, file_data) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING " + _AUTOCAD_COLUMNS,
+                (student_email, student_id, student_name, filename, len(file_data), bytes(file_data)),
+            )
+            return _format_autocad_submission(cur.fetchone())
+    except Exception as exc:
+        logger.warning("db.create_autocad_submission failed: %s", exc)
+        return None
+
+
+def list_autocad_submissions(student_email: str = "", limit: int = 200) -> list[dict]:
+    limit = max(1, min(int(limit or 200), 500))
+    if student_email:
+        sql = (
+            f"SELECT {_AUTOCAD_COLUMNS} FROM autocad_submissions "
+            "WHERE lower(student_email) = %s ORDER BY id DESC LIMIT %s"
+        )
+        params = (student_email.strip().lower(), limit)
+    else:
+        sql = f"SELECT {_AUTOCAD_COLUMNS} FROM autocad_submissions ORDER BY id DESC LIMIT %s"
+        params = (limit,)
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return []
+            return [_format_autocad_submission(row) for row in c.execute(sql, params).fetchall() if row]
+    except Exception as exc:
+        logger.warning("db.list_autocad_submissions failed: %s", exc)
+        return []
+
+
+def get_autocad_submission(submission_id: int) -> Optional[dict]:
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            row = c.execute(
+                f"SELECT {_AUTOCAD_COLUMNS} FROM autocad_submissions WHERE id = %s",
+                (submission_id,),
+            ).fetchone()
+            return _format_autocad_submission(row)
+    except Exception as exc:
+        logger.warning("db.get_autocad_submission failed: %s", exc)
+        return None
+
+
+def get_autocad_submission_file(submission_id: int) -> Optional[tuple[str, bytes]]:
+    try:
+        with database.read_conn() as c:
+            if c is None:
+                return None
+            row = c.execute(
+                "SELECT filename, file_data FROM autocad_submissions WHERE id = %s",
+                (submission_id,),
+            ).fetchone()
+            if not row or not row.get("file_data"):
+                return None
+            return str(row["filename"]), bytes(row["file_data"])
+    except Exception as exc:
+        logger.warning("db.get_autocad_submission_file failed: %s", exc)
+        return None

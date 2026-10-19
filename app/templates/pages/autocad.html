@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}AutoCAD Submissions · Student Analytics{% endblock %}
+{% block head %}
+<style>
+  .autocad-page{max-width:1080px;margin:0 auto;padding:24px 0 48px}
+  .autocad-intro{margin:0 0 20px;color:var(--muted);line-height:1.55}
+  .autocad-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;margin:0 0 20px;box-shadow:0 4px 18px rgba(20,34,53,.04)}
+  .autocad-panel h2{font-size:17px;margin:0 0 8px;color:var(--text)}
+  .autocad-muted{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 16px}
+  .autocad-form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .autocad-form input[type=file]{max-width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
+  .autocad-submit{border:0;border-radius:9px;background:var(--red);color:#fff;padding:11px 17px;font:inherit;font-weight:700;cursor:pointer}
+  .autocad-alert{padding:12px 15px;border-radius:10px;margin:0 0 18px;font-size:14px}
+  .autocad-alert.success{background:rgba(30,140,90,.1);color:#16734a}
+  .autocad-alert.error{background:rgba(190,55,45,.1);color:var(--red)}
+  .autocad-table-wrap{overflow:auto}
+  .autocad-table{width:100%;border-collapse:collapse;min-width:600px}
+  .autocad-table th,.autocad-table td{text-align:left;padding:13px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+  .autocad-table th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  .autocad-file{color:var(--blue);font-weight:700;text-decoration:none;overflow-wrap:anywhere}
+  .autocad-file:hover{text-decoration:underline}
+  .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
+  @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="autocad-page">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">AutoCAD</div>
+      <div class="topbar-subtitle">Upload and review student DWG submissions.</div>
+    </div>
+  </div>
+
+  {% if notice == 'uploaded' %}
+  <div class="autocad-alert success" role="status">Your DWG file was uploaded successfully.</div>
+  {% endif %}
+  {% if error %}
+  <div class="autocad-alert error" role="alert">
+    {% if error == 'save_failed' %}The file could not be saved. Please try again.{% else %}{{ error }}{% endif %}
+  </div>
+  {% endif %}
+
+  {% if can_upload %}
+  <section class="autocad-panel" aria-labelledby="autocad-upload-title">
+    <h2 id="autocad-upload-title">Submit a DWG file</h2>
+    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Your faculty can download it from this page. Browser preview, assignment grouping, grades, and remarks are not included yet.</p>
+    <form class="autocad-form" method="post" action="/autocad/upload" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".dwg,application/acad" required aria-label="Choose a DWG file">
+      <button class="autocad-submit" type="submit">Upload DWG</button>
+    </form>
+  </section>
+  {% elif is_staff %}
+  <section class="autocad-panel">
+    <h2>Faculty submission inbox</h2>
+    <p class="autocad-muted">This initial inbox shows the latest 200 student uploads. Class filters, grading, and remarks can be added in a later phase.</p>
+  </section>
+  {% endif %}
+
+  <section class="autocad-panel" aria-labelledby="autocad-submissions-title">
+    <h2 id="autocad-submissions-title">{{ 'Recent submissions' if is_staff else 'My submissions' }}</h2>
+    {% if submissions %}
+    <div class="autocad-table-wrap">
+      <table class="autocad-table">
+        <thead>
+          <tr>
+            {% if is_staff %}<th>Student</th><th>PRN</th>{% endif %}
+            <th>File</th><th>Size</th><th>Uploaded</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for submission in submissions %}
+          <tr>
+            {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td>{% endif %}
+            <td><a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a></td>
+            <td>{{ '%.1f'|format(submission.file_size / 1048576) }} MB</td>
+            <td>{{ submission.created_at|replace('T', ' ') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="autocad-empty">{{ 'No student DWG files have been uploaded yet.' if is_staff else 'You have not uploaded a DWG file yet.' }}</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

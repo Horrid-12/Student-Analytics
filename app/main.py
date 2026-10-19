@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app import accounts, auth, certificates, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
+from app import accounts, auth, autocad, certificates, database, db, github_client, google_oauth, hackerrank_client, services, storage, support, sync, views, view_cache, weekly
 from app.hackerrank_client.service import (
     decode_badges,
     decode_profile_model,
@@ -452,7 +452,7 @@ def _db_log_event(event_type: str, detail: str = "") -> bool:
     return storage.log_event(event_type, detail)
 
 
-PAGES = ["Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings"]
+PAGES = ["Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings"]
 
 # Sidebar icons — SVG inner markup of the legacy radio-label masks (style.css 304-344).
 NAV_SVG = {
@@ -461,6 +461,7 @@ NAV_SVG = {
     "Verification": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     "Students": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     "Repositories": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>',
+    "AutoCAD": '<path d="m12 3 9 18H3L12 3Z"/><path d="m8.5 15 3.5-7 3.5 7"/><path d="M10 12h4"/>',
     "Leaderboards": '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"/><path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
     "Support": '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
     "Settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
@@ -475,6 +476,7 @@ def slug_for(page: str) -> str:
         "Verification": "verification",
         "Students": "students",
         "Repositories": "repositories",
+        "AutoCAD": "autocad",
         "Leaderboards": "leaderboards",
         "Support": "support",
         "Settings": "settings",
@@ -2467,6 +2469,93 @@ def _safe_redirect_url(target: str | None, default: str = "/me", **extra_params:
     if query_dict:
         return base_path + "?" + urlencode(query_dict)
     return base_path
+
+
+@app.get("/autocad", response_class=HTMLResponse)
+def autocad_page(request: Request, notice: str = "", error: str = ""):
+    """Student DWG upload page and faculty/admin submission inbox."""
+    user = getattr(request.state, "user", None) or {}
+    role = (user.get("role") or "").lower()
+    student_email = (user.get("email") or "").strip().lower()
+    is_staff = role in ("faculty", "admin")
+    submissions = autocad.list_submissions(
+        student_email="" if is_staff else student_email,
+        limit=200,
+    )
+    ctx = _base_context(request, "AutoCAD")
+    ctx.update({
+        "page_name": "AutoCAD",
+        "title": "AutoCAD Submissions",
+        "submissions": submissions,
+        "is_staff": is_staff,
+        "can_upload": role == "student",
+        "notice": notice,
+        "error": error,
+        "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
+    })
+    return templates.TemplateResponse(request, "pages/autocad.html", ctx)
+
+
+@app.post("/autocad/upload")
+async def autocad_upload(request: Request, file: UploadFile = File(...)):
+    """Accept a single small DWG upload from the signed-in student."""
+    user = getattr(request.state, "user", None) or {}
+    if (user.get("role") or "").lower() != "student":
+        raise HTTPException(status_code=403, detail="Only students can upload AutoCAD files.")
+
+    filename = autocad.clean_filename(file.filename or "")
+    file_data = await file.read(autocad.MAX_UPLOAD_BYTES + 1)
+    validation_error = autocad.validate_upload(filename, file_data)
+    if validation_error:
+        return RedirectResponse(
+            "/autocad?" + urlencode({"error": validation_error}),
+            status_code=303,
+        )
+
+    student_email = (user.get("email") or "").strip().lower()
+    try:
+        user_row = auth.get_account(student_email) or {}
+    except Exception:
+        user_row = {}
+    submission = autocad.create_submission(
+        student_email=student_email,
+        student_id=str(user_row.get("prn") or "").strip(),
+        student_name=str(user.get("name") or user_row.get("name") or "Student"),
+        filename=filename,
+        file_data=file_data,
+    )
+    if not submission:
+        return RedirectResponse("/autocad?error=save_failed", status_code=303)
+
+    _db_log_event("autocad_submission_created", f"{student_email}:{submission.get('id')}:{filename}")
+    return RedirectResponse("/autocad?notice=uploaded", status_code=303)
+
+
+@app.get("/autocad/submissions/{submission_id}/file")
+def autocad_submission_file(request: Request, submission_id: int):
+    """Download a DWG after checking that the caller owns it or is staff."""
+    user = getattr(request.state, "user", None) or {}
+    submission = autocad.get_submission(submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    user_email = (user.get("email") or "").strip().lower()
+    is_staff = (user.get("role") or "").lower() in ("faculty", "admin")
+    if not is_staff and user_email != str(submission.get("student_email") or "").lower():
+        raise HTTPException(status_code=403, detail="You cannot access this submission.")
+    file_result = autocad.get_submission_file(submission_id)
+    if not file_result:
+        raise HTTPException(status_code=404, detail="The uploaded file is unavailable.")
+    filename, file_data = file_result
+    safe_name = re.sub(r"[^A-Za-z0-9_.()-]", "_", filename)
+    return Response(
+        content=file_data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @app.post("/certificates/queue")

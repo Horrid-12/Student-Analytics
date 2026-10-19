@@ -164,6 +164,7 @@ _PAGE_BY_PREFIX = (
     ("/verification", "Verification"),
     ("/settings", "Settings"),
     ("/support", "Support"),
+    ("/autocad", "AutoCAD"),
     ("/leaderboards", "Leaderboards"),
     ("/repositories", "Repositories"),
     ("/students", "Students"),
@@ -173,15 +174,15 @@ _PAGE_BY_PREFIX = (
     ("/", "Overview"),
 )
 
-ALL_PAGES = ("Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile")
+ALL_PAGES = ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile")
 
 # RBAC: Verification is admin-only (Phase 19 certificate verification ledger).
 # Faculty see Overview + Onboarding + Students + Repositories + Leaderboards + Support + Settings + My Profile.
 # Students see Overview + Onboarding + Students + Repositories + Leaderboards + Settings + Support + My Profile.
 ROLE_PAGES = {
-    "student": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Settings", "Support", "My Profile"),
-    "faculty": ("Overview", "Onboarding", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile"),
-    "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "Leaderboards", "Support", "Settings", "My Profile"),
+    "student": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Settings", "Support", "My Profile"),
+    "faculty": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
+    "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
 }
 
 #: Pages a student with an unverified submission (pending/rejected) may use.

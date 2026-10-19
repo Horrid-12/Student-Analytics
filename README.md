@@ -54,9 +54,10 @@
 - Students also self-sync on login, and admins can force a fleet refresh from `/debug/force_sync_all`.
 - Rate-limit aware: GitHub token rotation (`GITHUB_TOKEN` + extra `GITHUB_TOKEN_*` vars), waits for the published reset epoch, and surfaces friendly errors instead of tracebacks.
 
-### Eight dashboards, one sidebar
+### Dashboards and submissions, one sidebar
 
-- Eight tabs for every role: **Overview**, **Onboarding**, **Students**, **Repositories**, **Leaderboards**, **Support**, **Settings**, **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. (The old Verification and Issues pages no longer exist.)
+- Navigation includes **Overview**, **Onboarding**, **Students**, **Repositories**, **AutoCAD**, **Leaderboards**, **Support**, **Settings**, and **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. Admins also have the certificate **Verification** page.
+- AutoCAD currently accepts student `.dwg` uploads up to 4 MB and gives faculty/admin a recent-submissions download inbox. Browser previews, assignment grouping, grades, and remarks are planned follow-up work; see [`documentation/AutoCAD Submissions.md`](./documentation/AutoCAD%20Submissions.md).
 - Pages render from the synced account fleet — no upload required — and the Students and Repositories tables export CSV or XLSX.
 - Repos and followers are also reported per year of account age (`Repos_Per_Account_Year`, `Followers_Per_Account_Year`) so newer accounts are not punished.
 

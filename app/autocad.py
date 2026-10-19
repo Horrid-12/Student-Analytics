@@ -1,0 +1,196 @@
+"""Student AutoCAD DWG submissions.
+
+Submission metadata and file bytes use Neon Postgres when configured, with a
+local SQLite fallback for development. The first release intentionally stores
+one uploaded file per row and leaves grading and browser previews for later.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import sqlite3
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
+
+from app import database, db
+
+logger = logging.getLogger(__name__)
+
+IST = timezone(timedelta(hours=5, minutes=30))
+DB_PATH = Path(__file__).resolve().parent.parent / "autocad.db"
+
+# Vercel Functions reject request bodies above 4.5 MB. Leave room for the
+# multipart form envelope, so the file itself is capped at 4 MiB for now.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS autocad_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_email TEXT NOT NULL,
+    student_id TEXT NOT NULL DEFAULT '',
+    student_name TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_data BLOB NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_autocad_submissions_email
+    ON autocad_submissions (student_email);
+CREATE INDEX IF NOT EXISTS idx_autocad_submissions_created
+    ON autocad_submissions (created_at);
+"""
+
+
+def _now() -> str:
+    return datetime.now(IST).isoformat(timespec="seconds")
+
+
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(_SCHEMA)
+
+
+def clean_filename(filename: str) -> str:
+    """Discard client paths and remove characters unsafe in download headers."""
+    name = (filename or "").replace("\\", "/").split("/")[-1].strip()
+    name = re.sub(r"[^A-Za-z0-9_.() -]", "_", name)
+    return name[:180]
+
+
+def validate_upload(filename: str, data: bytes) -> Optional[str]:
+    if not filename or not data:
+        return "Choose a DWG file to upload."
+    if not filename.lower().endswith(".dwg"):
+        return "Only .dwg files are accepted."
+    if len(data) > MAX_UPLOAD_BYTES:
+        return "The file is too large. The current limit is 4 MB."
+    # DWG files start with the six-byte AC10xx release signature. This catches
+    # renamed non-DWG files without relying on the client supplied MIME type.
+    if len(data) < 6 or data[:4] != b"AC10" or not data[4:6].isdigit():
+        return "The file contents do not look like a valid DWG file."
+    return None
+
+
+def _format_row(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    data = dict(row)
+    created = data.get("created_at")
+    if created is not None and not isinstance(created, str):
+        data["created_at"] = created.isoformat()
+    data["file_size"] = int(data.get("file_size") or 0)
+    return data
+
+
+def create_submission(
+    student_email: str,
+    student_id: str,
+    student_name: str,
+    filename: str,
+    file_data: bytes,
+) -> Optional[dict]:
+    student_email = (student_email or "").strip().lower()
+    student_id = (student_id or "").strip()
+    student_name = (student_name or "").strip()[:160]
+    filename = clean_filename(filename)
+    file_data = bytes(file_data or b"")
+    if not student_email or not filename or validate_upload(filename, file_data):
+        return None
+
+    if database.db_configured():
+        return db.create_autocad_submission(
+            student_email, student_id, student_name, filename, file_data
+        )
+
+    try:
+        with closing(_connect()) as conn:
+            with conn:
+                _ensure_schema(conn)
+                cur = conn.execute(
+                    "INSERT INTO autocad_submissions "
+                    "(student_email, student_id, student_name, filename, file_size, file_data, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (student_email, student_id, student_name, filename, len(file_data), file_data, _now()),
+                )
+                submission_id = cur.lastrowid
+        return get_submission(submission_id)
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("AutoCAD submission insert failed: %s", exc)
+        return None
+
+
+def list_submissions(student_email: str = "", limit: int = 200) -> list[dict]:
+    student_email = (student_email or "").strip().lower()
+    limit = max(1, min(int(limit or 200), 500))
+    if database.db_configured():
+        return db.list_autocad_submissions(student_email=student_email, limit=limit)
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            if student_email:
+                rows = conn.execute(
+                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    "FROM autocad_submissions WHERE lower(student_email) = ? ORDER BY id DESC LIMIT ?",
+                    (student_email, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    "FROM autocad_submissions ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [_format_row(row) for row in rows if row]
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("AutoCAD submissions list failed: %s", exc)
+        return []
+
+
+def get_submission(submission_id: int) -> Optional[dict]:
+    try:
+        submission_id = int(submission_id)
+    except (TypeError, ValueError):
+        return None
+    if database.db_configured():
+        return db.get_autocad_submission(submission_id)
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            row = conn.execute(
+                "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                "FROM autocad_submissions WHERE id = ?",
+                (submission_id,),
+            ).fetchone()
+            return _format_row(row) if row else None
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("AutoCAD submission lookup failed: %s", exc)
+        return None
+
+
+def get_submission_file(submission_id: int) -> Optional[tuple[str, bytes]]:
+    try:
+        submission_id = int(submission_id)
+    except (TypeError, ValueError):
+        return None
+    if database.db_configured():
+        return db.get_autocad_submission_file(submission_id)
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            row = conn.execute(
+                "SELECT filename, file_data FROM autocad_submissions WHERE id = ?",
+                (submission_id,),
+            ).fetchone()
+            if not row or not row["file_data"]:
+                return None
+            return str(row["filename"]), bytes(row["file_data"])
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("AutoCAD file retrieval failed: %s", exc)
+        return None
