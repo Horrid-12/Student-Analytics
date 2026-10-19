@@ -1196,10 +1196,8 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
     linked_linkedin = ""
     hr_locked = False
     if phase == 3 and (progress.get("email") or "").strip():
-        row = auth.get_account(str(progress.get("email") or ""))
-        if row:
-            linked_github = str(row.get("linked_github_username") or "").strip()
-            linked_linkedin = str(row.get("linked_linkedin_name") or "").strip()
+        linked_github = str(progress.get("linked_github_username") or "").strip()
+        linked_linkedin = str(progress.get("linked_linkedin_name") or "").strip()
         stored_hr = str(progress.get("hackerrank_username") or "").strip()
         hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
     # Phase 4 renders the Profile Status toggles (same four privacy fields as
@@ -1219,20 +1217,16 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
                 privacy_prefs = auth.get_privacy_prefs(_phase4_prn)
             except Exception:
                 privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
-        _phase4_email = str(progress.get("email") or "").strip()
-        if _phase4_email:
-            _phase4_row = auth.get_account(_phase4_email)
-            if _phase4_row:
-                linked_github_username = str(_phase4_row.get("linked_github_username") or _phase4_row.get("github_username") or "").strip()
-                linked_github_avatar = str(_phase4_row.get("linked_github_avatar") or "").strip()
-                if not linked_github_avatar and linked_github_username:
-                    linked_github_avatar = f"https://github.com/{linked_github_username}.png"
-                linked_linkedin_avatar = str(_phase4_row.get("linked_linkedin_avatar") or "").strip()
-                linked_linkedin_name = str(_phase4_row.get("linked_linkedin_name") or "").strip()
-                has_linkedin = bool(linked_linkedin_name or linked_linkedin_avatar)
-                stored_source = str(_phase4_row.get("profile_source") or "").strip().lower()
-                if stored_source in ("github", "linkedin"):
-                    profile_source = stored_source
+        linked_github_username = str(progress.get("linked_github_username") or "").strip()
+        linked_github_avatar = str(progress.get("linked_github_avatar") or "").strip()
+        if not linked_github_avatar and linked_github_username:
+            linked_github_avatar = f"https://github.com/{linked_github_username}.png"
+        linked_linkedin_avatar = str(progress.get("linked_linkedin_avatar") or "").strip()
+        linked_linkedin_name = str(progress.get("linked_linkedin_name") or "").strip()
+        has_linkedin = bool(linked_linkedin_name or linked_linkedin_avatar)
+        stored_source = str(progress.get("profile_source") or "").strip().lower()
+        if stored_source in ("github", "linkedin"):
+            profile_source = stored_source
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
@@ -1286,32 +1280,25 @@ async def signup_submit(
     # Faculty-table addresses count too (one address, one account, either table).
     if auth.get_account(email) is not None:
         return RedirectResponse("/signup?error=3", status_code=302)
-    user = auth.create_user(email, password, role="student", name=name)
-    if user is None:
-        return RedirectResponse("/signup?error=1", status_code=302)
-    _db_log_event("signup", email)
-    # Phase 1 done — the account exists, so sign them in straight away (phase
-    # 3 links GitHub/LinkedIn through the OAuth portal, which needs the
-    # session) and carry them into the academic phase. Gating still applies:
-    # nothing is approved yet, so the site stays locked down.
-    token = auth.save_signup_progress({"email": email, "name": name, "phase": 2})
+    # Phase 1 starts a temporary signup draft only. The password is hashed
+    # before it enters the short-lived progress store; no student account or
+    # login session exists until the final phase is submitted.
+    previous_token = request.cookies.get(auth._SIGNUP_COOKIE)
+    token = auth.save_signup_progress({
+        "email": email.strip().lower(),
+        "name": name.strip(),
+        "password_hash": auth.hash_password(password),
+        "auth_source": "password",
+        "phase": 2,
+    })
     if token is None:
         return RedirectResponse("/signup?error=1", status_code=302)
+    auth.delete_signup_progress(previous_token)
     response = RedirectResponse("/signup?phase=2", status_code=302)
     response.set_cookie(
         auth._SIGNUP_COOKIE,
         token,
         max_age=auth._SIGNUP_TTL_SECONDS,
-        httponly=True,
-        secure=auth._SECURE_COOKIES,
-        samesite="lax",
-    )
-    session_user = dict(user)
-    session_user.pop("password_hash", None)
-    response.set_cookie(
-        auth._COOKIE_NAME,
-        auth.create_session_token(session_user),
-        max_age=auth._SESSION_TTL_SECONDS,
         httponly=True,
         secure=auth._SECURE_COOKIES,
         samesite="lax",
@@ -1366,6 +1353,7 @@ async def signup_phase_2_submit(
     token = auth.save_signup_progress(progress)
     if token is None:
         return fail("storage")
+    auth.delete_signup_progress(token_value)
     response = RedirectResponse("/signup?phase=3", status_code=302)
     response.set_cookie(
         auth._SIGNUP_COOKIE,
@@ -1386,8 +1374,7 @@ async def signup_phase_3_submit(
 ):
     """Profiles phase: HackerRank (typed, same normalization as onboarding)
     plus GitHub and LinkedIn linked through the OAuth portal. Nothing
-    advances until all three are pending — the portal handles live on the
-    user row, so re-check them here instead of trusting the form."""
+    advances until all three are present in the server-side signup draft."""
     token_value = request.cookies.get(auth._SIGNUP_COOKIE)
     progress = auth.load_signup_progress(token_value)
     if not progress or int(progress.get("phase") or 1) < 3:
@@ -1400,6 +1387,7 @@ async def signup_phase_3_submit(
         token = auth.save_signup_progress(progress)
         if token is None:
             return None
+        auth.delete_signup_progress(token_value)
         response = RedirectResponse("/signup?phase=3", status_code=302)
         response.set_cookie(
             auth._SIGNUP_COOKIE,
@@ -1420,10 +1408,9 @@ async def signup_phase_3_submit(
         return saved if saved is not None else fail("storage")
     if not handle:
         return fail("hr")
-    row = auth.get_account(str(progress.get("email") or ""))
-    if not row or not (row.get("linked_github_username") or "").strip():
+    if not (progress.get("linked_github_username") or "").strip():
         return fail("github")
-    if not (row.get("linked_linkedin_name") or "").strip():
+    if not (progress.get("linked_linkedin_name") or "").strip():
         return fail("linkedin")
     progress.update({
         "phase": 4,
@@ -1432,6 +1419,7 @@ async def signup_phase_3_submit(
     token = auth.save_signup_progress(progress)
     if token is None:
         return fail("storage")
+    auth.delete_signup_progress(token_value)
     response = RedirectResponse("/signup?phase=4", status_code=302)
     response.set_cookie(
         auth._SIGNUP_COOKIE,
@@ -1483,23 +1471,22 @@ async def signup_phase_4_submit(
         "hide_linkedin": _checked(hide_linkedin),
         "hide_hackerrank": _checked(hide_hackerrank),
     }
+    chosen_source = "linkedin" if str(profile_source or "").strip().lower() == "linkedin" else "github"
+    if chosen_source == "linkedin" and not (progress.get("linked_linkedin_name") or progress.get("linked_linkedin_avatar")):
+        chosen_source = "github"
+    progress["profile_source"] = chosen_source
+    if auth.prn_taken(prn, exclude_email=email):
+        return fail("prn_taken")
     if not auth.set_privacy_prefs(prn, prefs):
         return fail("storage")
-
-    # Persist chosen avatar source (GitHub vs LinkedIn)
-    chosen_source = "linkedin" if str(profile_source or "").strip().lower() == "linkedin" else "github"
-    user_row = auth.get_account(email) or {}
-    if chosen_source == "linkedin":
-        if not (user_row.get("linked_linkedin_name") or user_row.get("linked_linkedin_avatar")):
-            chosen_source = "github"
-    if not auth.confirm_profile_source(email, chosen_source):
-        auth.set_profile_source(email, chosen_source)
-
-    ok, code = auth.submit_signup_onboarding(email, progress)
-    if not ok:
+    account, code = auth.finalize_student_signup(progress)
+    if account is None:
         if code == "prn_taken":
             return fail("prn_taken")
+        if code == "bad_account":
+            return RedirectResponse("/signup?error=3", status_code=302)
         return fail("storage")
+    _db_log_event("signup", email)
     _db_log_event("signup_complete", email)
     auth.delete_signup_progress(token_value)
     try:
@@ -1508,6 +1495,14 @@ async def signup_phase_4_submit(
         pass
     response = RedirectResponse("/onboarding?saved=1", status_code=302)
     response.delete_cookie(auth._SIGNUP_COOKIE)
+    response.set_cookie(
+        auth._COOKIE_NAME,
+        auth.create_session_token(account),
+        max_age=auth._SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=auth._SECURE_COOKIES,
+        samesite="lax",
+    )
     return response
 
 
@@ -1805,6 +1800,46 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         response.delete_cookie("gsad_oauth_mode")
         return response
     role = auth.resolve_google_role(email)
+    if signup_mode and role == "student":
+        # Google verifies the identity for Phase 1, but does not create a
+        # local account. Continue with a signup draft until Phase 4 commits it.
+        previous_token = request.cookies.get(auth._SIGNUP_COOKIE)
+        existing = auth.load_signup_progress(previous_token)
+        if (
+            existing
+            and (existing.get("email") or "").strip().lower() == email
+            and int(existing.get("phase") or 1) > 2
+        ):
+            progress = dict(existing)
+            try:
+                target_phase = max(2, min(4, int(progress.get("phase") or 2)))
+            except (TypeError, ValueError):
+                target_phase = 2
+        else:
+            progress = {"phase": 2, "auth_source": "google"}
+            target_phase = 2
+        progress.update({
+            "email": email,
+            "name": (claims.get("name") or progress.get("name") or "").strip(),
+            "auth_source": "google",
+            "google_sub": claims.get("sub", ""),
+        })
+        token = auth.save_signup_progress(progress)
+        if token is None:
+            return reject("error")
+        auth.delete_signup_progress(previous_token)
+        response = RedirectResponse(f"/signup?phase={target_phase}", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        response.set_cookie(
+            auth._SIGNUP_COOKIE,
+            token,
+            max_age=auth._SIGNUP_TTL_SECONDS,
+            httponly=True,
+            secure=auth._SECURE_COOKIES,
+            samesite="lax",
+        )
+        return response
     user = auth.upsert_google_user(email, claims.get("name", ""), claims.get("sub", ""), role)
     if user is None:
         # Read-only/unavailable users DB (Vercel): stay signed in with the
@@ -1817,53 +1852,6 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         full_user = auth.get_account(email) or user
     except Exception:
         full_user = user
-    if signup_mode and (full_user.get("role") or role) == "student":
-        # Sign-up via Google skips phase 1 only: fresh/incomplete students join
-        # the signup flow at phase 2 (mirrors POST /signup: session + progress
-        # token). Anyone who already submitted onboarding is a returning user
-        # and falls through to the normal login destination below.
-        if str(full_user.get("onboarding_status") or "none").strip().lower() == "none":
-            _db_log_event("signup", email)
-            existing = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
-            target_phase = 2
-            if (
-                existing
-                and (existing.get("email") or "").strip().lower() == email
-                and int(existing.get("phase") or 1) > 2
-            ):
-                progress = dict(existing)
-                progress["email"] = email
-                if (claims.get("name") or "").strip():
-                    progress["name"] = (claims.get("name") or "").strip()
-                try:
-                    target_phase = max(2, min(4, int(progress.get("phase") or 2)))
-                except (TypeError, ValueError):
-                    target_phase = 2
-            else:
-                progress = {"email": email, "name": (claims.get("name") or "").strip(), "phase": 2}
-            token = auth.save_signup_progress(progress)
-            if token is None:
-                return reject("error")
-            response = RedirectResponse(f"/signup?phase={target_phase}", status_code=302)
-            response.delete_cookie(auth._OAUTH_STATE_COOKIE)
-            response.delete_cookie("gsad_oauth_mode")
-            response.set_cookie(
-                auth._SIGNUP_COOKIE,
-                token,
-                max_age=auth._SIGNUP_TTL_SECONDS,
-                httponly=True,
-                secure=auth._SECURE_COOKIES,
-                samesite="lax",
-            )
-            response.set_cookie(
-                auth._COOKIE_NAME,
-                auth.create_session_token(user),
-                max_age=auth._SESSION_TTL_SECONDS,
-                httponly=True,
-                secure=auth._SECURE_COOKIES,
-                samesite="lax",
-            )
-            return response
     await asyncio.to_thread(_self_sync_on_login, full_user)
     response = RedirectResponse(_post_login_destination(full_user, "/onboarding"), status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -1883,10 +1871,14 @@ from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
 def auth_github(request: Request, mode: str = "link"):
-    if not request.state.user:
-        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if mode not in ("link", "signuplink"):
         mode = "link"
+    if mode == "signuplink":
+        progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        if not progress or int(progress.get("phase") or 1) < 3:
+            return RedirectResponse("/signup?phase=3&error=oauth", status_code=302)
+    elif not request.state.user:
+        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not github_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/github/callback"
@@ -1920,7 +1912,14 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         logger.warning("GitHub OAuth state mismatch")
         return reject("error")
 
-    if mode not in ("link", "signuplink") or not user:
+    signup_progress = None
+    if mode == "signuplink":
+        signup_progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        if not signup_progress or int(signup_progress.get("phase") or 1) < 3:
+            return reject("error")
+        if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
+            return reject("error")
+    elif mode != "link" or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?github=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -1934,7 +1933,22 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
         logger.exception("GitHub OAuth code exchange failed")
         return reject("error")
 
-    if mode in ("link", "signuplink") and user:
+    if mode == "signuplink" and signup_progress is not None:
+        signup_progress["linked_github_username"] = str(claims.get("login") or "").strip()
+        signup_progress["linked_github_avatar"] = auth._clean_avatar(str(claims.get("avatar_url") or ""))
+        new_token = auth.save_signup_progress(signup_progress)
+        if new_token is None:
+            return reject("error")
+        auth.delete_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        response = RedirectResponse("/signup?phase=3", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        response.set_cookie(
+            auth._SIGNUP_COOKIE, new_token, max_age=auth._SIGNUP_TTL_SECONDS,
+            httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
+        )
+        return response
+    if mode == "link" and user:
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
         # 4.11 (e): persist the fetched candidate (login + avatar) for user
@@ -1961,10 +1975,14 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
 
 @app.get("/auth/linkedin")
 def auth_linkedin(request: Request, mode: str = "link"):
-    if not request.state.user:
-        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if mode not in ("link", "signuplink"):
         mode = "link"
+    if mode == "signuplink":
+        progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        if not progress or int(progress.get("phase") or 1) < 3:
+            return RedirectResponse("/signup?phase=3&error=oauth", status_code=302)
+    elif not request.state.user:
+        return RedirectResponse("/login?oauth=link_required", status_code=302)
     if not linkedin_oauth.configured():
         return RedirectResponse("/settings", status_code=302)
     redirect_uri = _oauth_base_url(request) + "/auth/linkedin/callback"
@@ -1998,7 +2016,14 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         logger.warning("LinkedIn OAuth state mismatch")
         return reject("error")
 
-    if mode not in ("link", "signuplink") or not user:
+    signup_progress = None
+    if mode == "signuplink":
+        signup_progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        if not signup_progress or int(signup_progress.get("phase") or 1) < 3:
+            return reject("error")
+        if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
+            return reject("error")
+    elif mode != "link" or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?linkedin=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -2012,7 +2037,23 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
         logger.exception("LinkedIn OAuth code exchange failed")
         return reject("error")
 
-    if mode in ("link", "signuplink") and user:
+    if mode == "signuplink" and signup_progress is not None:
+        signup_progress["linkedin_sub"] = str(claims.get("sub") or "").strip()
+        signup_progress["linked_linkedin_name"] = str(claims.get("name") or "").strip()
+        signup_progress["linked_linkedin_avatar"] = auth._clean_avatar(str(claims.get("picture") or ""))
+        new_token = auth.save_signup_progress(signup_progress)
+        if new_token is None:
+            return reject("error")
+        auth.delete_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
+        response = RedirectResponse("/signup?phase=3", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        response.set_cookie(
+            auth._SIGNUP_COOKIE, new_token, max_age=auth._SIGNUP_TTL_SECONDS,
+            httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
+        )
+        return response
+    if mode == "link" and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
         # 4.11 (e): persist the fetched candidate (name + picture) for user
         # confirmation on onboarding.

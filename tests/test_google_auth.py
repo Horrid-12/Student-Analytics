@@ -167,6 +167,22 @@ class TestOAuthCallback:
         assert "gsad_session" not in client.cookies
         # Body of the signup page carries the exists banner.
         assert "already has an account" in client.get("/signup?error=3").text
+
+    def test_signup_mode_google_identity_stays_temporary_until_phase_four(self, client, monkeypatch):
+        enable_google(monkeypatch, {
+            "sub": "sub-new-student", "email": "new@mitwpu.edu.in",
+            "email_verified": True, "name": "New Student", "hd": DOMAIN,
+        })
+        start = client.get("/auth/google?mode=signup", follow_redirects=False)
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+        response = client.get(f"/auth/google/callback?state={state}&code=fake", follow_redirects=False)
+
+        assert response.headers["location"] == "/signup?phase=2"
+        assert auth.get_user("new@mitwpu.edu.in") is None
+        assert "gsad_session" not in client.cookies
+        progress = auth.load_signup_progress(client.cookies.get(auth._SIGNUP_COOKIE))
+        assert progress["auth_source"] == "google"
+        assert progress["google_sub"] == "sub-new-student"
     def test_unconfigured_redirects_with_banner(self, client, monkeypatch):
         monkeypatch.setattr(google_oauth, "configured", lambda: False)
         r = client.get("/auth/google", follow_redirects=False)
@@ -253,13 +269,14 @@ class TestPasswordDomainGate:
         assert str(r.url).endswith("?error=2")
 
     def test_college_email_signup_and_login_still_work(self, client):
-        # Phase 1 advances to phase 2 (progress rides the signed cookie).
+        # Google/password phase 1 only creates the short-lived progress draft.
         r = client.post(
             "/signup",
             data={"email": "stu1@mitwpu.edu.in", "name": "S", "password": "secret123", "confirm_password": "secret123"},
         )
         assert "phase=2" in str(r.url)
-        # Phase 2 advances to phase 3 — the account exists either way.
+        assert auth.get_user("stu1@mitwpu.edu.in") is None
+        # Phase 2 advances to phase 3 without registering an account.
         r = client.post(
             "/signup/phase/2",
             data={
@@ -272,5 +289,19 @@ class TestPasswordDomainGate:
             },
         )
         assert "phase=3" in str(r.url)
-        r = client.post("/login", data={"email": "stu1@mitwpu.edu.in", "password": "secret123"})
+
+        token = client.cookies.get(auth._SIGNUP_COOKIE)
+        progress = auth.load_signup_progress(token)
+        progress.update({"linked_github_username": "stu-gh", "linked_linkedin_name": "stu-li"})
+        next_token = auth.save_signup_progress(progress)
+        auth.delete_signup_progress(token)
+        client.cookies.set(auth._SIGNUP_COOKIE, next_token, domain="testserver.local", path="/")
+        r = client.post("/signup/phase/3", data={"hackerrank_username": "stu_hr"})
+        assert "phase=4" in str(r.url)
+        assert auth.get_user("stu1@mitwpu.edu.in") is None
+        r = client.post("/signup/phase/4", data={})
+        assert "saved=1" in str(r.url)
         assert "gsad_session" in client.cookies
+        user = auth.get_user("stu1@mitwpu.edu.in")
+        assert user["auth_source"] == "password"
+        assert user["onboarding_status"] == "pending"

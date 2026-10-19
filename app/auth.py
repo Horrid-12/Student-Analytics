@@ -2066,6 +2066,119 @@ def submit_signup_onboarding(email: str, data: dict) -> tuple[bool, str]:
         pass
     return True, ""
 
+
+def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
+    """Create the student account and pending onboarding record after Phase 4.
+
+    Phase progress remains in the short-lived server-side signup store until
+    this function inserts the account. Passwords are stored there only as a
+    one-way hash; OAuth identities and academic fields are committed with the
+    new account in one insert.
+    """
+    data = data if isinstance(data, dict) else {}
+    email = str(data.get("email") or "").strip().lower()
+    password_hash = str(data.get("password_hash") or "").strip() or None
+    auth_source = str(data.get("auth_source") or "password").strip().lower()
+    name = str(data.get("name") or "").strip()
+    prn = str(data.get("prn") or "").strip()
+    branch = str(data.get("branch") or "").strip()
+    specialisation = str(data.get("specialisation") or "").strip()
+    division = str(data.get("division") or "").strip()
+    practical_batch = str(data.get("practical_batch") or "").strip()
+    semester = str(data.get("semester") or "").strip()
+    hackerrank_username = str(data.get("hackerrank_username") or "").strip()
+    github_username = str(data.get("linked_github_username") or "").strip()
+    linkedin_name = str(data.get("linked_linkedin_name") or "").strip()
+    chosen_source = str(data.get("profile_source") or "github").strip().lower()
+
+    if not email or not domain_allowed_email(email) or auth_source not in ("password", "google"):
+        return None, "bad_account"
+    if auth_source == "password" and not password_hash:
+        return None, "bad_account"
+    if get_account(email) is not None:
+        return None, "bad_account"
+    if not valid_prn(prn):
+        return None, "prn"
+    if branch not in SIGNUP_BRANCHES:
+        return None, "branch"
+    if branch in SIGNUP_BRANCH_SPECIALISATIONS:
+        if specialisation not in SIGNUP_BRANCH_SPECIALISATIONS[branch]:
+            return None, "specialisation"
+    elif specialisation:
+        return None, "specialisation"
+    if division not in SIGNUP_DIVISIONS:
+        return None, "division"
+    if not valid_signup_practical_batch(practical_batch, division):
+        return None, "batch"
+    if not valid_semester(semester):
+        return None, "semester"
+    if not hackerrank_username:
+        return None, "hr"
+    if not github_username or not linkedin_name or chosen_source not in LINK_SOURCES:
+        return None, "bad_account"
+    if chosen_source == "github" and not github_username:
+        return None, "bad_account"
+    if chosen_source == "linkedin" and not linkedin_name:
+        return None, "bad_account"
+    if prn_taken(prn, exclude_email=email):
+        return None, "prn_taken"
+
+    account_data = {
+        **data,
+        "email": email,
+        "password_hash": password_hash,
+        "auth_source": auth_source,
+        "name": name,
+        "github_username": github_username,
+        "profile_source": chosen_source,
+        "prn": prn,
+        "branch": branch,
+        "specialisation": specialisation,
+        "division": division,
+        "practical_batch": practical_batch,
+        "semester": semester,
+        "hackerrank_username": hackerrank_username,
+    }
+    try:
+        if database.db_configured():
+            account = db.create_signup_user(account_data)
+        else:
+            if not init_db():
+                return None, "storage_unavailable"
+            with closing(_connect()) as conn:
+                _ensure_schema(conn)
+                with conn:
+                    conn.execute(
+                        "INSERT INTO users (email,password_hash,role,name,created_at,auth_source,google_sub,github_username,linkedin_sub,"
+                        "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
+                        "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
+                        "semester,specialisation,hackerrank_username) "
+                        "VALUES (?,?, 'student', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, '', ?, ?, ?, ?)",
+                        (
+                            email, password_hash, name, time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                            auth_source, str(data.get("google_sub") or ""),
+                            github_username, str(data.get("linkedin_sub") or ""), github_username,
+                            _clean_avatar(str(data.get("linked_github_avatar") or "")), linkedin_name,
+                            _clean_avatar(str(data.get("linked_linkedin_avatar") or "")), chosen_source,
+                            prn, branch, division, time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                            practical_batch, semester, specialisation, hackerrank_username,
+                        ),
+                    )
+            account = get_user(email)
+    except sqlite3.IntegrityError:
+        return None, "prn_taken" if prn_taken(prn, exclude_email=email) else "bad_account"
+    except Exception as exc:
+        logger.warning("student signup finalization failed for %s: %s", email, exc)
+        return None, "storage_unavailable"
+    if not account:
+        return None, "bad_account" if get_account(email) else "storage_unavailable"
+    _drop_user(email)
+    try:
+        view_cache.invalidate()
+    except Exception:
+        pass
+    return account, ""
+
 def admin_edit_onboarding(
     email: str,
     prn: str,

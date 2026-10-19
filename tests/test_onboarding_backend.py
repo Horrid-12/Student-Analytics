@@ -21,10 +21,10 @@ def client(tmp_path, monkeypatch):
 
 
 def signup(client, email="stu1@college.edu", name="Student One", password="secret123"):
-    return client.post(
-        "/signup",
-        data={"email": email, "name": name, "password": password, "confirm_password": password},
-    )
+    # These legacy onboarding tests exercise the existing-account submission
+    # flow; create that account directly instead of treating phase 1 as complete
+    # signup now that the public flow finalizes only in phase 4.
+    return auth.create_user(email, password, "student", name)
 
 
 def login(client, email="stu1@college.edu", password="secret123"):
@@ -40,6 +40,17 @@ def submit(client, prn="1234567890", degree="Core", division="1",
               "main_batch": main_batch, "practical_batch": practical_batch, "semester": semester,
               "hackerrank_username": hackerrank},
     )
+
+
+def _save_signup_draft(client, **updates):
+    token = client.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token) or {}
+    progress.update(updates)
+    next_token = auth.save_signup_progress(progress)
+    assert next_token
+    auth.delete_signup_progress(token)
+    client.cookies.set(auth._SIGNUP_COOKIE, next_token, domain="testserver.local", path="/")
+    return progress
 
 
 def _session(client, role, email=None):
@@ -563,8 +574,7 @@ class TestSignupRecordDisplay:
                 "practical_batch": "3",
             },
         )
-        auth.save_linked_profile(email, "github", "sig-handle", "")
-        auth.save_linked_profile(email, "linkedin", "sig-li", "")
+        _save_signup_draft(client, linked_github_username="sig-handle", linked_linkedin_name="sig-li")
         client.post("/signup/phase/3", data={"hackerrank_username": "sig_hr"})
         r = client.post("/signup/phase/4", data={"hide_github": "1"})
         assert "saved=1" in str(r.url)

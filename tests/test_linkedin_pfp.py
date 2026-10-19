@@ -70,10 +70,25 @@ def _complete_signup_to_phase_3(client, email="alex@mitwpu.edu.in"):
     return email
 
 
+def _save_linked_profiles(client, *, github_avatar="https://avatars.githubusercontent.com/u/12345",
+                          linkedin_name="Alex Student", linkedin_avatar="https://media.licdn.com/pfp.jpg"):
+    token = client.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(token)
+    progress.update({
+        "linked_github_username": "alex-gh",
+        "linked_github_avatar": github_avatar,
+        "linked_linkedin_name": linkedin_name,
+        "linked_linkedin_avatar": linkedin_avatar,
+        "linkedin_sub": "linkedin-alex",
+    })
+    new_token = auth.save_signup_progress(progress)
+    auth.delete_signup_progress(token)
+    client.cookies.set(auth._SIGNUP_COOKIE, new_token, domain="testserver.local", path="/")
+
+
 def test_signup_phase_4_renders_pfp_selector_when_linkedin_linked(client):
-    email = _complete_signup_to_phase_3(client)
-    auth.save_linked_profile(email, "github", "alex-gh", "https://avatars.githubusercontent.com/u/12345")
-    auth.save_linked_profile(email, "linkedin", "Alex Student", "https://media.licdn.com/pfp.jpg")
+    _complete_signup_to_phase_3(client)
+    _save_linked_profiles(client)
 
     r3 = client.post("/signup/phase/3", data={"hackerrank_username": "alex_hr"}, follow_redirects=False)
     assert r3.status_code == 302
@@ -92,8 +107,8 @@ def test_signup_phase_4_renders_pfp_selector_when_linkedin_linked(client):
 
 
 def test_signup_phase_4_defaults_to_github_when_no_linkedin(client):
-    email = _complete_signup_to_phase_3(client)
-    auth.save_linked_profile(email, "github", "alex-gh", "https://avatars.githubusercontent.com/u/12345")
+    _complete_signup_to_phase_3(client)
+    _save_linked_profiles(client, linkedin_name="", linkedin_avatar="")
 
     # If user reaches Phase 4 without LinkedIn linked
     token = client.cookies.get(auth._SIGNUP_COOKIE)
@@ -112,8 +127,7 @@ def test_signup_phase_4_defaults_to_github_when_no_linkedin(client):
 
 def test_signup_phase_4_submit_persists_chosen_pfp(client):
     email = _complete_signup_to_phase_3(client)
-    auth.save_linked_profile(email, "github", "alex-gh", "https://avatars.githubusercontent.com/u/12345")
-    auth.save_linked_profile(email, "linkedin", "Alex Student", "https://media.licdn.com/pfp.jpg")
+    _save_linked_profiles(client)
 
     client.post("/signup/phase/3", data={"hackerrank_username": "alex_hr"}, follow_redirects=False)
 

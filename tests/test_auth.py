@@ -41,19 +41,18 @@ def login(client, email="stu1@college.edu", password="secret123"):
 
 
 class TestSignup:
-    def test_signup_creates_student_account(self, client):
+    def test_phase1_starts_signup_without_creating_student_account(self, client):
         r = signup(client)
         assert r.status_code in (200, 302)
-        user = auth.get_user("stu1@college.edu")
-        assert user is not None
-        assert user["role"] == "student"  # public signup can never pick a role
-        verified = auth.verify_login("stu1@college.edu", "secret123")
-        assert verified is not None
-        assert verified["role"] == "student"
-        assert verified["email"] == "stu1@college.edu"
+        assert auth.get_user("stu1@college.edu") is None
+        assert auth.verify_login("stu1@college.edu", "secret123") is None
+        progress = auth.load_signup_progress(client.cookies.get(auth._SIGNUP_COOKIE))
+        assert progress["email"] == "stu1@college.edu"
+        assert progress["auth_source"] == "password"
+        assert progress["password_hash"] != "secret123"
 
     def test_duplicate_email_rejected(self, client):
-        signup(client, email="dup@college.edu")
+        assert auth.create_user("dup@college.edu", "secret123", "student", "Duplicate")
         r = signup(client, email="dup@college.edu")
         assert "error=3" in str(r.url)  # dedicated "already registered" banner
         assert "already has an account" in r.text
@@ -92,6 +91,17 @@ def _phase2(client, **overrides):
     }
     data.update(overrides)
     return client.post("/signup/phase/2", data=data)
+
+
+def _save_signup_progress(client, **updates):
+    old_token = client.cookies.get(auth._SIGNUP_COOKIE)
+    progress = auth.load_signup_progress(old_token) or {}
+    progress.update(updates)
+    new_token = auth.save_signup_progress(progress)
+    assert new_token
+    auth.delete_signup_progress(old_token)
+    client.cookies.set(auth._SIGNUP_COOKIE, new_token, domain="testserver.local", path="/")
+    return progress
 
 
 class TestSignupPhase2:
@@ -184,14 +194,14 @@ class TestSignupPhase3:
     def test_github_link_required(self, client):
         signup(client)
         _phase2(client)
-        auth.save_linked_profile("stu1@college.edu", "linkedin", "stu-li", "")
+        _save_signup_progress(client, linked_linkedin_name="stu-li")
         r = _phase3(client)
         assert "error=github" in str(r.url)
 
     def test_linkedin_link_required(self, client):
         signup(client)
         _phase2(client)
-        auth.save_linked_profile("stu1@college.edu", "github", "stu-handle", "")
+        _save_signup_progress(client, linked_github_username="stu-handle")
         r = _phase3(client)
         assert "error=linkedin" in str(r.url)
 
@@ -207,8 +217,7 @@ class TestSignupPhase3:
     def test_valid_phase_3_advances_to_phase_4(self, client):
         signup(client)
         _phase2(client)
-        auth.save_linked_profile("stu1@college.edu", "github", "stu-handle", "")
-        auth.save_linked_profile("stu1@college.edu", "linkedin", "stu-li", "")
+        _save_signup_progress(client, linked_github_username="stu-handle", linked_linkedin_name="stu-li")
         r = _phase3(client)
         assert "phase=4" in str(r.url)
 
@@ -217,8 +226,7 @@ def _walk_to_phase4(client, email="stu1@college.edu"):
     """Drive a fresh signup through phases 1-3 so phase 4 can be exercised."""
     signup(client, email=email)
     _phase2(client)
-    auth.save_linked_profile(email, "github", "stu-handle", "")
-    auth.save_linked_profile(email, "linkedin", "stu-li", "")
+    _save_signup_progress(client, linked_github_username="stu-handle", linked_linkedin_name="stu-li")
     r = client.post("/signup/phase/3", data={"hackerrank_username": "stu_hr"})
     assert "phase=4" in str(r.url)
     return r
@@ -277,7 +285,7 @@ class TestSignupPhase4:
         _walk_to_phase4(client)
         r = client.post("/signup/phase/4", data={})
         assert "phase=4" in str(r.url) and "error=prn_taken" in str(r.url)
-        assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
+        assert auth.get_user("stu1@college.edu") is None
 
     def test_onboarding_shows_submitted_summary(self, client):
         _walk_to_phase4(client)
@@ -358,20 +366,19 @@ class TestPendingStudentGate:
 
 
 class TestLogin:
-    def test_login_success_sets_session_cookie(self, client):
+    def test_phase1_does_not_sign_in_before_signup_is_complete(self, client):
         signup(client)
         r = login(client)
-        assert r.status_code in (200, 302)
-        assert "gsad_session" in client.cookies
+        assert "gsad_session" not in client.cookies
+        assert auth.get_user("stu1@college.edu") is None
 
     def test_wrong_password_redirects_with_error(self, client):
-        signup(client)  # phase 1 signs the new account in straight away
-        client.get("/logout")
+        assert auth.create_user("stu1@college.edu", "secret123", "student", "Student One")
         r = login(client, "stu1@college.edu", "wrongpass")
         assert "error=1" in str(r.url)
 
     def test_logout_clears_session(self, client):
-        signup(client)
+        assert auth.create_user("stu1@college.edu", "secret123", "student", "Student One")
         login(client)
         assert "Sign out" in client.get("/").text     # session is live (sidebar offers logout)
         client.get("/logout")
@@ -387,7 +394,7 @@ class TestSignupOnlyCreatesStudents:
             data={"email": "sneaky@college.edu", "name": "S", "password": "secret123", "confirm_password": "secret123", "role": "admin"},
         )
         assert r.status_code in (200, 302)
-        assert auth.get_user("sneaky@college.edu")["role"] == "student"
+        assert auth.get_user("sneaky@college.edu") is None
 
     def test_admin_and_faculty_created_via_seed(self, client):
         assert auth.create_user("admin@college.edu", "secret123", "admin", "Admin")

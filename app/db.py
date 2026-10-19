@@ -1580,6 +1580,45 @@ def upsert_user(
         return None
 
 
+def create_signup_user(data: dict) -> Optional[dict]:
+    """Insert a fully completed student signup without updating existing accounts."""
+    email = str(data.get("email") or "").strip().lower()
+    if not email:
+        return None
+    try:
+        with database.conn() as c:
+            if c is None:
+                return None
+            cur = c.execute(
+                "INSERT INTO users (email,password_hash,role,name,auth_source,google_sub,github_username,linkedin_sub,"
+                "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
+                "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
+                "semester,specialisation,hackerrank_username) "
+                "VALUES (%s,%s,'student',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending',NOW(),'',%s,%s,%s,%s) "
+                "ON CONFLICT (email) DO NOTHING "
+                "RETURNING id,email,password_hash,role,name,auth_source,google_sub,github_username,linkedin_sub,"
+                "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
+                "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
+                "semester,specialisation,hackerrank_username",
+                (
+                    email, data.get("password_hash"), str(data.get("name") or "").strip(),
+                    data.get("auth_source") or "password", data.get("google_sub") or "",
+                    data.get("github_username") or "", data.get("linkedin_sub") or "",
+                    data.get("linked_github_username") or "", data.get("linked_github_avatar") or "",
+                    data.get("linked_linkedin_name") or "", data.get("linked_linkedin_avatar") or "",
+                    data.get("profile_source") or "", data.get("prn") or "",
+                    data.get("branch") or "", data.get("division") or "",
+                    data.get("practical_batch") or "", data.get("semester") or "",
+                    data.get("specialisation") or "", data.get("hackerrank_username") or "",
+                ),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("create_signup_user failed for %s: %s", email, exc)
+        return None
+
+
 # ── Phase 4.12 onboarding (mirrors auth.py signatures) ────────────────────────
 
 _ONBOARDING_COLUMNS = (
