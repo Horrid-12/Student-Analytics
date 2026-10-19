@@ -2728,6 +2728,25 @@ button {
 .rc-name:hover {
   text-decoration: underline;
 }
+.rc-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.repo-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+.rc-fork {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--amber);
+}
 .rc-handle {
   flex-shrink: 0;
   font-size: 12px;

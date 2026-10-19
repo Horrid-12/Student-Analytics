@@ -828,7 +828,12 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
             # and each fetch is a full Neon round trip (Lag Fix).
             user_row = _memo(f"user:{email}", lambda: auth.get_account(email))
             if (role or "") == "student":
-                identity = auth.github_sidebar_identity(user_row)
+                if (user_row or {}).get("profile_source") == "linkedin" and (user_row or {}).get("linked_linkedin_avatar"):
+                    identity = auth.linked_identity(user_row)
+                    if not identity.get("avatar"):
+                        identity = auth.github_sidebar_identity(user_row)
+                else:
+                    identity = auth.github_sidebar_identity(user_row)
             else:
                 identity = auth.linked_identity(user_row)
             sidebar_avatar_url = identity.get("avatar", "")
@@ -1198,8 +1203,15 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
         stored_hr = str(progress.get("hackerrank_username") or "").strip()
         hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
     # Phase 4 renders the Profile Status toggles (same four privacy fields as
-    # the /me popup), prefilled from any prefs already saved for this PRN.
+    # the /me popup), prefilled from any prefs already saved for this PRN,
+    # plus the Profile Picture selector if LinkedIn was linked in Phase 3.
     privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
+    linked_github_avatar = ""
+    linked_github_username = ""
+    linked_linkedin_avatar = ""
+    linked_linkedin_name = ""
+    has_linkedin = False
+    profile_source = "github"
     if phase == 4:
         _phase4_prn = str(progress.get("prn") or "").strip()
         if _phase4_prn:
@@ -1207,6 +1219,20 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
                 privacy_prefs = auth.get_privacy_prefs(_phase4_prn)
             except Exception:
                 privacy_prefs = {field: 0 for field in auth.PRIVACY_FIELDS}
+        _phase4_email = str(progress.get("email") or "").strip()
+        if _phase4_email:
+            _phase4_row = auth.get_account(_phase4_email)
+            if _phase4_row:
+                linked_github_username = str(_phase4_row.get("linked_github_username") or _phase4_row.get("github_username") or "").strip()
+                linked_github_avatar = str(_phase4_row.get("linked_github_avatar") or "").strip()
+                if not linked_github_avatar and linked_github_username:
+                    linked_github_avatar = f"https://github.com/{linked_github_username}.png"
+                linked_linkedin_avatar = str(_phase4_row.get("linked_linkedin_avatar") or "").strip()
+                linked_linkedin_name = str(_phase4_row.get("linked_linkedin_name") or "").strip()
+                has_linkedin = bool(linked_linkedin_name or linked_linkedin_avatar)
+                stored_source = str(_phase4_row.get("profile_source") or "").strip().lower()
+                if stored_source in ("github", "linkedin"):
+                    profile_source = stored_source
     return templates.TemplateResponse(
         request,
         "pages/signup.html",
@@ -1222,6 +1248,12 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "linked_linkedin": linked_linkedin,
             "hr_locked": hr_locked,
             "privacy_prefs": privacy_prefs,
+            "linked_github_avatar": linked_github_avatar,
+            "linked_github_username": linked_github_username,
+            "linked_linkedin_avatar": linked_linkedin_avatar,
+            "linked_linkedin_name": linked_linkedin_name,
+            "has_linkedin": has_linkedin,
+            "profile_source": profile_source,
             "show_error_banner": error == "1",
             "show_domain_banner": error == "2",
             "show_exists_banner": error == "3",
@@ -1418,9 +1450,11 @@ async def signup_phase_4_submit(
     hide_github: str = Form(""),
     hide_linkedin: str = Form(""),
     hide_hackerrank: str = Form(""),
+    profile_source: str = Form("github"),
 ):
     """Profile Status phase: the four privacy toggles from the /me popup
-    (stored per PRN, so they apply the moment the fleet renders the student).
+    (stored per PRN, so they apply the moment the fleet renders the student),
+    plus active profile picture selection (GitHub vs LinkedIn).
 
     Finishing also finalizes the sign-up — the collected academic bundle is
     submitted as a pending onboarding record for teacher verification — and
@@ -1449,6 +1483,16 @@ async def signup_phase_4_submit(
     }
     if not auth.set_privacy_prefs(prn, prefs):
         return fail("storage")
+
+    # Persist chosen avatar source (GitHub vs LinkedIn)
+    chosen_source = "linkedin" if str(profile_source or "").strip().lower() == "linkedin" else "github"
+    user_row = auth.get_account(email) or {}
+    if chosen_source == "linkedin":
+        if not (user_row.get("linked_linkedin_name") or user_row.get("linked_linkedin_avatar")):
+            chosen_source = "github"
+    if not auth.confirm_profile_source(email, chosen_source):
+        auth.set_profile_source(email, chosen_source)
+
     ok, code = auth.submit_signup_onboarding(email, progress)
     if not ok:
         if code == "prn_taken":
@@ -1668,6 +1712,14 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         return reject("domain")
 
     email = claims["email"].lower()
+    if signup_mode and auth.get_account(email) is not None:
+        # Account already exists — the signup button only skips phase 1 for new
+        # students. Returning accounts get the "already registered" banner
+        # instead of being marched into phase 2.
+        response = RedirectResponse("/signup?error=3", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
     role = auth.resolve_google_role(email)
     user = auth.upsert_google_user(email, claims.get("name", ""), claims.get("sub", ""), role)
     if user is None:
@@ -2138,6 +2190,7 @@ def overview(
                 semester=semester or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
+                scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
             )
         except Exception:
             ctx["view"] = None
@@ -2172,6 +2225,20 @@ def _filter_onboarding_rows(rows: list[dict], q: str) -> list[dict]:
         row for row in rows
         if text in " ".join(str(v or "") for v in row.values()).lower()
     ]
+
+
+def _format_submitted_at(value: str | None) -> str:
+    """Render a stored ``YYYY-MM-DD HH:MM:SS ...`` UTC timestamp for display
+    as ``DD-MM-YYYY hh:MM AM/PM`` (12-hour clock). Falls back to the raw
+    leading ``YYYY-MM-DD HH:MM`` slice when the value does not parse."""
+    raw = str(value or "").strip()
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})", raw)
+    if not match:
+        return raw[:16]
+    year, month, day, hour, minute = (int(part) for part in match.groups())
+    suffix = "AM" if hour < 12 else "PM"
+    hour12 = hour % 12 or 12
+    return f"{day:02d}-{month:02d}-{year:04d} {hour12:02d}:{minute:02d} {suffix}"
 
 
 @app.get("/onboarding", response_class=HTMLResponse)
@@ -2215,6 +2282,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     # those rows read-only instead of mismatched dropdowns. Display flag only;
     # the sign-up flow itself is untouched.
     ctx["signup_record"] = False
+    ctx["submitted_display"] = ""
     try:
         _summary_prn = str((ctx.get("submission") or {}).get("prn") or "").strip()
         if _summary_prn and role == "student":
@@ -2223,6 +2291,9 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         _sub_spec = str((ctx.get("submission") or {}).get("specialisation") or "").strip()
         if _summary_prn and (_sub_spec or (_sub_branch and _sub_branch not in auth.DEGREE_BRANCHES)):
             ctx["signup_record"] = True
+        ctx["submitted_display"] = _format_submitted_at(
+            (ctx.get("submission") or {}).get("onboarding_submitted_at")
+        )
     except Exception:
         pass
     # Link Profiles panel: normalise the saved handle (tolerates a pasted

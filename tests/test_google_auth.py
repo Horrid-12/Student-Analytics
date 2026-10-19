@@ -143,6 +143,30 @@ class TestOAuthCallback:
         assert "oauth=error" in r.headers["location"]
         assert "gsad_session" not in client.cookies
 
+    def test_signup_mode_existing_account_shows_exists_banner(self, client, monkeypatch):
+        """An existing account reached through the signup Google button gets the
+        "already registered" banner instead of phase 2."""
+        assert auth.create_user("existing@mitwpu.edu.in", "secret123", "student", "Existing")
+        monkeypatch.setattr(google_oauth, "configured", lambda: True)
+        monkeypatch.setattr(
+            google_oauth,
+            "exchange_code",
+            AsyncMock(return_value={
+                "sub": "sub-existing", "email": "existing@mitwpu.edu.in",
+                "email_verified": True, "name": "Existing", "hd": DOMAIN,
+            }),
+        )
+        monkeypatch.setattr(google_oauth, "build_authorization_url",
+                            lambda redirect_uri, state, allowed_domain=None: f"https://g/?state={state}")
+        r = client.get("/auth/google?mode=signup", follow_redirects=False)
+        assert r.status_code == 302
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+        r = client.get(f"/auth/google/callback?state={state}&code=fake", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/signup?error=3"
+        assert "gsad_session" not in client.cookies
+        # Body of the signup page carries the exists banner.
+        assert "already has an account" in client.get("/signup?error=3").text
     def test_unconfigured_redirects_with_banner(self, client, monkeypatch):
         monkeypatch.setattr(google_oauth, "configured", lambda: False)
         r = client.get("/auth/google", follow_redirects=False)

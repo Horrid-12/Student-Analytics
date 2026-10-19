@@ -464,11 +464,24 @@ class TestSignupRecordDisplay:
         assert '<select name="degree_branch" required' not in body
         assert '<select name="division" required' not in body
 
+    def test_signup_view_is_single_rich_panel(self, client):
+        self._signup_done(client)
+        body = self._page(client)
+        assert "Your submitted details" in body
+        # One info card only: no notice, no academic/identity/link boxes.
+        assert "Official Notice" not in body
+        assert 'id="onboarding-form"' not in body
+        assert ">Link Profiles<" not in body
+        assert ">Identity<" not in body
+        # Every datum sits in its own tile (name + email included).
+        assert "Sig" in body and "sig@college.edu" in body
+        assert body.count("overflow-wrap: anywhere") >= 11
+
     def test_no_dead_end_resubmit_for_signup_record(self, client):
         self._signup_done(client)
         body = self._page(client)
         assert "Resubmit for Verification" not in body
-        assert "pending review" in body
+        assert "Pending review" in body
 
     def test_legacy_record_keeps_form_and_resubmit(self, client):
         signup(client)
@@ -477,7 +490,8 @@ class TestSignupRecordDisplay:
         body = self._page(client)
         assert '<select name="degree_branch" required' in body
         assert "Resubmit for Verification" in body
-        assert "Your submitted details" in body  # summary covers any pending record
+        assert "Official Notice" in body
+        assert "Your submitted details" not in body  # rich panel is signup-only
 
     def test_rejected_signup_record_points_to_support(self, client):
         email = self._signup_done(client)
@@ -485,6 +499,16 @@ class TestSignupRecordDisplay:
         body = self._page(client)
         assert "Resubmit for Verification" not in body
         assert "contact support" in body
+
+    def test_submitted_timestamp_uses_12_hour_display_format(self, client):
+        from app.main import _format_submitted_at
+
+        assert _format_submitted_at("2026-10-16 16:43:05 UTC") == "16-10-2026 04:43 PM"
+        assert _format_submitted_at("2026-01-05 09:07:00 UTC") == "05-01-2026 09:07 AM"
+        assert _format_submitted_at("2026-01-05 00:07:00 UTC") == "05-01-2026 12:07 AM"
+        assert _format_submitted_at("2026-01-05 12:07:00 UTC") == "05-01-2026 12:07 PM"
+        assert _format_submitted_at("") == ""
+        assert _format_submitted_at("not-a-date") == "not-a-date"
 
 
 class TestApprovedStudentNav:
@@ -498,11 +522,16 @@ class TestApprovedStudentNav:
         body = client.get("/settings", headers={"Accept": "text/html"}).text
         assert "<span>Onboarding</span>" in body  # tab present while pending
         assert "Academic Record" not in body
+        assert "data-tab-btn=" not in body  # students get a tab-free page
         assert auth.set_onboarding_status("stu1@college.edu", "approved")[0]
         body2 = client.get("/settings", headers={"Accept": "text/html"}).text
         assert "<span>Onboarding</span>" not in body2
-        assert "Academic Record" in body2
-        assert "View / Update Onboarding" in body2
-        assert "1234567890" in body2  # verified PRN shown in the record
+        # Students only see theme, profile/sign-out, and legal — no record panel.
+        assert "Academic Record" not in body2
+        assert "View / Update Onboarding" not in body2
+        for panel in ("Appearance", "Profile", "Legal"):
+            assert panel in body2
+        assert "Sign out" in body2
+        assert 'href="/privacy"' in body2
         r = client.get("/onboarding", headers={"Accept": "text/html"})
         assert r.status_code == 200

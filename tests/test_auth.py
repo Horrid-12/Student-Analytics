@@ -289,6 +289,14 @@ class TestSignupPhase4:
         assert "GitHub hidden" in body
         assert "PRN visible" in body
         assert "Pending review" in body
+        for section in ("Personal Details", "Academic Details", "Linked Profiles"):
+            assert section in body
+        assert "Full access to the website will be available once your profile is verified." in body
+        assert "Only the onboarding, support and settings pages are available" not in body
+        submitted_at = auth.get_user("stu1@college.edu")["onboarding_submitted_at"]
+        assert submitted_at[:10].count("-") == 2  # stored raw stays ISO
+        import re
+        assert re.search(r"\d{2}-\d{2}-\d{4} \d{2}:\d{2} (AM|PM)", body)
 
 
 def _pending_student(client, email="pend@college.edu"):

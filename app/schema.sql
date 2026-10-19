@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS roster_repositories (
     has_readme                  INTEGER NOT NULL DEFAULT 0,
     topics_count                INTEGER NOT NULL DEFAULT 0,
     total_commits               INTEGER NOT NULL DEFAULT 0,
+    is_fork                     INTEGER NOT NULL DEFAULT 0,
     UNIQUE (roster_id, username, repository_url)
 );
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS commits INTEGER NOT NULL DEFAULT 0;
@@ -196,6 +197,7 @@ ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS contributors INTEGER NO
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS has_readme INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS topics_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS total_commits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE roster_repositories ADD COLUMN IF NOT EXISTS is_fork INTEGER NOT NULL DEFAULT 0;
 
 -- 6b. Team-contributed repos (per-roster snapshot of external-repo activity
 --     derived from the public events API — the group-project fix).

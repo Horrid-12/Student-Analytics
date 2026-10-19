@@ -483,8 +483,8 @@ def upsert_batch_results(
                             "(roster_id,username,repository,language,stars,forks,description,license,"
                             "created_at,updated_at,repository_url,maintenance_status,"
                             "repository_quality_score,quality_band,commits,commits_30d,commits_90d,"
-                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            "pull_requests,issues,contributors,has_readme,topics_count,total_commits,is_fork) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 roster_id,
                                 r.get("Username", ""),
@@ -509,6 +509,7 @@ def upsert_batch_results(
                                 1 if r.get("Has_README") else 0,
                                 int(r.get("Topics_Count") or 0),
                                 int(r.get("Total_Commits") or 0),
+                                1 if r.get("Is_Fork") else 0,
                             ),
                         )
                     except Exception:
@@ -778,7 +779,8 @@ def get_repositories_data(roster_id: str) -> list[dict]:
                     'commits_30d AS "Commits_30d", commits_90d AS "Commits_90d", '
                     'pull_requests AS "Pull_Requests", issues AS "Issues", '
                     'contributors AS "Contributors", has_readme AS "Has_README", '
-                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits" '
+                    'topics_count AS "Topics_Count", total_commits AS "Total_Commits", '
+                    'is_fork AS "Is_Fork" '
                     "FROM roster_repositories WHERE roster_id = %s ORDER BY id",
                     (roster_id,),
                 )
@@ -1488,6 +1490,27 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
         return False
 
 
+def set_profile_source(email: str, source: str) -> bool:
+    """Set profile_source ('github' or 'linkedin') directly for an account (Postgres leg)."""
+    if source not in ("github", "linkedin"):
+        return False
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET profile_source = %s WHERE email = %s",
+                (source, email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_profile_source failed: %s", exc)
+        return False
+
+
 def confirm_profile_source(email: str, source: str) -> bool:
     """4.11 (e): activate a previously fetched candidate for sidebar display.
     Refuses when the candidate is missing (Postgres leg)."""
@@ -1502,18 +1525,8 @@ def confirm_profile_source(email: str, source: str) -> bool:
     handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
     if not (user.get(handle_col) or "").strip():
         return False
-    try:
-        with database.conn() as c:
-            if c is None:
-                return False
-            cur = c.execute(
-                "UPDATE users SET profile_source = %s WHERE email = %s",
-                (source, email),
-            )
-            return (cur.rowcount or 0) > 0
-    except (psycopg.errors.DatabaseError, OSError) as exc:
-        logger.warning("confirm_profile_source failed: %s", exc)
-        return False
+    return set_profile_source(email, source)
+
 
 
 def upsert_user(
@@ -1700,7 +1713,8 @@ def get_approved_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
+                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub, "
+                "linked_linkedin_avatar, linked_github_username, linked_github_avatar, profile_source "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
             return [dict(row) for row in cur.fetchall()]
@@ -1920,7 +1934,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
     students, repos, team_repos and issues are DataFrames with the canonical
     column ordering. Reconstructs the state dict from run_summary + result
     tables so callers need no changes."""
-    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_COLS, TEAM_REPOS_COLS
+    from app.views import DASHBOARD_COLS, ISSUE_COLS, REPO_DISPLAY_COLS, TEAM_REPOS_COLS
 
     try:
         from app.views import _enrich_students_with_records
@@ -1929,7 +1943,7 @@ def get_analysis_view_data(roster_id: str) -> Optional[dict]:
         records = get_roster_records(roster_id)
         students = _frame(get_dashboard_data(roster_id), DASHBOARD_COLS)
         students = _enrich_students_with_records(students, records)
-        repos = _frame(get_repositories_data(roster_id), REPO_COLS)
+        repos = _frame(get_repositories_data(roster_id), REPO_DISPLAY_COLS)
         team_repos = _frame(get_team_repos_data(roster_id), TEAM_REPOS_COLS)
         issues = _frame(get_issues_data(roster_id), ISSUE_COLS)
         state = dict(summary) if summary else None

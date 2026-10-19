@@ -89,12 +89,14 @@ class TestRecentActivity:
         _, streak = views._recent_activity(self._repos((60,)), owned_active_dates=owned)
         assert streak == 5
 
-    def test_fallback_without_dates_unchanged(self):
-        # Old snapshots have no Owned_Active_Dates: repo-Updated behavior stays.
+    def test_no_commit_days_give_zero_streak(self):
+        # Without harvested commit days the streak is 0: repo "Updated"
+        # timestamps are not a reliable streak signal (they create phantom
+        # streaks for inactive users). Contributions still count repo updates.
         _, streak = views._recent_activity(self._repos((0,)), owned_active_dates=set())
-        assert streak == 1
+        assert streak == 0
         _, streak = views._recent_activity(self._repos((0, 1, 2, 3)), owned_active_dates=None)
-        assert streak == 4
+        assert streak == 0
 
 
 class TestProfileStreak:
