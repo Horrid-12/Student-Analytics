@@ -706,10 +706,12 @@ h1, h2, h3 {
     background: var(--hover-bg);
     color: var(--text);
 }
+/* Platform identity on the switch: GitHub reads as neutral grey, HackerRank
+   as its brand green. */
 .platform-switch-btn.is-active[data-platform="github"] {
-    color: var(--accent-red);
-    border-color: var(--accent-red-border);
-    background: var(--accent-red-soft);
+    color: var(--text);
+    border-color: var(--icon-border);
+    background: var(--icon-bg);
 }
 .platform-switch-btn.is-active[data-platform="hackerrank"] {
     color: var(--hackerrank);
