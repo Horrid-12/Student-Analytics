@@ -64,6 +64,7 @@ DASHBOARD_COLS = [
     "Owned_Commits",
     "Owned_Commits_30d",
     "Owned_Commits_90d",
+    "Owned_Active_Dates",
     "Commit_Fetch_Status",
     "Followers",
     "Following",
@@ -2143,7 +2144,10 @@ def _recent_activity(
             updated_ist = (updated + ist_offset).dt.normalize()
             days_ago = (today - updated_ist).dt.days
             owned_contrib = int(((days_ago >= 0) & (days_ago <= 30)).sum())
-            active_days |= set(updated_ist[updated_ist <= today].dt.date)
+            # Repo "Updated" timestamps are NOT reliable streak signals: they
+            # reflect repo metadata changes (stars, pushes, etc.) and create
+            # phantom streaks for inactive users. They only feed the 30-day
+            # contribution count above. Streaks walk commit days instead.
     # Merge per-day commit days (already YYYY-MM-DD dates, treat as IST days).
     # One repo contributes a single Updated date, so without these a student
     # pushing daily to the same repos can never streak past their repo count.

@@ -547,8 +547,9 @@ class TestPageRenderingWithData:
         profile = students_payload_profile(row, repos)
         # today/yesterday/day-before are within 30 days; the old ones are not.
         assert profile["contributions_30d"] == 3
-        # Three consecutive active days ending today.
-        assert profile["activity_streak"] == 3
+        # No harvested commit days -> streak is 0 (repo "Updated" no longer
+        # drives the streak; it only feeds the 30-day contribution count).
+        assert profile["activity_streak"] == 0
 
     def test_profile_streak_broken_without_recent_updates(self):
         import pandas as pd
