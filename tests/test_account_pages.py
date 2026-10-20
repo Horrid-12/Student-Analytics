@@ -684,3 +684,101 @@ class TestRadarComparePicker:
         panel = self._overview(client).split('id="radar-compare-panel"')[1].split("radar-clear-btn")[0]
         assert "Division 3" in panel
         assert "Division 5" in panel  # compare dropdown stays college-wide; only stats/graphs are scoped
+
+
+class TestFacultyVerificationPage:
+    """Faculty Verification page: scoped to taught classes, same filters."""
+
+    @pytest.fixture
+    def verification_fleet(self, tmp_path, monkeypatch):
+        from app import certificates, database
+
+        monkeypatch.setattr(certificates, "DB_PATH", tmp_path / "certs.db")
+        monkeypatch.setattr(database, "db_configured", lambda: False)
+        _seed_approved_student("ver-a@college.edu", "Ver A", "3000000001", "3", "1", "hr_va")
+        _seed_approved_student("ver-b@college.edu", "Ver B", "3000000002", "3", "2", "hr_vb")
+        _seed_approved_student("ver-c@college.edu", "Ver C", "3000000003", "5", "1", "hr_vc")
+        certificates.create_certificate(
+            student_email="ver-a@college.edu", student_id="3000000001",
+            student_name="Ver A", title="Taught Certificate", issuer="Org",
+        )
+        certificates.create_certificate(
+            student_email="ver-c@college.edu", student_id="3000000003",
+            student_name="Ver C", title="Untaught Certificate", issuer="Org",
+        )
+
+    def _faculty(self, teaching, email="verif-prof@college.edu"):
+        client = TestClient(app)
+        assert auth.create_faculty(email, "secret123", "Prof V")
+        if teaching:
+            assert auth.set_faculty_teaching(email, teaching) == (True, "")
+        client.post("/login", data={"email": email, "password": "secret123"})
+        return client
+
+    def test_faculty_sees_only_taught_class_certificates(self, verification_fleet):
+        body = self._faculty({"3": ["1"]}).get(
+            "/verification?status=all", headers={"accept": "text/html"}
+        ).text
+        assert "Taught Certificate" in body
+        assert "Untaught Certificate" not in body
+        # View-only for faculty: no approve/reject/delete action forms.
+        assert "/verification/certificates/" not in body
+        # Same class filter controls as the other pages.
+        assert 'id="verif-class-filter-form"' in body
+        assert 'id="cf-btn"' in body
+        assert 'name="semester"' in body
+
+    def test_faculty_division_batch_semester_filters(self, verification_fleet):
+        client = self._faculty({"3": ["1", "2"]})
+        # Batch 2 has no certificates -> empty ledger, taught batch 1 still shown.
+        body = client.get(
+            "/verification?status=all&batch=2", headers={"accept": "text/html"}
+        ).text
+        assert "Taught Certificate" not in body
+        assert "No certificate submissions found" in body
+        # Semester 3 matches the roster -> taught certificate still shown.
+        sem3 = client.get(
+            "/verification?status=all&semester=Semester+3", headers={"accept": "text/html"}
+        ).text
+        assert "Taught Certificate" in sem3
+        # A semester nobody is in -> empty.
+        sem5 = client.get(
+            "/verification?status=all&semester=Semester+5", headers={"accept": "text/html"}
+        ).text
+        assert "No certificate submissions found" in sem5
+
+    def test_status_tabs_preserve_faculty_filters(self, verification_fleet):
+        body = self._faculty({"3": ["1"]}).get(
+            "/verification?status=all&semester=Semester+3&batch=1",
+            headers={"accept": "text/html"},
+        ).text
+        # Switching status keeps the active class filters.
+        assert "status=pending&amp;semester=" in body
+        assert "&amp;batch=1" in body
+
+    def test_admin_still_sees_all_certificates(self, verification_fleet):
+        admin, _ = make_client("admin")
+        body = admin.get("/verification?status=all", headers={"accept": "text/html"}).text
+        assert "Taught Certificate" in body
+        assert "Untaught Certificate" in body
+        # Admin keeps the action controls.
+        assert "/verification/certificates/" in body
+
+    def test_faculty_without_teaching_sees_no_certificates(self, verification_fleet):
+        body = self._faculty({}).get(
+            "/verification?status=all", headers={"accept": "text/html"}
+        ).text
+        assert "Taught Certificate" not in body
+        assert "Untaught Certificate" not in body
+        assert "No certificate submissions found" in body
+
+    def test_faculty_cannot_approve_reject_or_delete(self, verification_fleet):
+        from app import certificates
+
+        cert_id = certificates.list_certificates(status=None, limit=1)[0]["id"]
+        client = self._faculty({"3": ["1"]})
+        assert client.post(f"/verification/certificates/{cert_id}/approve").status_code == 403
+        assert client.post(
+            f"/verification/certificates/{cert_id}/reject", data={"reason": "x"}
+        ).status_code == 403
+        assert client.post(f"/verification/certificates/{cert_id}/delete").status_code == 403

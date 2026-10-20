@@ -435,7 +435,7 @@ class TestRBACGating:
         # fall through to 404, not a redirect.
         assert client.get("/history", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
         assert client.get("/issues", headers={"accept": "text/html"}, follow_redirects=False).status_code == 404
-        # /verification was re-added as Admin-only: student gets 303 redirect
+        # /verification is admin/faculty only: student gets a 303 redirect.
         assert client.get("/verification", headers={"accept": "text/html"}, follow_redirects=False).status_code in (303, 403)
 
     def test_faculty_and_admin_open_all_pages(self, client):
@@ -447,10 +447,9 @@ class TestRBACGating:
             # /history and /issues pages removed.
             assert c.get("/history").status_code == 404
             assert c.get("/issues").status_code == 404
-            if role == "admin":
-                assert c.get("/verification").status_code == 200
-            else:
-                assert c.get("/verification", follow_redirects=False).status_code in (303, 403)
+            # Verification is open to both roles: admins see the whole college,
+            # faculty see the classes they teach.
+            assert c.get("/verification").status_code == 200
 
 
 class TestSessionTokens:

@@ -414,3 +414,66 @@ class TestSafeRedirectProtection:
         assert del_res.status_code == 303
         assert del_res.headers["location"].startswith("/verification?")
         assert "javascript" not in del_res.headers["location"]
+
+
+class TestFacultyVerificationScoping:
+    """Faculty Verification is restricted to the students they teach."""
+
+    def _students(self):
+        import pandas as pd
+
+        return pd.DataFrame([
+            {"Student_ID": "3000000001", "Student Name": "Teach A", "Roster_Email": "teach-a@college.edu",
+             "Division": "3", "Batch": "1", "Semester": "Semester 3"},
+            {"Student_ID": "3000000002", "Student Name": "Teach B", "Roster_Email": "teach-b@college.edu",
+             "Division": "3", "Batch": "2", "Semester": "Semester 3"},
+            {"Student_ID": "3000000003", "Student Name": "Teach C", "Roster_Email": "teach-c@college.edu",
+             "Division": "5", "Batch": "1", "Semester": "Semester 5"},
+        ])
+
+    def _cert(self, student_id, email, name, title):
+        return certificates.create_certificate(
+            student_email=email, student_id=student_id, student_name=name,
+            title=title, issuer="Org",
+        )
+
+    def test_filter_by_prn_and_email(self):
+        from app import views
+
+        a = self._cert("3000000001", "teach-a@college.edu", "Teach A", "A")
+        self._cert("3000000003", "teach-c@college.edu", "Teach C", "C")
+        students = self._students()
+        scoped = views.filter_certificates_for_students(
+            certificates.list_certificates(status=None, limit=500), students
+        )
+        # Everything scoped to the full frame; then narrow to Division 3.
+        assert {c["title"] for c in scoped} == {"A", "C"}
+        only_div3 = views.verification_payload(
+            {"students": students},
+            certificates.list_certificates(status=None, limit=500),
+            division="3",
+        )
+        assert [c["title"] for c in only_div3["items"]] == ["A"]
+
+    def test_verification_payload_applies_semester_and_batch(self):
+        from app import views
+
+        self._cert("3000000001", "teach-a@college.edu", "Teach A", "A")
+        self._cert("3000000002", "teach-b@college.edu", "Teach B", "B")
+        students = self._students()
+        items = certificates.list_certificates(status=None, limit=500)
+        by_batch = views.verification_payload({"students": students}, items, batch="2")
+        assert [c["title"] for c in by_batch["items"]] == ["B"]
+        by_sem = views.verification_payload({"students": students}, items, semester="Semester 5")
+        assert [c["title"] for c in by_sem["items"]] == []
+        assert by_sem["total"] == 0
+
+    def test_certificate_without_matching_student_is_hidden(self):
+        from app import views
+
+        self._cert("9999999999", "stranger@college.edu", "Stranger", "Hidden")
+        payload = views.verification_payload(
+            {"students": self._students()},
+            certificates.list_certificates(status=None, limit=500),
+        )
+        assert payload["items"] == []
