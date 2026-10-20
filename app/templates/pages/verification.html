@@ -1,12 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Certificate Verification &mdash; Admin Portal{% endblock %}
+{% block title %}Certificate Verification &mdash; Student Analytics{% endblock %}
 
 {% block content %}
 <div class="topbar-card">
   <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
     <div>
       <div class="topbar-title">Certificate Verification</div>
-      <div class="topbar-subtitle">Review, verify, or reject student certificates and external credentials.</div>
+      <div class="topbar-subtitle">
+        {% if is_faculty_verification %}
+        Review student certificates and credentials from the divisions and batches you teach.
+        {% else %}
+        Review, verify, or reject student certificates and external credentials.
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
@@ -51,26 +57,36 @@
 </div>
 
 <!-- Filter Bar -->
+{% set _fq = namespace(extra='') %}
+{% if is_faculty_verification %}
+{% if semester and semester != 'All' %}{% set _fq.extra = _fq.extra ~ '&semester=' ~ (semester | urlencode) %}{% endif %}
+{% if division and division != 'All' %}{% set _fq.extra = _fq.extra ~ '&division=' ~ (division | urlencode) %}{% endif %}
+{% if batch and batch != 'All' %}{% set _fq.extra = _fq.extra ~ '&batch=' ~ (batch | urlencode) %}{% endif %}
+{% if pair and pair != 'All' %}{% set _fq.extra = _fq.extra ~ '&pair=' ~ (pair | urlencode) %}{% endif %}
+{% endif %}
+{% if q %}{% set _fq.extra = _fq.extra ~ '&q=' ~ (q | urlencode) %}{% endif %}
+{% if roster_id %}{% set _fq.extra = _fq.extra ~ '&roster=' ~ (roster_id | urlencode) %}{% endif %}
 <div class="verif-filter-bar">
   <div class="verif-status-tabs" role="tablist">
-    <a href="/verification?status=pending{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'pending' %} is-active{% endif %}">
+    <a href="/verification?status=pending{{ _fq.extra }}" class="verif-status-tab{% if active_status == 'pending' %} is-active{% endif %}">
       Pending
       <span class="verif-tab-badge verif-tab-pending">{{ counts.get('pending', 0) }}</span>
     </a>
-    <a href="/verification?status=approved{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'approved' %} is-active{% endif %}">
+    <a href="/verification?status=approved{{ _fq.extra }}" class="verif-status-tab{% if active_status == 'approved' %} is-active{% endif %}">
       Approved
       <span class="verif-tab-badge verif-tab-approved">{{ counts.get('approved', 0) }}</span>
     </a>
-    <a href="/verification?status=rejected{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'rejected' %} is-active{% endif %}">
+    <a href="/verification?status=rejected{{ _fq.extra }}" class="verif-status-tab{% if active_status == 'rejected' %} is-active{% endif %}">
       Rejected
       <span class="verif-tab-badge verif-tab-rejected">{{ counts.get('rejected', 0) }}</span>
     </a>
-    <a href="/verification?status=all{% if q %}&q={{ q }}{% endif %}" class="verif-status-tab{% if active_status == 'all' %} is-active{% endif %}">
+    <a href="/verification?status=all{{ _fq.extra }}" class="verif-status-tab{% if active_status == 'all' %} is-active{% endif %}">
       All
       <span class="verif-tab-badge">{{ counts.get('total', 0) }}</span>
     </a>
   </div>
 
+  {% if not is_faculty_verification %}
   <form method="GET" action="/verification" class="verif-search-form">
     <input type="hidden" name="status" value="{{ active_status }}">
     <div class="verif-search-input-wrap">
@@ -82,7 +98,30 @@
     </div>
     <button type="submit" class="verif-search-btn">Filter</button>
   </form>
+  {% endif %}
 </div>
+
+{% if is_faculty_verification %}
+<form class="filter-bar" method="get" action="/verification" id="verif-class-filter-form">
+  <input type="hidden" name="status" value="{{ active_status }}">
+  {% if roster_id %}<input type="hidden" name="roster" value="{{ roster_id }}">{% endif %}
+  <div class="filter-field search-box-row">
+    <label class="filter-label" for="verif-search">Search</label>
+    <input id="verif-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by student, PRN, certificate, issuer, skills&hellip;">
+  </div>
+  {% include "partials/class_filter_dropdown.html" %}
+  <div class="filter-field">
+    <label class="filter-label" for="verif-semester">Semester</label>
+    <select id="verif-semester" class="filter-select" name="semester">
+      {% for value in payload.semesters %}
+      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/verification?status={{ active_status }}{% if roster_id %}&roster={{ roster_id }}{% endif %}">Clear</a>
+</form>
+{% endif %}
 
 <!-- Ledger of Submissions -->
 <div class="verif-ledger">
@@ -180,6 +219,7 @@
         {% endif %}
       </div>
 
+      {% if not is_faculty_verification %}
       <div class="verif-card-actions">
         {% set curr_url = (request.url.path ~ '?' ~ request.url.query) if request.url.query else request.url.path %}
         {% if cert.status != 'approved' %}
@@ -219,6 +259,7 @@
           </button>
         </form>
       </div>
+      {% endif %}
     </div>
     {% endfor %}
   {% else %}

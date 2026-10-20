@@ -3016,18 +3016,73 @@ def verification_page(
     q: str = "",
     roster: str = "",
     notice: str = "",
+    division: str = "All",
+    batch: str = "All",
+    semester: str = "All",
+    pair: str = "All",
 ):
-    """Admin-only Certificate Verification Center (Phase 19 / Row 78).
-    Review and verify queued student certificates."""
+    """Certificate Verification Center (Phase 19 / Row 78).
+
+    Admins see every queued student certificate. Faculty see only the
+    applications from the divisions/batches they teach, with the same
+    Division / Batch / Semester filters as the other pages. Faculty access is
+    view-only; approve/reject/delete remain admin-only.
+    """
     user = getattr(request.state, "user", None)
-    if not user or user.get("role") != "admin":
+    role = (user or {}).get("role")
+    if not user or role not in ("admin", "faculty"):
         return RedirectResponse("/", status_code=303)
     ctx = _base_context(request, "Verification", roster)
     status_filter = status.lower() if status and status.lower() in ("pending", "approved", "rejected") else None
     if status.lower() == "all":
         status_filter = None
-    items = certificates.list_certificates(status=status_filter, query=q)
-    counts = certificates.counts_by_status()
+    _fc = _filter_context(request, division, batch, pair)
+    ctx.update(_fc)
+    ctx["semester"] = semester or "All"
+    ctx["is_faculty_verification"] = role == "faculty"
+
+    if role == "faculty":
+        # Scope certificates to the student cohort the faculty teaches, then
+        # apply the same Division/Batch/Semester/Pair filters as other pages.
+        view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
+        try:
+            taught_map = auth.get_faculty_teaching(user.get("email", "")) or {}
+        except Exception:
+            taught_map = {}
+        if view is not None and _is_complete(view) and taught_map:
+            view = views.filter_view_by_teaching(view, taught_map)
+        elif view is not None and _is_complete(view):
+            # Faculty with no teaching assignments must not see the whole
+            # college's certificates — scope to an empty cohort instead.
+            empty_view = dict(view)
+            try:
+                empty_view["students"] = view["students"].iloc[0:0]
+            except Exception:
+                empty_view["students"] = None
+            view = empty_view
+        all_items = certificates.list_certificates(status=None, query=q, limit=500)
+        payload = views.verification_payload(
+            view, all_items,
+            division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
+            semester=semester or "All", pairs=ctx["pairs"] or "All",
+        )
+        scoped_items = payload["items"]
+        counts = {"pending": 0, "approved": 0, "rejected": 0}
+        for cert_row in scoped_items:
+            _st = str(cert_row.get("status") or "").lower()
+            if _st in counts:
+                counts[_st] += 1
+        counts["total"] = len(scoped_items)
+        items = [
+            cert_row for cert_row in scoped_items
+            if status_filter is None or str(cert_row.get("status") or "").lower() == status_filter
+        ]
+        ctx["payload"] = payload
+        ctx["view"] = view
+    else:
+        items = certificates.list_certificates(status=status_filter, query=q)
+        counts = certificates.counts_by_status()
+
     return templates.TemplateResponse(
         request,
         "pages/verification.html",

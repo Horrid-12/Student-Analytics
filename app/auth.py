@@ -188,13 +188,14 @@ _PAGE_BY_PREFIX = (
 
 ALL_PAGES = ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile")
 
-# RBAC: Verification is admin-only (Phase 19 certificate verification ledger).
-# Faculty review onboarding submissions from the Onboarding page; their class
-# assignments are selected during one-time account setup and editable in Settings.
+# RBAC: Verification is available to admins (whole college) and faculty
+# (scoped to the divisions/batches they teach). Students review onboarding from
+# the Onboarding page; their class assignments are selected during one-time
+# account setup and editable in Settings.
 # Students see Overview + Onboarding + Students + Repositories + Leaderboards + Settings + Support + My Profile.
 ROLE_PAGES = {
     "student": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Settings", "Support", "My Profile"),
-    "faculty": ("Overview", "Onboarding", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
+    "faculty": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
     "admin": ("Overview", "Onboarding", "Verification", "Students", "Repositories", "AutoCAD", "Leaderboards", "Support", "Settings", "My Profile"),
 }
 

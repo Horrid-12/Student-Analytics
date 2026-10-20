@@ -1987,6 +1987,92 @@ def division_batch_groups(students) -> list[dict]:
     return groups
 
 
+def _student_identity_keys(students) -> tuple[set[str], set[str]]:
+    """Return the (PRN/Student_ID set, lowercased email set) for a roster frame.
+
+    Certificate rows identify students by ``student_id`` (PRN) and
+    ``student_email``. The roster stores ``Student_ID`` plus one of several
+    email column names depending on the source (account fleet vs uploaded
+    roster), so collect every variant. A Student_ID that is itself an email
+    (the PRN-less fallback) is also added to the email set."""
+    ids: set[str] = set()
+    emails: set[str] = set()
+    if students is None or getattr(students, "empty", True):
+        return ids, emails
+    if STUDENT_ID_COL in students.columns:
+        for value in students[STUDENT_ID_COL].dropna().astype(str):
+            text = value.strip()
+            if not text or text.lower() in {"nan", "none"}:
+                continue
+            ids.add(text)
+            if "@" in text:
+                emails.add(text.lower())
+    for col in ("Roster_Email", "Email address", "Email"):
+        if col in students.columns:
+            for value in students[col].dropna().astype(str):
+                text = value.strip().lower()
+                if text and text.lower() not in {"nan", "none"}:
+                    emails.add(text)
+    return ids, emails
+
+
+def filter_certificates_for_students(items, students) -> list[dict]:
+    """Keep only certificate rows that belong to a student in ``students``.
+
+    Used by the Verification page so a faculty member only sees applications
+    from the divisions/batches they teach. Matching is by PRN (``student_id``)
+    or email, since certificates carry both."""
+    ids, emails = _student_identity_keys(students)
+    if not ids and not emails:
+        return []
+    kept: list[dict] = []
+    for cert in items or []:
+        try:
+            sid = str(cert.get("student_id") or "").strip()
+            sem = str(cert.get("student_email") or "").strip().lower()
+        except Exception:
+            sid, sem = "", ""
+        if (sid and sid in ids) or (sem and sem in emails):
+            kept.append(cert)
+    return kept
+
+
+def verification_payload(view, items, division="All", batch="All", semester="All", pairs="All") -> dict:
+    """Scope certificate rows to the viewed cohort and build the class-filter
+    options for the Verification page.
+
+    ``view`` is the roster (already restricted to the faculty's taught classes
+    by the caller); ``items`` are the certificates narrowed by the text search.
+    Division / Batch / Semester / Pair filtering mirrors the other pages, so a
+    faculty member can drill into one of their classes.
+    """
+    students = view.get("students") if isinstance(view, dict) else None
+    filtered_students = students
+    if students is not None:
+        try:
+            filtered_students = _apply_cohort_filters(students.copy(), division, batch, semester, pairs)
+        except Exception:
+            filtered_students = students
+    scoped_items = filter_certificates_for_students(items, filtered_students)
+    try:
+        semester_opts = (
+            dist_options(students["Semester"].dropna().astype(str).unique().tolist())
+            if students is not None and not students.empty and "Semester" in students.columns
+            else ["All"]
+        )
+    except Exception:
+        semester_opts = ["All"]
+    return {
+        "items": scoped_items,
+        "total": len(scoped_items),
+        "semesters": semester_opts,
+        "selected_divisions": _filter_list(division),
+        "selected_batches": _filter_list(batch),
+        "selected_pairs": _pairs_list(pairs),
+        "division_groups": division_batch_groups(students),
+    }
+
+
 def linkedin_display_name(slug) -> str:
     """Shorten a LinkedIn /in/ slug for display by dropping the trailing
     auto-generated ID segment (e.g. "anshuman-kulkarni-b27b0142a" becomes
