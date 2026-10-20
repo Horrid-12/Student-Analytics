@@ -96,7 +96,7 @@
       <div class="user-name">{{ auth_user }}</div>
     </div>
   </div>
-  {% if auth_role == "Student" and pfp_options is defined and pfp_options and pfp_options.available %}
+  {% if auth_role == "Student" and pfp_options is defined and pfp_options and (pfp_options.github.avatar or pfp_options.linkedin.avatar) %}
   {# Feature 85: choose which linked photo is displayed everywhere. Lives
      inside the Profile panel so settings keeps a single identity card. #}
   <div class="pfp-select-section" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">

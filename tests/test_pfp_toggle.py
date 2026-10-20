@@ -197,11 +197,12 @@ class TestSettings:
         body = login().get("/settings?pfp=saved", headers={"Accept": "text/html"}).text
         assert "Profile picture updated." in body
 
-    def test_settings_panel_hidden_without_both_avatars(self):
+    def test_settings_panel_visible_with_one_avatar(self):
         email, prn = "pfp-none@college.edu", "4000000013"
         _make_student(email, prn, "No Li", github="no-li", linkedin_avatar="")
         body = login(email).get("/settings", headers={"Accept": "text/html"}).text
-        assert 'action="/settings/pfp"' not in body
+        assert 'action="/settings/pfp"' in body
+        assert "Profile Picture" in body
 
     def test_faculty_cannot_use_endpoint_or_panel(self, student_both):
         c = faculty_client()
