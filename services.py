@@ -315,9 +315,50 @@ def extract_hackerrank_username(text):
 
 
 def linkedin_profile_url(username) -> str:
-    if pd.isna(username) or not str(username).strip():
+    """Canonical ``/in/<slug>`` URL, or "" when the value is not a slug.
+
+    Bug BUG-141: LinkedIn's OIDC userinfo only returns the member's *display
+    name* ("Animesh Misra") — never the public profile slug — and the old
+    version interpolated whatever it was given into ``/in/``. LinkedIn
+    answered a name with a member *search* for those words, so every
+    OAuth-linked profile icon landed on a search page instead of a profile.
+    Only a real slug (or an ``/in/`` URL) produces a link now; callers render
+    the display name as plain text when this returns "".
+    """
+    if pd.isna(username):
         return ""
-    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
+    raw = str(username).strip()
+    if not raw or raw in {"-", "--"}:
+        return ""
+    match = re.search(r"linkedin\.com/in/([^/?#\s]+)", raw.replace(" ", ""), re.IGNORECASE)
+    slug = match.group(1) if match else raw
+    slug = slug.strip().strip("/").lstrip("@").rstrip(".,;:!?")
+    try:
+        from urllib.parse import unquote
+
+        slug = unquote(slug)
+    except Exception:
+        pass
+    if not slug or any(ch.isspace() for ch in slug) or "/" in slug or "://" in slug:
+        return ""
+    if "linkedin.com" in slug.lower():
+        return ""
+    # A LinkedIn public identifier is letters/digits/`-`/`_`/`.` only; anything
+    # else (schemes, emails, prose) is not a profile the site can open.
+    if not re.fullmatch(r"[\w.\-]+", slug):
+        return ""
+    return f"https://www.linkedin.com/in/{slug}"
+
+
+def linkedin_slug(value) -> str:
+    """The ``/in/`` slug inside ``value``, or "" when it is not one.
+
+    Used by the sign-up/Settings inputs (BUG-141): the student may paste a
+    full profile URL, an ``@handle`` or a bare slug — all of them normalize to
+    the same stored slug, and display names are rejected like in
+    ``linkedin_profile_url``."""
+    url = linkedin_profile_url(value)
+    return url.rsplit("/", 1)[-1] if url else ""
 
 
 def hackerrank_profile_url(username) -> str:

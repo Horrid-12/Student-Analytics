@@ -174,6 +174,11 @@ def _prn_from_email(value: str) -> str:
 
 templates.env.filters["prn_from_email"] = _prn_from_email
 
+#: BUG-141: never render a LinkedIn display name as a profile URL. Templates
+#: that build a link from a stored handle pass it through this filter and fall
+#: back to plain text when it returns "" (no slug known).
+templates.env.filters["linkedin_url"] = services.linkedin_profile_url
+
 
 def _analysis_view(roster_id: str):
     """Page-render helper: read from Postgres first (if configured), fall back
@@ -1241,10 +1246,13 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
     # portal, so their pending state lives on the user row, not the token).
     linked_github = ""
     linked_linkedin = ""
+    linkedin_username = ""
     hr_locked = False
     if phase == 3 and (progress.get("email") or "").strip():
         linked_github = str(progress.get("linked_github_username") or "").strip()
         linked_linkedin = str(progress.get("linked_linkedin_name") or "").strip()
+        # BUG-141: the public profile slug (OAuth only returns a display name).
+        linkedin_username = str(progress.get("linkedin_username") or "").strip()
         stored_hr = str(progress.get("hackerrank_username") or "").strip()
         hr_locked = bool(stored_hr) and services.extract_hackerrank_username(stored_hr) == stored_hr
     # Phase 4 renders the Profile Status toggles (same four privacy fields as
@@ -1288,6 +1296,7 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
             "linked_github": linked_github,
             "linked_linkedin": linked_linkedin,
+            "linkedin_username": linkedin_username,
             "hr_locked": hr_locked,
             "privacy_prefs": privacy_prefs,
             "linked_github_avatar": linked_github_avatar,
@@ -1418,6 +1427,7 @@ async def signup_phase_2_submit(
 async def signup_phase_3_submit(
     request: Request,
     hackerrank_username: str = Form(""),
+    linkedin_username: str = Form(""),
     action: str = Form("continue"),
 ):
     """Profiles phase: HackerRank (typed, same normalization as onboarding)
@@ -1448,10 +1458,15 @@ async def signup_phase_3_submit(
         return response
 
     handle = services.extract_hackerrank_username(hackerrank_username or "")
+    li_handle = services.linkedin_slug(linkedin_username or "")
     if action == "save":
         # Stash the typed handle before the OAuth round-trip steals the page
         # (no validation gate — Continue still enforces everything).
         progress["hackerrank_username"] = handle or (hackerrank_username or "").strip()
+        if li_handle:
+            progress["linkedin_username"] = li_handle
+        else:
+            progress.pop("linkedin_username", None)
         saved = persist()
         return saved if saved is not None else fail("storage")
     if not handle:
@@ -1464,6 +1479,12 @@ async def signup_phase_3_submit(
         "phase": 4,
         "hackerrank_username": handle,
     })
+    # BUG-141: optional — without a real slug the LinkedIn card/icon stays
+    # unlinked (rather than sending visitors to a member-name search).
+    if li_handle:
+        progress["linkedin_username"] = li_handle
+    else:
+        progress.pop("linkedin_username", None)
     token = auth.save_signup_progress(progress)
     if token is None:
         return fail("storage")
@@ -2530,6 +2551,18 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
     ) or ""
     ctx["hackerrank_handle"] = _hr_handle
     ctx["hackerrank_url"] = services.hackerrank_profile_url(_hr_handle)
+    # LinkedIn (BUG-141): the OAuth-identity column holds a *display name*, so
+    # only a real /in/ slug (saved at sign-up/Settings) links; a display name
+    # renders as plain text instead of a member search.
+    _li_raw = str(
+        (ctx["submission"] or {}).get("linkedin_username")
+        or (ctx["submission"] or {}).get("linked_linkedin_name")
+        or ""
+    ).strip()
+    _li_slug = services.linkedin_slug(_li_raw)
+    ctx["linkedin_username"] = _li_slug
+    ctx["linkedin_url"] = services.linkedin_profile_url(_li_slug)
+    ctx["linkedin_display"] = _li_slug or _li_raw
     ctx["saved"] = saved
     ctx["error"] = error
     ctx["action"] = action
@@ -4976,7 +5009,7 @@ async def profile_confirm(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, linked: str = "", classes: str = "", pfp: str = ""):
+def settings_page(request: Request, linked: str = "", classes: str = "", pfp: str = "", linkedin: str = ""):
     """Settings â€” storage health (honest about serverless read-only), theme
     toggle (persisted in localStorage), and the account/role card (auth is a
     Phase 4.7 placeholder until then)."""
@@ -4995,7 +5028,12 @@ def settings_page(request: Request, linked: str = "", classes: str = "", pfp: st
     if row is None and user:
         row = auth.get_account(user.get("email", ""))
     identity = auth.linked_identity(row)
-    
+
+    # BUG-141: the student-supplied public LinkedIn slug (OAuth only returns a
+    # display name, which must never be turned into a /in/ URL).
+    linkedin_username = services.linkedin_slug((row or {}).get("linkedin_username"))
+    linkedin_url = services.linkedin_profile_url(linkedin_username)
+
     hackerrank_handle = ""
     hackerrank_url = ""
     if row and row.get("prn"):
@@ -5083,6 +5121,10 @@ def settings_page(request: Request, linked: str = "", classes: str = "", pfp: st
             # avatars linked only).
             "pfp_options": _pfp_options(row),
             "pfp_status": (pfp or "").strip(),
+            # BUG-141: public LinkedIn slug capture (sign-up phase 3 mirrors it).
+            "linkedin_username": linkedin_username,
+            "linkedin_url": linkedin_url,
+            "linkedin_status": (linkedin or "").strip(),
         },
     )
 
@@ -5111,6 +5153,31 @@ async def settings_pfp_submit(request: Request):
     if options.get("source") != source:
         _db_log_event("profile_picture_switched", f"{user.get('email', '')}:{source}")
     return RedirectResponse("/settings?pfp=saved", status_code=303)
+
+
+@app.post("/settings/linkedin")
+async def settings_linkedin_submit(request: Request):
+    """Store the student's public LinkedIn profile slug (BUG-141).
+
+    LinkedIn's OIDC userinfo only returns a display name, which LinkedIn turns
+    into a *member search* when placed in ``/in/``. Students paste their real
+    profile URL (or slug) here — or in sign-up phase 3 — and it is normalized
+    to the slug. Blank clears the stored link; anything that is not a slug
+    (e.g. a display name) is rejected.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "") != "student":
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    form = await request.form()
+    raw = str(form.get("linkedin_username") or "").strip()
+    if raw and not services.linkedin_slug(raw):
+        return RedirectResponse("/settings?linkedin=invalid", status_code=303)
+    if not auth.set_linkedin_username(user.get("email", ""), raw):
+        return RedirectResponse("/settings?linkedin=unavailable", status_code=303)
+    _db_log_event("linkedin_username_updated", user.get("email", ""))
+    return RedirectResponse("/settings?linkedin=saved", status_code=303)
 
 
 @app.post("/settings/faculty-teaching", response_class=HTMLResponse)

@@ -38,7 +38,14 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
   <td>
     {% if _pp.get('hide_linkedin') %}<span style="color:var(--muted);">Hidden</span>
     {% elif row.LinkedIn_Username %}
-      <a class="handle handle-linkedin" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
+      {# BUG-141: only a real /in/ slug becomes a link — an OAuth display name
+         renders as plain text instead of a LinkedIn member search. #}
+      {% set _li_url = row.LinkedIn_Username|linkedin_url %}
+      {% if _li_url %}
+      <a class="handle handle-linkedin" href="{{ _li_url }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
+      {% else %}
+      <span class="handle handle-linkedin" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</span>
+      {% endif %}
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>
