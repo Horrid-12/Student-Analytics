@@ -236,7 +236,11 @@
           {% if link_profile.linkedin.avatar %}
             <img src="{{ link_profile.linkedin.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
           {% endif %}
-          <span style="font-size:13px;">Linked as <strong>{{ link_profile.linkedin.handle }}</strong></span>
+          {% if link_profile.linkedin.url %}
+            <span style="font-size:13px;">Linked as <strong><a href="{{ link_profile.linkedin.url }}" target="_blank" style="color:inherit; text-decoration:underline;">{{ link_profile.linkedin.username or link_profile.linkedin.handle }}</a></strong></span>
+          {% else %}
+            <span style="font-size:13px;">Linked as <strong>{{ link_profile.linkedin.handle }}</strong></span>
+          {% endif %}
         </div>
       {% elif linked_flag == "linkedin" %}
         <form action="/profile/confirm" method="POST" style="margin-top:8px;">

@@ -173,7 +173,8 @@
         {% if row.hackerrank_username %}<a href="https://www.hackerrank.com/profile/{{ row.hackerrank_username }}" target="_blank" rel="noopener">@{{ row.hackerrank_username }}</a>{% else %}<strong>Not linked</strong>{% endif %}
       </div>
       <div class="faculty-review-detail"><span>LinkedIn</span>
-        {% if row.linked_linkedin_name %}<a href="https://www.linkedin.com/in/{{ row.linked_linkedin_name }}" target="_blank" rel="noopener">{{ row.linked_linkedin_name }}</a>{% else %}<strong>Not linked</strong>{% endif %}
+        {% set li_user = row.linkedin_username or (row.linked_linkedin_name if row.linked_linkedin_name and ' ' not in row.linked_linkedin_name else '') %}
+        {% if li_user %}<a href="https://www.linkedin.com/in/{{ li_user }}" target="_blank" rel="noopener">{{ li_user }}</a>{% elif row.linked_linkedin_name %}<span>{{ row.linked_linkedin_name }}</span>{% else %}<strong>Not linked</strong>{% endif %}
       </div>
     </div>
   </div>

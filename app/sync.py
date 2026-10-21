@@ -138,6 +138,7 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
     followers = _clean_int(payload.get("followers"))
     following = _clean_int(payload.get("following"))
     canonical = _clean_text(payload.get("login")) or username
+    user_row = user or {}
     return {
         STUDENT_ID_COL: _clean_text(user.get("prn")) or _clean_text(user.get("email")),
         "Student Name": _clean_text(user.get("name")),
@@ -188,8 +189,8 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
         "Primary_Language": _primary_language(repos),
         "Avatar_URL": _clean_text(payload.get("avatar_url")),
         "Profile_URL": _clean_text(payload.get("html_url")),
-        "LinkedIn_Username": user.get("linked_linkedin_name") or "",
-        "LinkedIn_URL": "",
+        "LinkedIn_Username": user.get("linkedin_username") or (user.get("linked_linkedin_name") if services.extract_linkedin_username(user.get("linked_linkedin_name")) else ""),
+        "LinkedIn_URL": services.linkedin_profile_url(user_row.get("linkedin_username") or (user_row.get("linked_linkedin_name") if services.extract_linkedin_username(user_row.get("linked_linkedin_name")) else "")),
         "HackerRank_Username": user.get("hackerrank_username") or "",
         "HackerRank_URL": "",
     }
@@ -661,8 +662,8 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         "GitHub_Username": username,
         "Submitted_GitHub_Username": username,
         "Academic_Year": "2026-2027",
-        "LinkedIn_Username": user_row.get("linked_linkedin_name") or "",
-        "LinkedIn_URL": "",
+        "LinkedIn_Username": user_row.get("linkedin_username") or (user_row.get("linked_linkedin_name") if services.extract_linkedin_username(user_row.get("linked_linkedin_name")) else ""),
+        "LinkedIn_URL": services.linkedin_profile_url(user_row.get("linkedin_username") or (user_row.get("linked_linkedin_name") if services.extract_linkedin_username(user_row.get("linked_linkedin_name")) else "")),
         "HackerRank_Username": user_row.get("hackerrank_username") or "",
         "HackerRank_URL": ""
     }

@@ -317,7 +317,16 @@ def extract_hackerrank_username(text):
 def linkedin_profile_url(username) -> str:
     if pd.isna(username) or not str(username).strip():
         return ""
-    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
+    val = str(username).strip()
+    if " " in val:
+        return ""
+    slug = extract_linkedin_username(val)
+    if slug:
+        return f"https://www.linkedin.com/in/{slug}"
+    clean = val.strip().strip("/")
+    if " " not in clean and "/" not in clean and clean not in {"-", "--"} and len(clean) >= 2:
+        return f"https://www.linkedin.com/in/{clean}"
+    return ""
 
 
 def hackerrank_profile_url(username) -> str:
