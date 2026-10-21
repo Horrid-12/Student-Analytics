@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS users (
     linked_github_avatar   TEXT NOT NULL DEFAULT '',
     linked_linkedin_name   TEXT NOT NULL DEFAULT '',
     linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
-    profile_source         TEXT NOT NULL DEFAULT ''
+    profile_source         TEXT NOT NULL DEFAULT '',
+    -- BUG-141: the public LinkedIn slug the student supplied (OIDC only
+    -- returns a display name, which must never be used as a profile URL).
+    linkedin_username      TEXT NOT NULL DEFAULT ''
 );
 
 -- Backfill for databases created before the OAuth-identity columns.
@@ -30,6 +33,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_github_avatar TEXT NOT NULL DE
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_avatar TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_source TEXT NOT NULL DEFAULT '';
+-- BUG-141: LinkedIn profile slug captured from the student (sign-up/Settings).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_username TEXT NOT NULL DEFAULT '';
 
 -- 2. Roster uploads (one row per uploaded Excel).
 CREATE TABLE IF NOT EXISTS rosters (

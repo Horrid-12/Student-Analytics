@@ -125,6 +125,24 @@ def _primary_language(repos: list[dict]) -> str:
     return min(key for key, value in counts.items() if value == peak)
 
 
+def _profile_links(user: dict | None) -> tuple[str, str]:
+    """``(LinkedIn slug, canonical URL)`` for a user row (BUG-141).
+
+    ``linkedin_username`` is the slug the student supplied (sign-up/Settings).
+    Older rows only carry the OAuth candidate in ``linked_linkedin_name`` —
+    that is a *display name* unless it already looks like a slug, so it goes
+    through ``services.linkedin_slug`` and yields ("", "") for a name. A
+    snapshot must never be written with a display name in a URL field: that
+    is what sent every LinkedIn click to a name search.
+    """
+    row = user or {}
+    slug = _clean_text(row.get("linkedin_username"))
+    if not slug:
+        slug = services.linkedin_slug(row.get("linked_linkedin_name"))
+    url = services.linkedin_profile_url(slug) if slug else ""
+    return slug, url
+
+
 def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) -> dict:
     """Build the single DASHBOARD_COLS row for an account snapshot. All fields
     the page builders touch are present; team/contribution metrics default to
@@ -138,6 +156,7 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
     followers = _clean_int(payload.get("followers"))
     following = _clean_int(payload.get("following"))
     canonical = _clean_text(payload.get("login")) or username
+    linkedin_slug_value, linkedin_url_value = _profile_links(user)
     return {
         STUDENT_ID_COL: _clean_text(user.get("prn")) or _clean_text(user.get("email")),
         "Student Name": _clean_text(user.get("name")),
@@ -188,8 +207,8 @@ def _student_row(user: dict, username: str, payload: dict, repos: list[dict]) ->
         "Primary_Language": _primary_language(repos),
         "Avatar_URL": _clean_text(payload.get("avatar_url")),
         "Profile_URL": _clean_text(payload.get("html_url")),
-        "LinkedIn_Username": user.get("linked_linkedin_name") or "",
-        "LinkedIn_URL": "",
+        "LinkedIn_Username": linkedin_slug_value,
+        "LinkedIn_URL": linkedin_url_value,
         "HackerRank_Username": user.get("hackerrank_username") or "",
         "HackerRank_URL": "",
     }
@@ -206,17 +225,31 @@ _PROFILE_LINK_COLS = (
 
 
 def _previous_profile_links(email: str) -> dict:
-    """LinkedIn/HackerRank fields of the stored snapshot ({} when absent)."""
+    """LinkedIn/HackerRank fields of the stored snapshot ({} when absent).
+
+    LinkedIn values are sanitized (BUG-141): snapshots written before the fix
+    carry the OAuth *display name* in ``LinkedIn_Username``, and carrying that
+    forward would keep re-persisting a name where a slug belongs.
+    """
     try:
         previous = accounts.get_snapshot(email) or {}
     except Exception:
         previous = {}
     prev_student = previous.get("student") or {}
-    return {
+    links = {
         column: prev_student.get(column)
         for column in _PROFILE_LINK_COLS
         if str(prev_student.get(column) or "").strip()
     }
+    if links.get("LinkedIn_Username"):
+        slug = services.linkedin_slug(links["LinkedIn_Username"])
+        if slug:
+            links["LinkedIn_Username"] = slug
+            links["LinkedIn_URL"] = services.linkedin_profile_url(slug)
+        else:
+            links.pop("LinkedIn_Username", None)
+            links.pop("LinkedIn_URL", None)
+    return links
 
 
 def _carry_forward_profile_links(email: str, student: dict) -> dict:
@@ -650,6 +683,7 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
     if not email or not username:
         return False, "no_handle", "account has no verified GitHub username"
 
+    linkedin_slug_value, linkedin_url_value = _profile_links(user_row)
     record = {
         "Student_ID": user_row.get("prn") or email,
         "Student Name": user_row.get("name"),
@@ -661,8 +695,8 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         "GitHub_Username": username,
         "Submitted_GitHub_Username": username,
         "Academic_Year": "2026-2027",
-        "LinkedIn_Username": user_row.get("linked_linkedin_name") or "",
-        "LinkedIn_URL": "",
+        "LinkedIn_Username": linkedin_slug_value,
+        "LinkedIn_URL": linkedin_url_value,
         "HackerRank_Username": user_row.get("hackerrank_username") or "",
         "HackerRank_URL": ""
     }
@@ -687,6 +721,12 @@ def sync_heavy_one(user_row: dict, token: str | None = None) -> tuple[bool, str,
         my_team = [r for r in team_rows if str(r.get("Username")).lower() == username.lower()]
         
         student = _carry_forward_profile_links(email, student)
+        # The account row is the source of truth for the LinkedIn slug the
+        # student supplied (BUG-141); the roster pipeline above only speaks the
+        # form's LinkedIn column, which the heavy record does not carry.
+        if linkedin_slug_value:
+            student["LinkedIn_Username"] = linkedin_slug_value
+            student["LinkedIn_URL"] = linkedin_url_value
         student, my_team = _carry_forward_heavy_metrics(email, student, my_team, is_lightweight=False)
         accounts.init_db()
         saved = accounts.save_snapshot(

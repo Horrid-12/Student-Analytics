@@ -6,6 +6,7 @@ stack (no Streamlit dependency, pandas only).
 
 import html
 import io
+import re
 
 import pandas as pd
 
@@ -23,9 +24,35 @@ def github_profile_url(username) -> str:
 
 
 def linkedin_profile_url(username) -> str:
-    if pd.isna(username) or not str(username).strip():
+    """Canonical ``/in/<slug>`` URL, or "" when the value is not a slug.
+
+    Mirrors ``services.linkedin_profile_url`` (BUG-141): an OAuth display name
+    ("Animesh Misra") must never become ``/in/Animesh Misra`` — LinkedIn turns
+    that into a member search instead of opening a profile.
+    """
+    if pd.isna(username):
         return ""
-    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
+    raw = str(username).strip()
+    if not raw or raw in {"-", "--"}:
+        return ""
+    match = re.search(r"linkedin\.com/in/([^/?#\s]+)", raw.replace(" ", ""), re.IGNORECASE)
+    slug = match.group(1) if match else raw
+    slug = slug.strip().strip("/").lstrip("@").rstrip(".,;:!?")
+    try:
+        from urllib.parse import unquote
+
+        slug = unquote(slug)
+    except Exception:
+        pass
+    if not slug or any(ch.isspace() for ch in slug) or "/" in slug or "://" in slug:
+        return ""
+    if "linkedin.com" in slug.lower():
+        return ""
+    # A LinkedIn public identifier is letters/digits/`-`/`_`/`.` only; anything
+    # else (schemes, emails, prose) is not a profile the site can open.
+    if not re.fullmatch(r"[\w.\-]+", slug):
+        return ""
+    return f"https://www.linkedin.com/in/{slug}"
 
 
 def hackerrank_profile_url(username) -> str:

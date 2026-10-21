@@ -265,6 +265,27 @@ class TestSyncOne:
         assert snap["status"] == "error"
         assert snap["student"]["HackerRank_Username"] == "bob_hr"
 
+    def test_snapshot_uses_the_saved_linkedin_slug(self):
+        """BUG-141: the account row's supplied slug wins over the OAuth name."""
+        row = {
+            "email": "li@college.edu", "github_username": "alice-dev", "prn": "1011121316",
+            "linkedin_username": "alice-li", "linked_linkedin_name": "Alice Li",
+        }
+        sync.sync_one(row, force=True)
+        student = accounts.get_snapshot("li@college.edu")["student"]
+        assert student["LinkedIn_Username"] == "alice-li"
+        assert student["LinkedIn_URL"] == "https://www.linkedin.com/in/alice-li"
+
+    def test_snapshot_never_stores_a_display_name_as_a_link(self):
+        row = {
+            "email": "display@college.edu", "github_username": "alice-dev",
+            "prn": "1011121317", "linked_linkedin_name": "Alice Li",
+        }
+        sync.sync_one(row, force=True)
+        student = accounts.get_snapshot("display@college.edu")["student"]
+        assert student["LinkedIn_Username"] == ""
+        assert student["LinkedIn_URL"] == ""
+
 
 class TestSyncHeavyOne:
     def test_profile_links_survive_heavy_sync(self, monkeypatch):
@@ -306,6 +327,39 @@ class TestSyncHeavyOne:
         assert student["HackerRank_Username"] == "alice_hr"
         assert student["HackerRank_URL"] == "https://www.hackerrank.com/profile/alice_hr"
         assert student["LinkedIn_Username"] == "alice-li"
+
+    def test_legacy_display_name_is_not_carried_forward(self, monkeypatch):
+        """BUG-141: snapshots written before the fix hold the OAuth display name
+        in ``LinkedIn_Username`` — a re-sync must drop it, not re-persist it."""
+        row = {"email": "display@college.edu", "github_username": "alice-dev",
+               "prn": "1011121318", "name": "Alice Li"}
+        accounts.save_snapshot(
+            "display@college.edu", username="alice-dev", status="ok",
+            student={
+                "Student_ID": "1011121318", "GitHub_Username": "alice-dev",
+                "LinkedIn_Username": "Alice Li", "LinkedIn_URL": "",
+            },
+            repos=[], synced_at="2026-10-01 10:00:00 UTC",
+        )
+
+        def fake_analyze(records, token=None):
+            student = dict(records[0])
+            student.update(
+                {
+                    "Roster_Email": "display@college.edu",
+                    "HackerRank_Username": None, "HackerRank_URL": None,
+                    "LinkedIn_Username": None, "LinkedIn_URL": None,
+                }
+            )
+            return {"students": [student], "repos": [], "team_repos": []}
+
+        from app import batch as app_batch
+        monkeypatch.setattr(app_batch, "analyze_records", fake_analyze)
+        ok, code, _ = sync.sync_heavy_one(row)
+        assert ok and code == "saved", code
+        student = accounts.get_snapshot("display@college.edu")["student"]
+        assert not student.get("LinkedIn_Username")
+        assert not student.get("LinkedIn_URL")
 
 
 

@@ -81,6 +81,8 @@ _EXTRA_COLUMNS = (
     # HackerRank handle captured at onboarding (required) and shown on the
     # Students profile HackerRank tab.
     ("hackerrank_username", "TEXT NOT NULL DEFAULT ''"),
+    # BUG-141: public LinkedIn profile slug (OIDC only returns a display name).
+    ("linkedin_username", "TEXT NOT NULL DEFAULT ''"),
     # Sign-up phase 2: specialisation track captured alongside the branch
     # (empty for single-track branches).
     ("specialisation", "TEXT NOT NULL DEFAULT ''"),
@@ -1288,7 +1290,8 @@ def get_user(email: str) -> dict | None:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, specialisation, hackerrank_username FROM users WHERE email = ?",
+                "main_batch, practical_batch, semester, specialisation, hackerrank_username, linkedin_username "
+                "FROM users WHERE email = ?",
                 (email,),
             ).fetchone()
         if row is None:
@@ -2148,6 +2151,11 @@ def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
     github_username = str(data.get("linked_github_username") or "").strip()
     linkedin_name = str(data.get("linked_linkedin_name") or "").strip()
     chosen_source = str(data.get("profile_source") or "github").strip().lower()
+    # BUG-141: the OAuth display name (linkedin_name) is never a profile slug;
+    # only a slug/URL the student supplied in phase 3 becomes linkedin_username.
+    from app import services
+
+    linkedin_username = services.linkedin_slug(str(data.get("linkedin_username") or ""))
 
     if not email or not domain_allowed_email(email) or auth_source not in ("password", "google"):
         return None, "bad_account"
@@ -2196,6 +2204,7 @@ def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
         "practical_batch": practical_batch,
         "semester": semester,
         "hackerrank_username": hackerrank_username,
+        "linkedin_username": linkedin_username,
     }
     try:
         if database.db_configured():
@@ -2210,8 +2219,8 @@ def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
                         "INSERT INTO users (email,password_hash,role,name,created_at,auth_source,google_sub,github_username,linkedin_sub,"
                         "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
                         "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
-                        "semester,specialisation,hackerrank_username) "
-                        "VALUES (?,?, 'student', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, '', ?, ?, ?, ?)",
+                        "semester,specialisation,hackerrank_username,linkedin_username) "
+                        "VALUES (?,?, 'student', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, '', ?, ?, ?, ?, ?)",
                         (
                             email, password_hash, name, time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
                             auth_source, str(data.get("google_sub") or ""),
@@ -2219,7 +2228,7 @@ def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
                             _clean_avatar(str(data.get("linked_github_avatar") or "")), linkedin_name,
                             _clean_avatar(str(data.get("linked_linkedin_avatar") or "")), chosen_source,
                             prn, branch, division, time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-                            practical_batch, semester, specialisation, hackerrank_username,
+                            practical_batch, semester, specialisation, hackerrank_username, linkedin_username,
                         ),
                     )
             account = get_user(email)
@@ -2368,7 +2377,7 @@ def get_onboarding_users() -> list[dict]:
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
                 "main_batch, practical_batch, semester, "
-                "hackerrank_username, linked_linkedin_name FROM users "
+                "hackerrank_username, linkedin_username, linked_linkedin_name FROM users "
                 "WHERE onboarding_status != 'none' "
                 "ORDER BY onboarding_submitted_at DESC, email ASC"
             ).fetchall()
@@ -2410,7 +2419,7 @@ def get_approved_accounts() -> list[dict]:
             rows = conn.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub, "
+                "main_batch, practical_batch, semester, hackerrank_username, linkedin_username, linked_linkedin_name, linkedin_sub, "
                 "linked_linkedin_avatar, linked_github_username, linked_github_avatar, profile_source FROM users "
                 "WHERE onboarding_status = 'approved' ORDER BY email ASC"
             ).fetchall()
@@ -2474,6 +2483,11 @@ def set_onboarding_status(email: str, status: str, promote_github: bool = False)
         status=status,
         submitted_at=user.get("onboarding_submitted_at", ""),
         github_verified_at=github_verified_at,
+        # BUG-142: approvals must not clobber the HackerRank handle. The
+        # review only changes the status, so pass the stored handle through —
+        # omitting it wrote '' and every approval wiped the student's profile
+        # (sync then rebuilt the snapshot without a HackerRank tab).
+        hackerrank_username=user.get("hackerrank_username", ""),
     )
     if ok:
         # Approved/rejected accounts enter or leave the fleet membership.
@@ -2503,6 +2517,40 @@ def db_set_github_handle(email: str, github_username: str) -> bool:
             return False
     finally:
         # Fleet rows carry GitHub_Username, so both memos go.
+        _drop_user(email)
+        view_cache.invalidate()
+
+
+def set_linkedin_username(email: str, value: str) -> bool:
+    """Store the student's public LinkedIn slug (BUG-141).
+
+    LinkedIn OIDC never exposes the profile slug — only a display name — so
+    the slug is captured from the student (sign-up phase 3 / Settings). The
+    value may be a full ``/in/`` URL, an ``@handle`` or a bare slug; anything
+    that is not a slug (e.g. the OAuth display name) is rejected. Passing ""
+    clears the stored slug. Returns True when the row was updated."""
+    from app import services
+
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    slug = services.linkedin_slug(value or "")
+    try:
+        if database.db_configured():
+            return db.set_linkedin_username(email, slug)
+        try:
+            with closing(_connect()) as conn:
+                with conn:
+                    _ensure_schema(conn)
+                    cur = conn.execute(
+                        "UPDATE users SET linkedin_username = ? WHERE email = ?",
+                        (slug, email),
+                    )
+                    return (cur.rowcount or 0) > 0
+        except (sqlite3.Error, OSError):
+            return False
+    finally:
+        # The fleet row rebuilds LinkedIn from this column, so drop the memos.
         _drop_user(email)
         view_cache.invalidate()
 

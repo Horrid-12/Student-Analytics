@@ -1419,7 +1419,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, specialisation, hackerrank_username, linked_linkedin_name, linkedin_sub "
+                "main_batch, practical_batch, semester, specialisation, hackerrank_username, linkedin_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1569,7 +1569,7 @@ def upsert_user(
                 "linked_linkedin_avatar, profile_source, "
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub "
+                "main_batch, practical_batch, semester, hackerrank_username, linkedin_username, linked_linkedin_name, linkedin_sub "
                 "FROM users WHERE email = %s",
                 (email,),
             )
@@ -1593,13 +1593,13 @@ def create_signup_user(data: dict) -> Optional[dict]:
                 "INSERT INTO users (email,password_hash,role,name,auth_source,google_sub,github_username,linkedin_sub,"
                 "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
                 "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
-                "semester,specialisation,hackerrank_username) "
-                "VALUES (%s,%s,'student',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending',NOW(),'',%s,%s,%s,%s) "
+                "semester,specialisation,hackerrank_username,linkedin_username) "
+                "VALUES (%s,%s,'student',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending',NOW(),'',%s,%s,%s,%s,%s) "
                 "ON CONFLICT (email) DO NOTHING "
                 "RETURNING id,email,password_hash,role,name,auth_source,google_sub,github_username,linkedin_sub,"
                 "linked_github_username,linked_github_avatar,linked_linkedin_name,linked_linkedin_avatar,profile_source,"
                 "prn,degree_branch,division,onboarding_status,onboarding_submitted_at,main_batch,practical_batch,"
-                "semester,specialisation,hackerrank_username",
+                "semester,specialisation,hackerrank_username,linkedin_username",
                 (
                     email, data.get("password_hash"), str(data.get("name") or "").strip(),
                     data.get("auth_source") or "password", data.get("google_sub") or "",
@@ -1610,6 +1610,7 @@ def create_signup_user(data: dict) -> Optional[dict]:
                     data.get("branch") or "", data.get("division") or "",
                     data.get("practical_batch") or "", data.get("semester") or "",
                     data.get("specialisation") or "", data.get("hackerrank_username") or "",
+                    data.get("linkedin_username") or "",
                 ),
             )
             row = cur.fetchone()
@@ -1703,6 +1704,25 @@ def set_github_username(email: str, github_username: str) -> bool:
         return False
 
 
+def set_linkedin_username(email: str, linkedin_username: str) -> bool:
+    """Store the student's public LinkedIn slug (BUG-141, Postgres leg)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE users SET linkedin_username = %s WHERE email = %s",
+                ((linkedin_username or "").strip(), email),
+            )
+            return (cur.rowcount or 0) > 0
+    except (psycopg.errors.DatabaseError, OSError) as exc:
+        logger.warning("set_linkedin_username failed: %s", exc)
+        return False
+
+
 def get_onboarding_users() -> list[dict]:
     """All accounts that ever submitted onboarding, newest-first (Postgres leg)."""
     try:
@@ -1714,7 +1734,7 @@ def get_onboarding_users() -> list[dict]:
                 "prn, degree_branch, division, onboarding_status, "
                 "onboarding_submitted_at, github_verified_at, "
                 "main_batch, practical_batch, semester, "
-                "hackerrank_username, linked_linkedin_name FROM users "
+                "hackerrank_username, linkedin_username, linked_linkedin_name FROM users "
                 "WHERE onboarding_status != 'none' "
                 "ORDER BY onboarding_submitted_at DESC, email ASC"
             )
@@ -1752,7 +1772,7 @@ def get_approved_users() -> list[dict]:
             cur = c.execute(
                 "SELECT email, role, name, github_username, prn, degree_branch, division, "
                 "onboarding_status, onboarding_submitted_at, github_verified_at, "
-                "main_batch, practical_batch, semester, hackerrank_username, linked_linkedin_name, linkedin_sub, "
+                "main_batch, practical_batch, semester, hackerrank_username, linkedin_username, linked_linkedin_name, linkedin_sub, "
                 "linked_linkedin_avatar, linked_github_username, linked_github_avatar, profile_source "
                 "FROM users WHERE onboarding_status = 'approved' ORDER BY email ASC"
             )
