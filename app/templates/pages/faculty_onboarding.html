@@ -136,7 +136,11 @@
         {% if row.hackerrank_username %}<a href="https://www.hackerrank.com/profile/{{ row.hackerrank_username }}" target="_blank" rel="noopener">@{{ row.hackerrank_username }}</a>{% else %}<strong>Not linked</strong>{% endif %}
       </div>
       <div class="faculty-review-detail"><span>LinkedIn</span>
-        {% if row.linked_linkedin_name %}<a href="https://www.linkedin.com/in/{{ row.linked_linkedin_name }}" target="_blank" rel="noopener">{{ row.linked_linkedin_name }}</a>{% else %}<strong>Not linked</strong>{% endif %}
+        {# BUG-141: only a real /in/ slug links; an OAuth display name stays text. #}
+        {% set _li_url = (row.linkedin_username or row.linked_linkedin_name)|linkedin_url %}
+        {% if _li_url %}<a href="{{ _li_url }}" target="_blank" rel="noopener">{{ row.linkedin_username or row.linked_linkedin_name }}</a>
+        {% elif row.linked_linkedin_name %}<strong>{{ row.linked_linkedin_name }}</strong>
+        {% else %}<strong>Not linked</strong>{% endif %}
       </div>
     </div>
   </div>

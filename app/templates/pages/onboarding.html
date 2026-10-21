@@ -184,8 +184,13 @@
                     {% endif %}
                 </td>
                 <td style="padding: 10px 6px; overflow-wrap: anywhere;">
-                    {% if row.linked_linkedin_name %}
-                    <a href="https://www.linkedin.com/in/{{ row.linked_linkedin_name }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">{{ row.name or 'LinkedIn' }}</a>
+                    {# BUG-141: only a real /in/ slug links; an OAuth display name
+                       ("Animesh Misra") stays plain text instead of a search. #}
+                    {% set _li_url = (row.linkedin_username or row.linked_linkedin_name)|linkedin_url %}
+                    {% if _li_url %}
+                    <a href="{{ _li_url }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">{{ row.name or 'LinkedIn' }}</a>
+                    {% elif row.linked_linkedin_name %}
+                    <span style="color: var(--muted);" title="LinkedIn sign-in shares a display name, not a profile URL">{{ row.linked_linkedin_name }}</span>
                     {% else %}
                     <span style="color: var(--muted);">Not linked</span>
                     {% endif %}
@@ -329,7 +334,7 @@
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{% if hackerrank_url %}<a href="{{ hackerrank_url }}" target="_blank" rel="noopener">{{ submission.hackerrank_username }}</a>{% else %}{{ submission.hackerrank_username or '—' }}{% endif %}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
-        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_linkedin_name or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{% if linkedin_url %}<a href="{{ linkedin_url }}" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none;">{{ linkedin_display or linkedin_url }}</a>{% else %}{{ submission.linked_linkedin_name or '—' }}{% endif %}</div></div>
     </div>
     <div style="border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px;">
         <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Profile Status preferences</div>

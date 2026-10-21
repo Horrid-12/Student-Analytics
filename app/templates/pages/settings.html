@@ -161,6 +161,34 @@
   </div>
 </section>
 
+{% if auth_role == "Student" %}
+<section class="panel">
+  <div class="panel-title">LinkedIn Profile</div>
+  {# BUG-141: LinkedIn sign-in only shares a display name, so the public
+     profile slug is captured from the student here (and in sign-up phase 3). #}
+  {% if linkedin_status == "saved" %}
+  <div class="badge-green" style="display:inline-block; margin-bottom:12px;">LinkedIn profile link saved.</div>
+  {% elif linkedin_status == "invalid" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:12px;">That doesn't look like a LinkedIn profile URL.</div>
+  {% elif linkedin_status == "unavailable" %}
+  <div class="badge-red" style="display:inline-block; margin-bottom:12px;">We couldn't save your LinkedIn link. Please try again.</div>
+  {% endif %}
+  {% if linkedin_url %}
+  <div style="font-size:13px; margin-bottom:10px;">Public profile: <a href="{{ linkedin_url }}" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">{{ linkedin_username }}</a></div>
+  {% else %}
+  <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">No public profile link saved yet.</div>
+  {% endif %}
+  <form action="/settings/linkedin" method="POST" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <div class="form-group" style="flex:1 1 240px; min-width:0; margin:0;">
+      <label for="settings-linkedin-username">LinkedIn Profile URL</label>
+      <input type="text" id="settings-linkedin-username" name="linkedin_username" value="{{ linkedin_username or '' }}" placeholder="https://www.linkedin.com/in/your-name">
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+  </form>
+  <div style="font-size:12px; color:var(--muted); margin-top:6px;">LinkedIn sign-in doesn't share your public profile link. Paste it here so your profile button opens your page instead of a name search.</div>
+</section>
+{% endif %}
+
 <section class="panel">
   <div class="panel-title">Legal</div>
   <a class="legal-row" href="/privacy">
