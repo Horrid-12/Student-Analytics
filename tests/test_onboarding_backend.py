@@ -287,17 +287,19 @@ class TestLedgerView:
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "1234567890.s@college.edu" in body
-        assert "1234567890" in body  # email-derived PRN, bold under the name
-        assert ">9876543210<" not in body  # stored PRN column is gone (edit-modal prefill may still reference it)
+        assert "9876543210" in body  # stored PRN shown in the review card
         assert "/onboarding/approve" in body
         assert "/onboarding/reject" in body
-        # Fixed table layout (no horizontal scroll) with the new columns.
-        assert "table-layout: fixed" in body
-        assert ">Batch</th>" in body and ">Semester</th>" in body
-        assert ">HackerRank</th>" in body and ">LinkedIn</th>" in body
-        assert ">PRN</th>" not in body  # standalone PRN column removed
-        assert "overflow-x: auto" not in body
-        assert 'id="ledger-more-btn"' not in body  # only 1 row — no batching
+        # Card-based review workspace (same layout as faculty).
+        assert "faculty-review-card" in body
+        assert "grid-template-columns:minmax(0,1fr) 220px" in body
+        assert ">PRN</span>" in body and ">Branch</span>" in body
+        assert ">Practical batch</span>" in body and ">Semester</span>" in body
+        assert ">HackerRank</span>" in body and ">LinkedIn</span>" in body
+        assert 'id="ledger-table"' not in body
+        assert 'id="ledger-more-btn"' not in body
+        # Admin-only management controls.
+        assert "/onboarding/remove" in body
 
     def test_faculty_gets_wide_searchable_review_profiles_for_assigned_classes(self, client):
         signup(client, "in-scope@college.edu", "In Scope")
@@ -344,9 +346,9 @@ class TestLedgerView:
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "alice_hr" in body
         assert "hackerrank.com/profile/alice_hr" in body
-        # LinkedIn: student name as link text pointing at the profile slug.
+        # LinkedIn: profile slug as the link text pointing at the profile.
         assert 'linkedin.com/in/stu-dent-123' in body
-        assert ">Student One</a>" in body
+        assert ">stu-dent-123</a>" in body
 
     def test_student_does_not_see_ledger(self, client):
         signup(client)
@@ -377,7 +379,7 @@ class TestLedgerSearch:
     def test_search_bar_matches_students_page(self, client):
         self._seed_two(client)
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert 'class="filter-bar"' in body
+        assert 'class="filter-bar faculty-review-search"' in body
         assert 'id="onboarding-search"' in body
         assert 'class="search-input"' in body
         assert "Search by ID, name or username" in body

@@ -22,6 +22,7 @@
   .faculty-review-action-link { padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:transparent; color:var(--text); cursor:pointer; font-weight:600; }
   .faculty-review-reject { border-color:rgba(239,68,68,.35); color:#ef4444; }
   .faculty-review-approve { border:0; border-radius:6px; background:var(--blue); color:#fff; cursor:pointer; font-weight:700; }
+  .faculty-review-meta { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 2px 10px; color:var(--muted); font-size:12px; flex-wrap:wrap; }
   .faculty-edit-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(12,18,26,.62); backdrop-filter:blur(5px); }
   .faculty-edit-backdrop[hidden] { display:none; }
   .faculty-edit-dialog { width:min(100%,780px); max-height:min(88vh,820px); overflow:auto; padding:0; margin:0; background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:0 28px 90px rgba(0,0,0,.28); }
@@ -72,19 +73,46 @@
 </style>
 {% endblock %}
 {% block content %}
-<div class="topbar-card">
-  <div class="topbar">
+<div class="topbar-card" style="position: relative;">
+  <div class="topbar" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div style="min-width:0;">
       <div class="topbar-title">Approve Student Onboarding</div>
-      <div class="topbar-subtitle">Verify student details and approve access for your students.</div>
+      <div class="topbar-subtitle">
+        {% if is_admin %}Review, verify, and manage student onboarding records across the college.
+        {% else %}Verify student details and approve access for your students.{% endif %}
+      </div>
+    </div>
+    {% if is_admin %}
+    <button type="button" id="faculty-key-btn" aria-haspopup="true" aria-expanded="false" style="padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; background: transparent; border: 1px solid var(--border); color: var(--text);">Faculty</button>
+    {% endif %}
+  </div>
+  {% if is_admin %}
+  <div id="faculty-key-dropdown" hidden style="position: absolute; top: 100%; right: 16px; margin-top: 8px; width: 360px; max-width: calc(100% - 32px); max-height: 420px; overflow-y: auto; background: var(--card-bg, var(--card)); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px; z-index: 200;">
+    <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Temporary faculty login keys</div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 12px;">One-time <span style="font-family: monospace;">facultyN@dashboard.local</span> credentials. The password is shown once — only its hash is stored.</div>
+    <button type="button" id="faculty-key-generate" style="width: 100%; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 6px; background: var(--blue); border: 1px solid var(--blue); color: #fff;">Generate new key</button>
+    <div id="faculty-key-error" hidden style="font-size: 12px; color: #ef4444; margin-top: 8px;"></div>
+    <div id="faculty-key-result" hidden style="margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-soft);">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 6px;">New key — copy now (shown once)</div>
+      <div style="font-size: 13px; color: var(--text); margin-bottom: 4px;">Email: <span id="faculty-key-email" style="font-family: monospace; font-weight: 600;"></span></div>
+      <div style="font-size: 13px; color: var(--text); margin-bottom: 8px;">Password: <span id="faculty-key-password" style="font-family: monospace; font-weight: 600;"></span></div>
+      <button type="button" id="faculty-key-copy" style="padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; background: transparent; border: 1px solid var(--border); color: var(--blue);">Copy</button>
+      <span id="faculty-key-copied" hidden style="font-size: 12px; color: #22c55e; margin-left: 8px;">Copied</span>
+    </div>
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px;">History</div>
+    <div id="faculty-key-history" style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; color: var(--muted);">Loading…</div>
     </div>
   </div>
+  {% endif %}
 </div>
 
-{% if action in ('approved', 'rejected', 'error', 'edited') %}
+{% if action in ('approved', 'rejected', 'pending', 'removed', 'edited', 'error') %}
 <div class="panel" role="status" style="padding:14px 18px; margin-bottom:16px;">
   {% if action == 'approved' %}Approved onboarding for <strong>{{ action_email }}</strong>.
   {% elif action == 'rejected' %}Rejected onboarding for <strong>{{ action_email }}</strong>.
+  {% elif action == 'pending' %}Disapproved onboarding for <strong>{{ action_email }}</strong> — moved back to pending.
+  {% elif action == 'removed' %}Removed <strong>{{ action_email }}</strong> from onboarding and analytics.
   {% elif action == 'edited' %}Updated the student record for <strong>{{ action_email }}</strong>.
   {% else %}Could not update onboarding for <strong>{{ action_email or email }}</strong>.{% endif %}
 </div>
@@ -93,18 +121,21 @@
 <form class="filter-bar faculty-review-search" method="get" action="/onboarding">
   <label class="filter-field" style="flex:1; min-width:0;">
     <span class="filter-label">Search students</span>
-    <input class="search-input" type="search" name="q" value="{{ q }}" placeholder="Name, PRN, email, branch…" aria-label="Search your students">
+    <input id="onboarding-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;" aria-label="Search students">
   </label>
-  <button class="btn btn-primary" type="submit">Search</button>
-  {% if q %}<a class="btn" href="/onboarding">Clear</a>{% endif %}
+  <button class="btn" type="submit">Apply</button>
+  <a class="btn" href="/onboarding">Clear</a>
+  <span class="filter-count"><span id="shown-count">{{ onboarding_users|length }}</span> of {{ onboarding_users|length }} shown</span>
 </form>
 
-{% if not teaching_scope %}
+{% if faculty_review and not teaching_scope %}
 <div class="panel" style="padding:24px; color:var(--muted);">No teaching assignments are set up for your account. Add your classes in Settings to review student onboarding.</div>
 {% elif onboarding_users %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin:0 2px 10px; color:var(--muted); font-size:12px;">
-  <span>{{ onboarding_users|length }} matching pending student{% if onboarding_users|length != 1 %}s{% endif %}</span>
+<div class="faculty-review-meta">
+  <span>{{ onboarding_users|length }} matching {% if faculty_review %}pending {% endif %}student{% if onboarding_users|length != 1 %}s{% endif %}</span>
+  {% if faculty_review %}
   <span>Assigned classes: {% for division, batches in teaching_scope|dictsort %}Div {{ division }} · Batch {{ batches|join(', ') }}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+  {% endif %}
 </div>
 {% for row in onboarding_users %}
 <article class="panel faculty-review-card">
@@ -115,7 +146,13 @@
         <div style="min-width:0; flex:1;">
           <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
             <h2 style="margin:0; font-size:18px; color:var(--text);">{{ row.name or 'Student' }}</h2>
+            {% if row.onboarding_status == 'approved' %}
+            <span style="padding:3px 8px; border-radius:20px; background:rgba(34,197,94,.12); color:#22c55e; font-size:10px; font-weight:700; text-transform:uppercase;">Approved</span>
+            {% elif row.onboarding_status == 'rejected' %}
+            <span style="padding:3px 8px; border-radius:20px; background:rgba(239,68,68,.12); color:#ef4444; font-size:10px; font-weight:700; text-transform:uppercase;">Rejected</span>
+            {% else %}
             <span style="padding:3px 8px; border-radius:20px; background:rgba(245,158,11,.12); color:#f59e0b; font-size:10px; font-weight:700; text-transform:uppercase;">Pending review</span>
+            {% endif %}
           </div>
           <div style="margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere;">{{ row.email }}</div>
         </div>
@@ -141,20 +178,57 @@
     </div>
   </div>
   <aside class="faculty-review-actions" aria-label="Review actions for {{ row.name or row.email }}">
-    <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-name="{{ row.name or 'Student' }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
-    <form method="post" action="/onboarding/reject" onsubmit="return confirm('Reject this student onboarding?');">
-      <input type="hidden" name="email" value="{{ row.email }}">
-      <button class="faculty-review-action-link faculty-review-reject" type="submit">Reject</button>
-    </form>
-    <form method="post" action="/onboarding/approve">
-      <input type="hidden" name="email" value="{{ row.email }}">
-      <button class="faculty-review-approve" type="submit">Approve</button>
-    </form>
+    {% if row.onboarding_status == 'approved' %}
+      <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-name="{{ row.name or 'Student' }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
+      {% if is_admin %}
+      <form method="post" action="/onboarding/disapprove">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-action-link faculty-review-reject" type="submit">Disapprove</button>
+      </form>
+      <form method="post" action="/onboarding/remove" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-action-link faculty-review-reject" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    {% elif row.onboarding_status == 'rejected' %}
+      <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-name="{{ row.name or 'Student' }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
+      <form method="post" action="/onboarding/approve">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-approve" type="submit">Approve</button>
+      </form>
+      {% if is_admin %}
+      <form method="post" action="/onboarding/remove" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-action-link faculty-review-reject" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    {% else %}
+      <button type="button" class="faculty-review-action-link" data-email="{{ row.email }}" data-name="{{ row.name or 'Student' }}" data-prn="{{ row.prn }}" data-branch="{{ row.degree_branch }}" data-division="{{ row.division }}" data-batch="{{ row.practical_batch }}" data-semester="{{ row.semester }}" data-hackerrank="{{ row.hackerrank_username }}" data-github="{{ row.github_username }}" onclick="openFacultyEdit(this)">Edit</button>
+      <form method="post" action="/onboarding/reject" onsubmit="return confirm('Reject this student onboarding?');">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-action-link faculty-review-reject" type="submit">Reject</button>
+      </form>
+      <form method="post" action="/onboarding/approve">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-approve" type="submit">Approve</button>
+      </form>
+      {% if is_admin %}
+      <form method="post" action="/onboarding/remove" onsubmit="return confirm('Permanently remove {{ row.email }} from onboarding and analytics?');">
+        <input type="hidden" name="email" value="{{ row.email }}">
+        <button class="faculty-review-action-link faculty-review-reject" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    {% endif %}
   </aside>
 </article>
 {% endfor %}
 {% else %}
-<div class="panel" style="padding:24px; color:var(--muted);">{% if q %}No pending students match “{{ q }}”.{% else %}No pending onboarding submissions in your assigned classes.{% endif %}</div>
+<div class="panel" style="padding:24px; color:var(--muted);">
+  {% if q %}
+    {% if is_admin %}No matching submissions — no ledger record matches “{{ q }}”.{% else %}No pending students match “{{ q }}”.{% endif %}
+  {% elif is_admin %}No submissions yet — student onboarding records will appear here as soon as they are submitted.
+  {% else %}No pending onboarding submissions in your assigned classes.{% endif %}
+</div>
 {% endif %}
 
 <div id="faculty-edit-modal" class="faculty-edit-backdrop" role="presentation" hidden onclick="if(event.target===this)closeFacultyEdit()">
@@ -218,4 +292,148 @@ document.addEventListener('keydown', function (event) {
   if (event.key === 'Escape' && !document.getElementById('faculty-edit-modal').hidden) closeFacultyEdit();
 });
 </script>
+{% if is_admin %}
+<script>
+// Admin faculty-key dropdown: generate one-time facultyN@dashboard.local keys,
+// copy the fresh credential, and list history as Valid/Used (textContent-only
+// so generated addresses can never inject HTML).
+(function () {
+    var btn = document.getElementById('faculty-key-btn');
+    var dropdown = document.getElementById('faculty-key-dropdown');
+    var generateBtn = document.getElementById('faculty-key-generate');
+    var errorBox = document.getElementById('faculty-key-error');
+    var resultBox = document.getElementById('faculty-key-result');
+    var emailEl = document.getElementById('faculty-key-email');
+    var passwordEl = document.getElementById('faculty-key-password');
+    var copyBtn = document.getElementById('faculty-key-copy');
+    var copiedNote = document.getElementById('faculty-key-copied');
+    var historyBox = document.getElementById('faculty-key-history');
+    if (!btn || !dropdown) return;
+    var historyLoaded = false;
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+    }
+    function clearError() {
+        errorBox.textContent = '';
+        errorBox.hidden = true;
+    }
+
+    function statusBadge(used) {
+        var badge = document.createElement('span');
+        var isUsed = Number(used) === 1;
+        badge.textContent = isUsed ? 'Used' : 'Valid';
+        badge.style.cssText = isUsed
+            ? 'font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(107,114,128,.12); color: var(--muted); border: 1px solid var(--border);'
+            : 'font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(34,197,94,.1); color: #22c55e; border: 1px solid rgba(34,197,94,.25);';
+        return badge;
+    }
+
+    function renderHistory(invites) {
+        historyBox.textContent = '';
+        if (!invites || !invites.length) {
+            var empty = document.createElement('div');
+            empty.style.cssText = 'font-size: 12px; color: var(--muted);';
+            empty.textContent = 'No keys generated yet.';
+            historyBox.appendChild(empty);
+            return;
+        }
+        invites.forEach(function (invite) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;';
+            var addr = document.createElement('span');
+            addr.style.cssText = 'font-family: monospace; color: var(--text); overflow-wrap: anywhere; flex: 1;';
+            addr.textContent = invite.invite_email || '';
+            row.appendChild(addr);
+            row.appendChild(statusBadge(invite.used));
+            historyBox.appendChild(row);
+            if (Number(invite.used) === 1 && invite.consumed_by) {
+                var sub = document.createElement('div');
+                sub.style.cssText = 'font-size: 11px; color: var(--muted); margin: -2px 0 2px 2px;';
+                sub.textContent = '→ ' + invite.consumed_by;
+                historyBox.appendChild(sub);
+            }
+        });
+    }
+
+    function loadHistory() {
+        fetch('/admin/faculty-invites', { headers: { 'Accept': 'application/json' } })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('history');
+                return resp.json();
+            })
+            .then(function (data) { renderHistory(data.invites); })
+            .catch(function () {
+                historyBox.textContent = '';
+                var err = document.createElement('div');
+                err.style.cssText = 'font-size: 12px; color: #ef4444;';
+                err.textContent = 'Could not load history.';
+                historyBox.appendChild(err);
+            });
+    }
+
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = dropdown.hidden;
+        dropdown.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && !historyLoaded) { historyLoaded = true; loadHistory(); }
+    });
+    document.addEventListener('click', function (e) {
+        if (!dropdown.hidden && !dropdown.contains(e.target) && e.target !== btn) {
+            dropdown.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    generateBtn.addEventListener('click', function () {
+        clearError();
+        copiedNote.hidden = true;
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating…';
+        fetch('/admin/faculty-invites/generate', { method: 'POST' })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('generate');
+                return resp.json();
+            })
+            .then(function (data) {
+                emailEl.textContent = data.email || '';
+                passwordEl.textContent = data.password || '';
+                resultBox.hidden = false;
+                loadHistory();
+            })
+            .catch(function () { showError('Could not generate a key — please try again.'); })
+            .finally(function () {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate new key';
+            });
+    });
+
+    copyBtn.addEventListener('click', function () {
+        var text = 'Email: ' + emailEl.textContent + '\nPassword: ' + passwordEl.textContent;
+        function done() {
+            copiedNote.hidden = false;
+            setTimeout(function () { copiedNote.hidden = true; }, 2000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+        } else {
+            fallbackCopy(text);
+            done();
+        }
+    });
+    function fallbackCopy(text) {
+        var area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); } catch (err) {}
+        document.body.removeChild(area);
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

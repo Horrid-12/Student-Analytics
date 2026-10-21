@@ -2448,6 +2448,11 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         _rows = auth.get_onboarding_users()
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
+        ctx["teaching_scope"] = {}
+        ctx["q"] = q
+        ctx["action"] = action
+        ctx["action_email"] = email
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif role == "faculty":
         try:
             teaching = auth.get_faculty_teaching(user.get("email", ""))
