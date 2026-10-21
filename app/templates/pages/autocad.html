@@ -72,14 +72,7 @@
       <input id="autocad-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search student, PRN, or file name…">
     </div>
     {% include "partials/class_filter_dropdown.html" %}
-    <div class="filter-field">
-      <label class="filter-label" for="autocad-semester">Semester</label>
-      <select id="autocad-semester" class="filter-select" name="semester">
-        {% for value in payload.semesters %}
-        <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    {% include "partials/semester_filter_dropdown.html" %}
     <button class="btn" type="submit">Apply</button>
     <a class="btn" href="/autocad">Clear</a>
     <span class="filter-count" role="status" aria-live="polite">{{ payload.showing }} of {{ payload.total }} shown</span>

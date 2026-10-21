@@ -1,0 +1,134 @@
+{# Semester filter — same visual language as the Division / Batch dropdown:
+   a red-bordered button that opens a panel of semester chips.
+
+   Multi-select: several semesters can stay picked at once (the picks are
+   staged in hidden checkboxes and only applied when the parent form's Apply
+   button submits them). No pick = every semester. #}
+{% set _opts = payload.semesters if payload and payload.semesters is defined else [] %}
+{% set _sel = selected_semesters if selected_semesters is defined and selected_semesters else [] %}
+<style>
+  .sf-wrap { position: relative; }
+  .sf-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 42px; padding: 0 24px;
+    border: 3px solid var(--accent-red); border-radius: 10px;
+    background: transparent; color: var(--accent-red);
+    font-weight: 800; font-size: 15px;
+    font-family: Inter, system-ui, sans-serif;
+    cursor: pointer; white-space: nowrap; transition: all 180ms ease;
+  }
+  .sf-btn:hover { background: var(--accent-red-soft); }
+  .sf-btn[aria-expanded="true"] { background: var(--accent-red); color: #fff; }
+  .sf-btn[aria-expanded="true"] svg { stroke: #fff; }
+  .sf-panel {
+    position: absolute; top: calc(100% + 8px); left: 0;
+    min-width: 220px; max-width: calc(100vw - 48px); max-height: 320px;
+    overflow-y: auto; background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    padding: 10px; z-index: 40;
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .sf-chip {
+    padding: 7px 14px; font-size: 14px; font-weight: 700;
+    font-family: Inter, system-ui, sans-serif; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    cursor: pointer; transition: all 180ms ease;
+  }
+  .sf-chip:hover { border-color: var(--accent-red); color: var(--accent-red); }
+  .sf-chip[data-active="true"] { background: var(--accent-red); border-color: var(--accent-red); color: #fff; }
+</style>
+
+<div class="filter-field sf-wrap" data-semester-filter>
+  <label class="filter-label" id="sf-label">Semester</label>
+  <button type="button" class="sf-btn" data-sf-btn aria-haspopup="true" aria-expanded="false" aria-labelledby="sf-label">
+    <span data-sf-label>{% if _sel|length == 0 %}Semester{% elif _sel|length == 1 %}1 selected{% else %}{{ _sel|length }} selected{% endif %}</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div class="sf-panel" data-sf-panel hidden>
+    {% for value in _opts %}
+      {% if value and value != 'All' %}
+      <button type="button" class="sf-chip" data-sf-semester="{{ value }}" data-active="{{ 'true' if value in _sel else 'false' }}">{{ value }}</button>
+      <input type="checkbox" name="semester" value="{{ value }}" data-sf-check="{{ value }}" hidden {% if value in _sel %}checked{% endif %}>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    var wrap = document.querySelector('[data-semester-filter]');
+    if (!wrap) return;
+    var btn = wrap.querySelector('[data-sf-btn]');
+    var panel = wrap.querySelector('[data-sf-panel]');
+    var label = wrap.querySelector('[data-sf-label]');
+    if (!btn || !panel || !label) return;
+
+    function checks() {
+      return Array.prototype.slice.call(panel.querySelectorAll('[data-sf-check]'));
+    }
+    function chips() {
+      return Array.prototype.slice.call(panel.querySelectorAll('[data-sf-semester]'));
+    }
+    function refresh() {
+      var picked = checks().filter(function (c) { return c.checked; });
+      label.textContent = picked.length === 0 ? 'Semester' : (picked.length === 1 ? '1 selected' : picked.length + ' selected');
+      btn.title = picked.map(function (c) { return c.value; }).join(', ') || 'All semesters';
+    }
+    function setValue(value, on) {
+      checks().forEach(function (c) {
+        if (c.getAttribute('data-sf-check') === value) c.checked = on;
+      });
+      chips().forEach(function (c) {
+        if (c.getAttribute('data-sf-semester') === value) {
+          if (on) c.setAttribute('data-active', 'true');
+          else c.removeAttribute('data-active');
+        }
+      });
+    }
+    function setPanel(open) {
+      panel.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    // Small API so other scripts on the page (e.g. the Repositories filter
+    // preferences) can read/reset the staged picks without a reload.
+    wrap.semesterFilter = {
+      values: function () {
+        return checks().filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+      },
+      options: function () {
+        return checks().map(function (c) { return c.value; });
+      },
+      set: function (list) {
+        var wanted = (list || []).map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+        checks().forEach(function (c) {
+          var on = wanted.indexOf(c.value) !== -1;
+          c.checked = on;
+          var chip = chips().filter(function (x) { return x.getAttribute('data-sf-semester') === c.value; })[0];
+          if (chip) {
+            if (on) chip.setAttribute('data-active', 'true');
+            else chip.removeAttribute('data-active');
+          }
+        });
+        refresh();
+      },
+      clear: function () { this.set([]); }
+    };
+
+    btn.addEventListener('click', function (e) { e.stopPropagation(); setPanel(panel.hidden); });
+    document.addEventListener('click', function (e) {
+      if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) setPanel(false);
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setPanel(false); });
+    // Semester chips toggle one value; the panel stays open for multi-picks.
+    // Nothing reloads until the parent form's Apply runs.
+    chips().forEach(function (c) {
+      c.addEventListener('click', function () {
+        var on = c.getAttribute('data-active') !== 'true';
+        setValue(c.getAttribute('data-sf-semester'), on);
+        refresh();
+      });
+    });
+    refresh();
+  })();
+</script>

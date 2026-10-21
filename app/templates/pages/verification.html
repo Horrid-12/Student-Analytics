@@ -110,14 +110,7 @@
     <input id="verif-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by student, PRN, certificate, issuer, skills&hellip;">
   </div>
   {% include "partials/class_filter_dropdown.html" %}
-  <div class="filter-field">
-    <label class="filter-label" for="verif-semester">Semester</label>
-    <select id="verif-semester" class="filter-select" name="semester">
-      {% for value in payload.semesters %}
-      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/semester_filter_dropdown.html" %}
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/verification?status={{ active_status }}{% if roster_id %}&roster={{ roster_id }}{% endif %}">Clear</a>
 </form>

@@ -1050,15 +1050,17 @@ def _filter_param(values: list[str]) -> str:
     return ",".join(values) if values else "All"
 
 
-def _filter_context(request: Request, division_single: str = "All", batch_single: str = "All", pair_single: str = "All") -> dict:
+def _filter_context(request: Request, division_single: str = "All", batch_single: str = "All", pair_single: str = "All", semester_single: str = "All") -> dict:
     """Template context for the staged multi-select class filter.
 
     Returns {divisions, batches} (legacy independent selections, [] = All),
-    {pairs} (explicit ``DIV|BATCH`` selections, [] = none) plus {division,
-    batch, pair} (comma-joined strings for URL building/back-compat). When
-    pairs are present they take precedence over division/batch everywhere."""
+    {pairs} (explicit ``DIV|BATCH`` selections, [] = none), {semesters} (the
+    picked semesters, [] = All) plus {division, batch, pair, semester}
+    (comma-joined strings for URL building/back-compat). When pairs are
+    present they take precedence over division/batch everywhere."""
     divs = _multi_filter(request, "division", division_single)
     bats = _multi_filter(request, "batch", batch_single)
+    sems = _multi_filter(request, "semester", semester_single)
     try:
         raw_pairs = request.query_params.getlist("pair")
     except Exception:
@@ -1081,6 +1083,8 @@ def _filter_context(request: Request, division_single: str = "All", batch_single
         "batch": _filter_param(bats),
         "pairs": prs,
         "pair": ",".join(prs) if prs else "All",
+        "selected_semesters": sems,
+        "semester": _filter_param(sems),
     }
 
 
@@ -2330,10 +2334,9 @@ def overview(
     ctx["payload"] = None
     ctx["profile"] = None
     ctx["q"] = q or ""
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
     ctx["teaching_active"] = False
-    ctx["semester"] = semester or "All"
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
     # Faculty "My Classes" toggle (fleet views only — an explicitly attached
     # roster is its own dataset): ON by default, restricts the dashboard to
@@ -2384,7 +2387,7 @@ def overview(
                 _hr_state = {}
             ctx["payload"] = views.overview_payload(
                 view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
-                semester=semester or "All", overall_view=_overall_view,
+                semester=ctx["semester"] or "All", overall_view=_overall_view,
                 my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
                 scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
@@ -2735,7 +2738,7 @@ def autocad_page(
     teaching_active = False
     taught_map = {}
     mine_value = "1"
-    filter_state = _filter_context(request, division, batch, pair)
+    filter_state = _filter_context(request, division, batch, pair, semester)
     if is_staff:
         try:
             account_rows = auth.get_student_accounts() or []
@@ -2780,9 +2783,10 @@ def autocad_page(
             for row in filter_accounts
             if str(row.get("semester") or "").strip()
         }, key=lambda value: (int(re.search(r"\d+", value).group(0)) if re.search(r"\d+", value) else 999, value.lower()))
-        semester_options = ["All", *available_semesters]
-        if semester not in semester_options and semester and semester != "All":
-            semester_options.append(semester)
+        semester_options = available_semesters
+        for _picked in filter_state["selected_semesters"]:
+            if _picked not in semester_options:
+                semester_options.append(_picked)
         payload = {
             "total": len(submissions),
             "semesters": semester_options,
@@ -2794,7 +2798,7 @@ def autocad_page(
             divisions=filter_state["divisions"],
             batches=filter_state["batches"],
             pairs=filter_state["pairs"],
-            semester=semester,
+            semester=filter_state["semester"],
         )
         payload["showing"] = len(submissions)
 
@@ -2810,7 +2814,6 @@ def autocad_page(
         "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
         "payload": payload,
         "q": q,
-        "semester": semester,
         "teaching_active": teaching_active,
         "taught_map": taught_map,
         "mine": mine_value,
@@ -3041,9 +3044,8 @@ def verification_page(
     status_filter = status.lower() if status and status.lower() in ("pending", "approved", "rejected") else None
     if status.lower() == "all":
         status_filter = None
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
-    ctx["semester"] = semester or "All"
     ctx["is_faculty_verification"] = role == "faculty"
 
     if role == "faculty":
@@ -3069,7 +3071,7 @@ def verification_page(
         payload = views.verification_payload(
             view, all_items,
             division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
-            semester=semester or "All", pairs=ctx["pairs"] or "All",
+            semester=ctx["semester"] or "All", pairs=ctx["pairs"] or "All",
         )
         scoped_items = payload["items"]
         counts = {"pending": 0, "approved": 0, "rejected": 0}
@@ -3915,7 +3917,7 @@ def students_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
     # Student privacy: field masking for student viewers (faculty/admins
     # pass {} = see all). The table template consults `privacy` per row;
@@ -3928,7 +3930,7 @@ def students_page(
         _hr_state = _hr_snapshots_state()
     except Exception:
         _hr_state = {}
-    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, semester, rows, effective_select or None, pairs=ctx["pairs"] or "All", hr_snapshots=_hr_state)
+    payload = views.students_payload(view, q, ctx["divisions"] or "All", ctx["batches"] or "All", year, ctx["semester"], rows, effective_select or None, pairs=ctx["pairs"] or "All", hr_snapshots=_hr_state)
     if payload.get("profile"):
         payload["profile"] = _attach_profile_certificates(payload["profile"], request)
     payload["export_query"] += f"&mine={ctx['mine']}"
@@ -3947,7 +3949,6 @@ def students_page(
             "bl_roster": _bl_roster(roster),
             "q": q,
             "year": year,
-            "semester": semester,
             "privacy": _privacy,
             "own_sid": _own_sid,
             "mask_privacy": _student_viewer,
@@ -3988,8 +3989,8 @@ def students_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch, pair)
-    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester, pairs=_fc["pairs"] or "All")
+    _fc = _filter_context(request, division, batch, pair, semester)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, _fc["semester"], pairs=_fc["pairs"] or "All")
     total = int(payload.get("total") or 0)
     if not total:
         return HTMLResponse("")
@@ -4005,7 +4006,7 @@ def students_rows(
         q=q,
         division=_fc["division"],
         batch=_fc["batch"],
-        semester=semester,
+        semester=_fc["semester"],
         mine=mine,
         pair=_fc["pair"],
         page_size=payload["page_size"],
@@ -4146,8 +4147,8 @@ def students_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch, pair)
-    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, semester, pairs=_fc["pairs"] or "All")
+    _fc = _filter_context(request, division, batch, pair, semester)
+    payload = views.students_payload(view, q, _fc["divisions"] or "All", _fc["batches"] or "All", year, _fc["semester"], pairs=_fc["pairs"] or "All")
     df = views.student_export_df(payload)
     if _is_student_viewer(request):
         df = views.mask_export_df(df, _privacy_state(), _own_student_id(view, request))
@@ -4203,9 +4204,9 @@ def repositories_page(
     ctx["teaching_active"] = teaching_active
     ctx["taught_map"] = taught_map
     ctx["mine"] = "0" if (mine or "1") == "0" else "1"
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
-    payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
+    payload = views.repositories_payload(data, q, language, rows, _fc["divisions"] or "All", _fc["batches"] or "All", _fc["semester"], sort, recency, pairs=_fc["pairs"] or "All")
     payload["export_query"] += f"&mine={ctx['mine']}"
     # Student privacy: @handles hidden on cards/rows for student viewers;
     # the owner popup dict is masked server-side below.
@@ -4234,7 +4235,7 @@ def repositories_page(
     return templates.TemplateResponse(
         request,
         "pages/repositories.html",
-        {**ctx, "view": data, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "bl_roster": _bl_roster(roster), "q": q, "language": language, "rows_page": rows, "view_mode": view, "semester": semester, "sort": sort, "recency": recency},
+        {**ctx, "view": data, "payload": payload, "profile": profile, "blacklist": _blacklist_state(roster), "hidden_repos": _hidden_repos_state(roster), "roster_id": roster, "bl_roster": _bl_roster(roster), "q": q, "language": language, "rows_page": rows, "view_mode": view, "sort": sort, "recency": recency},
     )
 
 
@@ -4276,9 +4277,9 @@ def repositories_rows(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     payload = views.repositories_payload(
-        view, q, language, views.STUDENT_BATCH_SIZE, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All"
+        view, q, language, views.STUDENT_BATCH_SIZE, _fc["divisions"] or "All", _fc["batches"] or "All", _fc["semester"], sort, recency, pairs=_fc["pairs"] or "All"
     )
     total = int(payload.get("total") or 0)
     if not total:
@@ -4299,7 +4300,7 @@ def repositories_rows(
         "division": _fc["division"],
         "batch": _fc["batch"],
         "pair": _fc["pair"],
-        "semester": semester,
+        "semester": _fc["semester"],
         "sort": sort,
         "recency": recency,
         "mine": "0" if (mine or "1") == "0" else "1",
@@ -4338,8 +4339,8 @@ def repositories_export(
             taught_map = {}
         if taught_map and view is not None and _is_complete(view):
             view = views.filter_view_by_teaching(view, taught_map)
-    _fc = _filter_context(request, division, batch, pair)
-    payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", semester, sort, recency, pairs=_fc["pairs"] or "All")
+    _fc = _filter_context(request, division, batch, pair, semester)
+    payload = views.repositories_payload(view, q, "All", 30, _fc["divisions"] or "All", _fc["batches"] or "All", _fc["semester"], sort, recency, pairs=_fc["pairs"] or "All")
     if _is_student_viewer(request):
         payload["rows"] = views.mask_repo_rows(payload.get("rows"), _privacy_state(), _own_student_id(view, request))
     df = views.repository_export_df(payload)
@@ -4390,10 +4391,10 @@ def leaderboards_page(
     # from the connected boards — for every viewer, like an admin blacklist.
     _privacy = _privacy_state()
     blacklist = _privacy_blacklist_merge(blacklist, _privacy)
-    _fc = _filter_context(request, division, batch, pair)
+    _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
     payload = views.leaderboards_payload(
-        view, _fc["divisions"] or "All", _fc["batches"] or "All", semester, active_window, commits_window,
+        view, _fc["divisions"] or "All", _fc["batches"] or "All", _fc["semester"], active_window, commits_window,
         blacklist=blacklist,
         hidden_repos=hidden_repos,
         hr_snapshots=hr_snapshots,
@@ -4419,7 +4420,7 @@ def leaderboards_page(
     return templates.TemplateResponse(
         request,
         "pages/leaderboards.html",
-        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "semester": semester, "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
+        {**ctx, "view": view, "payload": payload, "profile": profile, "platform": platform, "blacklist": blacklist, "hidden_repos": hidden_repos, "roster_id": roster, "bl_roster": _bl_roster(roster), "active_window": payload["active_window"], "commits_window": payload["commits_window"], **_bell_context(request, view, roster)},
     )
 
 

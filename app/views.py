@@ -1419,7 +1419,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         if _filtered:
             _pair_bits = [f"Div {d} · Batch {b}" for d, _, b in (p.partition("|") for p in _pairs_list(pairs))]
             _bits = _pair_bits or _filter_bits(division, batch)
-            _bits = _bits + ([str(semester)] if str(semester or "All") != "All" else [])
+            _bits = _bits + _filter_bits(semester)
             _current_label += " · " + " · ".join(_bits)
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
@@ -1518,6 +1518,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
+        "selected_semesters": _filter_list(semester),
         "division_groups": division_batch_groups(_orig_students),
         "valid": valid,
         "invalid": invalid,
@@ -2069,6 +2070,7 @@ def verification_payload(view, items, division="All", batch="All", semester="All
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
+        "selected_semesters": _filter_list(semester),
         "division_groups": division_batch_groups(students),
     }
 
@@ -2237,6 +2239,7 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
+        "selected_semesters": _filter_list(semester),
         "division_groups": division_batch_groups(students),
         "export_query": export_query_str(view["roster_id"], query, division, batch, year, semester, pairs=pairs),
         # Feature 87: platform stat strip (GitHub | HackerRank toggle).
@@ -3137,6 +3140,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
+        "selected_semesters": _filter_list(semester),
         "division_groups": division_batch_groups(view.get("students")),
         "export_query": repositories_export_query(
             view.get("roster_id", ""), query, division, batch, semester, sort, recency_key, pairs=pairs
@@ -3616,6 +3620,7 @@ def leaderboards_payload(
         "selected_divisions": _filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
+        "selected_semesters": _filter_list(semester),
         "division_groups": division_batch_groups(view["students"]),
         "windows": [{"value": value, "label": label} for value, label in WINDOW_OPTIONS],
         "active_window": active_window,

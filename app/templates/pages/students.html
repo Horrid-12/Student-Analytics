@@ -226,14 +226,7 @@
     <input id="student-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search by ID, name or username&hellip;">
   </div>
   {% include "partials/class_filter_dropdown.html" %}
-  <div class="filter-field">
-    <label class="filter-label" for="semester-filter">Semester</label>
-    <select id="semester-filter" class="filter-select" name="semester">
-      {% for value in payload.semesters %}
-      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/semester_filter_dropdown.html" %}
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/students?roster={{ roster_id }}">Clear</a>
   <div class="filter-field">

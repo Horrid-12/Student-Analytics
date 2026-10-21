@@ -239,7 +239,13 @@ def filter_submissions(
     selected_divisions = {str(value).strip() for value in divisions or [] if str(value).strip()}
     selected_batches = {str(value).strip() for value in batches or [] if str(value).strip()}
     selected_pairs = {str(value).strip() for value in pairs or [] if "|" in str(value)}
-    semester = (semester or "All").strip()
+    # Semester is multi-select: a comma-joined string ("Semester 1,Semester 2")
+    # keeps a row when it matches ANY of the picked semesters.
+    selected_semesters = {
+        part.strip()
+        for part in str(semester or "All").split(",")
+        if part.strip() and part.strip().lower() != "all"
+    }
     filtered = []
     for source in submissions or []:
         row = dict(source)
@@ -250,7 +256,7 @@ def filter_submissions(
                 continue
         elif (selected_divisions and division not in selected_divisions) or (selected_batches and batch not in selected_batches):
             continue
-        if semester.lower() != "all" and str(row.get("semester") or "").strip() != semester:
+        if selected_semesters and str(row.get("semester") or "").strip() not in selected_semesters:
             continue
         if query:
             haystack = " ".join(str(row.get(key) or "") for key in (

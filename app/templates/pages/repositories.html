@@ -173,14 +173,7 @@
     <input id="repo-search" class="search-input" type="search" name="q" value="{{ q }}" placeholder="Search repos, owners, languages, students or PRN&hellip;">
   </div>
   {% include "partials/class_filter_dropdown.html" %}
-  <div class="filter-field">
-    <label class="filter-label" for="repo-semester">Semester</label>
-    <select id="repo-semester" class="filter-select" name="semester">
-      {% for value in payload.semesters %}
-      <option value="{{ value }}" {% if value == semester %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {% include "partials/semester_filter_dropdown.html" %}
   <div class="filter-field">
     <label class="filter-label" for="repo-language">Language</label>
     <select id="repo-language" class="filter-select" name="language">
@@ -289,7 +282,8 @@
 
   var form = document.getElementById('repo-filter-form');
   var viewInput = form.querySelector('input[name="view"]');
-  var semSel = document.getElementById('repo-semester');
+  var semWrap = document.querySelector('[data-semester-filter]');
+  var semFilter = semWrap ? semWrap.semesterFilter : null;
   var langSel = document.getElementById('repo-language');
   var sortSel = document.getElementById('repo-sort');
   var clearBtn = document.getElementById('repo-clear');
@@ -316,7 +310,12 @@
       function pick(key, sel) {
         if (typeof p[key] === 'string' && optionsOf(sel).indexOf(p[key]) !== -1) { out[key] = p[key]; }
       }
-      pick('semester', semSel);
+      if (semFilter && typeof p.semester === 'string') {
+        var sems = p.semester.split(',').map(function (v) { return v.trim(); }).filter(function (v) {
+          return v && semFilter.options().indexOf(v) !== -1;
+        });
+        if (sems.length) { out.semester = sems.join(','); }
+      }
       pick('language', langSel);
       if (VALID_SORTS.indexOf(p.sort) !== -1) { out.sort = p.sort; }
       if (isValidView(p.view)) { out.view = p.view; }
@@ -327,7 +326,7 @@
   function savePrefs() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        semester: semSel.value,
+        semester: semFilter ? semFilter.values().join(',') : '',
         language: langSel.value,
         sort: sortSel.value,
         view: viewInput.value
@@ -363,7 +362,7 @@
   clearBtn.addEventListener('click', function () {
     var p = readPrefs() || {};
     searchInput.value = '';
-    semSel.value = 'All';
+    if (semFilter) { semFilter.clear(); }
     langSel.value = 'All';
     sortSel.value = 'top';
     recencyInput.value = 'all';
@@ -372,7 +371,7 @@
     });
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        semester: 'All',
+        semester: '',
         language: 'All',
         sort: 'top',
         view: isValidView(p.view) ? p.view : 'grid'
@@ -417,7 +416,11 @@
   if (saved) {
     var needSubmit = false;
     if (saved.view) { applyView(saved.view); }
-    [['semester', semSel], ['language', langSel], ['sort', sortSel]].forEach(function (pair) {
+    if (saved.semester && semFilter) {
+      semFilter.set(saved.semester.split(','));
+      needSubmit = true;
+    }
+    [['language', langSel], ['sort', sortSel]].forEach(function (pair) {
       var key = pair[0], sel = pair[1];
       if (saved[key] && sel.value !== saved[key]) { sel.value = saved[key]; needSubmit = true; }
     });
