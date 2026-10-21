@@ -1438,36 +1438,139 @@ def set_faculty_password(email: str, password: str) -> bool:
         _drop_user(email)
 
 
-def parse_faculty_teaching(raw: str | None) -> dict[str, list[str]]:
-    """Parse a stored teaching blob into ``{division: [batches]}``. Tolerates
-    garbage (returns {}) so a corrupt row can never break a page render."""
+def parse_faculty_teaching(raw: str | None) -> dict[str, dict[str, list[str]]]:
+    """Parse a stored teaching blob into ``{division: {batch: [semesters]}}``.
+
+    The semester of each taught batch is optional: an empty list means
+    "every semester of that batch" (the pre-semester behaviour). The legacy
+    ``{division: [batches]}`` blob is still understood, so assignments saved
+    before this change keep working. Tolerates garbage (returns {}) so a
+    corrupt row can never break a page render."""
     try:
         data = json.loads(raw or "{}")
     except (TypeError, ValueError):
         return {}
     if not isinstance(data, dict):
         return {}
-    cleaned: dict[str, list[str]] = {}
+    cleaned: dict[str, dict[str, list[str]]] = {}
     for division, batches in data.items():
         division = str(division or "").strip()
         if division not in SIGNUP_DIVISIONS:
             continue
-        if isinstance(batches, str):
-            batches = [batches]
-        if not isinstance(batches, (list, tuple)):
+        # Legacy shape: {division: [batch, ...]} -> no semester recorded.
+        if isinstance(batches, (list, tuple)):
+            legacy = {str(batch).strip(): [] for batch in batches}
+        elif isinstance(batches, dict):
+            legacy = {}
+            for batch, semesters in batches.items():
+                if isinstance(semesters, str):
+                    semesters = [semesters]
+                if not isinstance(semesters, (list, tuple)):
+                    continue
+                legacy[str(batch).strip()] = [
+                    str(semester).strip()
+                    for semester in semesters
+                    if str(semester).strip() in SEMESTERS
+                ]
+        elif isinstance(batches, str):
+            legacy = {batches.strip(): []}
+        else:
             continue
-        kept = sorted({
-            str(batch).strip()
-            for batch in batches
-            if valid_signup_practical_batch(str(batch), division)
-        })
+        kept = {
+            batch: semesters
+            for batch, semesters in legacy.items()
+            if batch and valid_signup_practical_batch(batch, division)
+        }
         if kept:
             cleaned[division] = kept
     return cleaned
 
 
-def get_faculty_teaching(email: str) -> dict[str, list[str]]:
-    """A faculty account's teaching assignments ({} when none saved)."""
+def teaching_pairs(teaching: dict | None) -> dict[str, list[str]]:
+    """``{division: {batch: [semesters]}}`` -> ``{division: [batches]}``.
+
+    The scope pairs are what every consumer needs when it only cares about
+    WHICH classes are taught (the Division / Batch filter chips)."""
+    out: dict[str, list[str]] = {}
+    for division, batches in (teaching or {}).items():
+        if not isinstance(batches, dict):
+            continue
+        kept = sorted({str(batch).strip() for batch in batches if str(batch).strip()})
+        if kept:
+            out[str(division).strip()] = kept
+    return out
+
+
+def teaching_rows(teaching: dict | None) -> list[dict]:
+    """Flatten a teaching scope into form rows: one per class-semester."""
+    rows: list[dict] = []
+    for division, batches in sorted((teaching or {}).items(), key=lambda item: str(item[0])):
+        if not isinstance(batches, dict):
+            continue
+        for batch, semesters in sorted(batches.items(), key=lambda item: str(item[0])):
+            semesters = [s for s in (semesters or []) if s]
+            if semesters:
+                for semester in semesters:
+                    rows.append({"division": str(division), "batch": str(batch), "semester": semester})
+            else:
+                rows.append({"division": str(division), "batch": str(batch), "semester": ""})
+    return rows
+
+
+def teaching_includes(teaching: dict | None, division: str, batch: str, semester: str = "") -> bool:
+    """True when a class is inside a faculty member's teaching scope.
+
+    The scope is ``{division: {batch: [semesters]}}``. A batch taught
+    without a semester covers every semester of it; otherwise the class
+    matches only when its semester is one of the recorded ones."""
+    if not teaching or not isinstance(teaching, dict):
+        return False
+    division = str(division or "").strip()
+    batch = str(batch or "").strip()
+    if not division or not batch:
+        return False
+    batches = teaching.get(division)
+    if isinstance(batches, dict):
+        taught = batches.get(batch)
+    elif isinstance(batches, (list, tuple)):
+        taught = [] if batch in [str(b).strip() for b in batches] else None
+    else:
+        taught = None
+    if taught is None:
+        return False
+    if not taught:
+        return True
+    semester = str(semester or "").strip()
+    return not semester or semester in [str(s).strip() for s in taught]
+
+
+def teaching_scope_label(teaching: dict | None) -> str:
+    """Human-readable summary of a teaching scope.
+
+    ``Division 3 (Batch 1, 2)`` and, when a semester was recorded,
+    ``Division 3 (Batch 1 (Semester 5), 2)``."""
+    parts: list[str] = []
+    for division in sorted(
+        (teaching or {}).keys(),
+        key=lambda d: int(d) if str(d).isdigit() else 999,
+    ):
+        batches = (teaching or {}).get(division)
+        if not isinstance(batches, dict):
+            continue
+        labels = []
+        for batch in sorted(batches, key=lambda b: int(b) if str(b).isdigit() else 999):
+            semesters = [s for s in (batches.get(batch) or []) if s]
+            labels.append(f"{batch} ({', '.join(semesters)})" if semesters else str(batch))
+        if labels:
+            parts.append(f"Division {division} (Batch {', '.join(labels)})")
+    return "; ".join(parts)
+
+
+def get_faculty_teaching(email: str) -> dict[str, dict[str, list[str]]]:
+    """A faculty account's teaching assignments ({} when none saved).
+
+    Shape: ``{division: {batch: [semesters]}}`` — an empty semester list
+    means every semester of that batch."""
     row = get_faculty(email)
     if row is None:
         return {}
@@ -1477,42 +1580,56 @@ def get_faculty_teaching(email: str) -> dict[str, list[str]]:
 def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
     """Validate and store a faculty account's teaching assignments.
 
-    ``mapping`` is ``{division: [batches]}`` using sign-up's divisions 1-32
-    and division-dependent practical batches. Returns ``(True, "")`` on
-    success, ``(False, code)``
+    ``mapping`` is ``{division: {batch: [semesters]}}`` (the stored shape)
+    and also accepts the simpler ``{division: [batches]}`` and
+    ``{division: {batch: "Semester 3"}}`` forms. Divisions are sign-up's
+    1-32, batches are the division-dependent practical batches and semesters
+    are optional (empty = every semester of that batch). Returns
+    ``(True, "")`` on success, ``(False, code)``
     otherwise where code is one of ``no_user``, ``empty`` (no valid rows),
-    ``bad_division``, ``bad_batch``, ``storage_unavailable``. Never raises."""
+    ``bad_division``, ``bad_batch``, ``bad_semester``,
+    ``storage_unavailable``. Never raises."""
     email = (email or "").strip().lower()
     if get_faculty(email) is None:
         return False, "no_user"
     if not isinstance(mapping, dict) or not mapping:
         return False, "empty"
-    cleaned: dict[str, list[str]] = {}
+    cleaned: dict[str, dict[str, list[str]]] = {}
     for division, batches in mapping.items():
         division = str(division or "").strip()
         if division not in SIGNUP_DIVISIONS:
             return False, "bad_division"
-        if isinstance(batches, str):
-            batches = [batches]
-        if not isinstance(batches, (list, tuple)) or not batches:
+        if isinstance(batches, (list, tuple)):
+            batches = {str(batch).strip(): [] for batch in batches}
+        elif isinstance(batches, str):
+            batches = {batches: []}
+        if not isinstance(batches, dict) or not batches:
             return False, "bad_batch"
-        kept = []
-        for batch in batches:
+        for batch, semesters in batches.items():
             batch = str(batch or "").strip()
+            if not batch:
+                return False, "bad_batch"
             if not valid_signup_practical_batch(batch, division):
                 return False, "bad_batch"
-            if batch not in kept:
-                kept.append(batch)
-        if not kept:
-            return False, "bad_batch"
-        if division in cleaned:
-            for batch in kept:
-                if batch not in cleaned[division]:
-                    cleaned[division].append(batch)
-        else:
-            cleaned[division] = kept
-    for division in cleaned:
-        cleaned[division] = sorted(cleaned[division])
+            if isinstance(semesters, str):
+                semesters = [semesters]
+            if not isinstance(semesters, (list, tuple)):
+                return False, "bad_semester"
+            kept: list[str] = []
+            for semester in semesters:
+                semester = str(semester or "").strip()
+                if not semester:
+                    continue
+                if semester not in SEMESTERS:
+                    return False, "bad_semester"
+                if semester not in kept:
+                    kept.append(semester)
+            bucket = cleaned.setdefault(division, {}).setdefault(batch, [])
+            for semester in kept:
+                if semester not in bucket:
+                    bucket.append(semester)
+    if not cleaned or not any(cleaned[division] for division in cleaned):
+        return False, "empty"
     blob = json.dumps(cleaned, sort_keys=True)
     try:
         if database.db_configured():

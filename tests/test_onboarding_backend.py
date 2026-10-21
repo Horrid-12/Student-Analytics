@@ -479,7 +479,7 @@ class TestFacultyTeachingSetup:
         )
         assert response.status_code == 303
         assert response.headers["location"] == "/settings?classes=saved"
-        assert auth.get_faculty_teaching(email) == {"14": ["2"], "15": ["3"]}
+        assert auth.get_faculty_teaching(email) == {"14": {"2": []}, "15": {"3": []}}
 
     def test_non_faculty_cannot_update_teaching_assignments_in_settings(self, client):
         _session(client, "student")
@@ -530,7 +530,7 @@ class TestFacultyTeachingSetup:
         saved = _teaching_post(client, "division=14&batch=2&division=15&batch=3")
         assert saved.status_code == 303
         assert saved.headers["location"] == "/"
-        assert auth.get_faculty_teaching("prof5@example.com") == {"14": ["2"], "15": ["3"]}
+        assert auth.get_faculty_teaching("prof5@example.com") == {"14": {"2": []}, "15": {"3": []}}
 
     def test_admin_still_sees_ledger(self, client):
         _session(client, "admin")
@@ -543,7 +543,7 @@ class TestFacultyTeachingSetup:
         r = _teaching_post(client, "division=3&batch=1&division=3&batch=2&division=15&batch=3")
         assert r.status_code == 303
         assert r.headers["location"] == "/"
-        assert auth.get_faculty_teaching(email) == {"15": ["3"], "3": ["1", "2"]}
+        assert auth.get_faculty_teaching(email) == {"15": {"3": []}, "3": {"1": [], "2": []}}
         body = client.get("/faculty-setup?phase=2").text
         assert 'value="3"' in body
         assert 'value="15"' in body
@@ -559,9 +559,9 @@ class TestFacultyTeachingSetup:
         assert r.status_code == 400
         r = _teaching_post(client, "division=15&batch=3")
         assert r.status_code == 303
-        assert auth.get_faculty_teaching(email) == {"15": ["3"]}
+        assert auth.get_faculty_teaching(email) == {"15": {"3": []}}
         assert auth.set_faculty_teaching(email, {"3": ["P1"]}) == (False, "bad_batch")
-        assert auth.get_faculty_teaching(email) == {"15": ["3"]}  # invalid submission left saved mapping unchanged
+        assert auth.get_faculty_teaching(email) == {"15": {"3": []}}  # invalid submission left saved mapping unchanged
 
     def test_non_faculty_blocked(self, client):
         _session(client, "student")

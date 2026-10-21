@@ -104,7 +104,7 @@
 {% elif onboarding_users %}
 <div style="display:flex; justify-content:space-between; align-items:center; margin:0 2px 10px; color:var(--muted); font-size:12px;">
   <span>{{ onboarding_users|length }} matching pending student{% if onboarding_users|length != 1 %}s{% endif %}</span>
-  <span>Assigned classes: {% for division, batches in teaching_scope|dictsort %}Div {{ division }} · Batch {{ batches|join(', ') }}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+  <span>Assigned classes: {{ teaching_scope_label }}</span>
 </div>
 {% for row in onboarding_users %}
 <article class="panel faculty-review-card">

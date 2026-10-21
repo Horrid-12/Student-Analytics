@@ -28,18 +28,18 @@
 {% if auth_role == "Faculty" %}
 <section class="panel">
   <div class="panel-title">Teaching Assignments</div>
-  <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Update the divisions and practical batches you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3.</p>
+  <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Update the divisions, practical batches and semesters you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3. Leave the semester on &ldquo;All semesters&rdquo; when you teach that batch every semester.</p>
   {% if classes_status == "saved" %}
   <div class="badge-green" style="display:inline-block; margin-bottom:14px;">Teaching assignments updated.</div>
   {% elif classes_status == "invalid" %}
-  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">Choose a valid division and practical batch for every row.</div>
+  <div class="badge-red" style="display:inline-block; margin-bottom:14px;">Choose a valid division, practical batch and semester for every row.</div>
   {% elif classes_status == "unavailable" %}
   <div class="badge-red" style="display:inline-block; margin-bottom:14px;">We couldn't save your teaching assignments. Please try again.</div>
   {% endif %}
   <form method="post" action="/settings/faculty-teaching" id="settings-faculty-teaching-form">
     <div id="settings-faculty-teaching-rows" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
       {% for row in faculty_teaching_rows %}
-      <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
+      <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
         <div class="form-group" style="margin:0;">
           <label>Division</label>
           <select name="division" class="settings-teaching-select settings-teaching-division" required>
@@ -55,6 +55,15 @@
             <option value="">Select division first</option>
           </select>
         </div>
+        <div class="form-group" style="margin:0;">
+          <label>Semester</label>
+          <select name="semester" class="settings-teaching-select settings-teaching-semester">
+            <option value="">All semesters</option>
+            {% for semester in semesters %}
+            <option value="{{ semester }}" {% if row.semester == semester %}selected{% endif %}>{{ semester }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <button type="button" class="btn settings-teaching-remove">Remove</button>
       </div>
       {% endfor %}
@@ -65,7 +74,7 @@
     </div>
   </form>
   <template id="settings-teaching-row-template">
-    <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
+    <div class="settings-teaching-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end;">
       <div class="form-group" style="margin:0;">
         <label>Division</label>
         <select name="division" class="settings-teaching-select settings-teaching-division" required>
@@ -76,6 +85,13 @@
       <div class="form-group" style="margin:0;">
         <label>Practical Batch</label>
         <select name="batch" class="settings-teaching-select settings-teaching-batch" required><option value="">Select division first</option></select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Semester</label>
+        <select name="semester" class="settings-teaching-select settings-teaching-semester">
+          <option value="">All semesters</option>
+          {% for semester in semesters %}<option value="{{ semester }}">{{ semester }}</option>{% endfor %}
+        </select>
       </div>
       <button type="button" class="btn settings-teaching-remove">Remove</button>
     </div>

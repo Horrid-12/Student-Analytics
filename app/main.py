@@ -1572,11 +1572,7 @@ def faculty_setup_page(request: Request, welcome: int = 0, error: str = "", phas
         if signed_in.get("role") != "faculty" or phase != 2:
             return RedirectResponse("/", status_code=302)
         assignments = auth.get_faculty_teaching(signed_in.get("email", ""))
-        teaching_rows = [
-            {"division": division, "batch": batch}
-            for division, batches in sorted(assignments.items(), key=lambda item: int(item[0]))
-            for batch in batches
-        ] or [{"division": "", "batch": ""}]
+        teaching_rows = auth.teaching_rows(assignments) or [{"division": "", "batch": "", "semester": ""}]
         return templates.TemplateResponse(
             request,
             "pages/faculty_teaching_setup.html",
@@ -1584,6 +1580,7 @@ def faculty_setup_page(request: Request, welcome: int = 0, error: str = "", phas
                 "page_name": "faculty-setup",
                 "teaching_rows": teaching_rows,
                 "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+                "semesters": auth.SEMESTERS,
                 "error_code": (error or "").strip(),
             },
         )
@@ -1662,20 +1659,27 @@ async def faculty_teaching_setup_submit(request: Request):
         form = await request.form()
         divisions = [str(value or "").strip() for value in form.getlist("division")]
         batches = [str(value or "").strip() for value in form.getlist("batch")]
+        semesters = [str(value or "").strip() for value in form.getlist("semester")]
     except Exception:
         return RedirectResponse("/faculty-setup?phase=2&error=invalid_teaching", status_code=303)
 
-    pairs = list(zip(divisions, batches))
-    entered_rows = [{"division": division, "batch": batch} for division, batch in pairs]
+    if not semesters:
+        semesters = [""] * len(divisions)
+    pairs = list(zip(divisions, batches, semesters))
+    entered_rows = [
+        {"division": division, "batch": batch, "semester": semester}
+        for division, batch, semester in pairs
+    ]
     if (
         len(divisions) != len(batches)
+        or len(semesters) != len(divisions)
         or not pairs
         or len(pairs) > 50
-        or any(not d or not b for d, b in pairs)
+        or any(not d or not b for d, b, _ in pairs)
     ):
         entered_rows = entered_rows[:50]
         if not entered_rows:
-            entered_rows = [{"division": "", "batch": ""}]
+            entered_rows = [{"division": "", "batch": "", "semester": ""}]
         return templates.TemplateResponse(
             request,
             "pages/faculty_teaching_setup.html",
@@ -1683,21 +1687,22 @@ async def faculty_teaching_setup_submit(request: Request):
                 "page_name": "faculty-setup",
                 "teaching_rows": entered_rows,
                 "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+                "semesters": auth.SEMESTERS,
                 "error_code": "invalid_teaching",
             },
             status_code=400,
         )
 
-    mapping: dict[str, list[str]] = {}
-    for division, batch in pairs:
-        mapping.setdefault(division, [])
-        if batch not in mapping[division]:
-            mapping[division].append(batch)
+    mapping: dict[str, dict[str, list[str]]] = {}
+    for division, batch, semester in pairs:
+        bucket = mapping.setdefault(division, {}).setdefault(batch, [])
+        if semester and semester not in bucket:
+            bucket.append(semester)
     ok, error_code = auth.set_faculty_teaching(user.get("email", ""), mapping)
     if ok:
         _db_log_event("faculty_teaching_saved", user.get("email", ""))
         return RedirectResponse("/", status_code=303)
-    if error_code in ("bad_division", "bad_batch", "empty"):
+    if error_code in ("bad_division", "bad_batch", "bad_semester", "empty"):
         error_code = "invalid_teaching"
     elif error_code != "storage_unavailable":
         error_code = "storage_unavailable"
@@ -1706,8 +1711,9 @@ async def faculty_teaching_setup_submit(request: Request):
         "pages/faculty_teaching_setup.html",
         {
             "page_name": "faculty-setup",
-            "teaching_rows": entered_rows or [{"division": "", "batch": ""}],
+            "teaching_rows": entered_rows or [{"division": "", "batch": "", "semester": ""}],
             "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+            "semesters": auth.SEMESTERS,
             "error_code": error_code,
         },
         status_code=400,
@@ -2367,10 +2373,7 @@ def overview(
                 if view is not None and _is_complete(view):
                     view = _taught_view
             if ctx["my_classes_on"]:
-                ctx["teaching_scope"] = "; ".join(
-                    f"Division {div} (Batch {', '.join(batches)})"
-                    for div, batches in sorted(teaching.items(), key=lambda kv: int(kv[0]))
-                )
+                ctx["teaching_scope"] = auth.teaching_scope_label(teaching)
         else:
             ctx["teaching_empty"] = True
     # Student privacy: @handles are stripped from the named statistics
@@ -2477,15 +2480,19 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
             _rows = [
                 row for row in auth.get_onboarding_users()
                 if str(row.get("onboarding_status") or "") == "pending"
-                if str(row.get("division") or "").strip() in teaching
-                and str(row.get("practical_batch") or "").strip()
-                in teaching.get(str(row.get("division") or "").strip(), [])
+                if auth.teaching_includes(
+                    teaching,
+                    str(row.get("division") or "").strip(),
+                    str(row.get("practical_batch") or "").strip(),
+                    str(row.get("semester") or "").strip(),
+                )
             ]
         except Exception:
             _rows = []
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
         ctx["teaching_scope"] = teaching if "teaching" in locals() else {}
+        ctx["teaching_scope_label"] = auth.teaching_scope_label(ctx["teaching_scope"])
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
@@ -2767,15 +2774,20 @@ def autocad_page(
         def in_taught_scope(row: dict) -> bool:
             div = str(row.get("division") or "").strip()
             bat = str(row.get("practical_batch") or "").strip()
-            return div in taught_map and bat in set(taught_map.get(div) or [])
+            sem = str(row.get("semester") or "").strip()
+            return auth.teaching_includes(taught_map, div, bat, sem)
 
         filter_accounts = account_rows
         if role == "faculty" and teaching_active and mine_value != "0":
             filter_accounts = [row for row in account_rows if in_taught_scope(row)]
             submissions = [
                 row for row in submissions
-                if str(row.get("division") or "").strip() in taught_map
-                and str(row.get("batch") or "").strip() in set(taught_map.get(str(row.get("division") or "").strip()) or [])
+                if auth.teaching_includes(
+                    taught_map,
+                    str(row.get("division") or "").strip(),
+                    str(row.get("batch") or "").strip(),
+                    str(row.get("semester") or "").strip(),
+                )
             ]
 
         available_semesters = sorted({
@@ -5058,11 +5070,7 @@ def settings_page(request: Request, linked: str = "", classes: str = "", pfp: st
     faculty_teaching_rows = []
     if (user.get("role") or "") == "faculty":
         assignments = auth.get_faculty_teaching(user.get("email", ""))
-        faculty_teaching_rows = [
-            {"division": division, "batch": batch}
-            for division, batches in sorted(assignments.items(), key=lambda item: int(item[0]))
-            for batch in batches
-        ] or [{"division": "", "batch": ""}]
+        faculty_teaching_rows = auth.teaching_rows(assignments) or [{"division": "", "batch": "", "semester": ""}]
     return templates.TemplateResponse(
         request,
         "pages/settings.html",
@@ -5079,6 +5087,7 @@ def settings_page(request: Request, linked: str = "", classes: str = "", pfp: st
             "onboarding_record": onboarding_record,
             "faculty_teaching_rows": faculty_teaching_rows,
             "practical_batches_by_division": auth.SIGNUP_PRACTICAL_BATCHES_BY_DIVISION,
+            "semesters": auth.SEMESTERS,
             "classes_status": (classes or "").strip(),
             # Feature 85: PFP toggle in User Settings (students with both
             # avatars linked only).
@@ -5126,28 +5135,32 @@ async def settings_faculty_teaching_submit(request: Request):
         form = await request.form()
         divisions = [str(value or "").strip() for value in form.getlist("division")]
         batches = [str(value or "").strip() for value in form.getlist("batch")]
+        semesters = [str(value or "").strip() for value in form.getlist("semester")]
     except Exception:
         return RedirectResponse("/settings?classes=invalid", status_code=303)
 
-    pairs = list(zip(divisions, batches))
+    if not semesters:
+        semesters = [""] * len(divisions)
+    pairs = list(zip(divisions, batches, semesters))
     if (
         len(divisions) != len(batches)
+        or len(semesters) != len(divisions)
         or not pairs
         or len(pairs) > 50
-        or any(not division or not batch for division, batch in pairs)
+        or any(not division or not batch for division, batch, _ in pairs)
     ):
         return RedirectResponse("/settings?classes=invalid", status_code=303)
 
-    mapping: dict[str, list[str]] = {}
-    for division, batch in pairs:
-        mapping.setdefault(division, [])
-        if batch not in mapping[division]:
-            mapping[division].append(batch)
+    mapping: dict[str, dict[str, list[str]]] = {}
+    for division, batch, semester in pairs:
+        bucket = mapping.setdefault(division, {}).setdefault(batch, [])
+        if semester and semester not in bucket:
+            bucket.append(semester)
     ok, error_code = auth.set_faculty_teaching(user.get("email", ""), mapping)
     if ok:
         _db_log_event("faculty_teaching_updated", user.get("email", ""))
         return RedirectResponse("/settings?classes=saved", status_code=303)
-    status = "invalid" if error_code in ("bad_division", "bad_batch", "empty") else "unavailable"
+    status = "invalid" if error_code in ("bad_division", "bad_batch", "bad_semester", "empty") else "unavailable"
     return RedirectResponse(f"/settings?classes={status}", status_code=303)
 
 @app.post("/api/settings/clear-cache")

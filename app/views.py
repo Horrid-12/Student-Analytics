@@ -2253,21 +2253,34 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
 def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | None:
     """Restrict a fleet-shaped view to a faculty member's taught classes.
 
-    Keeps students (and raw records) whose Division is taught AND whose Batch
-    is taught in that Division. Returns a NEW dict — the input is never
-    mutated (fleet/analysis views are memoised and shared across roles, and
-    the repo/team frames are re-derived from the kept cohort downstream).
-    Empty teaching, missing Division/Batch columns, or any error passes the
-    view through untouched: fail open to the full fleet, never a blank page.
+    Keeps students whose Division is taught AND whose Batch is taught in
+    that Division. When the faculty recorded a semester for that batch, the
+    student's Semester must match one of the recorded semesters (a batch
+    taught without a semester covers every semester of it).
+
+    Returns a NEW dict — the input is never mutated (fleet/analysis views
+    are memoised and shared across roles, and the repo/team frames are
+    re-derived from the kept cohort downstream). Empty teaching, missing
+    Division/Batch columns, or any error passes the view through untouched:
+    fail open to the full fleet, never a blank page.
     """
     if not view or not teaching or not isinstance(teaching, dict):
         return view
     try:
-        scope = {
-            str(div or "").strip(): {str(b or "").strip() for b in batches}
-            for div, batches in teaching.items()
-            if isinstance(batches, (list, tuple))
-        }
+        # {division: {batch: [semesters]}}; the legacy {division: [batches]}
+        # shape is accepted too (no semester recorded).
+        scope: dict[str, dict[str, list[str]]] = {}
+        for div, batches in teaching.items():
+            if isinstance(batches, dict):
+                scope[str(div or "").strip()] = {
+                    str(batch or "").strip(): [str(s).strip() for s in (semesters or []) if str(s).strip()]
+                    for batch, semesters in batches.items()
+                    if str(batch or "").strip()
+                }
+            elif isinstance(batches, (list, tuple)):
+                scope[str(div or "").strip()] = {
+                    str(batch or "").strip(): [] for batch in batches if str(batch or "").strip()
+                }
         scope = {div: batches for div, batches in scope.items() if div and batches}
         if not scope:
             return view
@@ -2278,17 +2291,33 @@ def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | 
             return view
         divisions = students["Division"].astype(str).str.strip()
         batches = students["Batch"].astype(str).str.strip()
+        semesters = (
+            students["Semester"].astype(str).str.strip()
+            if "Semester" in students.columns
+            else None
+        )
         mask = pd.Series(False, index=students.index)
         for taught_div, taught_batches in scope.items():
-            mask = mask | (divisions.eq(taught_div) & batches.isin(taught_batches))
+            for taught_batch, taught_semesters in taught_batches.items():
+                row_mask = divisions.eq(taught_div) & batches.eq(taught_batch)
+                if taught_semesters and semesters is not None:
+                    row_mask = row_mask & semesters.isin(taught_semesters)
+                mask = mask | row_mask
         kept = students[mask].copy()
         records = view.get("records")
-        kept_records = [
-            row for row in (records or [])
-            if str((row or {}).get("Division") or "").strip() in scope
-            and str((row or {}).get("Batch") or "").strip() in scope.get(
-                str((row or {}).get("Division") or "").strip(), set())
-        ] if isinstance(records, list) else records
+
+        def _record_kept(row) -> bool:
+            division = str((row or {}).get("Division") or "").strip()
+            batch = str((row or {}).get("Batch") or "").strip()
+            taught = scope.get(division, {}).get(batch)
+            if taught is None:
+                return False
+            if not taught:
+                return True
+            record_semester = str((row or {}).get("Semester") or "").strip()
+            return not record_semester or record_semester in taught
+
+        kept_records = [row for row in (records or []) if _record_kept(row)] if isinstance(records, list) else records
         state = dict(view.get("state") or {})
         state.update({"valid": len(kept), "invalid": 0, "errors": 0})
         state.setdefault("status", "complete")

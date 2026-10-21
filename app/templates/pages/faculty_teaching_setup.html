@@ -17,10 +17,10 @@
       <div class="phase-dot is-now"><i>2</i><small>Teaching</small></div>
     </div>
   </div>
-  <p class="sub">Choose every division and practical batch you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3.</p>
+  <p class="sub">Choose every division, practical batch and semester you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3. Your dashboard and review queues then scope to exactly those classes.</p>
 
   {% if error_code == "invalid_teaching" %}
-  <div class="banner-error">Choose a valid division and practical batch for every row.</div>
+  <div class="banner-error">Choose a valid division, practical batch and semester for every row.</div>
   {% elif error_code == "storage_unavailable" %}
   <div class="banner-error">We couldn't save your teaching assignments. Please try again.</div>
   {% endif %}
@@ -28,7 +28,7 @@
   <form method="post" action="/faculty-setup/phase/2" id="faculty-teaching-setup-form">
     <div id="faculty-teaching-rows" style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;">
       {% for row in teaching_rows %}
-      <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
+      <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
         <div class="form-group" style="margin:0;">
           <label>Division</label>
           <input class="faculty-division-input" type="text" inputmode="numeric" pattern="(?:[1-9]|[12][0-9]|3[0-2])" placeholder="Division (1–32)" value="{{ row.division }}" required>
@@ -46,19 +46,28 @@
             <input class="faculty-batch-value" type="hidden" name="batch" value="{{ row.batch }}">
           </div>
         </div>
+        <div class="form-group" style="margin:0;">
+          <label>Semester</label>
+          <select class="faculty-semester-value" name="semester">
+            <option value="">All semesters</option>
+            {% for semester in semesters %}
+            <option value="{{ semester }}" {% if row.semester == semester %}selected{% endif %}>{{ semester }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
       </div>
       {% endfor %}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn" id="faculty-add-row" type="button">+ Add another division</button>
+      <button class="btn" id="faculty-add-row" type="button">+ Add another class</button>
       <button class="btn-primary" type="submit" style="flex:1;min-width:180px;">Save and continue</button>
     </div>
   </form>
 </div>
 
 <template id="faculty-teaching-row-template">
-  <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
+  <div class="faculty-teaching-row" style="padding:14px;border:1px solid var(--border);border-radius:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;">
     <div class="form-group" style="margin:0;">
       <label>Division</label>
       <input class="faculty-division-input" type="text" inputmode="numeric" pattern="(?:[1-9]|[12][0-9]|3[0-2])" placeholder="Division (1–32)" required>
@@ -75,6 +84,15 @@
         <div class="su-panel faculty-batch-panel" role="listbox" hidden><div class="su-pills"></div></div>
         <input class="faculty-batch-value" type="hidden" name="batch" value="">
       </div>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Semester</label>
+      <select class="faculty-semester-value" name="semester">
+        <option value="">All semesters</option>
+        {% for semester in semesters %}
+        <option value="{{ semester }}">{{ semester }}</option>
+        {% endfor %}
+      </select>
     </div>
     <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
   </div>
