@@ -114,7 +114,9 @@ class TestOAuthCallback:
         })
         r = client.get(cb, follow_redirects=False)
         assert r.status_code == 302
-        assert r.headers["location"] == "/onboarding"
+        # A Google sign-in lands on the Overview — never on the (removed)
+        # onboarding page.
+        assert r.headers["location"] == "/"
         assert "gsad_session" in client.cookies
         assert auth.read_session_token(client.cookies["gsad_session"])["email"] == "stu1@mitwpu.edu.in"
 

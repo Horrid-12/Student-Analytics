@@ -276,7 +276,9 @@ class TestLoginSelfSync:
         assert snap is not None and snap.get("status") == "ok"
         assert len(snap.get("repos") or []) == 2
 
-    def test_pending_student_lands_on_onboarding_without_sync(self):
+    def test_student_without_record_lands_on_overview_without_sync(self):
+        """A student with no academic record signs in and lands on the
+        Overview — the onboarding page no longer exists."""
         auth.create_user("bob@college.edu", "secret123", "student", "Bob B")
         client = TestClient(app)
         r = client.post(
@@ -285,8 +287,28 @@ class TestLoginSelfSync:
             follow_redirects=False,
         )
         assert r.status_code == 302
-        assert r.headers["location"].endswith("/onboarding")
+        assert r.headers["location"].rstrip("/") in ("/", "")
         assert accounts.get_snapshot("bob@college.edu") is None
+
+    def test_pending_student_lands_on_record_view_without_sync(self):
+        """A student whose record still waits for a teacher keeps landing on
+        the read-only record view (never on a form)."""
+        auth.create_user("bob2@college.edu", "secret123", "student", "Bob B")
+        ok, err = auth.submit_onboarding(
+            "bob2@college.edu", "1234567890", "Core", "1",
+            main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
+            hackerrank_username="bob_hr",
+        )
+        assert ok, err
+        client = TestClient(app)
+        r = client.post(
+            "/login",
+            data={"email": "bob2@college.edu", "password": "secret123"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"].endswith("/onboarding")
+        assert accounts.get_snapshot("bob2@college.edu") is None
 
     def test_admin_lands_on_overview_without_self_sync(self):
         auth.create_user("cap@college.edu", "secret123", "admin", "Captain")

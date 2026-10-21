@@ -33,12 +33,17 @@ def login(client, email="stu1@college.edu", password="secret123"):
 
 def submit(client, prn="1234567890", degree="Core", division="1",
            main_batch="Batch 2022", practical_batch="1", semester="Semester 3",
-           hackerrank="hr_stu1"):
-    return client.post(
-        "/onboarding",
-        data={"prn": prn, "degree_branch": degree, "division": division,
-              "main_batch": main_batch, "practical_batch": practical_batch, "semester": semester,
-              "hackerrank_username": hackerrank},
+           hackerrank="hr_stu1", email="stu1@college.edu"):
+    """Record a student submission through the data layer.
+
+    The legacy /onboarding form (and its POST route) is gone — a student's
+    academic record is captured by the sign-up phases — so the tests seed
+    records with the same helper the route used to call.
+    """
+    return auth.submit_onboarding(
+        email, prn, degree, division,
+        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
+        hackerrank_username=hackerrank,
     )
 
 
@@ -62,11 +67,13 @@ def _session(client, role, email=None):
 
 
 class TestSubmitOnboarding:
+    """The academic record is written by the data layer (the sign-up phases
+    call it). The legacy /onboarding form and its fields are gone."""
+
     def test_student_submission_persists_pending(self, client):
         signup(client)
-        login(client)
-        r = submit(client)
-        assert "saved=1" in str(r.url)
+        ok, err = submit(client)
+        assert ok, err
         user = auth.get_user("stu1@college.edu")
         assert user["prn"] == "1234567890"
         assert user["degree_branch"] == "Core"
@@ -79,105 +86,120 @@ class TestSubmitOnboarding:
 
     def test_student_submission_without_main_batch_succeeds(self, client):
         signup(client, "stu2@college.edu", "secret123")
-        login(client, "stu2@college.edu", "secret123")
-        r = submit(client, prn="1234567891", main_batch="")
-        assert "saved=1" in str(r.url)
+        ok, err = submit(client, prn="1234567891", main_batch="", email="stu2@college.edu")
+        assert ok, err
         user = auth.get_user("stu2@college.edu")
         assert user["prn"] == "1234567891"
         assert user["practical_batch"] == "1"
         assert user["semester"] == "Semester 3"
         assert user["onboarding_status"] == "pending"
 
-    def test_submit_requires_login(self, client):
-        r = submit(client)
-        assert r.status_code in (401, 302, 303)
+    def test_legacy_onboarding_form_is_gone(self, client):
+        """The old page-owned form no longer exists: posting to it writes no
+        academic data and sends the caller to the sign-up flow."""
+        signup(client)
+        login(client)
+        r = client.post(
+            "/onboarding",
+            data={"prn": "1234567890", "degree_branch": "Core", "division": "1",
+                  "practical_batch": "1", "semester": "Semester 3",
+                  "hackerrank_username": "hr_stu1"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == "/signup"
+        user = auth.get_user("stu1@college.edu")
+        assert user["onboarding_status"] == "none"
+        assert user["prn"] == ""
 
-    def test_faculty_admin_cannot_submit(self, client):
-        _session(client, "admin")
-        r = submit(client)
-        assert r.status_code == 403
-        assert auth.get_user("admin@college.edu")["onboarding_status"] == "none"
+    def test_student_page_shows_no_academic_form(self, client):
+        signup(client)
+        login(client)
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert 'id="onboarding-form"' not in body
+        assert '<select name="degree_branch"' not in body
+        assert "Academic Information" not in body
+
+    def test_student_without_record_is_sent_to_the_overview(self, client):
+        """No record, no onboarding page: the student is redirected home and
+        the nav has no Onboarding tab."""
+        signup(client)
+        login(client)
+        r = client.get("/onboarding", headers={"Accept": "text/html"}, follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"] == "/"
+        body = client.get("/settings", headers={"Accept": "text/html"}).text
+        assert "<span>Onboarding</span>" not in body
 
     def test_prn_must_be_exactly_10_digits(self, client):
         signup(client)
-        login(client)
         for bad in ("12345", "12345678901", "abcdefghij"):
-            r = submit(client, prn=bad)
-            assert "error=prn_format" in str(r.url), bad
+            ok, err = submit(client, prn=bad)
+            assert not ok and err == "prn_format", bad
         user = auth.get_user("stu1@college.edu")
         assert user["onboarding_status"] == "none"
 
     def test_invalid_degree_rejected(self, client):
         signup(client)
-        login(client)
-        r = submit(client, degree="Hacking Mastery")
-        assert "error=invalid_degree" in str(r.url)
+        ok, err = submit(client, degree="Hacking Mastery")
+        assert not ok and err == "invalid_degree"
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_invalid_division_rejected(self, client):
         signup(client)
-        login(client)
-        r = submit(client, division="Division 99")
-        assert "error=invalid_division" in str(r.url)
+        ok, err = submit(client, division="Division 99")
+        assert not ok and err == "invalid_division"
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_invalid_main_batch_rejected(self, client):
         signup(client)
-        login(client)
-        r = submit(client, main_batch="Batch 2099")
-        assert "error=invalid_main_batch" in str(r.url)
+        ok, err = submit(client, main_batch="Batch 2099")
+        assert not ok and err == "invalid_main_batch"
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_invalid_practical_batch_rejected(self, client):
         signup(client)
-        login(client)
-        r = submit(client, practical_batch="P99")
-        assert "error=invalid_practical_batch" in str(r.url)
+        ok, err = submit(client, practical_batch="P99")
+        assert not ok and err == "invalid_practical_batch"
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_invalid_semester_rejected(self, client):
         signup(client)
-        login(client)
-        r = submit(client, semester="Semester 12")
-        assert "error=invalid_semester" in str(r.url)
+        ok, err = submit(client, semester="Semester 12")
+        assert not ok and err == "invalid_semester"
         assert auth.get_user("stu1@college.edu")["onboarding_status"] == "none"
 
     def test_duplicate_prn_blocked_across_accounts(self, client):
         signup(client, "stu1@college.edu")
-        login(client, "stu1@college.edu")
-        assert "saved=1" in str(submit(client, prn="1234567890").url)
-        client.get("/logout")
+        ok, err = submit(client, prn="1234567890")
+        assert ok, err
 
         signup(client, "stu2@college.edu", "Student Two")
-        login(client, "stu2@college.edu")
-        r = submit(client, prn="1234567890")
-        assert "error=prn_taken" in str(r.url)
+        ok, err = submit(client, prn="1234567890", email="stu2@college.edu")
+        assert not ok and err == "prn_taken"
         assert auth.get_user("stu2@college.edu")["onboarding_status"] in (None, "none")
 
     def test_duplicate_prn_allowed_to_owner(self, client):
         """Re-submitting with the same PRN on the same account flips back to pending."""
         signup(client)
-        login(client)
         submit(client, prn="1234567890")
-        r = submit(client, prn="1234567890", degree="AI/DS")
-        assert "saved=1" in str(r.url)
+        ok, err = submit(client, prn="1234567890", degree="AI/DS")
+        assert ok, err
         user = auth.get_user("stu1@college.edu")
         assert user["degree_branch"] == "AI/DS"
         assert user["onboarding_status"] == "pending"
 
     def test_rejected_prn_can_be_reclaimed_by_new_owner(self, client):
         signup(client, "stu1@college.edu")
-        login(client, "stu1@college.edu")
-        assert "saved=1" in str(submit(client, prn="1234567890").url)
+        ok, err = submit(client, prn="1234567890")
+        assert ok, err
         _session(client, "admin")
         r = client.post("/onboarding/reject", data={"email": "stu1@college.edu"})
         assert "action=rejected" in str(r.url)
-        client.get("/logout")
 
         signup(client, "stu2@college.edu", "Student Two")
-        login(client, "stu2@college.edu")
-        r = submit(client, prn="1234567890")
-        assert "saved=1" in str(r.url)
+        ok, err = submit(client, prn="1234567890", email="stu2@college.edu")
+        assert ok, err
 
 
 class TestApprovalFlow:
@@ -245,36 +267,37 @@ class TestApprovalFlow:
 
 
 class TestLinkProfilesPanel:
-    """Student-side Link Profiles card: the saved handle links to the public
-    HackerRank profile, and a pasted profile URL resolves to that same
-    canonical link instead of doubling up the path."""
+    """Student-side record view: the saved HackerRank handle links to the
+    public profile, and a pasted profile URL resolves to that same canonical
+    link instead of doubling up the path."""
 
     def _panel(self, client):
         return client.get("/onboarding", headers={"Accept": "text/html"}).text
 
-    def test_no_card_before_a_handle_is_saved(self, client):
+    def test_no_handle_shows_a_dash(self, client):
         signup(client)
         login(client)
+        ok, err = submit(client, hackerrank="")
+        assert not ok
         body = self._panel(client)
-        assert 'id="hackerrank-card-link"' not in body
-        assert 'id="hackerrank-username-input"' in body  # input still rendered
+        assert "hackerrank.com/profile" not in body
 
     def test_saved_handle_links_to_public_profile(self, client):
         signup(client)
         login(client)
-        submit(client, hackerrank="hr_stu1")
+        ok, err = submit(client, hackerrank="hr_stu1")
+        assert ok, err
         body = self._panel(client)
-        assert '<a id="hackerrank-card-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
+        assert 'href="https://www.hackerrank.com/profile/hr_stu1"' in body
         assert 'target="_blank"' in body and 'rel="noopener"' in body
-        # Live preview link under the input points at the same profile.
-        assert '<a id="hackerrank-open-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
 
     def test_pasted_profile_url_normalizes_to_handle(self, client):
         signup(client)
         login(client)
-        submit(client, hackerrank="https://www.hackerrank.com/profile/hr_stu1/")
+        ok, err = submit(client, hackerrank="https://www.hackerrank.com/profile/hr_stu1/")
+        assert ok, err
         body = self._panel(client)
-        assert '<a id="hackerrank-card-link" href="https://www.hackerrank.com/profile/hr_stu1"' in body
+        assert 'href="https://www.hackerrank.com/profile/hr_stu1"' in body
         assert "hackerrank.com/profile/https" not in body  # no doubled path
 
 
@@ -282,7 +305,7 @@ class TestLedgerView:
     def test_ledger_lists_submissions_for_admin(self, client):
         signup(client, "1234567890.s@college.edu")
         login(client, "1234567890.s@college.edu")
-        submit(client, prn="9876543210")
+        submit(client, prn="9876543210", email="1234567890.s@college.edu")
         client.get("/logout")
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
@@ -302,11 +325,11 @@ class TestLedgerView:
     def test_faculty_gets_wide_searchable_review_profiles_for_assigned_classes(self, client):
         signup(client, "in-scope@college.edu", "In Scope")
         login(client, "in-scope@college.edu")
-        submit(client, prn="1234567890", division="14", practical_batch="2")
+        submit(client, prn="1234567890", division="14", practical_batch="2", email="in-scope@college.edu")
         client.get("/logout")
         signup(client, "out-of-scope@college.edu", "Out of Scope")
         login(client, "out-of-scope@college.edu")
-        submit(client, prn="1234567891", division="15", practical_batch="3")
+        submit(client, prn="1234567891", division="15", practical_batch="3", email="out-of-scope@college.edu")
         client.get("/logout")
         faculty_email = _session(client, "faculty")
         assert auth.set_faculty_teaching(faculty_email, {"14": ["2"]}) == (True, "")
@@ -325,7 +348,7 @@ class TestLedgerView:
     def test_faculty_review_search_filters_their_pending_students(self, client):
         signup(client, "search1@college.edu", "First Search")
         login(client, "search1@college.edu")
-        submit(client, prn="1234567890", division="1", practical_batch="1")
+        submit(client, prn="1234567890", division="1", practical_batch="1", email="search1@college.edu")
         client.get("/logout")
         _session(client, "faculty")
         auth.set_faculty_teaching("faculty@college.edu", {"1": ["1"]})
@@ -353,7 +376,8 @@ class TestLedgerView:
         login(client)
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "Registrar Onboarding Ledger" not in body
-        assert "Academic Information" in body
+        assert "Academic Information" not in body
+        assert "Your submitted details" not in body  # no record yet
 
     def test_anonymous_is_redirected_to_login(self, client):
         r = client.get("/onboarding", headers={"Accept": "text/html"})
@@ -366,11 +390,11 @@ class TestLedgerSearch:
     def _seed_two(self, client):
         signup(client, "1111111111.s@college.edu", name="Alice Example")
         login(client, "1111111111.s@college.edu")
-        submit(client, prn="1111111111", hackerrank="alice_hr")
+        submit(client, prn="1111111111", hackerrank="alice_hr", email="1111111111.s@college.edu")
         client.get("/logout")
         signup(client, "2222222222.s@college.edu", name="Bob Other")
         login(client, "2222222222.s@college.edu")
-        submit(client, prn="2222222222", hackerrank="bob_hr")
+        submit(client, prn="2222222222", hackerrank="bob_hr", email="2222222222.s@college.edu")
         client.get("/logout")
         _session(client, "admin")
 
@@ -611,15 +635,19 @@ class TestSignupRecordDisplay:
         assert "Resubmit for Verification" not in body
         assert "Pending review" in body
 
-    def test_legacy_record_keeps_form_and_resubmit(self, client):
+    def test_legacy_record_is_read_only(self, client):
+        """A record captured by the old flow still renders, but read-only —
+        the form and its resubmit button are gone."""
         signup(client)
         login(client)
-        submit(client)
+        ok, err = submit(client)
+        assert ok, err
         body = self._page(client)
-        assert '<select name="degree_branch" required' in body
-        assert "Resubmit for Verification" in body
-        assert "Official Notice" in body
-        assert "Your submitted details" not in body  # rich panel is signup-only
+        assert "Your submitted details" in body
+        assert "1234567890" in body
+        assert '<select name="degree_branch" required' not in body
+        assert 'id="onboarding-form"' not in body
+        assert "Resubmit for Verification" not in body
 
     def test_rejected_signup_record_points_to_support(self, client):
         email = self._signup_done(client)

@@ -888,16 +888,19 @@ def _base_context(request: Request, page_name: str, roster_id: str = "") -> dict
     request.state.user_row = user_row
     nav_items = nav(active=page_name, role=role, roster_id=roster_id)
     try:
-        # Approved students no longer need the standalone Onboarding tab — it
-        # moves into Settings > General once their record is verified. Fresh
-        # status comes from the DB row (the session cookie can be stale).
+        # Students only keep the Onboarding tab while their record is waiting
+        # for a teacher: it then shows the read-only record (no form). Once
+        # the record is approved it moves into Settings > General, and a
+        # student without a record has no onboarding page at all.
+        # Fresh status comes from the DB row (the session cookie can be stale).
         _ob_status = str(((user_row or {}).get("onboarding_status") or "")).strip().lower()
-        if (role or "") == "student" and _ob_status == "approved":
-            nav_items = [item for item in nav_items if item.get("label") != "Onboarding"]
-        # Unverified students (pending/rejected) only see Onboarding, Support
-        # and Settings until a teacher verifies them (mirrors auth_gate).
-        if (role or "") == "student" and _ob_status in ("pending", "rejected"):
-            nav_items = [item for item in nav_items if item.get("label") in auth.PENDING_STUDENT_PAGES]
+        if (role or "") == "student":
+            if _ob_status in ("pending", "rejected"):
+                # Unverified students only see Onboarding, Support and
+                # Settings until a teacher verifies them (mirrors auth_gate).
+                nav_items = [item for item in nav_items if item.get("label") in auth.PENDING_STUDENT_PAGES]
+            else:
+                nav_items = [item for item in nav_items if item.get("label") != "Onboarding"]
     except Exception:
         pass
     return {
@@ -1897,7 +1900,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
     except Exception:
         full_user = user
     await asyncio.to_thread(_self_sync_on_login, full_user)
-    response = RedirectResponse(_post_login_destination(full_user, "/onboarding"), status_code=302)
+    response = RedirectResponse(_post_login_destination(full_user, "/"), status_code=302)
     response.delete_cookie(auth._OAUTH_STATE_COOKIE)
     response.delete_cookie("gsad_oauth_mode")
     response.set_cookie(
@@ -2125,9 +2128,10 @@ def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
     """Where to land after a successful login (Phase 5.4).
 
     New faculty without saved teaching assignments resume phase 2 of setup.
-    Otherwise, honors an explicit ``next`` target; approved students and
-    faculty/admins go to the Overview, while first-time and pending students
-    continue into the onboarding flow."""
+    Otherwise, honors an explicit ``next`` target; faculty/admins and every
+    student go to the Overview. Only students whose record is still waiting
+    for a teacher (pending/rejected) land on their read-only record view —
+    a sign-in never opens the onboarding form, which no longer exists."""
     user = user or {}
     if user.get("role") == "faculty":
         email = str(user.get("email") or "").strip().lower()
@@ -2135,9 +2139,11 @@ def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
             return "/faculty-setup?phase=2"
     if next_dest and next_dest not in ("", "/", "/onboarding"):
         return next_dest
-    if user.get("role") != "student" or str(user.get("onboarding_status") or "") == "approved":
-        return "/"
-    return "/onboarding"
+    if (user.get("role") or "") == "student":
+        status = str(user.get("onboarding_status") or "none").strip().lower()
+        if status in ("pending", "rejected"):
+            return "/onboarding"
+    return "/"
 
 
 def _self_sync_on_login(user: dict | None) -> None:
@@ -2472,6 +2478,12 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
         except Exception:
             ctx["submission"] = {}
+        # The legacy onboarding form is gone: a student's academic record is
+        # captured by the sign-up phases, so this page is a read-only record
+        # view. A student without a record has nothing to see here — send
+        # them back to the Overview instead of showing an empty form.
+        if not str((ctx["submission"] or {}).get("prn") or "").strip():
+            return RedirectResponse("/", status_code=303)
     # Profile Status preferences for the submitted-details summary (keyed by
     # PRN, like the /me popup and sign-up phase 4).
     ctx["profile_prefs"] = {field: 0 for field in auth.PRIVACY_FIELDS}
@@ -2513,33 +2525,12 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
 
 
 @app.post("/onboarding", response_class=HTMLResponse)
-async def onboarding_submit(
-    request: Request,
-    prn: str = Form(""),
-    degree_branch: str = Form(""),
-    division: str = Form(""),
-    main_batch: str = Form(""),
-    practical_batch: str = Form(""),
-    semester: str = Form(""),
-    hackerrank_username: str = Form(""),
-):
-    """Student submission endpoint (Phase 4.12). Validates the form server-side,
-    persists the academic identity, and moves the account to ``pending``."""
-    user = getattr(request.state, "user", None)
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-    if user.get("role") not in ("student",):
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-    ok, err = auth.submit_onboarding(
-        user["email"], prn, degree_branch, division,
-        main_batch=main_batch, practical_batch=practical_batch, semester=semester,
-        hackerrank_username=hackerrank_username,
-    )
-    if ok:
-        _db_log_event("onboarding_submit", user["email"])
-        return RedirectResponse("/onboarding?saved=1", status_code=303)
-    _db_log_event("onboarding_rejected_input", f"{user['email']}; {err}")
-    return RedirectResponse(f"/onboarding?error={err}", status_code=303)
+async def onboarding_submit(request: Request):
+    """The legacy onboarding form is gone — a student's academic record is
+    captured by the sign-up phases, never by a page-owned form. The route
+    stays as a tombstone so a stale tab posts nowhere but the sign-up flow.
+    """
+    return RedirectResponse("/signup", status_code=303)
 
 
 @app.post("/onboarding/approve", response_class=HTMLResponse)
