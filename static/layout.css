@@ -3726,6 +3726,10 @@ button {
   border-radius: 10px;
   font-size: 13.5px;
   margin-bottom: 14px;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 .cert-alert.is-success {
   background: rgba(34, 197, 94, 0.1);
@@ -3759,6 +3763,8 @@ button {
   font-size: 12.5px;
   margin-bottom: 14px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
   box-sizing: border-box;
 }
 .cert-review-svg {
@@ -3775,6 +3781,8 @@ button {
   margin-bottom: 14px;
   flex-wrap: wrap;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .cert-panel-heading {
   display: flex;
@@ -3819,6 +3827,8 @@ button {
   padding: 16px;
   margin-bottom: 16px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
   box-sizing: border-box;
 }
 .cert-form-header {
@@ -3917,6 +3927,8 @@ button {
   flex-direction: column;
   gap: 14px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .cert-item {
   border: 1px solid var(--border);

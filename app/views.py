@@ -2348,26 +2348,53 @@ def export_query_str(roster_id="", q="", division="All", batch="All", year="All"
     return urlencode(items)
 
 
+def _repo_commit_window(repos: pd.DataFrame, column: str) -> int | None:
+    """Sum per-repo author commits for one window (``Commits_30d`` etc.).
+
+    Returns None when no repo row carries a value, so callers can fall back to
+    older signals instead of reporting a misleading zero.
+    """
+    if repos is None or repos.empty or column not in repos.columns:
+        return None
+    seen = False
+    total = 0
+    for value in repos[column]:
+        count = _clean_repo_commits(value)
+        if count is None:
+            continue
+        seen = True
+        total += max(count, 0)
+    return total if seen else None
+
+
 def _recent_activity(
     student_repos: pd.DataFrame,
     team_active_dates: set | None = None,
     team_commits_30d: int = 0,
     owned_active_dates: set | None = None,
+    owned_commits_30d: int | None = None,
 ) -> tuple[int, int]:
     """Derive 30-day activity from owned + team activity (no extra API calls).
 
-    Owned activity comes from per-day commit days (``Owned_Active_Dates``,
-    harvested at sync time) with repo update timestamps as the fallback for
-    snapshots predating the collection; team activity comes from the
-    events-derived ``Team_Active_Dates`` + ``Team_Commits_30d`` so members
-    pushing daily to a leader-owned repo finally count. Returns (combined
-    contributions in last 30 days, combined streak). Day boundaries follow IST.
+    Owned activity comes from exact per-repo author commits when available
+    (``owned_commits_30d``, summed from the repo rows), then per-day commit
+    days (``Owned_Active_Dates``, harvested at sync time) with repo update
+    timestamps as the last-resort fallback for snapshots predating the
+    collection; team activity comes from the events-derived
+    ``Team_Active_Dates`` + ``Team_Commits_30d`` so members pushing daily to a
+    leader-owned repo finally count. Returns (combined contributions in last
+    30 days, combined streak). Day boundaries follow IST.
     """
     ist_offset = pd.Timedelta(hours=5, minutes=30)
     today = (pd.Timestamp.now(tz="UTC") + ist_offset).normalize()
-    owned_contrib = 0
+    owned_contrib = None
+    if owned_commits_30d is not None:
+        try:
+            owned_contrib = max(int(float(owned_commits_30d)), 0)
+        except (TypeError, ValueError):
+            owned_contrib = None
     active_days: set = set()
-    if student_repos is not None and not student_repos.empty and "Updated" in student_repos.columns:
+    if owned_contrib is None and student_repos is not None and not student_repos.empty and "Updated" in student_repos.columns:
         updated = pd.to_datetime(student_repos["Updated"], errors="coerce", utc=True, format="mixed").dropna()
         if not updated.empty:
             updated_ist = (updated + ist_offset).dt.normalize()
@@ -2377,6 +2404,8 @@ def _recent_activity(
             # reflect repo metadata changes (stars, pushes, etc.) and create
             # phantom streaks for inactive users. They only feed the 30-day
             # contribution count above. Streaks walk commit days instead.
+    if owned_contrib is None:
+        owned_contrib = 0
     # Merge per-day commit days (already YYYY-MM-DD dates, treat as IST days).
     # One repo contributes a single Updated date, so without these a student
     # pushing daily to the same repos can never streak past their repo count.
@@ -2459,50 +2488,63 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
     team_dates = _team_active_dates_set(row)
     team_commits_30d = _team_int(row, "Team_Commits_30d")
     owned_dates = _owned_active_dates_set(row)
+    # Exact per-repo author commits are always available (carried forward at
+    # sync time), even when the student-level Owned_Commits* columns are
+    # missing on lightweight/new-account snapshots. Prefer them over repo
+    # "Updated" timestamps: one Updated date per repo is not a contribution.
+    owned_commit_windows = {
+        "30d": _repo_commit_window(owned, "Commits_30d"),
+        "90d": _repo_commit_window(owned, "Commits_90d"),
+        "all": _repo_commit_window(owned, "Commits"),
+    }
+    # Last-resort fallback for snapshots that predate per-repo commit history.
+    update_windows = {"30d": 0, "90d": 0, "all": 0}
+    if owned is not None and not owned.empty and "Updated" in owned.columns:
+        updated = pd.to_datetime(owned["Updated"], errors="coerce", utc=True, format="mixed").dropna()
+        if not updated.empty:
+            now = pd.Timestamp.now(tz="UTC")
+            days_ago = (now - updated).dt.days
+            update_windows["30d"] = int((days_ago <= 30).sum())
+            update_windows["90d"] = int((days_ago <= 90).sum())
+            update_windows["all"] = int(len(updated))
+    # Exact commit totals per window for the activity tabs. Each window picks
+    # the best available source independently: student-level sync totals,
+    # then per-repo author commits, then repo-update counts. Missing team
+    # counters mean "no team activity" (older snapshots/lightweight syncs).
+    window_pairs = (
+        ("30d", "Owned_Commits_30d", "Team_Commits_30d"),
+        ("90d", "Owned_Commits_90d", "Team_Commits_90d"),
+        ("all", "Owned_Commits", "Team_Commits"),
+    )
+    owned_window_values = {}
+    for key, owned_col, _team_col in window_pairs:
+        owned_v = _opt_int(row, owned_col)
+        if owned_v is None:
+            owned_v = owned_commit_windows[key]
+        if owned_v is None:
+            owned_v = update_windows[key]
+        owned_window_values[key] = max(int(owned_v), 0)
     # Activity counts owned repos only + team commits (team repos already
     # counted via commits, so pass owned to avoid double-counting team rows
-    # as both a repo-update and commits). Streak merges owned commit days +
-    # team dates on top of the repo-Updated fallback.
-    contributions_30d, activity_streak = _recent_activity(owned, team_dates, team_commits_30d, owned_dates)
-    # Exact commit totals per window for the activity tabs; None on runs that
-    # predate commit history (the template then keeps the legacy 30d display).
-    window_pairs = (
-        ("Owned_Commits_30d", "Team_Commits_30d"),
-        ("Owned_Commits_90d", "Team_Commits_90d"),
-        ("Owned_Commits", "Team_Commits"),
+    # as both a repo-update and commits). owned_window_values already resolved
+    # the 30d count to exact commits or the repo-updated fallback; the streak
+    # merges owned commit days + team dates.
+    contributions_30d, activity_streak = _recent_activity(
+        owned,
+        team_dates,
+        team_commits_30d,
+        owned_dates,
+        owned_window_values["30d"],
     )
-    window_values = []
-    for owned_col, team_col in window_pairs:
-        owned_v = _opt_int(row, owned_col)
-        team_v = _opt_int(row, team_col)
-        window_values.append(None if owned_v is None or team_v is None else owned_v + team_v)
-    activity_windows = (
-        {"30d": window_values[0], "90d": window_values[1], "all": window_values[2]}
-        if all(value is not None for value in window_values)
-        else None
-    )
-    if activity_windows is None:
-        # Runs that predate commit history (or lightweight syncs) have no
-        # Owned_Commits columns — fall back to repo-update counts per window
-        # (same signal as contributions_30d) so the period switcher still
-        # renders instead of silently dropping to the legacy 30d label.
-        owned_windows = {"30d": 0, "90d": 0, "all": 0}
-        if owned is not None and not owned.empty and "Updated" in owned.columns:
-            updated = pd.to_datetime(owned["Updated"], errors="coerce", utc=True, format="mixed").dropna()
-            if not updated.empty:
-                now = pd.Timestamp.now(tz="UTC")
-                days_ago = (now - updated).dt.days
-                owned_windows["30d"] = int((days_ago <= 30).sum())
-                owned_windows["90d"] = int((days_ago <= 90).sum())
-                owned_windows["all"] = int(len(updated))
-        team_30d = _opt_int(row, "Team_Commits_30d") or 0
-        team_90d = _opt_int(row, "Team_Commits_90d") or 0
-        team_all = _opt_int(row, "Team_Commits") or 0
-        activity_windows = {
-            "30d": owned_windows["30d"] + int(team_30d),
-            "90d": owned_windows["90d"] + int(team_90d),
-            "all": owned_windows["all"] + int(team_all),
-        }
+    activity_windows = {
+        key: owned_window_values[key] + max(int(_opt_int(row, team_col) or 0), 0)
+        for key, _owned_col, team_col in window_pairs
+    }
+    # Windows are nested periods, so a short window can never exceed a longer
+    # one. Mixed old/new snapshot columns (or a partial carry-forward) could
+    # otherwise render an "impossible" 30D > 90D > All sequence.
+    activity_windows["90d"] = max(activity_windows["90d"], activity_windows["30d"])
+    activity_windows["all"] = max(activity_windows["all"], activity_windows["90d"])
     linkedin_user = row.get("LinkedIn_Username", "")
     hackerrank_user = row.get("HackerRank_Username", "")
     return {

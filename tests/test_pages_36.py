@@ -584,6 +584,119 @@ class TestPageRenderingWithData:
         # drives the streak; it only feeds the 30-day contribution count).
         assert profile["activity_streak"] == 0
 
+    def test_profile_activity_prefers_per_repo_commits(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        now = pd.Timestamp.now(tz="UTC").normalize()
+
+        def repo(name, days_ago, total, last_30, last_90):
+            return {
+                "Username": "u",
+                "Repository": name,
+                "Language": "Python",
+                "Stars": 0,
+                "Updated": (now - pd.Timedelta(days=days_ago)).isoformat(),
+                "Repository_URL": "",
+                "Quality_Band": "",
+                "Commits": total,
+                "Commits_30d": last_30,
+                "Commits_90d": last_90,
+            }
+
+        repos = pd.DataFrame(
+            [
+                repo("a", 0, 10, 4, 7),
+                repo("b", 10, 3, 1, 3),
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        # Exact author commits, not one "contribution" per updated repo.
+        assert profile["activity_windows"] == {"30d": 5, "90d": 10, "all": 13}
+        assert profile["contributions_30d"] == 5
+
+    def test_profile_activity_windows_are_nested(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        repos = pd.DataFrame(
+            [
+                {
+                    "Username": "u",
+                    "Repository": "a",
+                    "Language": "Python",
+                    "Stars": 0,
+                    "Updated": "2026-01-01T00:00:00Z",
+                    "Repository_URL": "",
+                    "Quality_Band": "",
+                    # Stale/mixed sources: the all-time count is below 90d.
+                    "Commits": 2,
+                    "Commits_30d": 1,
+                    "Commits_90d": 5,
+                }
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+        }
+        profile = students_payload_profile(row, repos)
+        assert profile["activity_windows"] == {"30d": 1, "90d": 5, "all": 5}
+        assert profile["contributions_30d"] == 1
+
+    def test_profile_activity_row_totals_win_over_repo_sums(self):
+        import pandas as pd
+
+        from app.views import students_payload_profile
+
+        repos = pd.DataFrame(
+            [
+                {
+                    "Username": "u",
+                    "Repository": "a",
+                    "Language": "Python",
+                    "Stars": 0,
+                    "Updated": "2026-01-01T00:00:00Z",
+                    "Repository_URL": "",
+                    "Quality_Band": "",
+                    "Commits": 10,
+                    "Commits_30d": 4,
+                    "Commits_90d": 7,
+                }
+            ]
+        )
+        row = {
+            "GitHub_Username": "u",
+            "Student_ID": "1",
+            "Student Name": "U",
+            "Division": "1",
+            "Batch": "1",
+            "Semester": "Semester 1",
+            "Owned_Commits": 40,
+            "Owned_Commits_30d": 12,
+            "Owned_Commits_90d": 25,
+            "Team_Commits": 2,
+            "Team_Commits_30d": 1,
+            "Team_Commits_90d": 1,
+        }
+        profile = students_payload_profile(row, repos)
+        assert profile["activity_windows"] == {"30d": 13, "90d": 26, "all": 42}
+        assert profile["contributions_30d"] == 13
+
     def test_profile_streak_broken_without_recent_updates(self):
         import pandas as pd
 
