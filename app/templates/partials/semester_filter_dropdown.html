@@ -29,6 +29,9 @@
     padding: 10px; z-index: 40;
     display: flex; flex-wrap: wrap; gap: 8px;
   }
+  /* The panel is display:flex, which beats the UA's [hidden] rule — without
+     this the dropdown would never close. */
+  .sf-panel[hidden] { display: none; }
   .sf-chip {
     padding: 7px 14px; font-size: 14px; font-weight: 700;
     font-family: Inter, system-ui, sans-serif; border-radius: 8px;

@@ -28,7 +28,7 @@
 {% if auth_role == "Faculty" %}
 <section class="panel">
   <div class="panel-title">Teaching Assignments</div>
-  <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Update the divisions, practical batches and semesters you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3. Leave the semester on &ldquo;All semesters&rdquo; when you teach that batch every semester.</p>
+  <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Update the divisions, practical batches and semesters you teach. Divisions 1–14 use Python practical batches 1 and 2; divisions 15–32 use Computer practical batches 1, 2, and 3. Add one row per class and semester.</p>
   {% if classes_status == "saved" %}
   <div class="badge-green" style="display:inline-block; margin-bottom:14px;">Teaching assignments updated.</div>
   {% elif classes_status == "invalid" %}
@@ -57,8 +57,8 @@
         </div>
         <div class="form-group" style="margin:0;">
           <label>Semester</label>
-          <select name="semester" class="settings-teaching-select settings-teaching-semester">
-            <option value="">All semesters</option>
+          <select name="semester" class="settings-teaching-select settings-teaching-semester" required>
+            <option value="" disabled {% if not row.semester %}selected{% endif %}>Select semester</option>
             {% for semester in semesters %}
             <option value="{{ semester }}" {% if row.semester == semester %}selected{% endif %}>{{ semester }}</option>
             {% endfor %}
@@ -88,8 +88,8 @@
       </div>
       <div class="form-group" style="margin:0;">
         <label>Semester</label>
-        <select name="semester" class="settings-teaching-select settings-teaching-semester">
-          <option value="">All semesters</option>
+        <select name="semester" class="settings-teaching-select settings-teaching-semester" required>
+          <option value="" disabled selected>Select semester</option>
           {% for semester in semesters %}<option value="{{ semester }}">{{ semester }}</option>{% endfor %}
         </select>
       </div>

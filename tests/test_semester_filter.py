@@ -164,6 +164,14 @@ class TestSemesterFilterBackend:
         # appears once an analysis is loaded).
         assert "data-semester-filter" in body or "semester_filter_dropdown.html" in _template("overview.html")
 
+    def test_panel_can_actually_be_hidden(self, client):
+        """The panel is display:flex, which beats the UA's [hidden] rule — the
+        dropdown would never close without an explicit [hidden] rule."""
+        make_user(client)
+        body = client.get("/students").text
+        assert ".sf-panel[hidden]" in body
+        assert "display: none" in body.split(".sf-panel[hidden]")[1][:60]
+
     def test_every_page_uses_the_shared_dropdown(self):
         """All the pages that had a bare semester select now share the themed
         dropdown partial."""

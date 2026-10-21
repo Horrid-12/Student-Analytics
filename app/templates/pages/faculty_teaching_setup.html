@@ -48,12 +48,13 @@
         </div>
         <div class="form-group" style="margin:0;">
           <label>Semester</label>
-          <select class="faculty-semester-value" name="semester">
-            <option value="">All semesters</option>
+          <select class="faculty-semester-value" name="semester" required>
+            <option value="" disabled {% if not row.semester %}selected{% endif %}>Select semester</option>
             {% for semester in semesters %}
             <option value="{{ semester }}" {% if row.semester == semester %}selected{% endif %}>{{ semester }}</option>
             {% endfor %}
           </select>
+          <div class="field-error faculty-semester-error">Pick the semester you teach this class in.</div>
         </div>
         <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
       </div>
@@ -87,12 +88,13 @@
     </div>
     <div class="form-group" style="margin:0;">
       <label>Semester</label>
-      <select class="faculty-semester-value" name="semester">
-        <option value="">All semesters</option>
+      <select class="faculty-semester-value" name="semester" required>
+        <option value="" disabled selected>Select semester</option>
         {% for semester in semesters %}
         <option value="{{ semester }}">{{ semester }}</option>
         {% endfor %}
       </select>
+      <div class="field-error faculty-semester-error">Pick the semester you teach this class in.</div>
     </div>
     <button class="btn faculty-remove-row" type="button" aria-label="Remove this division">Remove</button>
   </div>
@@ -215,14 +217,29 @@
     rows.querySelectorAll('.faculty-teaching-row').forEach(function (row) {
       var division = row.querySelector('.faculty-division-value').value;
       var batch = row.querySelector('.faculty-batch-value').value;
-      if (!division || !batch) valid = false;
+      var semesterSelect = row.querySelector('.faculty-semester-value');
+      var semester = semesterSelect ? semesterSelect.value : '';
+      var semesterError = row.querySelector('.faculty-semester-error');
+      if (semesterError) {
+        semesterError.style.display = semester ? 'none' : 'block';
+      }
+      if (semesterSelect) semesterSelect.classList.toggle('is-invalid', !semester);
+      if (!division || !batch || !semester) valid = false;
     });
     if (!valid) {
       event.preventDefault();
       var firstIncomplete = Array.from(rows.querySelectorAll('.faculty-teaching-row')).find(function (row) {
-        return !row.querySelector('.faculty-division-value').value || !row.querySelector('.faculty-batch-value').value;
+        var semesterSelect = row.querySelector('.faculty-semester-value');
+        return !row.querySelector('.faculty-division-value').value
+          || !row.querySelector('.faculty-batch-value').value
+          || (semesterSelect && !semesterSelect.value);
       });
-      if (firstIncomplete) firstIncomplete.querySelector('.faculty-division-input').focus();
+      if (firstIncomplete) {
+        var semSelect = firstIncomplete.querySelector('.faculty-semester-value');
+        var divisionInput = firstIncomplete.querySelector('.faculty-division-input');
+        if (divisionInput && divisionInput.value) { if (semSelect) semSelect.focus(); }
+        else { divisionInput.focus(); }
+      }
     }
   });
   rows.querySelectorAll('.faculty-teaching-row').forEach(setupRow);

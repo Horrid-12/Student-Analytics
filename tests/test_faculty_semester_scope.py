@@ -6,6 +6,8 @@ semester covers every semester of it (the behaviour before this change),
 so assignments saved earlier keep working.
 """
 
+import re
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -160,6 +162,21 @@ class TestTeachingScopeForms:
         body = client.get("/faculty-setup?phase=2").text
         assert 'name="semester"' in body
         assert '<option value="Semester 5"' in body
+
+    def test_no_all_semesters_option(self, client):
+        """The faculty picks one of the eight semesters — there is no
+        'every semester' choice."""
+        _faculty(client)
+        for body in (client.get("/faculty-setup?phase=2").text, client.get("/settings").text):
+            assert "All semesters" not in body
+            for number in range(1, 9):
+                assert f'<option value="Semester {number}"' in body
+            assert '<option value="Semester 9"' not in body
+            # The empty placeholder is disabled, so a semester must be picked.
+            assert '<option value="" disabled' in body
+            select_tags = re.findall(r"<select[^>]*name=\"semester\"[^>]*>", body)
+            assert select_tags
+            assert all("required" in tag for tag in select_tags)
 
 
 class TestMyClassesRespectsTheSemester:
