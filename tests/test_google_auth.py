@@ -108,7 +108,24 @@ class TestUpsertGoogleUser:
 
 
 class TestOAuthCallback:
-    def test_full_flow_sets_session_cookie(self, client, monkeypatch):
+    def test_google_signin_without_account_points_to_signup(self, client, monkeypatch):
+        """A college id we have never seen cannot sign in with Google: no
+        account is created, the student is sent to the sign-up wizard."""
+        cb = begin_oauth(client, monkeypatch, {
+            "sub": "sub-1", "email": "stu1@mitwpu.edu.in", "email_verified": True, "name": "Student One", "hd": DOMAIN,
+        })
+        r = client.get(cb, follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/signup?error=4"
+        assert "gsad_session" not in client.cookies
+        assert auth.get_user("stu1@mitwpu.edu.in") is None
+        # The sign-up page explains what to do and shows phase 1.
+        body = client.get("/signup?error=4").text
+        assert "No account found for this Google account" in body
+        assert 'name="email"' in body
+
+    def test_existing_student_signs_in_with_google(self, client, monkeypatch):
+        assert auth.create_user("stu1@mitwpu.edu.in", "secret123", "student", "Student One")
         cb = begin_oauth(client, monkeypatch, {
             "sub": "sub-1", "email": "stu1@mitwpu.edu.in", "email_verified": True, "name": "Student One", "hd": DOMAIN,
         })

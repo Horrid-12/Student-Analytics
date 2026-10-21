@@ -28,6 +28,9 @@
   {% if show_exists_banner %}
   <div class="banner-error">This email already has an account — <a href="/login">sign in</a> instead. If you signed up with Google, use "Sign Up with Google" below.</div>
   {% endif %}
+  {% if show_no_account_banner %}
+  <div class="banner-error">No account found for this Google account. Sign up with your college email id below to create one.</div>
+  {% endif %}
 
   {% if google_configured %}
   <a href="/auth/google?mode=signup" class="btn-google">

@@ -1299,6 +1299,7 @@ def signup_page(request: Request, error: str = "", phase: str = "1"):
             "show_error_banner": error == "1",
             "show_domain_banner": error == "2",
             "show_exists_banner": error == "3",
+            "show_no_account_banner": error == "4",
             "google_configured": google_oauth.configured(),
             "github_configured": github_oauth.configured(),
             "linkedin_configured": linkedin_oauth.configured(),
@@ -1524,14 +1525,18 @@ async def signup_phase_4_submit(
     progress["profile_source"] = chosen_source
     if auth.prn_taken(prn, exclude_email=email):
         return fail("prn_taken")
-    if not auth.set_privacy_prefs(prn, prefs):
-        return fail("storage")
+    # The account is created first: this is the moment the sign-up actually
+    # reaches the database. The privacy prefs follow the committed account
+    # (a failed write must not leave prefs behind for an account that was
+    # never created).
     account, code = auth.finalize_student_signup(progress)
     if account is None:
         if code == "prn_taken":
             return fail("prn_taken")
         if code == "bad_account":
             return RedirectResponse("/signup?error=3", status_code=302)
+        return fail("storage")
+    if not auth.set_privacy_prefs(prn, prefs):
         return fail("storage")
     _db_log_event("signup", email)
     _db_log_event("signup_complete", email)
@@ -1847,6 +1852,15 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
         response.delete_cookie("gsad_oauth_mode")
         return response
     role = auth.resolve_google_role(email)
+    if not signup_mode and role == "student" and auth.get_account(email) is None:
+        # Signing in with Google only works for an account that already
+        # exists. A college id we have never seen is sent to the sign-up
+        # wizard (phase 1) with a banner explaining what to do — no account
+        # is created here.
+        response = RedirectResponse("/signup?error=4", status_code=302)
+        response.delete_cookie(auth._OAUTH_STATE_COOKIE)
+        response.delete_cookie("gsad_oauth_mode")
+        return response
     if signup_mode and role == "student":
         # Google verifies the identity for Phase 1, but does not create a
         # local account. Continue with a signup draft until Phase 4 commits it.

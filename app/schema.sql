@@ -533,3 +533,9 @@ CREATE INDEX IF NOT EXISTS idx_autocad_submissions_email
     ON autocad_submissions (lower(student_email));
 CREATE INDEX IF NOT EXISTS idx_autocad_submissions_created
     ON autocad_submissions (created_at);
+
+-- 21. Sign-up drafts are no longer stored: the wizard's in-progress payload
+--     (email, PRN, branch, linked handles) travels sealed in the gsad_signup
+--     cookie and the account is created once, in phase 4. Drop the old table
+--     so no sign-up data is kept server-side.
+DROP TABLE IF EXISTS signup_progress;

@@ -21,7 +21,10 @@ allowlists, so Google sign-in works there with zero DB writes; signups/logins
 only survive on hosts with a writable filesystem until Phase 4.8 moves accounts
 to Postgres.
 
-``app/google_oauth.py`` owns the authlib transport; this module stays stdlib.
+``app/google_oauth.py`` owns the authlib transport; this module stays stdlib
+(except ``app/secure_draft.py``, which seals the in-progress sign-up draft
+into a cookie so no sign-up data is written to the database before the
+account is created).
 """
 
 import base64
@@ -38,7 +41,7 @@ import tomllib
 from contextlib import closing
 from pathlib import Path
 
-from app import database, db, view_cache
+from app import database, db, secure_draft, view_cache
 
 logger = logging.getLogger(__name__)
 
@@ -802,118 +805,55 @@ def read_faculty_setup_token(token: str | None) -> str | None:
         return None
 
 
-#: Short-lived cookie holding only an opaque, server-generated progress
-#: token — the payload itself lives in the signup_progress table (a cookie
-#: built from user input is both a CodeQL magnet and client-visible PII).
+#: Short-lived cookie holding the encrypted sign-up draft. The payload never
+#: reaches the database: a student's email, PRN, branch, division and linked
+#: handles stay sealed in the cookie (AES-GCM, keyed from AUTH_SECRET) until
+#: the final phase commits the account. Nothing about an in-progress sign-up
+#: is written to Neon/Postgres.
 _SIGNUP_COOKIE = "gsad_signup"
 _SIGNUP_TTL_SECONDS = 60 * 60
 
-_SIGNUP_PROGRESS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS signup_progress (
-    token TEXT PRIMARY KEY,
-    payload TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL
-)
-"""
 
-
-def _ensure_signup_progress(conn) -> None:
-    conn.execute(_SIGNUP_PROGRESS_SCHEMA)
+def _signup_draft_key() -> bytes:
+    """AES-256 key for the sign-up draft cookie, derived from AUTH_SECRET."""
+    return hashlib.sha256(("signup-draft:v1:" + _secret()).encode("utf-8")).digest()
 
 
 def save_signup_progress(payload: dict) -> str | None:
-    """Store sign-up progress server-side; return the opaque cookie token.
-    Never raises — returns None when no backend can persist it."""
-    token = secrets.token_urlsafe(32)
-    now = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
-    expires_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(time.time() + _SIGNUP_TTL_SECONDS))
-    blob = json.dumps(payload)
-    if database.db_configured():
-        try:
-            with database.conn() as c:
-                if c is None:
-                    return None
-                c.execute(_SIGNUP_PROGRESS_SCHEMA)
-                c.execute(
-                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (token) DO UPDATE SET payload = EXCLUDED.payload, "
-                    "expires_at = EXCLUDED.expires_at",
-                    (token, blob, expires_at, now),
-                )
-            return token
-        except Exception:
-            logger.warning("save_signup_progress failed", exc_info=True)
-            return None
-    try:
-        with closing(_connect()) as conn:
-            _ensure_signup_progress(conn)
-            with conn:
-                conn.execute(
-                    "INSERT INTO signup_progress (token, payload, expires_at, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (token, blob, expires_at, now),
-                )
-        return token
-    except (sqlite3.Error, OSError):
-        logger.warning("save_signup_progress failed", exc_info=True)
-        return None
+    """Seal the sign-up draft into an opaque cookie value.
+
+    Deliberately not persisted server-side: no account details reach the
+    database until the sign-up completes in phase 4. Returns None when the
+    draft cannot be sealed."""
+    token = secure_draft.seal(payload, _signup_draft_key(), _SIGNUP_TTL_SECONDS)
+    if token is None:
+        logger.warning("save_signup_progress failed (could not seal draft)")
+    return token
 
 
 def load_signup_progress(token: str | None) -> dict | None:
-    """Return the stored payload for a live progress token, else None."""
-    if not token:
+    """Return the sealed sign-up draft, or None when missing/expired/tampered.
+
+    A draft only ever belongs to an email that has no account yet — once
+    phase 4 commits the account the draft is dead, so a replayed cookie
+    cannot resurrect a finished (or already-registered) sign-up."""
+    data = secure_draft.unseal(token, _signup_draft_key())
+    if not data:
         return None
-    try:
-        if database.db_configured():
-            with database.read_conn() as c:
-                if c is None:
-                    return None
-                cur = c.execute(
-                    "SELECT payload, expires_at FROM signup_progress WHERE token = %s",
-                    (token,),
-                )
-                row = cur.fetchone()
-        else:
-            with closing(_connect()) as conn:
-                _ensure_signup_progress(conn)
-                cur = conn.execute(
-                    "SELECT payload, expires_at FROM signup_progress WHERE token = ?",
-                    (token,),
-                )
-                row = cur.fetchone()
-        if not row:
-            return None
-        row_payload = row[0] if not isinstance(row, dict) else row["payload"]
-        row_expires = row[1] if not isinstance(row, dict) else row["expires_at"]
-        if str(row_expires) < time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()):
-            return None
-        data = json.loads(row_payload)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        # Fail-safe: missing table, unreachable pool, or corrupt row must
-        # never 500 the page — the caller treats None as "start over".
-        return None
+    email = str(data.get("email") or "").strip().lower()
+    if email:
+        try:
+            if get_account(email) is not None:
+                return None
+        except Exception:
+            pass
+    return data
 
 
 def delete_signup_progress(token: str | None) -> None:
-    """Drop a progress record (idempotent; best-effort)."""
-    if not token:
-        return
-    try:
-        if database.db_configured():
-            with database.conn() as c:
-                if c is None:
-                    return
-                c.execute("DELETE FROM signup_progress WHERE token = %s", (token,))
-            return
-        with closing(_connect()) as conn:
-            _ensure_signup_progress(conn)
-            with conn:
-                conn.execute("DELETE FROM signup_progress WHERE token = ?", (token,))
-    except Exception:
-        pass
+    """Nothing to delete server-side — the draft lives in the cookie, which the
+    next response replaces (or clears). Kept for the call sites' symmetry."""
+    return None
 
 
 def authorize_domain(claims: dict) -> bool:

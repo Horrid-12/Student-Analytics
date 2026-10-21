@@ -14,3 +14,6 @@ xlrd==2.0.2
 python-multipart==0.0.32
 psycopg[binary]==3.2.10
 psycopg-pool==3.3.3
+# AES-GCM sealing of the in-progress sign-up draft (app/secure_draft.py) —
+# already pulled in by authlib, pinned here because the app imports it directly.
+cryptography==50.0.1
