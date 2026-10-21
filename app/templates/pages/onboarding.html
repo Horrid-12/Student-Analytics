@@ -142,7 +142,7 @@
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">HackerRank</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.hackerrank_username or '—' }}</div></div>
         <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">GitHub</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_github_username or submission.github_username or '—' }}</div></div>
-        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linked_linkedin_name or '—' }}</div></div>
+        <div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--card-soft); min-width: 0;"><div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted);">LinkedIn</div><div style="font-size: 14px; color: var(--text); overflow-wrap: anywhere;">{{ submission.linkedin_username or submission.linked_linkedin_name or '—' }}</div></div>
     </div>
     <div style="border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px;">
         <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Profile Status preferences</div>
@@ -297,6 +297,38 @@
                         openLink.href = url;
                         openLink.style.display = '';
                         if (cardLink) { cardLink.href = url; cardLink.textContent = handle; }
+                    }
+                    input.addEventListener('input', refresh);
+                    refresh();
+                })();
+                </script>
+
+                <div class="form-group" style="margin: 0 0 16px 0;">
+                    <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block;">LinkedIn Profile URL or Username (Optional)</label>
+                    <input type="text" id="li-input" name="linkedin_username" form="onboarding-form" value="{{ submission.linkedin_username or '' }}" placeholder="e.g. https://linkedin.com/in/username" style="width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; background: var(--bg); color: var(--text);" {% if submission.onboarding_status == 'approved' %}disabled{% endif %} />
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your public LinkedIn profile URL.<a id="li-open-link" href="#" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none; margin-left: 6px; display: none;">Open profile &#8599;</a></div>
+                </div>
+                <script>
+                (function () {
+                    var input = document.getElementById('li-input');
+                    var openLink = document.getElementById('li-open-link');
+                    if (!input || !openLink) return;
+                    function cleanSlug(value) {
+                        var raw = (value || '').trim();
+                        if (!raw || raw === '-' || raw === '--') return '';
+                        var m = raw.match(/linkedin\.com\/in\/([^/?#\s]+)/i);
+                        if (m) {
+                            try { return decodeURIComponent(m[1]).replace(/^@+/, '').replace(/[.,;:!\/]+$/, ''); }
+                            catch (e) { return m[1].replace(/^@+/, '').replace(/[.,;:!\/]+$/, ''); }
+                        }
+                        var bare = raw.replace(/^@+/, '').replace(/[.,;:!]+$/, '');
+                        return (/^[A-Za-z0-9_.-]+$/.test(bare) && bare.indexOf(' ') === -1) ? bare : '';
+                    }
+                    function refresh() {
+                        var slug = cleanSlug(input.value);
+                        if (!slug) { openLink.style.display = 'none'; return; }
+                        openLink.href = 'https://www.linkedin.com/in/' + encodeURIComponent(slug);
+                        openLink.style.display = '';
                     }
                     input.addEventListener('input', refresh);
                     refresh();
