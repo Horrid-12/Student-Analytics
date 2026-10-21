@@ -2235,6 +2235,7 @@ def admin_edit_onboarding(
         submitted_at=user.get("onboarding_submitted_at", ""),
         github_verified_at=user.get("github_verified_at", ""),
         hackerrank_username=hackerrank_username,
+        linked_linkedin_name=user.get("linked_linkedin_name", "")
     )
     if not ok:
         return False, "storage_unavailable"
