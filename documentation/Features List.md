@@ -11,7 +11,6 @@
 > Eighth pass 2026-10-14: row 44 updated — the admin onboarding registrar ledger gained a search bar (`GET /onboarding?q=`, server-side substring filter over every ledger field) matching the Students-page filter-bar pattern (search input + Apply/Clear + "N of M shown" count, empty-state distinguishes "no submissions" from "no matches").
 > Ninth pass 2026-10-15 (Phase 19 / Row 78 & Row 15): Certifications Registry implemented (dual storage Neon Postgres `certificates` table + SQLite fallback, Certificates tab to left of GitHub on modal popup and `/me`, student upload queue with magic-byte file validation up to 20MB + URL proof); Verification page re-added exclusively for Admins (`/verification`, `ROLE_PAGES["admin"]`) as the certificate review ledger with metrics, status filter, search, inline approve/reject with feedback notes, and notifications.
 > Tenth pass 2026-10-18: LinkedIn Profile Picture Selection added to multi-phase sign-up panel (Phase 4). When students connect LinkedIn in Phase 3, Phase 4 presents an interactive profile picture selector allowing them to choose between their GitHub and LinkedIn avatars. Persists profile_source and displays selected avatar on sidebar, /me, student cards, and fleet views.
-> Eleventh pass 2026-10-21: LinkedIn profile URL resolution and vanity slug persistence across Sign-up Phase 3, Onboarding, and Settings. Fixes redirect to search on LinkedIn by ensuring vanity slugs/URLs are collected and properly formatted without spaces.
 
 ## Priority Legend
 

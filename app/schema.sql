@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS users (
     linked_github_avatar   TEXT NOT NULL DEFAULT '',
     linked_linkedin_name   TEXT NOT NULL DEFAULT '',
     linked_linkedin_avatar TEXT NOT NULL DEFAULT '',
-    linkedin_username      TEXT NOT NULL DEFAULT '',
     profile_source         TEXT NOT NULL DEFAULT ''
 );
 
@@ -30,7 +29,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_github_username TEXT NOT NULL 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_github_avatar TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_linkedin_avatar TEXT NOT NULL DEFAULT '';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_username TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_source TEXT NOT NULL DEFAULT '';
 
 -- 2. Roster uploads (one row per uploaded Excel).
@@ -363,7 +361,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS main_batch TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS practical_batch TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT NOT NULL DEFAULT 'Semester 1';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_username TEXT NOT NULL DEFAULT '';
 
 -- Backfill sign-up specialisation track (sign-up phase 2/4 finalization).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS specialisation TEXT NOT NULL DEFAULT '';
@@ -426,7 +423,6 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 -- Backfill for HackerRank on onboarding.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hackerrank_username TEXT NOT NULL DEFAULT '';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_username TEXT NOT NULL DEFAULT '';
 
 -- 18. Faculty accounts live here — never in ``users``. Same identity columns
 --     (password/avatar/linked OAuth identities) but no academic or onboarding

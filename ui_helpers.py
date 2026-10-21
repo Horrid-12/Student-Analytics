@@ -25,20 +25,7 @@ def github_profile_url(username) -> str:
 def linkedin_profile_url(username) -> str:
     if pd.isna(username) or not str(username).strip():
         return ""
-    val = str(username).strip()
-    if " " in val:
-        return ""
-    try:
-        import services
-        slug = services.extract_linkedin_username(val)
-        if slug:
-            return f"https://www.linkedin.com/in/{slug}"
-    except Exception:
-        pass
-    clean = val.strip().strip("/")
-    if " " not in clean and "/" not in clean and clean not in {"-", "--"} and len(clean) >= 2:
-        return f"https://www.linkedin.com/in/{clean}"
-    return ""
+    return f"https://www.linkedin.com/in/{str(username).strip().strip('/')}"
 
 
 def hackerrank_profile_url(username) -> str:

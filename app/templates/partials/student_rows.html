@@ -37,10 +37,8 @@ Context: `rows` (DataFrame slice), `roster_id`, `q`, `division`, `batch`,
   </td>
   <td>
     {% if _pp.get('hide_linkedin') %}<span style="color:var(--muted);">Hidden</span>
-    {% elif row.LinkedIn_URL %}
-      <a class="handle handle-linkedin" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
     {% elif row.LinkedIn_Username %}
-      <span class="handle handle-linkedin" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</span>
+      <a class="handle handle-linkedin" href="{{ row.LinkedIn_URL }}" target="_blank" rel="noopener" title="{{ row.LinkedIn_Username }}">{{ row.LinkedIn_Display }}</a>
     {% else %}<span style="color:var(--muted);">&mdash;</span>{% endif %}
   </td>
   <td>

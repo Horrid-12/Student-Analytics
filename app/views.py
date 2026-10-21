@@ -2125,10 +2125,6 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
             filtered.loc[_blank, "Profile_URL"] = _gh_user.loc[_blank].apply(
                 lambda u: github_profile_url(u) if pd.notna(u) and str(u).strip() else ""
             )
-        if "LinkedIn_URL" in filtered.columns:
-            _bad_li = filtered["LinkedIn_URL"].astype(str).str.contains(" ", na=False)
-            if _bad_li.any():
-                filtered.loc[_bad_li, "LinkedIn_URL"] = ""
         if "LinkedIn_URL" in filtered.columns and "LinkedIn_Username" in filtered.columns:
             _blank = filtered["LinkedIn_URL"].isna() | (filtered["LinkedIn_URL"].astype(str).str.strip() == "")
             filtered.loc[_blank, "LinkedIn_URL"] = filtered.loc[_blank, "LinkedIn_Username"].apply(
@@ -2489,7 +2485,7 @@ def students_payload_profile(row, repos: pd.DataFrame, team_repos: pd.DataFrame 
         "profile_url": row.get("Profile_URL", "") or github_profile_url(username),
         "linkedin_username": linkedin_user if pd.notna(linkedin_user) else "",
         "linkedin_display": linkedin_display_name(linkedin_user),
-        "linkedin_url": (str(row.get("LinkedIn_URL", "") or "").strip() if " " not in str(row.get("LinkedIn_URL", "") or "") else "") or linkedin_profile_url(linkedin_user),
+        "linkedin_url": row.get("LinkedIn_URL", "") or linkedin_profile_url(linkedin_user),
         "hackerrank_username": hackerrank_user if pd.notna(hackerrank_user) else "",
         "hackerrank_url": row.get("HackerRank_URL", "") or hackerrank_profile_url(hackerrank_user),
         "followers": _num(row.get("Followers", 0)),

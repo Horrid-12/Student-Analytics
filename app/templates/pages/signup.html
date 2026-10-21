@@ -194,20 +194,6 @@
       </div>
     </div>
     <div class="form-group">
-      <label for="li-username">LinkedIn Profile URL or Username</label>
-      <div class="link-row">
-        {% if li_locked %}
-        <input type="text" id="li-username" name="linkedin_username" value="{{ progress.linkedin_username if progress.linkedin_username else (linked_linkedin_username if linked_linkedin_username else '') }}" readonly>
-        <button type="button" class="link-btn is-pending" id="li-slug-btn" disabled>Pending</button>
-        {% else %}
-        <input type="text" id="li-username" name="linkedin_username" placeholder="e.g. https://linkedin.com/in/username" value="{{ progress.linkedin_username if progress.linkedin_username else (linked_linkedin_username if linked_linkedin_username else '') }}">
-        <button type="button" class="link-btn" id="li-slug-btn">Link</button>
-        {% endif %}
-      </div>
-      <div class="field-error" id="li-error">Please enter a valid LinkedIn profile URL or username.</div>
-      <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">Your public LinkedIn profile URL.<a id="li-open-link" href="#" target="_blank" rel="noopener" style="color: var(--blue); text-decoration: none; margin-left: 6px; display: none;">Open profile &#8599;</a></div>
-    </div>
-    <div class="form-group">
       <div class="oauth-box-wrap">
         {% if linked_linkedin %}
         <button type="button" class="oauth-box is-pending" id="li-link-btn" disabled>
@@ -577,54 +563,6 @@
     if (handle && hrOpen) { hrOpen.href = 'https://www.hackerrank.com/profile/' + encodeURIComponent(handle); hrOpen.style.display = ''; }
     else if (hrOpen) hrOpen.style.display = 'none';
   });
-  var li = document.getElementById('li-username');
-  var liBtn = document.getElementById('li-slug-btn');
-  var liErr = document.getElementById('li-error');
-  var liOpen = document.getElementById('li-open-link');
-  function liSlugOf(value) {
-    var raw = (value || '').trim();
-    if (!raw || raw === '-' || raw === '--') return '';
-    var fromUrl = raw.match(/linkedin\.com\/in\/([^/?#\s]+)/i);
-    if (fromUrl) {
-      try { return decodeURIComponent(fromUrl[1]).replace(/^@+/, '').replace(/[.,;:!\/]+$/, ''); }
-      catch (e) { return fromUrl[1].replace(/^@+/, '').replace(/[.,;:!\/]+$/, ''); }
-    }
-    var bare = raw.replace(/^@+/, '').replace(/[.,;:!]+$/, '');
-    return (/^[A-Za-z0-9_.-]+$/.test(bare) && bare.indexOf(' ') === -1) ? bare : '';
-  }
-  function lockLi(slug) {
-    if (!li || !liBtn) return;
-    li.value = slug;
-    li.setAttribute('readonly', 'readonly');
-    liBtn.textContent = 'Pending';
-    liBtn.classList.add('is-pending');
-    liBtn.disabled = true;
-    if (liErr) liErr.style.display = 'none';
-    li.classList.remove('is-invalid');
-  }
-  if (liBtn && !liBtn.disabled) liBtn.addEventListener('click', function () {
-    var slug = liSlugOf(li.value);
-    if (!slug) {
-      if (liErr) liErr.style.display = 'block';
-      li.classList.add('is-invalid');
-      return;
-    }
-    var url = 'https://www.linkedin.com/in/' + encodeURIComponent(slug);
-    if (liOpen) { liOpen.href = url; liOpen.style.display = ''; }
-    lockLi(slug);
-  });
-  if (li && !li.hasAttribute('readonly')) li.addEventListener('input', function () {
-    var slug = liSlugOf(li.value);
-    if (slug && liOpen) { liOpen.href = 'https://www.linkedin.com/in/' + encodeURIComponent(slug); liOpen.style.display = ''; }
-    else if (liOpen) liOpen.style.display = 'none';
-  });
-  if (li && li.value) {
-    var initialLi = liSlugOf(li.value);
-    if (initialLi && liOpen) {
-      liOpen.href = 'https://www.linkedin.com/in/' + encodeURIComponent(initialLi);
-      liOpen.style.display = '';
-    }
-  }
   /* OAuth buttons stash the typed handle first (same as onboarding: save the
      form, then ride to the portal) so the round-trip never wipes it. */
   document.querySelectorAll('[data-oauth]').forEach(function (b) {
