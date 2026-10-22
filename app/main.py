@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
 import json
 import logging
 import mimetypes
@@ -1858,7 +1857,7 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("Google OAuth state mismatch (or expired nonce)")
         return reject("error")
 
@@ -2000,7 +1999,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("GitHub OAuth state mismatch")
         return reject("error")
 
@@ -2104,7 +2103,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("LinkedIn OAuth state mismatch")
         return reject("error")
 
@@ -3243,6 +3242,27 @@ def api_certificates(request: Request, student_id: str = "", student_email: str 
     return JSONResponse({"status": "ok", "certificates": items})
 
 
+def _cron_authorized(request: Request) -> bool:
+    """True when the request carries the configured ``CRON_SECRET``.
+
+    The secret is accepted as ``X-Cron-Secret`` or ``Authorization: Bearer``
+    (the latter is what Vercel Cron sends automatically). The comparison is
+    constant-time and never raises: Starlette decodes header bytes as
+    latin-1, so a raw non-ASCII byte reaches us as a non-ASCII ``str`` that
+    ``hmac.compare_digest`` refuses to compare — an uncaught ``TypeError``
+    that turned a rejected request into an HTTP 500 (BUG-152).
+    """
+    configured_secret = os.environ.get("CRON_SECRET") or ""
+    if not configured_secret:
+        return False
+    supplied = request.headers.get("x-cron-secret") or ""
+    if not auth.constant_time_equals(supplied, configured_secret):
+        bearer = request.headers.get("authorization") or ""
+        if bearer.lower().startswith("bearer "):
+            supplied = bearer[7:]
+    return auth.constant_time_equals(supplied, configured_secret)
+
+
 @app.api_route("/sync/accounts", methods=["GET", "POST"])
 async def sync_accounts(request: Request, force: bool = False):
     """Phase 5.1: refresh every approved account's analytics snapshot.
@@ -3254,14 +3274,7 @@ async def sync_accounts(request: Request, force: bool = False):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     token = github_client.load_token()
@@ -3286,14 +3299,7 @@ async def sync_weekly(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     token = github_client.load_token()
@@ -3468,14 +3474,7 @@ async def sync_hackerrank(
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     batch = max(1, min(int(batch or 0), HR_SYNC_BATCH_MAX))
@@ -3544,15 +3543,7 @@ def _sync_authorized(request: Request) -> bool:
     user = getattr(request.state, "user", None)
     if user and user.get("role") in ("admin", "faculty"):
         return True
-    configured_secret = os.environ.get("CRON_SECRET") or ""
-    if not configured_secret:
-        return False
-    supplied = request.headers.get("x-cron-secret") or ""
-    if not hmac.compare_digest(supplied, configured_secret):
-        bearer = request.headers.get("authorization") or ""
-        if bearer.lower().startswith("bearer "):
-            supplied = bearer[7:]
-    return hmac.compare_digest(supplied, configured_secret)
+    return _cron_authorized(request)
 
 
 @app.get("/api/hackerrank/handles")
@@ -3634,11 +3625,7 @@ async def sync_heavy_next_endpoint(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            if token == os.environ.get("CRON_SECRET"):
-                authorized = True
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
@@ -3654,14 +3641,7 @@ async def sync_single_student(email: str, request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
@@ -3711,14 +3691,7 @@ async def get_approved_users_list(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     

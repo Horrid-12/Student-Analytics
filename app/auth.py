@@ -233,6 +233,35 @@ def can_access_page(user: dict | None, page: str, onboarding_status: str | None 
     user = user or {}
     return page in pages_for_role(user.get("role"), onboarding_status)
 
+
+def constant_time_equals(left: str | bytes | None, right: str | bytes | None) -> bool:
+    """Constant-time equality that never raises, whatever the input is.
+
+    ``hmac.compare_digest`` only accepts ASCII-only ``str`` and raises
+    ``TypeError: comparing strings with non-ASCII characters is not
+    supported`` otherwise. Two attacker-controlled inputs reach the app as
+    non-ASCII text: the ``X-Cron-Secret`` header (Starlette decodes header
+    bytes as latin-1) and the OAuth ``state`` query parameter (decoded as
+    UTF-8). Comparing either one raw turned a *rejected* request into an
+    unhandled ``TypeError`` and therefore an HTTP 500 (BUG-152).
+
+    Comparing the UTF-8 bytes keeps the timing-safe property for equal
+    lengths, still returns False for different secrets, and can never
+    raise: non-ASCII text encodes to different bytes, so it simply fails
+    to match. The length check is what leaks length, exactly as
+    ``compare_digest`` already does for ASCII input.
+    """
+    if left is None or right is None:
+        return False
+    if isinstance(left, str):
+        left = left.encode("utf-8", "surrogatepass")
+    if isinstance(right, str):
+        right = right.encode("utf-8", "surrogatepass")
+    try:
+        return hmac.compare_digest(left, right)
+    except TypeError:  # pragma: no cover - bytes/bytes never raises
+        return False
+
 _PBKDF2_ITERATIONS = 120_000
 _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 _COOKIE_NAME = "gsad_session"

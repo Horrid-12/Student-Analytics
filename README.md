@@ -97,9 +97,8 @@ sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
       → account snapshots (Postgres or SQLite) → views.py payloads → 8 pages
 ```
 
-- Migration rationale and stack trade-offs: [`documentation/Bridge.md`](./documentation/Bridge.md)
 - Feature inventory: [`documentation/Features List.md`](./documentation/Features%20List.md)
-- Roadmap and bug log: [`documentation/Features List.md`](./documentation/Features%20List.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
+- Roadmap and bug log: [`documentation/Taskflow.md`](./documentation/Taskflow.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
 
 ```
 app/            FastAPI application
@@ -114,7 +113,7 @@ app/            FastAPI application
 static/         CSS, JS, logo (Favicon.png)
 tests/          pytest suite (two-mode parity harness)
 scripts/        perf_loop.py (page-timing harness)
-documentation/  Bug Tracker, Features List, Bridge, Red Suite Fix, Lag Fix
+documentation/  Bug Tracker, Features List, Taskflow, ANALYSIS, AutoCAD Submissions
 vercel.json     ASGI entry + cron schedule
 ```
 
@@ -339,7 +338,7 @@ The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel
 | Production | Live at https://student-analytics-iota.vercel.app |
 | CI | CodeQL on push/PR to `main` plus a weekly run; Dependabot weekly for pip and GitHub Actions |
 | Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync daily (00:00 UTC) and HackerRank sync daily (00:00 IST) |
-| Test suite | Present but currently red — **15 failed / 531 passed / 10 skipped** (2026-10-11, default mode), tracked as `BUG-125` with a cluster-by-cluster plan in [`documentation/Red Suite Fix.md`](./documentation/Red%20Suite%20Fix.md) |
+| Test suite | **Green** — 734 passed / 10 skipped (default mode), 729 passed / 15 skipped (`MODULE_UNDER_TEST=app.services`), 2026-10-22. The Postgres layer (`tests/test_db_layer.py`) stays skipped without `TEST_DATABASE_URL`. |
 
 ---
 
