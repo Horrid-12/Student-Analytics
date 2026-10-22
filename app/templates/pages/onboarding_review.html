@@ -103,6 +103,24 @@
   {% endif %}
 </div>
 
+{% set error_text = {
+    'prn_format': 'PRN must be a 10-digit Roll Number.',
+    'invalid_degree': 'Please pick a valid degree program/branch.',
+    'invalid_division': 'Please pick a valid cohort division.',
+    'invalid_main_batch': 'Please pick a valid main batch (admission cohort).',
+    'invalid_practical_batch': 'Please pick a valid practical batch.',
+    'invalid_semester': 'Please pick a valid semester.',
+    'missing_hackerrank': 'HackerRank username is required.',
+    'prn_taken': 'This Roll Number is already registered to another account.',
+    'storage_unavailable': 'The record could not be saved right now. Please try again shortly.',
+    'bad_status': 'That action is not allowed.',
+    'no_user': 'No account matches that submission.',
+    'no_submission': 'That account has not submitted onboarding yet.',
+} %}
+{% if error and error in error_text %}
+<div class="panel" role="alert" style="padding:14px 18px; margin-bottom:16px; border-color:rgba(239,68,68,.35); color:#ef4444;">{{ error_text[error] }}</div>
+{% endif %}
+
 {% if action in ('approved', 'rejected', 'pending', 'removed', 'edited', 'error') %}
 <div class="panel" role="status" style="padding:14px 18px; margin-bottom:16px;">
   {% if action == 'approved' %}Approved onboarding for <strong>{{ action_email }}</strong>.

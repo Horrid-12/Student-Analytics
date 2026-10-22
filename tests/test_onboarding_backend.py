@@ -555,6 +555,28 @@ class TestAdminReviewWorkspace:
         assert edit("in-scope@college.edu", "1111111111").status_code == 303
         assert edit("out-of-scope@college.edu", "2222222222").status_code == 403
 
+    def test_invalid_edit_surfaces_the_validation_error(self, client):
+        _seed_status(client, "edit@college.edu", "Edit Me", "1111111111", "pending")
+        _session(client, "admin")
+        response = client.post(
+            "/onboarding/admin_edit",
+            data={
+                "email": "edit@college.edu",
+                "prn": "123",
+                "degree_branch": "Core",
+                "division": "1",
+                "practical_batch": "1",
+                "semester": "Semester 3",
+                "hackerrank_username": "hr",
+                "github_username": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert "error=prn_format" in response.headers["location"]
+        body = client.get(response.headers["location"], headers={"Accept": "text/html"}).text
+        assert "PRN must be a 10-digit Roll Number." in body
+
 
 def _faculty_session(client, email="prof@example.com"):
     """Seed a faculty account and log it in (faculty table, any domain)."""

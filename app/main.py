@@ -2499,6 +2499,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
+        ctx["error"] = error
         return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif role == "faculty":
         try:
@@ -2522,6 +2523,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
+        ctx["error"] = error
         return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif user:
         try:
