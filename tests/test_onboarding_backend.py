@@ -436,11 +436,11 @@ class TestLedgerSearch:
         assert '<article class="panel faculty-review-card">' not in body
 
 
-def _seed_status(client, email, name, prn, status):
+def _seed_status(client, email, name, prn, status, division="1", practical_batch="1"):
     """Create a student, submit a record, and force its onboarding status."""
     signup(client, email, name)
     login(client, email)
-    submit(client, prn=prn, email=email)
+    submit(client, prn=prn, email=email, division=division, practical_batch=practical_batch)
     assert auth.set_onboarding_status(email, status)[0]
     client.get("/logout")
 
@@ -501,6 +501,59 @@ class TestAdminReviewWorkspace:
         assert auth.set_faculty_teaching(faculty_email, {"1": ["1"]}) == (True, "")
         assert client.post("/admin/faculty-invites/generate").status_code == 403
         assert client.get("/admin/faculty-invites").status_code == 403
+
+    def test_admin_edit_saves_the_student_record(self, client):
+        _seed_status(client, "edit@college.edu", "Edit Me", "1111111111", "pending")
+        _session(client, "admin")
+        response = client.post(
+            "/onboarding/admin_edit",
+            data={
+                "email": "edit@college.edu",
+                "prn": "9999999999",
+                "degree_branch": "Core",
+                "division": "2",
+                "main_batch": "",
+                "practical_batch": "3",
+                "semester": "Semester 4",
+                "hackerrank_username": "edited_hr",
+                "github_username": "edited_gh",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/onboarding?action=edited")
+        user = auth.get_user("edit@college.edu")
+        assert user["prn"] == "9999999999"
+        assert user["division"] == "2"
+        assert user["practical_batch"] == "3"
+        assert user["semester"] == "Semester 4"
+        assert user["hackerrank_username"] == "edited_hr"
+        assert user["github_username"] == "edited_gh"
+
+    def test_faculty_edit_is_limited_to_taught_classes(self, client):
+        _seed_status(client, "in-scope@college.edu", "In Scope", "1111111111", "pending")
+        _seed_status(client, "out-of-scope@college.edu", "Out Scope", "2222222222", "pending", division="2", practical_batch="2")
+        email = _faculty_session(client)
+        assert auth.set_faculty_teaching(email, {"1": ["1"]}) == (True, "")
+
+        def edit(student_email, prn):
+            return client.post(
+                "/onboarding/admin_edit",
+                data={
+                    "email": student_email,
+                    "prn": prn,
+                    "degree_branch": "Core",
+                    "division": "1",
+                    "practical_batch": "1",
+                    "semester": "Semester 3",
+                    "hackerrank_username": "hr",
+                    "github_username": "",
+                },
+                follow_redirects=False,
+            )
+
+        assert edit("in-scope@college.edu", "1111111111").status_code == 303
+        assert edit("out-of-scope@college.edu", "2222222222").status_code == 403
 
 
 def _faculty_session(client, email="prof@example.com"):
