@@ -2517,7 +2517,7 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
-        return templates.TemplateResponse(request, "pages/faculty_onboarding.html", ctx)
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif user:
         try:
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
