@@ -2181,6 +2181,12 @@ def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
         email = str(user.get("email") or "").strip().lower()
         if email and not auth.get_faculty_teaching(email):
             return "/faculty-setup?phase=2"
+    # BUG-147: the `next` form field is attacker-controlled. Route it through
+    # the same allowlist sanitiser as every other post-action redirect, so
+    # `next=https://evil.example` or `next=//evil.example` can never be used as
+    # an open redirect. An untrusted value collapses to "/" and falls through
+    # to the role landing below.
+    next_dest = _safe_redirect_url(next_dest, default="/") if next_dest else "/"
     if next_dest and next_dest not in ("", "/", "/onboarding"):
         return next_dest
     if (user.get("role") or "") == "student":
