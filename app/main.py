@@ -1752,6 +1752,20 @@ def _require_admin_api(request: Request):
     return user, None
 
 
+def _require_staff_api(request: Request):
+    """Admin/faculty gate for the platform-wide JSON endpoints (same contract
+    as ``_require_admin_api``: the user dict, or a 401/403 JSONResponse).
+
+    BUG-153: clearing the API cache and exporting the analysis/audit database
+    are staff operations - a student session may not reach them."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return None, JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    if user.get("role") not in ("admin", "faculty"):
+        return None, JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return user, None
+
+
 @app.get("/admin/faculty-invites")
 def admin_faculty_invites(request: Request):
     """Admin-only history of generated faculty keys (no passwords — the
@@ -5211,21 +5225,26 @@ async def settings_faculty_teaching_submit(request: Request):
 
 @app.post("/api/settings/clear-cache")
 def api_clear_cache(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    # BUG-153: staff only. These are platform-wide operations, not user-level
+    # settings: clearing the GitHub cache changes what every account fetches
+    # next, so a student session must not reach it.
+    _user, denied = _require_staff_api(request)
+    if denied is not None:
+        return denied
     services.clear_api_cache()
     return JSONResponse(content={"status": "ok"})
 
 @app.get("/api/settings/download-db")
 def api_download_db(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    # BUG-153: staff only - this file is analytics_history.db (analysis runs +
+    # the audit log: login failures, invite events), not the users database.
+    _user, denied = _require_staff_api(request)
+    if denied is not None:
+        return denied
     if database.db_configured():
         return JSONResponse(status_code=400, content={"detail": "Postgres is configured. Export unavailable."})
     if storage.DB_PATH.exists():
-        return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="gsad_users.db")
+        return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="analytics_history.db")
     return JSONResponse(status_code=404, content={"detail": "Database not found"})
 
 

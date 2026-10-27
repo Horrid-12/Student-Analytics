@@ -441,6 +441,54 @@ class TestPostLoginRedirect:
         assert r.headers["location"] == "/settings"
 
 
+class TestSettingsDataActionsRBAC:
+    """BUG-153: clearing the API cache and exporting the analysis/audit DB are
+    platform-wide staff operations — a student session used to get ``200`` from
+    both, including a 16 KB download of `analytics_history.db` (the file that
+    holds the full audit log, mislabelled `gsad_users.db`)."""
+
+    def _login(self, client, role):
+        email = f"{role}@college.edu"
+        assert auth.create_user(email, "secret123", role, role.title())
+        r = login(client, email)
+        assert r.status_code in (200, 302)
+        return email
+
+    def test_anonymous_gets_401(self, client):
+        assert client.post("/api/settings/clear-cache").status_code == 401
+        assert client.get("/api/settings/download-db").status_code == 401
+
+    def test_student_gets_403(self, client):
+        self._login(client, "student")
+        assert client.post("/api/settings/clear-cache").status_code == 403
+        assert client.get("/api/settings/download-db").status_code == 403
+
+    def test_admin_can_clear_cache(self, client):
+        self._login(client, "admin")
+        r = client.post("/api/settings/clear-cache")
+        assert r.status_code == 200
+        assert r.json() == {"status": "ok"}
+
+    def test_faculty_export_uses_the_real_filename(self, client):
+        self._login(client, "faculty")
+        storage.log_event("test_seed", "ensure the analysis DB exists")
+        r = client.get("/api/settings/download-db")
+        assert r.status_code == 200
+        assert 'filename="analytics_history.db"' in r.headers["content-disposition"]
+
+    def test_student_settings_page_hides_staff_actions(self, client):
+        self._login(client, "student")
+        body = client.get("/settings").text
+        assert "Clear API Cache" not in body
+        assert "/api/settings/download-db" not in body
+
+    def test_admin_settings_page_shows_staff_actions(self, client):
+        self._login(client, "admin")
+        body = client.get("/settings").text
+        assert "Clear API Cache" in body
+        assert "/api/settings/download-db" in body
+
+
 class TestSignupOnlyCreatesStudents:
     def test_role_dropdown_is_not_a_real_input(self, client):
         """Even if a student forces a role param, the server hardcodes student."""
