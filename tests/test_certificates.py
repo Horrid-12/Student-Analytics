@@ -4,7 +4,7 @@ import io
 import pytest
 from starlette.testclient import TestClient
 
-from app import certificates, db, database
+from app import auth, certificates, db, database
 from app.main import app
 
 
@@ -477,3 +477,126 @@ class TestFacultyVerificationScoping:
             certificates.list_certificates(status=None, limit=500),
         )
         assert payload["items"] == []
+
+
+class TestQueuedCertificateStoresPrn:
+    """BUG-151: ``POST /certificates/queue`` read ``request.state.user_row``,
+    which is only assigned by ``_base_context`` (page renders) - a POST never
+    has it, so every queued certificate was stored with ``student_id=""`` and
+    PRN-keyed lookups silently missed it."""
+
+    def test_queue_persists_the_account_prn(self):
+        email = "prn-queue@college.edu"
+        assert auth.create_user(email, "secret123", "student", "Prn Queue") is not None
+        assert auth.db_set_onboarding(email, prn="1234567890")
+
+        client = TestClient(app)
+        _make_session(client, email, "student", "Prn Queue")
+        res = client.post(
+            "/certificates/queue",
+            data={"title": "Cloud Basics", "issuer": "AWS", "return_to": "/me"},
+            files={"attachment": ("cert.pdf", b"%PDF-1.4 sample content", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert res.status_code == 303
+        assert "notice=queued" in res.headers["location"]
+
+        items = certificates.list_certificates_for_student(student_email=email, approved_only=False)
+        assert len(items) == 1
+        assert items[0]["student_id"] == "1234567890"
+
+    def test_queue_without_an_account_row_still_works(self):
+        # Legacy token-only session (no users row): the lookup returns None and
+        # the certificate is stored with an empty PRN instead of failing.
+        client = TestClient(app)
+        _make_session(client, "ghost@uni.edu", "student", "Ghost")
+        res = client.post(
+            "/certificates/queue",
+            data={"title": "No Row", "issuer": "Vendor", "return_to": "/me"},
+            files={"attachment": ("cert.pdf", b"%PDF-1.4 sample content", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert res.status_code == 303
+        assert "notice=queued" in res.headers["location"]
+        items = certificates.list_certificates_for_student(student_email="ghost@uni.edu", approved_only=False)
+        assert len(items) == 1
+        assert items[0]["student_id"] == ""
+
+
+class TestCertificateApiScoping:
+    """BUG-148: ``/api/certificates`` authorised only ``student_email`` while
+    the query matched ``student_email OR student_id``, so a student could pass
+    their own address plus another student's PRN and read that student's
+    rejected certificate (admin_notes, verified_by, skills)."""
+
+    def _seed_two_students(self):
+        assert auth.create_user("alice@college.edu", "secret123", "student", "Alice") is not None
+        assert auth.db_set_onboarding("alice@college.edu", prn="1111111111")
+        assert auth.create_user("bob@college.edu", "secret123", "student", "Bob") is not None
+        assert auth.db_set_onboarding("bob@college.edu", prn="9999888877")
+        own = certificates.create_certificate(
+            student_email="alice@college.edu",
+            student_id="1111111111",
+            student_name="Alice",
+            title="Own Cert",
+            issuer="Meta",
+        )
+        victim = certificates.create_certificate(
+            student_email="bob@college.edu",
+            student_id="9999888877",
+            student_name="Bob",
+            title="Secret Cert",
+            issuer="Vendor",
+            skills="secret skill",
+        )
+        certificates.update_certificate_status(victim["id"], "rejected", "admin@college.edu", "ID was fake")
+        return own, victim
+
+    def test_student_cannot_read_another_student_by_prn(self):
+        self._seed_two_students()
+        client = TestClient(app)
+        _make_session(client, "alice@college.edu", "student", "Alice")
+
+        res = client.get("/api/certificates?student_email=alice@college.edu&student_id=9999888877")
+        assert res.status_code == 200
+        items = res.json()["certificates"]
+        assert [c["title"] for c in items] == ["Own Cert"]
+        assert all(c["student_email"] == "alice@college.edu" for c in items)
+        assert not any(c.get("admin_notes") for c in items)
+
+    def test_student_gets_own_rows_for_any_query_string(self):
+        self._seed_two_students()
+        client = TestClient(app)
+        _make_session(client, "alice@college.edu", "student", "Alice")
+
+        res = client.get("/api/certificates?student_email=bob@college.edu")
+        assert res.status_code == 200
+        assert [c["title"] for c in res.json()["certificates"]] == ["Own Cert"]
+
+    def test_admin_can_still_query_any_student(self):
+        self._seed_two_students()
+        client = TestClient(app)
+        _make_session(client, "admin@college.edu", "admin", "Admin")
+
+        res = client.get("/api/certificates?student_id=9999888877")
+        assert res.status_code == 200
+        items = res.json()["certificates"]
+        assert [c["title"] for c in items] == ["Secret Cert"]
+        assert items[0]["admin_notes"] == "ID was fake"
+
+    def test_faculty_can_still_query_a_student(self):
+        self._seed_two_students()
+        approved = certificates.create_certificate(
+            student_email="bob@college.edu",
+            student_id="9999888877",
+            student_name="Bob",
+            title="Approved Cert",
+            issuer="Vendor",
+        )
+        certificates.update_certificate_status(approved["id"], "approved", "prof@college.edu")
+        client = TestClient(app)
+        _make_session(client, "prof@college.edu", "faculty", "Professor")
+
+        res = client.get("/api/certificates?student_email=bob@college.edu")
+        assert res.status_code == 200
+        assert [c["title"] for c in res.json()["certificates"]] == ["Approved Cert"]

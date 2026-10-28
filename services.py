@@ -891,7 +891,8 @@ def summarize_team_events(username: str, events: list[dict]) -> tuple[dict, list
         "Team_Commits_30d": int(commits_30d),
         "Team_Commits_90d": int(commits_90d),
         "Team_Total_Events_30d": int(total_30d),
-        "Team_Active_Dates": ", ".join(sorted(active_dates)[:90]),
+        # BUG-155: keep the NEWEST 90 days (parity with app/services.py).
+        "Team_Active_Dates": ", ".join(sorted(active_dates)[-90:]),
         "Team_Active_Repos": int(active_repos),
         "Contributed_Repos_Count": len(contributed),
         "Contributed_Repos": ", ".join(contributed),

@@ -363,6 +363,9 @@
     <div style="font-size:12px; font-family:var(--font-mono, monospace); color:var(--muted, #94a3b8);">Backend: {{ db_path }}</div>
   </section>
 
+  {# BUG-153: the Data Actions are staff-only (platform-wide cache clear +
+     analysis/audit DB export), matching the /api/settings/* role gate. #}
+  {% if auth_role in ("Admin", "Faculty") %}
   <section class="panel">
     <div class="panel-title">Data Actions</div>
     <div style="display:flex; flex-direction:column; gap:12px;">
@@ -379,12 +382,13 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
           <div style="font-size:14px; font-weight:600;">Download Local Database</div>
-          <div style="font-size:13px; color:var(--muted);">Export local SQLite users database. Not available for Postgres.</div>
+          <div style="font-size:13px; color:var(--muted);">Export the local SQLite analysis &amp; audit database (runs, logins, events). Not available for Postgres.</div>
         </div>
         <a href="/api/settings/download-db" class="btn" {% if 'Postgres' in db_path %}style="opacity:0.5; pointer-events:none;" aria-disabled="true"{% endif %}>Download SQLite</a>
       </div>
     </div>
   </section>
+  {% endif %}
 </div>
 
 <div data-tab-content="security" style="display:none;">

@@ -1752,6 +1752,20 @@ def _require_admin_api(request: Request):
     return user, None
 
 
+def _require_staff_api(request: Request):
+    """Admin/faculty gate for the platform-wide JSON endpoints (same contract
+    as ``_require_admin_api``: the user dict, or a 401/403 JSONResponse).
+
+    BUG-153: clearing the API cache and exporting the analysis/audit database
+    are staff operations - a student session may not reach them."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return None, JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    if user.get("role") not in ("admin", "faculty"):
+        return None, JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return user, None
+
+
 @app.get("/admin/faculty-invites")
 def admin_faculty_invites(request: Request):
     """Admin-only history of generated faculty keys (no passwords — the
@@ -2950,8 +2964,17 @@ async def certificates_queue(
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    user_row = getattr(request.state, "user_row", None) or {}
     student_email = (user.get("email") or "").strip().lower()
+    user_row = getattr(request.state, "user_row", None) or {}
+    # BUG-151: request.state.user_row is only assigned by _base_context (page
+    # renders), so a POST handler never has it - every queued certificate was
+    # stored with student_id="". Resolve the account row here when missing so
+    # the PRN is persisted and PRN-keyed lookups keep working.
+    if not user_row:
+        try:
+            user_row = _memo(f"user:{student_email}", lambda: auth.get_account(student_email)) or {}
+        except Exception:
+            user_row = {}
     student_name = user.get("name") or user_row.get("name") or "Student"
     student_id = str(user_row.get("prn") or "").strip()
 
@@ -3227,13 +3250,33 @@ def verification_delete(request: Request, cert_id: int, return_to: str = Form("/
 
 @app.get("/api/certificates")
 def api_certificates(request: Request, student_id: str = "", student_email: str = ""):
-    """JSON API to fetch certificates for a student."""
+    """JSON API to fetch certificates for a student.
+
+    BUG-148: ``list_certificates_for_student`` matches ``student_email OR
+    student_id``, so authorising only the email let a student pass their own
+    address plus someone else's PRN and read that student's rejected
+    certificate (admin_notes, verified_by, skills). Non-staff callers are now
+    force-scoped to their own identity (session email + own PRN); only
+    admin/faculty may look up an arbitrary student.
+    """
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     user_email = (user.get("email") or "").strip().lower()
-    is_admin = user.get("role") == "admin"
-    is_owner = bool((student_email and user_email == student_email.lower()) or (user.get("role") == "student" and not student_email and not student_id))
+    role = user.get("role")
+    is_staff = role in ("admin", "faculty")
+    if not is_staff:
+        # Ignore both query parameters: the caller only ever sees their own
+        # rows. The PRN comes from the account row, never from the URL.
+        student_email = user_email
+        student_id = ""
+        try:
+            row = _memo(f"user:{user_email}", lambda: auth.get_account(user_email)) or {}
+            student_id = str(row.get("prn") or "").strip()
+        except Exception:
+            student_id = ""
+    is_admin = role == "admin"
+    is_owner = bool((student_email and user_email == student_email.lower()) or (role == "student" and not student_email and not student_id))
     approved_only = not (is_admin or is_owner)
     if not student_email and not student_id:
         student_email = user_email
@@ -5211,21 +5254,26 @@ async def settings_faculty_teaching_submit(request: Request):
 
 @app.post("/api/settings/clear-cache")
 def api_clear_cache(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    # BUG-153: staff only. These are platform-wide operations, not user-level
+    # settings: clearing the GitHub cache changes what every account fetches
+    # next, so a student session must not reach it.
+    _user, denied = _require_staff_api(request)
+    if denied is not None:
+        return denied
     services.clear_api_cache()
     return JSONResponse(content={"status": "ok"})
 
 @app.get("/api/settings/download-db")
 def api_download_db(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    # BUG-153: staff only - this file is analytics_history.db (analysis runs +
+    # the audit log: login failures, invite events), not the users database.
+    _user, denied = _require_staff_api(request)
+    if denied is not None:
+        return denied
     if database.db_configured():
         return JSONResponse(status_code=400, content={"detail": "Postgres is configured. Export unavailable."})
     if storage.DB_PATH.exists():
-        return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="gsad_users.db")
+        return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="analytics_history.db")
     return JSONResponse(status_code=404, content={"detail": "Database not found"})
 
 
