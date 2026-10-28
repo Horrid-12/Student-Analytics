@@ -3250,13 +3250,33 @@ def verification_delete(request: Request, cert_id: int, return_to: str = Form("/
 
 @app.get("/api/certificates")
 def api_certificates(request: Request, student_id: str = "", student_email: str = ""):
-    """JSON API to fetch certificates for a student."""
+    """JSON API to fetch certificates for a student.
+
+    BUG-148: ``list_certificates_for_student`` matches ``student_email OR
+    student_id``, so authorising only the email let a student pass their own
+    address plus someone else's PRN and read that student's rejected
+    certificate (admin_notes, verified_by, skills). Non-staff callers are now
+    force-scoped to their own identity (session email + own PRN); only
+    admin/faculty may look up an arbitrary student.
+    """
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     user_email = (user.get("email") or "").strip().lower()
-    is_admin = user.get("role") == "admin"
-    is_owner = bool((student_email and user_email == student_email.lower()) or (user.get("role") == "student" and not student_email and not student_id))
+    role = user.get("role")
+    is_staff = role in ("admin", "faculty")
+    if not is_staff:
+        # Ignore both query parameters: the caller only ever sees their own
+        # rows. The PRN comes from the account row, never from the URL.
+        student_email = user_email
+        student_id = ""
+        try:
+            row = _memo(f"user:{user_email}", lambda: auth.get_account(user_email)) or {}
+            student_id = str(row.get("prn") or "").strip()
+        except Exception:
+            student_id = ""
+    is_admin = role == "admin"
+    is_owner = bool((student_email and user_email == student_email.lower()) or (role == "student" and not student_email and not student_id))
     approved_only = not (is_admin or is_owner)
     if not student_email and not student_id:
         student_email = user_email
