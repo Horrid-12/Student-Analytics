@@ -447,6 +447,26 @@ class TestTeamActivity:
         assert summary["Contributed_Repos_Count"] == 0
         assert summary["Team_Commits"] == 0
 
+    def test_active_dates_keep_the_newest_90_days(self):
+        # BUG-155: the cap used to slice [:90] (the OLDEST days), the opposite
+        # of every sibling cap; views._recent_activity reads max(active_days),
+        # so a truncating cap would collapse every streak to 0.
+        base = pd.Timestamp("2026-01-01T00:00:00Z")
+        events = [
+            {
+                "type": "PushEvent",
+                "repo": {"name": "leader/proj"},
+                "created_at": (base + pd.Timedelta(days=i)).isoformat(),
+                "payload": {"size": 1},
+            }
+            for i in range(100)
+        ]
+        summary, _ = services.summarize_team_events("member", events)
+        dates = summary["Team_Active_Dates"].split(", ")
+        assert len(dates) == 90
+        assert dates[0] == (base + pd.Timedelta(days=10)).date().isoformat()
+        assert dates[-1] == (base + pd.Timedelta(days=99)).date().isoformat()
+
     def test_pr_without_push_does_not_list_repo(self):
         events = [
             {"type": "PullRequestEvent", "repo": {"name": "leader/proj"}, "created_at": "2026-09-24T00:00:00Z", "payload": {}},
