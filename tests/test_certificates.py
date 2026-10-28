@@ -4,7 +4,7 @@ import io
 import pytest
 from starlette.testclient import TestClient
 
-from app import certificates, db, database
+from app import auth, certificates, db, database
 from app.main import app
 
 
@@ -477,3 +477,47 @@ class TestFacultyVerificationScoping:
             certificates.list_certificates(status=None, limit=500),
         )
         assert payload["items"] == []
+
+
+class TestQueuedCertificateStoresPrn:
+    """BUG-151: ``POST /certificates/queue`` read ``request.state.user_row``,
+    which is only assigned by ``_base_context`` (page renders) - a POST never
+    has it, so every queued certificate was stored with ``student_id=""`` and
+    PRN-keyed lookups silently missed it."""
+
+    def test_queue_persists_the_account_prn(self):
+        email = "prn-queue@college.edu"
+        assert auth.create_user(email, "secret123", "student", "Prn Queue") is not None
+        assert auth.db_set_onboarding(email, prn="1234567890")
+
+        client = TestClient(app)
+        _make_session(client, email, "student", "Prn Queue")
+        res = client.post(
+            "/certificates/queue",
+            data={"title": "Cloud Basics", "issuer": "AWS", "return_to": "/me"},
+            files={"attachment": ("cert.pdf", b"%PDF-1.4 sample content", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert res.status_code == 303
+        assert "notice=queued" in res.headers["location"]
+
+        items = certificates.list_certificates_for_student(student_email=email, approved_only=False)
+        assert len(items) == 1
+        assert items[0]["student_id"] == "1234567890"
+
+    def test_queue_without_an_account_row_still_works(self):
+        # Legacy token-only session (no users row): the lookup returns None and
+        # the certificate is stored with an empty PRN instead of failing.
+        client = TestClient(app)
+        _make_session(client, "ghost@uni.edu", "student", "Ghost")
+        res = client.post(
+            "/certificates/queue",
+            data={"title": "No Row", "issuer": "Vendor", "return_to": "/me"},
+            files={"attachment": ("cert.pdf", b"%PDF-1.4 sample content", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert res.status_code == 303
+        assert "notice=queued" in res.headers["location"]
+        items = certificates.list_certificates_for_student(student_email="ghost@uni.edu", approved_only=False)
+        assert len(items) == 1
+        assert items[0]["student_id"] == ""

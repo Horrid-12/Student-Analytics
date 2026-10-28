@@ -2964,8 +2964,17 @@ async def certificates_queue(
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    user_row = getattr(request.state, "user_row", None) or {}
     student_email = (user.get("email") or "").strip().lower()
+    user_row = getattr(request.state, "user_row", None) or {}
+    # BUG-151: request.state.user_row is only assigned by _base_context (page
+    # renders), so a POST handler never has it - every queued certificate was
+    # stored with student_id="". Resolve the account row here when missing so
+    # the PRN is persisted and PRN-keyed lookups keep working.
+    if not user_row:
+        try:
+            user_row = _memo(f"user:{student_email}", lambda: auth.get_account(student_email)) or {}
+        except Exception:
+            user_row = {}
     student_name = user.get("name") or user_row.get("name") or "Student"
     student_id = str(user_row.get("prn") or "").strip()
 
