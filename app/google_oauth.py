@@ -22,6 +22,14 @@ SCOPES = "openid email profile"
 _SECRETS_PATH = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
 
 
+class CredentialsRejected(RuntimeError):
+    """Google answered ``invalid_client``: our client id/secret pair was
+    refused. That is a *deployment* misconfiguration (a rotated, stale or
+    blank ``GOOGLE_CLIENT_SECRET``), not something the person signing in can
+    retry away, so routes show the "Google sign-in is unavailable" banner
+    instead of the generic "please try again" one (BUG-157)."""
+
+
 def load_credentials() -> tuple[str, str]:
     """Google client id/secret from ``GOOGLE_CLIENT_ID``/``GOOGLE_CLIENT_SECRET``
     env vars first, then the top-level keys in ``.streamlit/secrets.toml``
@@ -66,16 +74,24 @@ def build_authorization_url(redirect_uri: str, state: str, allowed_domain: str |
 
 async def exchange_code(authorization_response: str, state: str, redirect_uri: str) -> dict:
     """Trade the callback code for userinfo claims, normalized to
-    ``sub/email/email_verified/name/hd/picture``. Raises on a Google error
-    (OAuthError, network, or non-2xx userinfo)."""
+    ``sub/email/email_verified/name/hd/picture``. Raises ``CredentialsRejected``
+    when Google refuses our client credentials (``invalid_client``) and any
+    other error (OAuthError, network, or non-2xx userinfo) otherwise."""
     client_id, client_secret = load_credentials()
     client = AsyncOAuth2Client(client_id=client_id, client_secret=client_secret)
-    token = await client.fetch_token(
-        TOKEN_ENDPOINT,
-        authorization_response=authorization_response,
-        state=state,
-        redirect_uri=redirect_uri,
-    )
+    try:
+        token = await client.fetch_token(
+            TOKEN_ENDPOINT,
+            authorization_response=authorization_response,
+            state=state,
+            redirect_uri=redirect_uri,
+        )
+    except Exception as exc:
+        # authlib surfaces the token endpoint's error as
+        # "invalid_client: The provided client secret is invalid."
+        if "invalid_client" in str(exc):
+            raise CredentialsRejected(str(exc)) from exc
+        raise
     access_token = token.get("access_token")
     if not access_token:
         raise RuntimeError("Google exchange returned no access token")

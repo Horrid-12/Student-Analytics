@@ -1864,6 +1864,17 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
     redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     try:
         claims = await google_oauth.exchange_code(str(request.url), state, redirect_uri)
+    except google_oauth.CredentialsRejected:
+        # BUG-157: Google refused the deployment's client secret. Retrying can
+        # never help — surface a distinct banner instead of "please try again"
+        # and make the operator-facing log line actionable.
+        logger.error(
+            "Google OAuth credentials rejected (invalid_client) — "
+            "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET on this deployment are stale "
+            "or mismatched; reset the secret in Google Cloud Console and update "
+            "the Vercel env var"
+        )
+        return reject("misconfigured")
     except Exception:
         logger.exception("Google OAuth code exchange failed")
         return reject("error")

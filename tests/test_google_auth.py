@@ -8,6 +8,8 @@ Google. Domain gate logic (authorize_domain / domain_allowed_email) and role
 resolution are pure and tested directly.
 """
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
@@ -238,6 +240,61 @@ class TestOAuthCallback:
             ("start", "https://preview.example/auth/google/callback"),
             ("callback", "https://preview.example/auth/google/callback"),
         ]
+
+
+class TestExchangeErrorMapping:
+    """BUG-157: Google's ``invalid_client`` (bad deployment secret) must be
+    distinguishable from a transient/code-level exchange failure."""
+
+    def _run(self, monkeypatch, message):
+        class FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            async def fetch_token(self, *args, **kwargs):
+                raise RuntimeError(message)
+
+        monkeypatch.setattr(google_oauth, "AsyncOAuth2Client", FakeClient)
+        return asyncio.run(
+            google_oauth.exchange_code(
+                "https://app.example/auth/google/callback?code=x&state=y",
+                "y",
+                "https://app.example/auth/google/callback",
+            )
+        )
+
+    def test_invalid_client_becomes_credentials_rejected(self, monkeypatch):
+        with pytest.raises(google_oauth.CredentialsRejected):
+            self._run(monkeypatch, "invalid_client: The provided client secret is invalid.")
+
+    def test_other_errors_pass_through(self, monkeypatch):
+        with pytest.raises(RuntimeError) as exc:
+            self._run(monkeypatch, "invalid_grant: Malformed auth code.")
+        assert not isinstance(exc.value, google_oauth.CredentialsRejected)
+
+    def test_misconfigured_banner_route(self, client, monkeypatch):
+        enable_google(monkeypatch)
+        monkeypatch.setattr(
+            google_oauth,
+            "exchange_code",
+            AsyncMock(side_effect=google_oauth.CredentialsRejected("invalid_client")),
+        )
+        client.get("/auth/google", follow_redirects=False)
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+        r = client.get(f"/auth/google/callback?state={state}&code=fake", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/login?oauth=misconfigured"
+        assert "gsad_session" not in client.cookies
+        assert "temporarily unavailable" in client.get("/login?oauth=misconfigured").text
+
+    def test_transient_failure_keeps_retry_banner(self, client, monkeypatch):
+        enable_google(monkeypatch)
+        monkeypatch.setattr(google_oauth, "exchange_code", AsyncMock(side_effect=RuntimeError("boom")))
+        client.get("/auth/google", follow_redirects=False)
+        state = client.cookies[auth._OAUTH_STATE_COOKIE]
+        r = client.get(f"/auth/google/callback?state={state}&code=fake", follow_redirects=False)
+        assert r.headers["location"] == "/login?oauth=error"
+        assert "please try again" in client.get("/login?oauth=error").text
 
 
 class TestPasswordDomainGate:
