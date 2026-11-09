@@ -12,14 +12,16 @@
     } catch (e) { /* private mode — keep the default */ }
   })();
 </script>
-{# Fonts: preconnect + <link> instead of a CSS @import inside style.css,
-   which serialized the fetch behind the stylesheet (Lag Fix phase 2). #}
+{# Fonts: preconnect + a non-blocking <link>. The stylesheet is preloaded
+   and swapped to a real stylesheet on load, so slow font CSS never blocks
+   first paint; <noscript> keeps it working without JS. #}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
 <link rel="stylesheet" href="{{ url_for('static', path='/theme.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', path='/layout.css') }}?v=9">
 <link rel="icon" href="{{ url_for('static', path='/favicon.ico') }}" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/png" href="{{ url_for('static', path='/Favicon.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', path='/Favicon.png') }}">
@@ -37,7 +39,7 @@
   <aside class="app-sidebar" id="sidebar">
     <div class="sidebar-stack">
     <div class="sidebar-brand-panel">
-      <img src="{{ url_for('static', path='/mit-wpu-logo.png') }}" alt="MIT World Peace University, Pune">
+      <img src="{{ url_for('static', path='/mit-wpu-logo-600.webp') }}" alt="MIT World Peace University, Pune" width="600" height="173" decoding="async">
     </div>
     <div class="sidebar-identity">
       {% if auth_role == 'Faculty' or auth_role == 'Admin' %}
