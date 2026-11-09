@@ -2265,7 +2265,10 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
         support_notifs = _memo(f"bell:notifs:{email}", lambda: _list_notifications(email)) if email else []
         unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
         if not support_notifs:
-            return {"notifications": [], "notif_count": 0, "notif_empty": "No notifications - all clear."}
+            # No student notifications means no bell at all (BUG-130). Staff
+            # still get the persistent bell below, since ticket alerts are
+            # their primary inbox.
+            return {"notifications": [], "notif_count": 0, "notif_empty": None}
         notifications = [
             {
                 "id": n.get("id"),
