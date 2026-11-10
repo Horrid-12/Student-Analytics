@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, storage
+from app import auth, storage, support
 import app.main as main
 from app.main import app
 
@@ -155,3 +155,16 @@ class TestNotificationBell:
         body = client.get("/leaderboards?roster=r1", headers={"Accept": "text/html"}).text
         assert "notif-bell" not in body
         assert "notif-badge" not in body
+
+    def test_support_notification_text_is_escaped(self, client):
+        email = self._login(client, "student", OWN_EMAIL)
+        assert support.create_notification(
+            email,
+            1,
+            "TICKET_FOLLOW_UP",
+            "Support update",
+            "<script>alert('xss')</script>",
+        )
+        body = client.get("/support", headers={"Accept": "text/html"}).text
+        assert "<script>alert('xss')</script>" not in body
+        assert "&lt;script&gt;alert" in body

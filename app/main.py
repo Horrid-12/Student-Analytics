@@ -2275,6 +2275,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "id": n.get("id"),
                 "issue": n.get("title") or "Support Update",
                 "sub": n.get("message") or "",
+                "sub_is_html": n.get("type") in ("WEEKLY_TOP_STUDENT", "WEEKLY_TOP_HACKERRANK"),
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank"
                 if n.get("type") == "WEEKLY_TOP_HACKERRANK"
@@ -2314,6 +2315,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "id": n.get("id"),
                 "issue": n.get("title") or "Weekly update",
                 "sub": n.get("message") or "",
+                "sub_is_html": True,
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank" if n.get("type") == "WEEKLY_TOP_HACKERRANK" else "/leaderboards",
                 "link_label": "View",
@@ -2328,6 +2330,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
             {
                 "issue": alert["subject"],
                 "sub": f"{alert['student']} • {alert['status']}" if alert["student"] else alert["status"],
+                "sub_is_html": False,
                 "time": views.friendly_timestamp(alert["updated_at"]),
                 "fix_url": alert["fix_url"],
                 "link_label": "Fix",
