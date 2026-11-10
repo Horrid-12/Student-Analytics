@@ -1397,7 +1397,8 @@ async def signup_phase_2_submit(
             return fail("specialisation")
     elif (specialisation or "").strip():
         return fail("specialisation")
-    if (division or "").strip() not in auth.SIGNUP_DIVISIONS:
+    division = auth.normalize_division(division)
+    if division not in auth.SIGNUP_DIVISIONS:
         return fail("division")
     if not auth.valid_signup_practical_batch(practical_batch, division):
         return fail("batch")
@@ -1407,7 +1408,7 @@ async def signup_phase_2_submit(
         "semester": (semester or "").strip(),
         "branch": (branch or "").strip(),
         "specialisation": (specialisation or "").strip(),
-        "division": (division or "").strip(),
+        "division": division,
         "practical_batch": (practical_batch or "").strip(),
     })
     token = auth.save_signup_progress(progress)
@@ -2476,7 +2477,7 @@ def _faculty_can_review_student(faculty_email: str, student_email: str) -> bool:
         student = auth.get_user(student_email) or {}
         division = str(student.get("division") or "").strip()
         batch = str(student.get("practical_batch") or "").strip()
-        return batch in assignments.get(division, [])
+        return auth.teaching_includes(assignments, division, batch)
     except Exception:
         return False
 

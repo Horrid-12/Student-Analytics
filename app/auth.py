@@ -42,6 +42,7 @@ from contextlib import closing
 from pathlib import Path
 
 from app import database, db, secure_draft, view_cache
+from app.divisions import division_key, normalize_division
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,7 @@ _COMPUTER_PRACTICAL_DIVISIONS = frozenset(str(n) for n in range(15, 33))
 
 def signup_practical_batches(division: str) -> tuple[str, ...]:
     """Return the practical batches shown by student sign-up for a division."""
-    division = str(division or "").strip()
+    division = normalize_division(division)
     if division in _PYTHON_PRACTICAL_DIVISIONS:
         return ("1", "2")
     if division in _COMPUTER_PRACTICAL_DIVISIONS:
@@ -1486,7 +1487,7 @@ def parse_faculty_teaching(raw: str | None) -> dict[str, dict[str, list[str]]]:
         return {}
     cleaned: dict[str, dict[str, list[str]]] = {}
     for division, batches in data.items():
-        division = str(division or "").strip()
+        division = normalize_division(division)
         if division not in SIGNUP_DIVISIONS:
             continue
         # Legacy shape: {division: [batch, ...]} -> no semester recorded.
@@ -1514,7 +1515,17 @@ def parse_faculty_teaching(raw: str | None) -> dict[str, dict[str, list[str]]]:
             if batch and valid_signup_practical_batch(batch, division)
         }
         if kept:
-            cleaned[division] = kept
+            # "1" and "Division 1" may both exist in a legacy blob; merge them
+            # into the canonical key instead of silently keeping one.
+            bucket = cleaned.setdefault(division, {})
+            for batch, semesters in kept.items():
+                existing = bucket.get(batch)
+                if existing is None:
+                    bucket[batch] = semesters
+                elif not existing or not semesters:
+                    bucket[batch] = []  # an unqualified batch covers every semester
+                else:
+                    bucket[batch] = existing + [s for s in semesters if s not in existing]
     return cleaned
 
 
@@ -1527,25 +1538,31 @@ def teaching_pairs(teaching: dict | None) -> dict[str, list[str]]:
     for division, batches in (teaching or {}).items():
         if not isinstance(batches, dict):
             continue
+        division = normalize_division(division)
+        if not division:
+            continue
         kept = sorted({str(batch).strip() for batch in batches if str(batch).strip()})
         if kept:
-            out[str(division).strip()] = kept
+            out[division] = sorted(set(out.get(division, [])) | set(kept))
     return out
 
 
 def teaching_rows(teaching: dict | None) -> list[dict]:
     """Flatten a teaching scope into form rows: one per class-semester."""
     rows: list[dict] = []
-    for division, batches in sorted((teaching or {}).items(), key=lambda item: str(item[0])):
+    for raw_division, batches in sorted((teaching or {}).items(), key=lambda item: str(item[0])):
         if not isinstance(batches, dict):
+            continue
+        division = normalize_division(raw_division)
+        if not division:
             continue
         for batch, semesters in sorted(batches.items(), key=lambda item: str(item[0])):
             semesters = [s for s in (semesters or []) if s]
             if semesters:
                 for semester in semesters:
-                    rows.append({"division": str(division), "batch": str(batch), "semester": semester})
+                    rows.append({"division": division, "batch": str(batch), "semester": semester})
             else:
-                rows.append({"division": str(division), "batch": str(batch), "semester": ""})
+                rows.append({"division": division, "batch": str(batch), "semester": ""})
     return rows
 
 
@@ -1557,11 +1574,18 @@ def teaching_includes(teaching: dict | None, division: str, batch: str, semester
     matches only when its semester is one of the recorded ones."""
     if not teaching or not isinstance(teaching, dict):
         return False
-    division = str(division or "").strip()
+    division = normalize_division(division)
     batch = str(batch or "").strip()
     if not division or not batch:
         return False
-    batches = teaching.get(division)
+    # Teaching keys may predate canonical storage ("Division 1"), so resolve
+    # the scope entry by canonical key rather than raw dict lookup.
+    key = division.casefold()
+    batches = None
+    for taught_division, taught_batches in teaching.items():
+        if division_key(taught_division) == key:
+            batches = taught_batches
+            break
     if isinstance(batches, dict):
         taught = batches.get(batch)
     elif isinstance(batches, (list, tuple)):
@@ -1581,12 +1605,17 @@ def teaching_scope_label(teaching: dict | None) -> str:
 
     ``Division 3 (Batch 1, 2)`` and, when a semester was recorded,
     ``Division 3 (Batch 1 (Semester 5), 2)``."""
+    normalized: dict[str, dict] = {}
+    for raw_division, batches in (teaching or {}).items():
+        division = normalize_division(raw_division)
+        if division and isinstance(batches, dict):
+            normalized.setdefault(division, {}).update(batches)
     parts: list[str] = []
     for division in sorted(
-        (teaching or {}).keys(),
+        normalized,
         key=lambda d: int(d) if str(d).isdigit() else 999,
     ):
-        batches = (teaching or {}).get(division)
+        batches = normalized.get(division)
         if not isinstance(batches, dict):
             continue
         labels = []
@@ -1628,7 +1657,7 @@ def set_faculty_teaching(email: str, mapping: dict) -> tuple[bool, str]:
         return False, "empty"
     cleaned: dict[str, dict[str, list[str]]] = {}
     for division, batches in mapping.items():
-        division = str(division or "").strip()
+        division = normalize_division(division)
         if division not in SIGNUP_DIVISIONS:
             return False, "bad_division"
         if isinstance(batches, (list, tuple)):
@@ -1960,7 +1989,7 @@ def valid_degree_branch(value: str) -> bool:
 
 
 def valid_division(value: str) -> bool:
-    return (value or "").strip() in DIVISIONS
+    return normalize_division(value) in DIVISIONS
 
 
 def valid_main_batch(value: str) -> bool:
@@ -2032,7 +2061,7 @@ def submit_onboarding(
     email = (email or "").strip().lower()
     prn = (prn or "").strip()
     degree_branch = (degree_branch or "").strip()
-    division = (division or "").strip()
+    division = normalize_division(division)
     main_batch = (main_batch or "").strip()
     practical_batch = (practical_batch or "").strip()
     semester = (semester or "").strip() or "Semester 1"
@@ -2088,7 +2117,7 @@ def submit_signup_onboarding(email: str, data: dict) -> tuple[bool, str]:
     prn = str(data.get("prn") or "").strip()
     branch = str(data.get("branch") or "").strip()
     specialisation = str(data.get("specialisation") or "").strip()
-    division = str(data.get("division") or "").strip()
+    division = normalize_division(data.get("division"))
     practical_batch = str(data.get("practical_batch") or "").strip()
     semester = str(data.get("semester") or "").strip()
     hackerrank_username = str(data.get("hackerrank_username") or "").strip()
@@ -2173,7 +2202,7 @@ def finalize_student_signup(data: dict) -> tuple[dict | None, str]:
     prn = str(data.get("prn") or "").strip()
     branch = str(data.get("branch") or "").strip()
     specialisation = str(data.get("specialisation") or "").strip()
-    division = str(data.get("division") or "").strip()
+    division = normalize_division(data.get("division"))
     practical_batch = str(data.get("practical_batch") or "").strip()
     semester = str(data.get("semester") or "").strip()
     hackerrank_username = str(data.get("hackerrank_username") or "").strip()
@@ -2289,7 +2318,7 @@ def admin_edit_onboarding(
     email = (email or "").strip().lower()
     prn = (prn or "").strip()
     degree_branch = (degree_branch or "").strip()
-    division = (division or "").strip()
+    division = normalize_division(division)
     main_batch = (main_batch or "").strip()
     practical_batch = (practical_batch or "").strip()
     semester = (semester or "").strip() or "Semester 1"

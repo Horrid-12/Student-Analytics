@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 import pandas as pd
 
 from app import storage
+from app.divisions import normalize_division
 from app.services import extract_hackerrank_username
 from app.ui_helpers import (
     apply_pair_filter,
@@ -721,11 +722,7 @@ def _clean_batch_text(value) -> str:
 
 def _clean_division_text(value) -> str:
     """Roster Division value for display: 'Div A'/'Division 1' -> 'A'/'1'."""
-    s = str(value).strip() if pd.notna(value) else ""
-    s = re.sub(r"^(?:div\.?\s+|division\s+)", "", s, flags=re.IGNORECASE).strip()
-    if not s:
-        return ""
-    return "" if s.lower() in {"nan", "none", "n/a", "na", "unknown", "unassigned"} else s
+    return normalize_division(value)
 
 
 def _batch_year_key(batch_label: str):
@@ -1073,7 +1070,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     except Exception:
         pass
     try:
-        _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist()) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
+        _div_opts = dist_options(_orig_students["Division"].dropna().astype(str).unique().tolist(), normalize_division) if _orig_students is not None and not _orig_students.empty and "Division" in _orig_students.columns else ["All"]
     except Exception:
         _div_opts = ["All"]
     try:
@@ -1338,24 +1335,32 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _cohort_rows = []
     if _all_students is not None and not _all_students.empty and {"Batch", "Division"}.issubset(_all_students.columns):
         try:
-            _grouped = _all_students.groupby(["Batch", "Division"], dropna=False).size().reset_index(name="_n")
+            # Group on the canonical division so "1" and "Division 1" are one
+            # cohort (BUG-126), while the raw batch value still drives labels.
+            _cohort_frame = _all_students.assign(
+                _div_norm=_all_students["Division"].map(normalize_division)
+            )
+            _grouped = _cohort_frame.groupby(["Batch", "_div_norm"], dropna=False).size().reset_index(name="_n")
         except Exception:
+            _cohort_frame = None
             _grouped = pd.DataFrame()
         for _, _row in _grouped.iterrows():
             _batch_raw = str(_row["Batch"]) if pd.notna(_row["Batch"]) else "nan"
-            _div_raw = str(_row["Division"]) if pd.notna(_row["Division"]) else "nan"
             _batch = _clean_batch_text(_row["Batch"])
-            _div = _clean_division_text(_row["Division"])
+            _div = str(_row["_div_norm"]) if pd.notna(_row["_div_norm"]) else ""
             _group = f"Batch {_batch}" if _batch else "No batch"
             _name = f"Division {_div}" if _div else "Division not listed"
             try:
-                _slice = _all_students[(_all_students["Batch"].astype(str) == _batch_raw) & (_all_students["Division"].astype(str) == _div_raw)]
+                _slice = _cohort_frame[
+                    (_cohort_frame["Batch"].astype(str) == _batch_raw)
+                    & (_cohort_frame["_div_norm"] == _div)
+                ]
                 _users = _cohort_usernames(_slice)
             except Exception:
                 _slice = pd.DataFrame()
                 _users = set()
             _cohort_rows.append({
-                "key": f"{_batch_raw or '?'}|{_div_raw or '?'}",
+                "key": f"{_batch_raw or '?'}|{_div or '?'}",
                 "group": _group,
                 "name": _name,
                 "label": f"{_name} · {_group}",
@@ -1417,7 +1422,10 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         # 1. "My Classes": the faculty's taught classes (page filters apply).
         _current_label = "My Classes"
         if _filtered:
-            _pair_bits = [f"Div {d} · Batch {b}" for d, _, b in (p.partition("|") for p in _pairs_list(pairs))]
+            _pair_bits = [
+                f"Div {normalize_division(d) or d} · Batch {b}"
+                for d, _, b in (p.partition("|") for p in _pairs_list(pairs))
+            ]
             _bits = _pair_bits or _filter_bits(division, batch)
             _bits = _bits + _filter_bits(semester)
             _current_label += " · " + " · ".join(_bits)
@@ -1515,7 +1523,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "divisions": _div_opts,
         "batches": _batch_opts,
         "semesters": _sem_opts,
-        "selected_divisions": _filter_list(division),
+        "selected_divisions": _division_filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
         "selected_semesters": _filter_list(semester),
@@ -1627,7 +1635,11 @@ def _weekly_activity_trend(
     # Filter students by division and batch if specified
     filtered_students = students.copy()
     if division != "All" and "Division" in filtered_students.columns:
-        filtered_students = filtered_students[filtered_students["Division"].astype(str) == str(division)]
+        _div_key = normalize_division(division)
+        if _div_key:
+            filtered_students = filtered_students[
+                filtered_students["Division"].map(normalize_division) == _div_key
+            ]
     if batch != "All" and "Batch" in filtered_students.columns:
         filtered_students = filtered_students[filtered_students["Batch"].astype(str) == str(batch)]
 
@@ -1860,10 +1872,17 @@ def _dist_sort_key(value) -> tuple:
         return (1, text.lower())
 
 
-def dist_options(values) -> list[str]:
-    return ["All"] + sorted(
-        (v for v in values if str(v).strip() != "all"), key=_dist_sort_key
-    )
+def dist_options(values, normalizer=None) -> list[str]:
+    items = [str(v).strip() for v in values if str(v).strip().lower() != "all"]
+    if normalizer is not None:
+        # Canonicalise + dedupe: "1" and "Division 1" become one option.
+        seen: dict[str, str] = {}
+        for item in items:
+            display = normalizer(item)
+            if display:
+                seen.setdefault(display.casefold(), display)
+        items = list(seen.values())
+    return ["All"] + sorted(items, key=_dist_sort_key)
 
 
 def _filter_list(value) -> list[str]:
@@ -1897,6 +1916,16 @@ def _filter_query_value(value) -> str:
     return ",".join(items) if items else "All"
 
 
+def _division_filter_list(value) -> list[str]:
+    """Selected Division values in canonical form (see app.divisions)."""
+    out: list[str] = []
+    for item in _filter_list(value):
+        div = normalize_division(item)
+        if div and div not in out:
+            out.append(div)
+    return out
+
+
 def _filter_bits(*values) -> list[str]:
     bits: list[str] = []
     for value in values:
@@ -1908,27 +1937,48 @@ def _pairs_list(value) -> list[str]:
     """Normalize an explicit (Division, Batch) pair selection to a list of
     ``"DIV|BATCH"`` strings. Accepts None/"All", a single string, a
     comma-joined string or a list/tuple (repeated ``?pair=`` params).
-    Malformed entries (no ``|``) are dropped. Empty list means no pair
-    filtering — callers fall back to the independent division/batch filters."""
+    Malformed entries (no ``|``) are dropped and the Division part is
+    canonicalised (BUG-126) so legacy ``"Division 1|1"`` links keep working.
+    Empty list means no pair filtering — callers fall back to the independent
+    division/batch filters."""
+
+    def pair_text(div, bat) -> str:
+        div = normalize_division(div)
+        bat = str(bat or "").strip()
+        return f"{div}|{bat}" if div and bat else ""
+
     if value is None:
         return []
     if isinstance(value, (list, tuple, set)):
         items: list[str] = []
         for entry in value:
             if isinstance(entry, (list, tuple)) and len(entry) == 2:
-                div, bat = str(entry[0] or "").strip(), str(entry[1] or "").strip()
-                if div and bat and f"{div}|{bat}" not in items:
-                    items.append(f"{div}|{bat}")
+                text = pair_text(entry[0], entry[1])
+                if text and text not in items:
+                    items.append(text)
                 continue
             for part in str(entry or "").split(","):
-                text = part.strip()
-                if text and text.lower() != "all" and "|" in text and text not in items:
+                part = part.strip()
+                if not part or part.lower() == "all" or "|" not in part:
+                    continue
+                div, _, bat = part.partition("|")
+                text = pair_text(div, bat)
+                if text and text not in items:
                     items.append(text)
         return items
     text = str(value or "").strip()
     if not text or text.lower() == "all":
         return []
-    return [p.strip() for p in text.split(",") if p.strip() and p.strip().lower() != "all" and "|" in p.strip()]
+    items = []
+    for part in text.split(","):
+        part = part.strip()
+        if not part or part.lower() == "all" or "|" not in part:
+            continue
+        div, _, bat = part.partition("|")
+        pair = pair_text(div, bat)
+        if pair and pair not in items:
+            items.append(pair)
+    return items
 
 
 def _pairs_query_value(value) -> str:
@@ -1961,7 +2011,12 @@ def _apply_cohort_filters(students, division="All", batch="All", semester="All",
 
 def division_batch_groups(students) -> list[dict]:
     """Division -> taught batches structure for the compare-style class
-    filter dropdown (raw values kept for filtering, display labels added)."""
+    filter dropdown.
+
+    Grouping is canonical (BUG-126): roster rows stored as ``"1"`` and
+    ``"Division 1"`` collapse into one ``Division 1`` entry with the union of
+    their batches. ``division`` stays a filterable value and comparisons
+    canonicalise it, so selecting the group still matches both row styles."""
     if students is None or students.empty or not {"Division", "Batch"}.issubset(students.columns):
         return []
     try:
@@ -1970,17 +2025,21 @@ def division_batch_groups(students) -> list[dict]:
         return []
     index: dict[str, dict] = {}
     for _, row in pairs.iterrows():
-        div = str(row["Division"]) if pd.notna(row["Division"]) else ""
+        raw_div = str(row["Division"]) if pd.notna(row["Division"]) else ""
+        div = normalize_division(raw_div)
         bat = str(row["Batch"]) if pd.notna(row["Batch"]) else ""
-        if not div or div.lower() in {"nan", "none"}:
+        if not div:
             continue
-        entry = index.setdefault(div, {"division": div, "label": "", "key": _clean_division_text(div), "batches": [], "batch_keys": []})
+        entry = index.setdefault(
+            div.casefold(),
+            {"division": div, "label": "", "key": div, "batches": [], "batch_keys": []},
+        )
         if bat and bat not in entry["batches"]:
             entry["batches"].append(bat)
             entry["batch_keys"].append(_clean_batch_text(bat))
     groups = list(index.values())
     for g in groups:
-        g["label"] = g["key"] if g["key"].lower().startswith(("div", "division")) else f"Division {g['key']}"
+        g["label"] = f"Division {g['key']}"
         _sorted = sorted(zip(g["batches"], g["batch_keys"]), key=lambda pair: _dist_sort_key(pair[0]))
         g["batches"] = [p[0] for p in _sorted]
         g["batch_keys"] = [p[1] for p in _sorted]
@@ -2067,7 +2126,7 @@ def verification_payload(view, items, division="All", batch="All", semester="All
         "items": scoped_items,
         "total": len(scoped_items),
         "semesters": semester_opts,
-        "selected_divisions": _filter_list(division),
+        "selected_divisions": _division_filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
         "selected_semesters": _filter_list(semester),
@@ -2232,11 +2291,11 @@ def students_payload(view, query="", division="All", batch="All", year="All", se
         "profile": profile,
         "filtered": filtered,
         "students": students,
-        "divisions": dist_options(students["Division"].dropna().astype(str).unique().tolist()),
+        "divisions": dist_options(students["Division"].dropna().astype(str).unique().tolist(), normalize_division),
         "batches": dist_options(students["Batch"].dropna().astype(str).unique().tolist()),
         "years": dist_options(students["Academic_Year"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(students["Semester"].dropna().astype(str).unique().tolist()),
-        "selected_divisions": _filter_list(division),
+        "selected_divisions": _division_filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
         "selected_semesters": _filter_list(semester),
@@ -3186,7 +3245,10 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
     initial_visible = max(STUDENT_BATCH_SIZE, min(requested, total)) if total else 0
     students = view.get("students")
     _opts = (
-        lambda col: dist_options(students[col].dropna().astype(str).unique().tolist())
+        lambda col: dist_options(
+            students[col].dropna().astype(str).unique().tolist(),
+            normalize_division if col == "Division" else None,
+        )
         if students is not None and not students.empty and col in students.columns
         else ["All"]
     )
@@ -3208,7 +3270,7 @@ def repositories_payload(view, query="", language="All", rows=30, division="All"
         "divisions": _opts("Division"),
         "batches": _opts("Batch"),
         "semesters": _opts("Semester"),
-        "selected_divisions": _filter_list(division),
+        "selected_divisions": _division_filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
         "selected_semesters": _filter_list(semester),
@@ -3685,10 +3747,10 @@ def leaderboards_payload(
     )
     return {
         "total": len(students),
-        "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist()),
+        "divisions": dist_options(view["students"]["Division"].dropna().astype(str).unique().tolist(), normalize_division),
         "batches": dist_options(view["students"]["Batch"].dropna().astype(str).unique().tolist()),
         "semesters": dist_options(view["students"]["Semester"].dropna().astype(str).unique().tolist()),
-        "selected_divisions": _filter_list(division),
+        "selected_divisions": _division_filter_list(division),
         "selected_batches": _filter_list(batch),
         "selected_pairs": _pairs_list(pairs),
         "selected_semesters": _filter_list(semester),
