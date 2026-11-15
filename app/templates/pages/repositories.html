@@ -417,8 +417,19 @@
     var needSubmit = false;
     if (saved.view) { applyView(saved.view); }
     if (saved.semester && semFilter) {
-      semFilter.set(saved.semester.split(','));
-      needSubmit = true;
+      // Only submit when the saved semesters differ from the ones already
+      // rendered from the URL. Submitting unconditionally re-applied the
+      // saved value on every load and caused an infinite reload loop.
+      var wanted = [];
+      saved.semester.split(',').forEach(function (v) {
+        v = v.trim();
+        if (v && wanted.indexOf(v) === -1) { wanted.push(v); }
+      });
+      var current = semFilter.values().slice().sort();
+      var next = wanted.slice().sort();
+      var same = current.length === next.length && current.every(function (v, i) { return v === next[i]; });
+      semFilter.set(wanted);
+      if (!same) { needSubmit = true; }
     }
     [['language', langSel], ['sort', sortSel]].forEach(function (pair) {
       var key = pair[0], sel = pair[1];
