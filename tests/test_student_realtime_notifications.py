@@ -47,6 +47,8 @@ def test_admin_followup_and_resolve_triggers_notifications():
     assert notif_resp.status_code == 200
     assert notif_resp.json()["unreadCount"] == 0
     assert len(notif_resp.json()["notifications"]) == 0
+    # Empty notification list -> no bell for students (BUG-130).
+    assert "notif-bell" not in student_client.get("/support").text
 
     # 1. Admin posts a follow-up question
     question_text = "Which branch are your commits pushed to? Please provide the repo URL."

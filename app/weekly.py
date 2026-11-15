@@ -16,10 +16,12 @@ later trigger resumes from stored rows). Everything here is fail-safe and
 idempotent: re-running a published week is a no-op summary.
 """
 
+import html
 import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from app import accounts, auth, database, db, services, support
 
@@ -172,11 +174,15 @@ def _display(entry: dict) -> str:
 
 
 def _display_linked(entry: dict) -> str:
-    """Render student display name as an HTML link to open their profile in the students tab."""
+    """Render student display name as an HTML link to open their profile in the students tab.
+
+    The returned string is injected with ``|safe`` in the bell, so both the
+    visible name and the query value must be escaped/encoded here (NEW-1)."""
     target_id = (entry.get("student_id") or "").strip() or (entry.get("username") or "").strip() or (entry.get("email") or "").strip()
-    disp = _display(entry)
+    disp = html.escape(_display(entry), quote=True)
     if target_id:
-        return f'<a href="/students?select={target_id}" class="notif-student-link">{disp}</a>'
+        target = quote(str(target_id), safe="")
+        return f'<a href="/students?select={target}" class="notif-student-link">{disp}</a>'
     return disp
 
 

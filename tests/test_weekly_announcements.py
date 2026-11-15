@@ -32,6 +32,80 @@ def test_display_linked_renders_profile_link():
     assert '<a href="/students?select=dave" class="notif-student-link">@dave (Dave D)</a>' == linked_no_id
 
 
+def test_display_linked_escapes_untrusted_name_and_id():
+    entry = {
+        "name": '<img src=x onerror="alert(1)">',
+        "username": 'bad"><script>alert(1)</script>',
+        "student_id": 'x"><script>alert(1)</script>',
+    }
+    linked = weekly._display_linked(entry)
+    assert "<script>" not in linked
+    assert "<img" not in linked
+    assert "onerror=&quot;" in linked
+    assert "&lt;script&gt;" in linked
+    assert "/students?select=x%22%3E%3Cscript%3E" in linked
+
+
+def test_build_message_escapes_untrusted_name():
+    top = {
+        "kind": "winner",
+        "commits": 3,
+        "entries": [{"name": "<script>alert(1)</script>", "username": "ok", "student_id": "1"}],
+    }
+    _, message = weekly.build_message(top, "Week of Sep 21")
+    assert "<script>" not in message
+    assert "&lt;script&gt;" in message
+
+
+def test_bell_escapes_plain_text_and_keeps_weekly_links():
+    from app.main import templates
+
+    template = templates.env.get_template("partials/bell.html")
+    plain = template.render(
+        auth_role="student",
+        notif_count=1,
+        notif_empty="x",
+        notifications=[{
+            "id": 1,
+            "issue": "Support update",
+            "sub": "<img src=x onerror=alert(1)>",
+            "sub_is_html": False,
+            "time": "",
+            "fix_url": "/support",
+            "link_label": "Fix",
+            "is_unread": True,
+            "type": "TICKET_FOLLOW_UP",
+        }],
+    )
+    assert "<img src=x onerror=alert(1)>" not in plain
+    assert "&lt;img src=x onerror=alert(1)&gt;" in plain
+
+    linked_sub = weekly._display_linked({
+        "name": "<script>alert(1)</script>",
+        "username": "safe",
+        "student_id": 'x"><script>alert(1)</script>',
+    })
+    safe_html = template.render(
+        auth_role="student",
+        notif_count=1,
+        notif_empty="x",
+        notifications=[{
+            "id": 2,
+            "issue": "Weekly update",
+            "sub": linked_sub,
+            "sub_is_html": True,
+            "time": "",
+            "fix_url": "/leaderboards",
+            "link_label": "View",
+            "is_unread": True,
+            "type": "WEEKLY_TOP_STUDENT",
+        }],
+    )
+    assert 'class="notif-student-link"' in safe_html
+    assert "<script>alert(1)</script>" not in safe_html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in safe_html
+
+
 def test_rank_hackerrank_winner_and_message():
     rows = [
         {"email": "h1@c.edu", "username": "hr_alice", "name": "Alice H", "student_id": "PRN-01", "score": 350, "metric": "points"},
