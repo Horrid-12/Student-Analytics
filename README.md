@@ -6,7 +6,7 @@
 
 <p align="center">
   Sign up with a college address, get approved, and watch your class's GitHub activity<br>
-  sync itself into eight role-based dashboards — no spreadsheet surgery.
+  sync itself into role-based dashboards — no spreadsheet surgery.
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@
 
 ### Dashboards and submissions, one sidebar
 
-- Navigation includes **Overview**, **Onboarding**, **Students**, **Repositories**, **AutoCAD**, **Leaderboards**, **Support**, **Settings**, and **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. Admins also have the certificate **Verification** page.
+- Navigation includes **Overview**, **Onboarding**, **Students**, **Repositories**, **AutoCAD**, **Leaderboards**, **Support**, **Settings**, and **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. Faculty and admins also have the certificate **Verification** page (admins review all applications, faculty review their assigned cohorts).
 - AutoCAD currently accepts student `.dwg` uploads up to 4 MB and gives faculty/admin a recent-submissions download inbox. Browser previews, assignment grouping, grades, and remarks are planned follow-up work; see [`documentation/AutoCAD Submissions.md`](./documentation/AutoCAD%20Submissions.md).
 - Pages render from the synced account fleet — no upload required — and the Students and Repositories tables export CSV or XLSX.
 - Repos and followers are also reported per year of account age (`Repos_Per_Account_Year`, `Followers_Per_Account_Year`) so newer accounts are not punished.
@@ -94,7 +94,7 @@ Server-rendered, deliberately thin: FastAPI routes in `app/main.py` handle HTTP,
 
 ```
 sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
-      → account snapshots (Postgres or SQLite) → views.py payloads → 8 pages
+      → account snapshots (Postgres or SQLite) → views.py payloads → 9 pages
 ```
 
 - Feature inventory: [`documentation/Features List.md`](./documentation/Features%20List.md)
@@ -112,7 +112,7 @@ app/            FastAPI application
   templates/      Jinja2 pages + partials
 static/         CSS, JS, logo (Favicon.png)
 tests/          pytest suite (two-mode parity harness)
-scripts/        perf_loop.py (page-timing harness)
+scripts/        perf_loop.py (page-timing harness), run_heavy_sync.py, verify_readme.py
 documentation/  Bug Tracker, Features List, Taskflow, ANALYSIS, AutoCAD Submissions
 vercel.json     ASGI entry + cron schedule
 ```
@@ -210,7 +210,7 @@ Everything goes in **`.env.local`** (gitignored, auto-loaded at startup by `app/
 | `LINKEDIN_CLIENT_ID` + `LINKEDIN_CLIENT_SECRET` | Optional | LinkedIn profile linking. |
 | `ALLOWED_OAUTH_DOMAINS` | Optional (default `mitwpu.edu.in`) | College-domain allowlist for signup and OAuth, comma- or space-separated. |
 | `OAUTH_REDIRECT_BASE_URL` | Optional (defaults to the request origin) | Canonical origin for OAuth callbacks — set it to the deployed origin in production. |
-| `CRON_SECRET` | Required for automation | Authorizes `POST /sync/accounts`, `/sync/weekly`, `POST /api/sync/single/{email}`, and `GET /api/users/approved` when no admin session is present; absent → 403 for Vercel Cron and the GitHub Action. |
+| `CRON_SECRET` | Required for automation | Authorizes `POST /sync/accounts`, `/sync/weekly`, `/sync/hackerrank`, `POST /api/sync/single/{email}`, and `GET /api/users/approved` when no admin session is present; absent → 403 for Vercel Cron and the GitHub Actions workflows. |
 | `DATABASE_URL` | Optional (aliases `POSTGRES_URL`, `TEST_DATABASE_URL`) | Neon Postgres storage; absent → bundled SQLite files (`analytics_history.db`, `users.db`, …). |
 | `DATABASE_URL_UNPOOLED` / `UNPOOLED` | Optional | Direct (non-pooled) connection used for schema DDL. |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Optional | Cross-instance GitHub response cache; absent → in-process cache. |
@@ -258,7 +258,7 @@ Open **http://localhost:8001**.
    ```powershell
    .\.venv\Scripts\python.exe -m app.seed_users admin@your-college.edu "secret" admin
    ```
-4. Data arrives on its own: nightly cron, the 6-hourly Heavy Sync Action, and self-sync on login. Admins can force `/debug/force_sync_all`.
+4. Data arrives on its own: nightly cron, the daily Heavy Sync Action (00:00 UTC), and self-sync on login. Admins can force `/debug/force_sync_all`.
 5. Explore the sidebar pages; export any table to CSV/XLSX.
 
 ### Optional: Postgres
@@ -324,10 +324,10 @@ The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel
 
 1. Push to `main`; the linked Vercel project deploys on every push.
 2. Set project env vars: at minimum `GITHUB_TOKEN`, `AUTH_SECRET`, `CRON_SECRET`, `ALLOWED_OAUTH_DOMAINS`, and `OAUTH_REDIRECT_BASE_URL` (the canonical deployment origin, no trailing path).
-3. Register `…/auth/google/callback` and `…/auth/github/callback` on that origin with each OAuth provider.
+3. Register `…/auth/google/callback`, `…/auth/github/callback`, and `…/auth/linkedin/callback` on that origin with each OAuth provider.
 4. Optional: `DATABASE_URL` (then run `python -m app.init_db` once), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`, and the Google/GitHub/LinkedIn client pairs.
 5. Cron is already wired: `vercel.json` schedules `/sync/accounts` nightly and `/sync/weekly` on Sundays — they 403 until `CRON_SECRET` matches.
-6. For the **Heavy Sync** GitHub Action, add repository secrets `APP_URL` (production origin) and `CRON_SECRET` (same value as Vercel).
+6. For the GitHub Actions (**Heavy Sync**, **HackerRank Sync**, and **Weekly Announcements**), add repository secrets `APP_URL` (production origin) and `CRON_SECRET` (same value as Vercel).
 
 ---
 
@@ -337,8 +337,8 @@ The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel
 |---|---|
 | Production | Live at https://student-analytics-iota.vercel.app |
 | CI | CodeQL on push/PR to `main` plus a weekly run; Dependabot weekly for pip and GitHub Actions |
-| Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync daily (00:00 UTC) and HackerRank sync daily (00:00 IST) |
-| Test suite | **Green** — 734 passed / 10 skipped (default mode), 729 passed / 15 skipped (`MODULE_UNDER_TEST=app.services`), 2026-10-22. The Postgres layer (`tests/test_db_layer.py`) stays skipped without `TEST_DATABASE_URL`. |
+| Scheduled jobs | Vercel crons (nightly accounts + weekly announcement), GitHub Actions Heavy Sync daily (00:00 UTC), HackerRank sync daily (00:00 IST), and weekly announcements Sunday (00:00 UTC) |
+| Test suite | **Green** — 747 passed / 10 skipped (default mode), 742 passed / 15 skipped (`MODULE_UNDER_TEST=app.services`), 2026-11-16. The Postgres layer (`tests/test_db_layer.py`) stays skipped without `TEST_DATABASE_URL`. |
 
 ---
 
