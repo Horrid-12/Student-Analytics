@@ -10,6 +10,8 @@ import re
 
 import pandas as pd
 
+from app.divisions import division_key
+
 
 def escape(value) -> str:
     if pd.isna(value):
@@ -83,6 +85,23 @@ def filter_text(df: pd.DataFrame, query: str, columns: list[str]) -> pd.DataFram
     return df[mask]
 
 
+def _value_mask(df: pd.DataFrame, column: str, values: list[str]):
+    """Boolean mask for one or more filter values, canonicalising Division.
+
+    Division comparisons ignore the stored label style (``"1"`` matches
+    ``"Division 1"``); every other column keeps its exact-match behaviour.
+    """
+    if not values:
+        return None
+    if column == "Division":
+        wanted = {division_key(value) for value in values}
+        wanted.discard("")
+        if not wanted:
+            return None
+        return df[column].astype(str).map(division_key).isin(wanted)
+    return df[column].astype(str).isin(values)
+
+
 def apply_value_filter(df: pd.DataFrame, column: str, value) -> pd.DataFrame:
     if column not in df.columns:
         return df
@@ -96,19 +115,18 @@ def apply_value_filter(df: pd.DataFrame, column: str, value) -> pd.DataFrame:
                 text = part.strip()
                 if text and text.lower() != "all":
                     vals.append(text)
-        if not vals:
-            return df
-        return df[df[column].astype(str).isin(vals)]
+        mask = _value_mask(df, column, vals)
+        return df if mask is None else df[mask]
     text = str(value or "").strip()
     if text == "" or text.lower() == "all":
         return df
     # Comma-joined multi value passed as a single string ("1,2").
     if "," in text:
         vals = [p.strip() for p in text.split(",") if p.strip() and p.strip().lower() != "all"]
-        if not vals:
-            return df
-        return df[df[column].astype(str).isin(vals)]
-    return df[df[column].astype(str) == text]
+        mask = _value_mask(df, column, vals)
+        return df if mask is None else df[mask]
+    mask = _value_mask(df, column, [text])
+    return df if mask is None else df[mask]
 
 
 def apply_pair_filter(df: pd.DataFrame, pairs) -> pd.DataFrame:
@@ -142,11 +160,13 @@ def apply_pair_filter(df: pd.DataFrame, pairs) -> pd.DataFrame:
     if not wanted or "Division" not in df.columns or "Batch" not in df.columns:
         return df
     try:
-        divs = df["Division"].astype(str)
+        divs = df["Division"].astype(str).map(division_key)
         bats = df["Batch"].astype(str)
         mask = pd.Series(False, index=df.index)
         for div, bat in wanted:
-            mask = mask | (divs.eq(div) & bats.eq(bat))
+            key = division_key(div)
+            if key:
+                mask = mask | (divs.eq(key) & bats.eq(bat))
         return df[mask]
     except Exception:
         return df

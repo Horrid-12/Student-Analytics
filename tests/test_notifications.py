@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, storage
+from app import auth, storage, support
 import app.main as main
 from app.main import app
 
@@ -135,11 +135,12 @@ class TestNotificationBell:
         client.post("/login", data={"email": email, "password": "secret123"})
         return email
 
-    def test_student_overview_shows_bell(self, client):
+    def test_student_overview_hides_bell_when_empty(self, client):
         self._login(client, "student", OWN_EMAIL)
         body = client.get("/?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" in body  # students see their own issue alerts
-        assert "all clear" in body
+        # No notifications -> no bell at all (BUG-130).
+        assert "notif-bell" not in body
+        assert "all clear" not in body
         assert "notif-badge" not in body
 
     def test_admin_overview_shows_staff_bell(self, client):
@@ -149,8 +150,21 @@ class TestNotificationBell:
         assert "all quiet" in body
         assert "notif-badge" not in body
 
-    def test_student_leaderboards_shows_bell(self, client):
+    def test_student_leaderboards_hides_bell_when_empty(self, client):
         self._login(client, "student", OWN_EMAIL)
         body = client.get("/leaderboards?roster=r1", headers={"Accept": "text/html"}).text
-        assert "notif-bell" in body
+        assert "notif-bell" not in body
         assert "notif-badge" not in body
+
+    def test_support_notification_text_is_escaped(self, client):
+        email = self._login(client, "student", OWN_EMAIL)
+        assert support.create_notification(
+            email,
+            1,
+            "TICKET_FOLLOW_UP",
+            "Support update",
+            "<script>alert('xss')</script>",
+        )
+        body = client.get("/support", headers={"Accept": "text/html"}).text
+        assert "<script>alert('xss')</script>" not in body
+        assert "&lt;script&gt;alert" in body

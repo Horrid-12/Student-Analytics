@@ -310,17 +310,16 @@ class TestLedgerView:
         _session(client, "admin")
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "1234567890.s@college.edu" in body
-        assert "1234567890" in body  # email-derived PRN, bold under the name
-        assert ">9876543210<" not in body  # stored PRN column is gone (edit-modal prefill may still reference it)
+        assert "1234567890" in body  # email-derived PRN is shown in the identity block
         assert "/onboarding/approve" in body
         assert "/onboarding/reject" in body
-        # Fixed table layout (no horizontal scroll) with the new columns.
-        assert "table-layout: fixed" in body
-        assert ">Batch</th>" in body and ">Semester</th>" in body
-        assert ">HackerRank</th>" in body and ">LinkedIn</th>" in body
-        assert ">PRN</th>" not in body  # standalone PRN column removed
-        assert "overflow-x: auto" not in body
-        assert 'id="ledger-more-btn"' not in body  # only 1 row — no batching
+        # Same card workspace the faculty login uses, not the legacy table.
+        assert "faculty-review-card" in body
+        assert 'id="ledger-table"' not in body
+        assert "table-layout: fixed" not in body
+        assert ">Branch</span>" in body and ">Semester</span>" in body
+        assert ">HackerRank</span>" in body and ">LinkedIn</span>" in body
+        assert "Pending review" in body
 
     def test_faculty_gets_wide_searchable_review_profiles_for_assigned_classes(self, client):
         signup(client, "in-scope@college.edu", "In Scope")
@@ -367,9 +366,9 @@ class TestLedgerView:
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
         assert "alice_hr" in body
         assert "hackerrank.com/profile/alice_hr" in body
-        # LinkedIn: student name as link text pointing at the profile slug.
+        # LinkedIn: the saved /in/ slug is the link text and target.
         assert 'linkedin.com/in/stu-dent-123' in body
-        assert ">Student One</a>" in body
+        assert ">stu-dent-123</a>" in body
 
     def test_student_does_not_see_ledger(self, client):
         signup(client)
@@ -401,14 +400,15 @@ class TestLedgerSearch:
     def test_search_bar_matches_students_page(self, client):
         self._seed_two(client)
         body = client.get("/onboarding", headers={"Accept": "text/html"}).text
-        assert 'class="filter-bar"' in body
-        assert 'id="onboarding-search"' in body
+        assert 'class="filter-bar faculty-review-search"' in body
         assert 'class="search-input"' in body
-        assert "Search by ID, name or username" in body
-        assert '<button class="btn" type="submit">Apply</button>' in body
-        assert '<a class="btn" href="/onboarding">Clear</a>' in body
-        assert 'id="shown-count"' in body
-        assert 'id="shown-count">2</span> of 2 shown' in body
+        assert 'name="q"' in body
+        assert "Search students" in body
+        assert 'placeholder="Name, PRN, email, branch…"' in body
+        assert '>Search</button>' in body
+        assert "2 students" in body
+        filtered = client.get("/onboarding?q=Alice", headers={"Accept": "text/html"}).text
+        assert '<a class="btn" href="/onboarding">Clear</a>' in filtered
 
     def test_search_filters_by_name(self, client):
         self._seed_two(client)
@@ -431,9 +431,151 @@ class TestLedgerSearch:
     def test_search_no_match_shows_empty_state_not_blank(self, client):
         self._seed_two(client)
         body = client.get("/onboarding?q=nomatch-xyz", headers={"Accept": "text/html"}).text
-        assert "No matching submissions" in body
-        assert 'id="onboarding-search"' in body  # bar stays so the admin can retry
-        assert 'id="ledger-table"' not in body
+        assert "No students match" in body
+        assert 'name="q"' in body  # bar stays so the admin can retry
+        assert '<article class="panel faculty-review-card">' not in body
+
+
+def _seed_status(client, email, name, prn, status, division="1", practical_batch="1"):
+    """Create a student, submit a record, and force its onboarding status."""
+    signup(client, email, name)
+    login(client, email)
+    submit(client, prn=prn, email=email, division=division, practical_batch=practical_batch)
+    assert auth.set_onboarding_status(email, status)[0]
+    client.get("/logout")
+
+
+class TestAdminReviewWorkspace:
+    """Admin onboarding uses the faculty card workspace with every status and
+    keeps the admin-only controls (Remove + faculty key generator)."""
+
+    def test_admin_sees_every_status_with_the_right_actions(self, client):
+        _seed_status(client, "pending@college.edu", "Pending One", "1111111111", "pending")
+        _seed_status(client, "approved@college.edu", "Approved Two", "2222222222", "approved")
+        _seed_status(client, "rejected@college.edu", "Rejected Three", "3333333333", "rejected")
+        _session(client, "admin")
+
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert body.count('<article class="panel faculty-review-card">') == 3
+        for email in ("pending@college.edu", "approved@college.edu", "rejected@college.edu"):
+            assert email in body
+        assert "Pending review" in body and ">Approved</span>" in body and ">Rejected</span>" in body
+        # Pending: approve + reject. Approved: disapprove. Rejected: approve again.
+        assert "/onboarding/approve" in body
+        assert "/onboarding/reject" in body
+        assert "/onboarding/disapprove" in body
+        assert "/onboarding/remove" in body
+
+    def test_admin_card_workspace_keeps_edit_modal_and_key_generator(self, client):
+        _seed_status(client, "pending@college.edu", "Pending One", "1111111111", "pending")
+        _session(client, "admin")
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert 'id="faculty-edit-modal"' in body
+        assert 'id="faculty-key-btn"' in body
+        assert 'id="faculty-key-dropdown"' in body
+        assert "/admin/faculty-invites/generate" in body
+
+    def test_faculty_gets_no_admin_controls(self, client):
+        _seed_status(client, "in-scope@college.edu", "In Scope", "1111111111", "pending")
+        email = _faculty_session(client)
+        assert auth.set_faculty_teaching(email, {"1": ["1"]}) == (True, "")
+        body = client.get("/onboarding", headers={"Accept": "text/html"}).text
+        assert "faculty-review-card" in body
+        assert 'id="faculty-key-btn"' not in body
+        assert 'id="faculty-key-dropdown"' not in body
+        assert "/onboarding/remove" not in body
+
+    def test_faculty_key_generator_endpoints_stay_admin_only(self, client):
+        _session(client, "admin")
+        generated = client.post("/admin/faculty-invites/generate")
+        assert generated.status_code == 200
+        payload = generated.json()
+        assert payload["email"].startswith("faculty") and "@dashboard.local" in payload["email"]
+        assert payload["password"]
+        listed = client.get("/admin/faculty-invites")
+        assert listed.status_code == 200
+        assert any(item["invite_email"] == payload["email"] for item in listed.json()["invites"])
+        assert "password" not in listed.text
+
+        faculty_email = _faculty_session(client)
+        assert auth.set_faculty_teaching(faculty_email, {"1": ["1"]}) == (True, "")
+        assert client.post("/admin/faculty-invites/generate").status_code == 403
+        assert client.get("/admin/faculty-invites").status_code == 403
+
+    def test_admin_edit_saves_the_student_record(self, client):
+        _seed_status(client, "edit@college.edu", "Edit Me", "1111111111", "pending")
+        _session(client, "admin")
+        response = client.post(
+            "/onboarding/admin_edit",
+            data={
+                "email": "edit@college.edu",
+                "prn": "9999999999",
+                "degree_branch": "Core",
+                "division": "2",
+                "main_batch": "",
+                "practical_batch": "3",
+                "semester": "Semester 4",
+                "hackerrank_username": "edited_hr",
+                "github_username": "edited_gh",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/onboarding?action=edited")
+        user = auth.get_user("edit@college.edu")
+        assert user["prn"] == "9999999999"
+        assert user["division"] == "2"
+        assert user["practical_batch"] == "3"
+        assert user["semester"] == "Semester 4"
+        assert user["hackerrank_username"] == "edited_hr"
+        assert user["github_username"] == "edited_gh"
+
+    def test_faculty_edit_is_limited_to_taught_classes(self, client):
+        _seed_status(client, "in-scope@college.edu", "In Scope", "1111111111", "pending")
+        _seed_status(client, "out-of-scope@college.edu", "Out Scope", "2222222222", "pending", division="2", practical_batch="2")
+        email = _faculty_session(client)
+        assert auth.set_faculty_teaching(email, {"1": ["1"]}) == (True, "")
+
+        def edit(student_email, prn):
+            return client.post(
+                "/onboarding/admin_edit",
+                data={
+                    "email": student_email,
+                    "prn": prn,
+                    "degree_branch": "Core",
+                    "division": "1",
+                    "practical_batch": "1",
+                    "semester": "Semester 3",
+                    "hackerrank_username": "hr",
+                    "github_username": "",
+                },
+                follow_redirects=False,
+            )
+
+        assert edit("in-scope@college.edu", "1111111111").status_code == 303
+        assert edit("out-of-scope@college.edu", "2222222222").status_code == 403
+
+    def test_invalid_edit_surfaces_the_validation_error(self, client):
+        _seed_status(client, "edit@college.edu", "Edit Me", "1111111111", "pending")
+        _session(client, "admin")
+        response = client.post(
+            "/onboarding/admin_edit",
+            data={
+                "email": "edit@college.edu",
+                "prn": "123",
+                "degree_branch": "Core",
+                "division": "1",
+                "practical_batch": "1",
+                "semester": "Semester 3",
+                "hackerrank_username": "hr",
+                "github_username": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert "error=prn_format" in response.headers["location"]
+        body = client.get(response.headers["location"], headers={"Accept": "text/html"}).text
+        assert "PRN must be a 10-digit Roll Number." in body
 
 
 def _faculty_session(client, email="prof@example.com"):
@@ -536,7 +678,7 @@ class TestFacultyTeachingSetup:
         _session(client, "admin")
         body = client.get("/onboarding").text
         assert "Teaching Assignments" not in body
-        assert 'id="ledger-table"' in body or "No submissions yet" in body
+        assert "faculty-review-card" in body or "No onboarding submissions yet" in body
 
     def test_save_roundtrip_and_prefill(self, client):
         email = _faculty_session(client)

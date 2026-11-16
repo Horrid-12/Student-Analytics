@@ -1397,7 +1397,8 @@ async def signup_phase_2_submit(
             return fail("specialisation")
     elif (specialisation or "").strip():
         return fail("specialisation")
-    if (division or "").strip() not in auth.SIGNUP_DIVISIONS:
+    division = auth.normalize_division(division)
+    if division not in auth.SIGNUP_DIVISIONS:
         return fail("division")
     if not auth.valid_signup_practical_batch(practical_batch, division):
         return fail("batch")
@@ -1407,7 +1408,7 @@ async def signup_phase_2_submit(
         "semester": (semester or "").strip(),
         "branch": (branch or "").strip(),
         "specialisation": (specialisation or "").strip(),
-        "division": (division or "").strip(),
+        "division": division,
         "practical_batch": (practical_batch or "").strip(),
     })
     token = auth.save_signup_progress(progress)
@@ -2282,12 +2283,16 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
         support_notifs = _memo(f"bell:notifs:{email}", lambda: _list_notifications(email)) if email else []
         unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
         if not support_notifs:
-            return {"notifications": [], "notif_count": 0, "notif_empty": "No notifications - all clear."}
+            # No student notifications means no bell at all (BUG-130). Staff
+            # still get the persistent bell below, since ticket alerts are
+            # their primary inbox.
+            return {"notifications": [], "notif_count": 0, "notif_empty": None}
         notifications = [
             {
                 "id": n.get("id"),
                 "issue": n.get("title") or "Support Update",
                 "sub": n.get("message") or "",
+                "sub_is_html": n.get("type") in ("WEEKLY_TOP_STUDENT", "WEEKLY_TOP_HACKERRANK"),
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank"
                 if n.get("type") == "WEEKLY_TOP_HACKERRANK"
@@ -2327,6 +2332,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "id": n.get("id"),
                 "issue": n.get("title") or "Weekly update",
                 "sub": n.get("message") or "",
+                "sub_is_html": True,
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank" if n.get("type") == "WEEKLY_TOP_HACKERRANK" else "/leaderboards",
                 "link_label": "View",
@@ -2341,6 +2347,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
             {
                 "issue": alert["subject"],
                 "sub": f"{alert['student']} • {alert['status']}" if alert["student"] else alert["status"],
+                "sub_is_html": False,
                 "time": views.friendly_timestamp(alert["updated_at"]),
                 "fix_url": alert["fix_url"],
                 "link_label": "Fix",
@@ -2490,7 +2497,7 @@ def _faculty_can_review_student(faculty_email: str, student_email: str) -> bool:
         student = auth.get_user(student_email) or {}
         division = str(student.get("division") or "").strip()
         batch = str(student.get("practical_batch") or "").strip()
-        return batch in assignments.get(division, [])
+        return auth.teaching_includes(assignments, division, batch)
     except Exception:
         return False
 
@@ -2511,6 +2518,12 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         _rows = auth.get_onboarding_users()
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
+        ctx["teaching_scope"] = {}
+        ctx["q"] = q
+        ctx["action"] = action
+        ctx["action_email"] = email
+        ctx["error"] = error
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif role == "faculty":
         try:
             teaching = auth.get_faculty_teaching(user.get("email", ""))
@@ -2533,7 +2546,8 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
-        return templates.TemplateResponse(request, "pages/faculty_onboarding.html", ctx)
+        ctx["error"] = error
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif user:
         try:
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}

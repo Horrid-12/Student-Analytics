@@ -49,9 +49,7 @@ at once and scrolls (CSS). #} {% if notif_empty %}
           >{% endif %}
           <div class="notif-text" style="flex: 1">{{ n.issue }}</div>
         </div>
-        {% if n.sub %}
-        <div class="notif-sub">{{ n.sub|safe }}</div>
-        {% endif %}
+        {% if n.sub %}<div class="notif-sub">{% if n.sub_is_html %}{{ n.sub|safe }}{% else %}{{ n.sub }}{% endif %}</div>{% endif %}
         <div class="notif-meta">
           {% if n.time %}<span class="notif-time">{{ n.time }}</span>{% endif %}
           <a
@@ -97,7 +95,7 @@ at once and scrolls (CSS). #} {% if notif_empty %}
           </span>
           <span class="weekly-toast-item-issue">{{ item.issue }}</span>
         </div>
-        <div class="weekly-toast-item-msg">{{ item.sub|safe }}</div>
+        <div class="weekly-toast-item-msg">{% if item.sub_is_html %}{{ item.sub|safe }}{% else %}{{ item.sub }}{% endif %}</div>
       </div>
       {% endfor %}
     </div>
