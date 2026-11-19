@@ -506,6 +506,52 @@
   .foot-right strong { color: var(--ink); font-weight: 600; }
   .foot-right .live-line { color: var(--red); font-weight: 600; }
 
+  /* Infographic-first poster composition */
+  .inner { gap: 4mm; }
+  .masthead { grid-template-columns: minmax(0, 1fr) 70mm; gap: 7mm; align-items: center; }
+  .brand-row { margin-bottom: 3mm; }
+  h1 { font-size: 39pt; max-width: 176mm; }
+  .deck { font-size: 11pt; max-width: 145mm; margin-top: 3mm; }
+  .kicker { margin-bottom: 2mm; }
+  .mast-right { gap: 2.5mm; }
+  .meta-lines { display: none; }
+  .problem-strip { display: grid; grid-template-columns: 1fr 14mm 1fr 14mm 1fr; align-items: center; gap: 2mm; padding: 3.2mm 4mm; background: #ded7c9; border-radius: 2.5mm; }
+  .problem { display: flex; align-items: center; gap: 2.4mm; min-width: 0; }
+  .problem-icon { width: 12mm; height: 12mm; flex: 0 0 auto; color: var(--red); }
+  .problem strong { display:block; font-size: 9pt; line-height: 1.15; }
+  .problem span { display:block; margin-top: .7mm; color:var(--muted); font-size:7.4pt; line-height:1.2; }
+  .problem-x { text-align:center; color:var(--red); font-family:var(--font-mono); font-size:14pt; font-weight:700; }
+  .visual-core { flex: 1 1 auto; min-height: 0; display:flex; flex-direction:column; gap:3mm; }
+  .visual-title { display:flex; align-items:baseline; justify-content:space-between; gap:4mm; }
+  .visual-title h2 { margin:0; font-size:17pt; letter-spacing:-.03em; }
+  .visual-title span { color:var(--muted); font-size:8pt; }
+  .journey { flex:1 1 auto; min-height:0; display:grid; grid-template-columns: .82fr 10mm 1.55fr 10mm .82fr; gap:2.5mm; align-items:stretch; }
+  .journey-side { display:flex; flex-direction:column; justify-content:center; gap:2.5mm; }
+  .source-card { display:flex; align-items:center; gap:2.5mm; padding:2.5mm; border:1px solid var(--line); background:var(--card); border-radius:2mm; }
+  .source-card svg { width:9mm;height:9mm;flex:0 0 auto;color:var(--ink); }
+  .source-card b { display:block;font-size:8.5pt; }
+  .source-card span { display:block;color:var(--muted);font-size:6.8pt;line-height:1.2;margin-top:.4mm; }
+  .visual-center { display:flex; flex-direction:column; justify-content:center; align-items:center; background:var(--ink); color:#f5f1e9; border-radius:3mm; padding:4mm; position:relative; overflow:hidden; }
+  .visual-center::before { content:""; position:absolute; width:72mm;height:72mm;border:1px solid rgba(245,241,233,.12);border-radius:50%; }
+  .visual-center svg { position:relative; width:100%; max-height:69mm; }
+  .visual-center strong { position:relative; margin-top:1mm;font-size:13pt; }
+  .visual-center span { position:relative;color:#c9c3b8;font-size:7.4pt;margin-top:1mm;text-align:center; }
+  .flow-arrow { display:flex;align-items:center;justify-content:center;color:var(--red);font-size:17pt;font-weight:800; }
+  .outcome-card { background:var(--card);border:1px solid var(--line);border-radius:2mm;padding:3mm; }
+  .outcome-card b { display:block;font-size:9pt; }
+  .outcome-card span { display:block;margin-top:.8mm;color:var(--muted);font-size:7.2pt;line-height:1.25; }
+  .audience { display:grid;grid-template-columns:repeat(3,1fr);gap:3mm; }
+  .audience-card { display:grid;grid-template-columns:13mm 1fr;align-items:center;gap:2.5mm;padding:3mm 3.5mm;background:var(--card);border:1px solid var(--line);border-radius:2mm; }
+  .audience-card svg { width:12mm;height:12mm;color:var(--red); }
+  .audience-card b { display:block;font-size:9pt; }
+  .audience-card span { display:block;margin-top:.7mm;color:var(--muted);font-size:7.2pt;line-height:1.25; }
+  .promise { display:flex;align-items:center;justify-content:space-between;gap:5mm;padding:3mm 4mm;border-left:2mm solid var(--red);background:rgba(245,241,233,.8); }
+  .promise strong { font-size:11pt; }
+  .promise span { color:var(--muted);font-size:8pt;text-align:right; }
+  .tech { padding:2.4mm 4mm; gap:4mm; }
+  .tech-chip { font-size:5.7pt; }
+  @media print { .journey { min-height: 108mm; } }
+
   /* ── Print ──────────────────────────────────────────────────────── */
   @page { size: A3 portrait; margin: 0; }
   @media print {
@@ -552,12 +598,10 @@
               <span class="brand-prod">Student Analytics Platform</span>
             </div>
           </div>
-          <div class="kicker">One verified fleet · every coding signal</div>
-          <h1>Every commit.<br>One campus <em>dashboard</em>.</h1>
+          <div class="kicker">A clearer picture of student growth</div>
+          <h1>Student progress,<br>all in <em>one view</em>.</h1>
           <p class="deck">
-            A self-updating analytics platform that turns verified student accounts into live GitHub,
-            HackerRank, AutoCAD and certificate insights — with role-aware dashboards for students,
-            faculty and administrators.
+            Student Analytics brings learning activity into focus for students and the people who support them.
           </p>
         </div>
         <aside class="mast-right">
@@ -565,161 +609,67 @@
             <div class="live-label"><span class="live-dot"></span> Live deployment</div>
             <div class="live-url">student-analytics-iota.vercel.app</div>
           </div>
-          <div class="meta-lines">
-            <div><span>Format</span><strong>A3 · 297 × 420 mm</strong></div>
-            <div><span>Session</span><strong>HMAC-signed · 7 days</strong></div>
-            <div><span>Storage</span><strong>Neon Postgres / SQLite</strong></div>
-            <div><span>Deploy</span><strong>Vercel + GitHub Actions</strong></div>
-          </div>
         </aside>
       </header>
 
-      <div class="stats">
-        <div class="stat accent"><strong>03</strong><span>Role-aware views<br>student · faculty · admin</span></div>
-        <div class="stat"><strong>09</strong><span>Workspace pages<br>one filtered sidebar</span></div>
-        <div class="stat"><strong>06</strong><span>Leaderboards<br>GitHub + HackerRank</span></div>
-        <div class="stat"><strong>05</strong><span>Auto-sync paths<br>cron · Actions · login</span></div>
-      </div>
+      <section class="problem-strip" aria-label="Problems the platform addresses">
+        <div class="problem"><svg class="problem-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="7" y="8" width="24" height="29" rx="3" stroke="currentColor" stroke-width="2.5"/><path d="M14 16h11M14 22h11M14 28h7M34 17l7 7-7 7M38 24H26" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><strong>Scattered activity</strong><span>Work lives across many tools</span></div></div>
+        <div class="problem-x">+</div>
+        <div class="problem"><svg class="problem-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 39h32M12 35V20M22 35V12M32 35V25M39 35V8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="m10 16 11-8 10 9 10-11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><strong>Hard to see progress</strong><span>Signals are difficult to compare</span></div></div>
+        <div class="problem-x">+</div>
+        <div class="problem"><svg class="problem-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="17" cy="16" r="6" stroke="currentColor" stroke-width="2.5"/><circle cx="33" cy="17" r="5" stroke="currentColor" stroke-width="2.5"/><path d="M5 39c0-7 5-12 12-12s12 5 12 12M28 29c7-3 15 2 15 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="m34 5 2 4 4 .5-3 3 .7 4.5-3.7-2-3.7 2 .7-4.5-3-3 4-.5z" fill="currentColor"/></svg><div><strong>Support arrives late</strong><span>Students need timely guidance</span></div></div>
+      </section>
 
-      <div class="body">
-
-        <div class="col">
-
-          <section class="panel-poster">
-            <div class="sec-head"><span class="sec-num">01</span><h2>The platform</h2><span class="rule"></span></div>
-            <p class="lede">
-              Sign up with a college address, submit your academic identity, get approved by faculty —
-              and the platform does the rest. Each approved account becomes a live snapshot of public
-              coding work, rendered through the same dashboards the whole campus can use. No roster
-              uploads, no spreadsheet surgery, no manual refresh.
-            </p>
-            <ul class="points">
-              <li><span class="tick">✓</span><span><b>Verified by design.</b> College-domain signup, PRN de-duplication and faculty approval before any sync runs.</span></li>
-              <li><span class="tick">✓</span><span><b>Self-updating.</b> Nightly cron, daily Actions runs and login self-sync keep snapshots fresh; tokens rotate and wait out GitHub limits.</span></li>
-              <li><span class="tick">✓</span><span><b>One source of truth.</b> Every page reads the same approved account fleet, so students and staff see consistent numbers.</span></li>
-              <li><span class="tick">✓</span><span><b>Built to be checked.</b> Audit log, route-level RBAC, magic-byte upload validation and a public privacy policy.</span></li>
-            </ul>
-          </section>
-
-          <section class="panel-poster">
-            <div class="sec-head"><span class="sec-num">02</span><h2>Who it is for</h2><span class="rule"></span></div>
-            <div class="roles">
-              <div class="role student">
-                <div class="role-head"><span class="role-name">Student</span><span class="role-tag">self-serve</span></div>
-                <p>See your own GitHub and HackerRank footprint, explore the fleet, climb six leaderboards, submit certificates and AutoCAD work, and raise support tickets.</p>
-              </div>
-              <div class="role faculty">
-                <div class="role-head"><span class="role-name">Faculty</span><span class="role-tag">cohort scope</span></div>
-                <p>Review onboarding for the classes you teach, verify certificates in your cohorts, filter every page by your divisions and batches, moderate boards and answer tickets.</p>
-              </div>
-              <div class="role admin">
-                <div class="role-head"><span class="role-name">Admin</span><span class="role-tag">full control</span></div>
-                <p>Approve the fleet, mint faculty invites, run every sync, moderate all boards and certificates, and inspect audit, storage and deployment health.</p>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel-poster">
-            <div class="sec-head"><span class="sec-num">03</span><h2>How it works</h2><span class="rule"></span></div>
-            <div class="flow">
-              <div class="step">
-                <span class="step-num">1</span>
-                <div><h3>Join</h3><p>College email + password or Google sign-in. The domain allowlist is re-checked server-side on every signup and OAuth callback.</p></div>
-              </div>
-              <div class="step">
-                <span class="step-num">2</span>
-                <div><h3>Get verified</h3><p>Add PRN, degree, division, practical batch and semester; link GitHub once. Faculty or admin approves from the registrar ledger.</p></div>
-              </div>
-              <div class="step">
-                <span class="step-num">3</span>
-                <div><h3>Sync automatically</h3><p>Approved handles become snapshots: repos, stars, commits, PRs, followers and HackerRank stats — rate-limit aware and resumable.</p></div>
-              </div>
-              <div class="step">
-                <span class="step-num">4</span>
-                <div><h3>Explore</h3><p>Overview, Students, Repositories, Leaderboards, Verification, AutoCAD and Support — all fed by the same fleet.</p></div>
-              </div>
-              <div class="step">
-                <span class="step-num">5</span>
-                <div><h3>Improve</h3><p>Tickets, moderation, live notifications and CSV/XLSX exports close the loop between students and staff.</p></div>
-              </div>
-            </div>
-          </section>
-
+      <section class="visual-core">
+        <div class="visual-title"><h2>From activity to insight</h2><span>A shared view that keeps everyone moving forward</span></div>
+        <div class="journey">
+          <div class="journey-side">
+            <div class="source-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 5 7 14v20l17 9 17-9V14L24 5Z" stroke="currentColor" stroke-width="2.5"/><path d="m7 14 17 10 17-10M24 24v19M16 10l17 10" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg><div><b>GitHub</b><span>Projects &amp; commits</span></div></div>
+            <div class="source-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 39h32M12 35V25M21 35V17M30 35V21M39 35V9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="18" r="2" fill="currentColor"/><circle cx="21" cy="10" r="2" fill="currentColor"/></svg><div><b>Learning</b><span>Practice &amp; progress</span></div></div>
+            <div class="source-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M11 7h19l8 8v26H11V7Z" stroke="currentColor" stroke-width="2.5"/><path d="M29 7v9h9M17 25h15M17 31h15M17 19h5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="m20 37 3 3 7-7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Achievements</b><span>Certificates &amp; submissions</span></div></div>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">›</div>
+          <div class="visual-center">
+            <svg viewBox="0 0 440 270" fill="none" role="img" aria-label="Illustration of signals combining into a student analytics dashboard">
+              <rect x="54" y="30" width="332" height="204" rx="13" fill="#F5F1E9"/>
+              <rect x="54" y="30" width="332" height="30" rx="13" fill="#DCD5C9"/><path d="M54 49a13 13 0 0 0 13 11h306a13 13 0 0 0 13-11" fill="#DCD5C9"/>
+              <circle cx="73" cy="45" r="4" fill="#BE342B"/><circle cx="87" cy="45" r="4" fill="#60738A"/><circle cx="101" cy="45" r="4" fill="#21845D"/>
+              <rect x="72" y="76" width="112" height="62" rx="7" fill="#E8E2D6"/><text x="84" y="95" fill="#566271" font-family="Inter, sans-serif" font-size="10" font-weight="600">STUDENT GROWTH</text>
+              <path d="M84 124 103 115l17 5 18-17 18 8 16-20" stroke="#BE342B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="172" cy="91" r="4" fill="#BE342B"/>
+              <rect x="198" y="76" width="168" height="62" rx="7" fill="#E8E2D6"/><text x="211" y="95" fill="#566271" font-family="Inter, sans-serif" font-size="10" font-weight="600">SKILLS IN MOTION</text>
+              <rect x="212" y="108" width="18" height="18" rx="4" fill="#BE342B"/><rect x="236" y="108" width="18" height="18" rx="4" fill="#60738A"/><rect x="260" y="108" width="18" height="18" rx="4" fill="#21845D"/><rect x="284" y="108" width="18" height="18" rx="4" fill="#D5A344"/><rect x="308" y="108" width="18" height="18" rx="4" fill="#A56F9B"/>
+              <rect x="72" y="152" width="136" height="60" rx="7" fill="#E8E2D6"/><text x="84" y="171" fill="#566271" font-family="Inter, sans-serif" font-size="10" font-weight="600">COHORT SNAPSHOT</text>
+              <circle cx="115" cy="190" r="11" fill="#BE342B"/><circle cx="142" cy="190" r="11" fill="#60738A"/><circle cx="169" cy="190" r="11" fill="#21845D"/>
+              <rect x="221" y="152" width="145" height="60" rx="7" fill="#E8E2D6"/><text x="234" y="171" fill="#566271" font-family="Inter, sans-serif" font-size="10" font-weight="600">MOMENTUM</text>
+              <path d="M237 199h22l13-13 14 9 13-20 14 11 19-17" stroke="#21845D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M220 3v20M210 13h20M361 242v18M352 251h18" stroke="#D5A344" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="180" r="5" fill="#BE342B"/><circle cx="408" cy="89" r="5" fill="#21845D"/>
+            </svg>
+            <strong>Student Analytics</strong><span>Verified activity becomes a clear, up-to-date picture of progress</span>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">›</div>
+          <div class="journey-side">
+            <div class="outcome-card"><b>Students see their growth</b><span>Recognize effort, strengths and next steps.</span></div>
+            <div class="outcome-card"><b>Faculty spot patterns</b><span>Understand cohort activity and where support helps.</span></div>
+            <div class="outcome-card"><b>Campus shares one picture</b><span>Less manual tracking. Better conversations.</span></div>
+          </div>
         </div>
+      </section>
 
-        <div class="col">
+      <section class="audience" aria-label="Who benefits">
+        <div class="audience-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="15" r="8" stroke="currentColor" stroke-width="2.5"/><path d="M8 41c0-9 6-15 16-15s16 6 16 15M19 39l5-7 5 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Students</b><span>See your work add up and find your next goal.</span></div></div>
+        <div class="audience-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M7 39h34M12 35V18l12-8 12 8v17M18 22h12M18 28h12M18 34h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 18 24 5l20 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Faculty</b><span>Notice momentum, celebrate strengths and guide learners.</span></div></div>
+        <div class="audience-card"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="24" r="17" stroke="currentColor" stroke-width="2.5"/><path d="M24 12v12l8 5M8 8l5 5M40 8l-5 5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Campus teams</b><span>Spend less time compiling and more time improving.</span></div></div>
+      </section>
 
-          <section class="panel-poster">
-            <div class="sec-head"><span class="sec-num">04</span><h2>The workspace</h2><span class="rule"></span></div>
-            <div class="pages">
-              <div class="page-row"><span class="page-num">01</span><div><div class="page-name">Overview</div><div class="page-desc">Fleet KPIs, class radar, commit trend, language mix and top performers. ECharts drawn from server-side payloads.</div></div></div>
-              <div class="page-row"><span class="page-num">02</span><div><div class="page-name">Onboarding</div><div class="page-desc">Academic identity form plus a searchable registrar ledger: approve, reject, edit or remove submissions.</div></div></div>
-              <div class="page-row"><span class="page-num">03</span><div><div class="page-name">Verification</div><div class="page-desc">Certificate queue with proof files and reviewer notes; faculty see their cohorts, admins see every application.</div></div></div>
-              <div class="page-row"><span class="page-num">04</span><div><div class="page-name">Students</div><div class="page-desc">Searchable fleet profiles with divisions, batches, semesters, linked identities and CSV/XLSX export.</div></div></div>
-              <div class="page-row"><span class="page-num">05</span><div><div class="page-name">Repositories</div><div class="page-desc">Every public repo in the fleet with language, stars, forks and activity — exportable to CSV or XLSX.</div></div></div>
-              <div class="page-row"><span class="page-num">06</span><div><div class="page-name">AutoCAD</div><div class="page-desc">Students upload .dwg files up to 4 MB; faculty and admins get a recent-submissions download inbox.</div></div></div>
-              <div class="page-row"><span class="page-num">07</span><div><div class="page-name">Leaderboards</div><div class="page-desc">Active repos, commits, stars, top repos, HackerRank solved and practice score — six boards with cohort filters and blacklist.</div></div></div>
-              <div class="page-row"><span class="page-num">08</span><div><div class="page-name">Support</div><div class="page-desc">Ticket threads with validated image attachments and Open → In Progress → Follow up → Resolved states.</div></div></div>
-              <div class="page-row"><span class="page-num">09</span><div><div class="page-name">Settings + My Profile</div><div class="page-desc">Theme, academic record, linked GitHub/LinkedIn, profile photo source, privacy controls and data tools.</div></div></div>
-            </div>
-          </section>
-
-          <section class="panel-poster">
-            <div class="sec-head"><span class="sec-num">05</span><h2>Under the hood</h2><span class="rule"></span></div>
-            <div class="pipeline">
-              <div class="layer">
-                <div class="layer-head"><span class="layer-tag">01 SOURCES</span><span class="layer-title">Public signals + uploads</span></div>
-                <p>GitHub REST (repos, stars, commits, PRs, followers) · HackerRank profiles · AutoCAD .dwg files · certificate proof files.</p>
-              </div>
-              <div class="arrow">▼</div>
-              <div class="layer">
-                <div class="layer-head"><span class="layer-tag">02 SYNC</span><span class="layer-title">Scheduled, resumable sweeps</span></div>
-                <p>Vercel Cron: nightly accounts + Sunday weekly. Actions: Heavy Sync 00:00 UTC, HackerRank 00:00 IST, weekly announcements. Login self-sync and admin force refresh.</p>
-              </div>
-              <div class="arrow">▼</div>
-              <div class="layer">
-                <div class="layer-head"><span class="layer-tag">03 STORE</span><span class="layer-title">Snapshots, tickets, audit</span></div>
-                <p>Neon Postgres with SQLite fallback: account_snapshots, hackerrank_snapshots, tickets, certificates and audit_log. Upstash Redis caches GitHub responses for one hour.</p>
-              </div>
-              <div class="arrow">▼</div>
-              <div class="layer">
-                <div class="layer-head"><span class="layer-tag">04 RENDER</span><span class="layer-title">Thin, server-rendered UI</span></div>
-                <p>FastAPI routes → views.py payloads → Jinja2 templates → ECharts + Server-Sent Events. Deployed on Vercel; guarded by pytest and CodeQL.</p>
-              </div>
-            </div>
-            <div class="guardrails">
-              <span class="guardrails-label">Guardrails</span>
-              <span class="chip">HMAC sessions</span>
-              <span class="chip">Route-level RBAC</span>
-              <span class="chip">Domain allowlist</span>
-              <span class="chip">Magic-byte uploads</span>
-              <span class="chip">Token rotation</span>
-              <span class="chip">Rate-limit waits</span>
-              <span class="chip">Audit log</span>
-            </div>
-          </section>
-
-        </div>
-      </div>
+      <div class="promise"><strong>More visibility. More meaningful support.</strong><span>One student community · many ways to grow</span></div>
 
       <div class="tech">
-        <span class="tech-label">Built with</span>
+        <span class="tech-label">A campus tool for growth</span>
         <div class="tech-list">
-          <span class="tech-chip">Python 3.11+</span>
-          <span class="tech-chip">FastAPI</span>
-          <span class="tech-chip">Uvicorn</span>
-          <span class="tech-chip">Jinja2</span>
-          <span class="tech-chip">ECharts</span>
-          <span class="tech-chip">SSE</span>
-          <span class="tech-chip">pandas</span>
-          <span class="tech-chip">Authlib</span>
-          <span class="tech-chip">Neon Postgres</span>
-          <span class="tech-chip">SQLite</span>
-          <span class="tech-chip">Upstash Redis</span>
-          <span class="tech-chip">Vercel</span>
-          <span class="tech-chip">GitHub Actions</span>
-          <span class="tech-chip">pytest</span>
-          <span class="tech-chip">CodeQL</span>
+          <span class="tech-chip">Student centered</span>
+          <span class="tech-chip">Faculty supported</span>
+          <span class="tech-chip">Campus wide</span>
+          <span class="tech-chip">Keeps itself current</span>
         </div>
       </div>
 
@@ -730,7 +680,7 @@
         </div>
         <div class="foot-right">
           <span class="live-line">LIVE · student-analytics-iota.vercel.app</span><br>
-          <strong>747 tests green</strong> · 10 skipped · suite audited 16 Nov 2026
+          A clearer picture of learning in action
         </div>
       </footer>
 
