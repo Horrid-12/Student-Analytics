@@ -316,6 +316,18 @@
 </div>
 
 <div data-tab-content="general">
+  {% if auth_role == "Admin" %}
+  <section class="panel">
+    <div class="panel-title">Admin Tools</div>
+    <a class="legal-row" href="/admin/poster">
+      <span class="legal-text">
+        <span class="legal-title">A3 Platform Poster</span>
+        <span class="legal-sub">Print-ready overview of the whole platform — open, screenshot or save as an A3 PDF.</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </a>
+  </section>
+  {% endif %}
   {% if onboarding_approved is defined and onboarding_approved %}
   <section class="panel">
     <div class="panel-title">Academic Record</div>

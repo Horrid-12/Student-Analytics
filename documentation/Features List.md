@@ -117,6 +117,8 @@
 
 | 88 | Settings Page | Rework Faculty Settings |
 
+| 89 | ✅ Admin A3 Platform Poster | Print-ready 297 × 420 mm overview page for screenshots, print and orientation | P2 — Medium | IMPLEMENTED: admin-only `/admin/poster` renders a self-contained A3 sheet (no app shell) covering the role model, lifecycle, all nine workspace pages, data pipeline and guardrails; `?clean=1` hides the screen controls, `@page size: A3` drives Print / Save PDF, and Settings → Admin Tools links to it. |
+
 ## Recommended Development Order
 
 | Phase | Priority | Work                                   | Goal                                                                                                                                                                                                                                                                                                                               |

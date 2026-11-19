@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A3 Poster — Student Analytics Platform</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', path='/Favicon.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eee9df;
+    --card: #f5f1e9;
+    --ink: #142235;
+    --muted: #566271;
+    --red: #be342b;
+    --red-soft: rgba(190, 52, 43, 0.12);
+    --blue: #60738a;
+    --green: #21845d;
+    --line: rgba(20, 34, 53, 0.18);
+    --line-strong: rgba(20, 34, 53, 0.34);
+    --font-sans: "Inter", "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #cfc8bb;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Screen-only controls ───────────────────────────────────────── */
+  .screen-tools {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 18px;
+    background: rgba(20, 34, 53, 0.94);
+    color: #f5f1e9;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    backdrop-filter: blur(6px);
+  }
+  .screen-tools a { color: #f5f1e9; text-decoration: none; }
+  .screen-tools a:hover { text-decoration: underline; }
+  .tool-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .tool-note { color: #b9c3cf; }
+  .tool-btn {
+    border: 1px solid rgba(245, 241, 233, 0.36);
+    background: transparent;
+    color: #f5f1e9;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .tool-btn:hover { border-color: #f5f1e9; }
+  .tool-btn.primary { background: var(--red); border-color: var(--red); }
+  .tool-btn.primary:hover { background: #a52c25; border-color: #a52c25; }
+  body.clean .screen-tools { display: none; }
+  body.clean { background: var(--bg); }
+  body.clean .sheet { box-shadow: none; }
+
+  .stage { padding: 26px 16px 54px; display: flex; justify-content: center; }
+  body.clean .stage { padding: 0; }
+
+  /* ── A3 sheet ───────────────────────────────────────────────────── */
+  .sheet {
+    width: 297mm;
+    height: 420mm;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg);
+    box-shadow: 0 26px 70px rgba(20, 34, 53, 0.28), 0 2px 0 rgba(255, 255, 255, 0.4) inset;
+  }
+  .sheet::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(120mm 90mm at 92% 4%, rgba(190, 52, 43, 0.055), transparent 70%),
+      radial-gradient(150mm 120mm at 4% 100%, rgba(96, 115, 138, 0.07), transparent 70%);
+    z-index: 0;
+  }
+  .sheet > * { position: relative; z-index: 1; }
+
+  .band-top {
+    flex: 0 0 auto;
+    height: 10mm;
+    background: var(--red);
+    color: #f7f2e9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8mm;
+    padding: 0 12mm;
+    font-family: var(--font-mono);
+    font-size: 7.2pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .band-top .band-right { display: flex; align-items: center; gap: 4mm; }
+  .band-top .band-dot { width: 1.6mm; height: 1.6mm; border-radius: 50%; background: #f7f2e9; display: inline-block; }
+
+  .inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4.6mm;
+    padding: 8.5mm 12mm 7mm;
+  }
+
+  /* ── Masthead ───────────────────────────────────────────────────── */
+  .masthead {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.8fr);
+    gap: 10mm;
+    align-items: start;
+  }
+  .brand-row { display: flex; align-items: center; gap: 3.4mm; margin-bottom: 4.6mm; }
+  .brand-mark { width: 13.5mm; height: 13.5mm; object-fit: contain; display: block; }
+  .brand-uni {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 6.8pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.25;
+  }
+  .brand-prod {
+    display: block;
+    font-size: 10pt;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin-top: 0.8mm;
+  }
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 7.6pt;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 2.4mm;
+  }
+  h1 {
+    margin: 0;
+    max-width: 172mm;
+    font-size: 34pt;
+    line-height: 0.98;
+    letter-spacing: -0.038em;
+    font-weight: 900;
+  }
+  h1 em { font-style: normal; color: var(--red); }
+  .deck {
+    margin: 4mm 0 0;
+    max-width: 158mm;
+    font-size: 10.4pt;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  .mast-right { display: flex; flex-direction: column; gap: 4mm; padding-top: 1.5mm; }
+  .live-card {
+    background: var(--card);
+    border: 1px solid var(--ink);
+    border-radius: 2mm;
+    padding: 4mm 4.4mm;
+    box-shadow: 2.2mm 2.2mm 0 rgba(20, 34, 53, 0.08);
+  }
+  .live-label {
+    display: flex;
+    align-items: center;
+    gap: 2.2mm;
+    font-family: var(--font-mono);
+    font-size: 6.6pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .live-dot {
+    width: 2.2mm;
+    height: 2.2mm;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 1.2mm rgba(33, 132, 93, 0.16);
+  }
+  .live-url {
+    margin-top: 2.2mm;
+    font-family: var(--font-mono);
+    font-size: 7.6pt;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-all;
+  }
+  .meta-lines { font-size: 8pt; }
+  .meta-lines div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 3mm;
+    padding: 1.6mm 0;
+    border-top: 1px solid var(--line);
+  }
+  .meta-lines span {
+    font-family: var(--font-mono);
+    font-size: 6.4pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .meta-lines strong { font-weight: 600; text-align: right; font-size: 7.8pt; }
+
+  /* ── Stat ribbon ────────────────────────────────────────────────── */
+  .stats {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3mm;
+  }
+  .stat {
+    position: relative;
+    overflow: hidden;
+    background: var(--ink);
+    color: #f5f1e9;
+    border-radius: 2mm;
+    padding: 3.6mm 4mm 3.4mm;
+  }
+  .stat::after {
+    content: "";
+    position: absolute;
+    right: -5mm;
+    top: -7mm;
+    width: 16mm;
+    height: 16mm;
+    border: 1.2mm solid rgba(245, 241, 233, 0.09);
+    border-radius: 50%;
+  }
+  .stat strong {
+    display: block;
+    font-size: 20pt;
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+  }
+  .stat span {
+    display: block;
+    margin-top: 1.6mm;
+    font-family: var(--font-mono);
+    font-size: 6.4pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    line-height: 1.35;
+    color: #c9c3b8;
+  }
+  .stat.accent { background: var(--red); }
+  .stat.accent span { color: #f2d8d4; }
+
+  /* ── Two-column body ────────────────────────────────────────────── */
+  .body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.07fr) minmax(0, 0.93fr);
+    gap: 5.4mm;
+  }
+  .col { display: flex; flex-direction: column; gap: 3.6mm; min-height: 0; }
+
+  .panel-poster {
+    background: rgba(245, 241, 233, 0.74);
+    border: 1px solid var(--line);
+    border-radius: 2.4mm;
+    padding: 3.7mm 4.4mm;
+  }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    gap: 2.6mm;
+    margin-bottom: 3mm;
+  }
+  .sec-num {
+    font-family: var(--font-mono);
+    font-size: 6.6pt;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--red);
+    white-space: nowrap;
+  }
+  .sec-head h2 {
+    margin: 0;
+    font-size: 13.6pt;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .sec-head .rule { flex: 1; height: 1px; background: var(--line-strong); }
+
+  .lede { margin: 0 0 3.4mm; font-size: 9.9pt; line-height: 1.42; }
+  .points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.3mm; }
+  .points li { display: flex; gap: 2.4mm; font-size: 8.5pt; line-height: 1.36; color: var(--muted); }
+  .points b { color: var(--ink); font-weight: 700; }
+  .tick {
+    flex: 0 0 auto;
+    width: 4.4mm;
+    height: 4.4mm;
+    margin-top: 0.1mm;
+    border-radius: 50%;
+    background: var(--red-soft);
+    color: var(--red);
+    display: grid;
+    place-items: center;
+    font-size: 6.6pt;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .roles { display: flex; flex-direction: column; gap: 2.4mm; }
+  .role {
+    background: var(--card);
+    border-left: 2.2mm solid var(--blue);
+    border-radius: 0 1.8mm 1.8mm 0;
+    padding: 2.6mm 3.2mm;
+  }
+  .role.student { border-left-color: var(--red); }
+  .role.faculty { border-left-color: var(--blue); }
+  .role.admin { border-left-color: var(--ink); }
+  .role-head { display: flex; align-items: baseline; justify-content: space-between; gap: 3mm; margin-bottom: 1.1mm; }
+  .role-name { font-size: 9.8pt; font-weight: 800; letter-spacing: -0.01em; }
+  .role-tag {
+    font-family: var(--font-mono);
+    font-size: 6.1pt;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .role p { margin: 0; font-size: 8.2pt; line-height: 1.35; color: var(--muted); }
+
+  .flow { display: flex; flex-direction: column; }
+  .step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 6.6mm minmax(0, 1fr);
+    gap: 3mm;
+    padding-bottom: 2.5mm;
+  }
+  .step:last-child { padding-bottom: 0; }
+  .step::before {
+    content: "";
+    position: absolute;
+    left: 3.1mm;
+    top: 6.8mm;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  .step:last-child::before { display: none; }
+  .step-num {
+    position: relative;
+    z-index: 1;
+    width: 6.4mm;
+    height: 6.4mm;
+    border-radius: 50%;
+    background: var(--ink);
+    color: #f5f1e9;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: 6.4pt;
+    font-weight: 600;
+  }
+  .step h3 { margin: 0.3mm 0 0.7mm; font-size: 9pt; line-height: 1.1; font-weight: 700; }
+  .step p { margin: 0; font-size: 8.1pt; line-height: 1.32; color: var(--muted); }
+
+  .pages { display: flex; flex-direction: column; }
+  .page-row {
+    display: grid;
+    grid-template-columns: 6.6mm minmax(0, 1fr);
+    gap: 2.2mm;
+    padding: 1.15mm 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .page-row:first-child { padding-top: 0; }
+  .page-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .page-num {
+    font-family: var(--font-mono);
+    font-size: 6.4pt;
+    letter-spacing: 0.05em;
+    color: var(--red);
+    padding-top: 0.5mm;
+  }
+  .page-name { font-size: 9.2pt; font-weight: 700; line-height: 1.08; }
+  .page-desc { margin-top: 0.45mm; font-size: 7.7pt; line-height: 1.26; color: var(--muted); }
+
+  .pipeline { display: flex; flex-direction: column; gap: 1.4mm; }
+  .layer {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 1.8mm;
+    padding: 2.2mm 2.8mm;
+  }
+  .layer-head { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 0.8mm; }
+  .layer-tag {
+    font-family: var(--font-mono);
+    font-size: 6.1pt;
+    letter-spacing: 0.1em;
+    color: var(--red);
+    white-space: nowrap;
+  }
+  .layer-title { font-size: 8.6pt; font-weight: 700; }
+  .layer p { margin: 0; font-size: 7.5pt; line-height: 1.3; color: var(--muted); }
+  .arrow { text-align: center; color: var(--red); font-size: 7.4pt; line-height: 0.6; margin: -0.2mm 0; }
+
+  .trust { display: flex; flex-wrap: wrap; gap: 1.6mm; }
+  .guardrails {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.4mm;
+    margin-top: 2.2mm;
+    padding-top: 2.2mm;
+    border-top: 1px solid var(--line);
+  }
+  .guardrails-label {
+    font-family: var(--font-mono);
+    font-size: 6.1pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-right: 0.8mm;
+  }
+  .chip {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    border-radius: 999px;
+    padding: 1.3mm 2.2mm;
+    font-family: var(--font-mono);
+    font-size: 6.3pt;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .tech {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5mm;
+    background: var(--ink);
+    color: #f5f1e9;
+    border-radius: 2.4mm;
+    padding: 4mm 5mm;
+  }
+  .tech-label {
+    font-family: var(--font-mono);
+    font-size: 6.6pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b9c3cf;
+    white-space: nowrap;
+  }
+  .tech-list { display: flex; flex-wrap: wrap; gap: 1.5mm; }
+  .tech-chip {
+    border: 1px solid rgba(245, 241, 233, 0.24);
+    border-radius: 999px;
+    padding: 1.1mm 2.1mm;
+    font-family: var(--font-mono);
+    font-size: 6.5pt;
+    line-height: 1.2;
+  }
+
+  .foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-top: 3mm;
+    border-top: 1px solid var(--line-strong);
+  }
+  .foot-left { font-size: 8pt; line-height: 1.45; color: var(--muted); }
+  .foot-left b { display: block; font-size: 11pt; letter-spacing: -0.015em; color: var(--ink); }
+  .foot-right { text-align: right; font-family: var(--font-mono); font-size: 6.8pt; line-height: 1.6; letter-spacing: 0.03em; color: var(--muted); }
+  .foot-right strong { color: var(--ink); font-weight: 600; }
+  .foot-right .live-line { color: var(--red); font-weight: 600; }
+
+  /* ── Print ──────────────────────────────────────────────────────── */
+  @page { size: A3 portrait; margin: 0; }
+  @media print {
+    body { background: #eee9df; }
+    .screen-tools { display: none !important; }
+    .stage { padding: 0; }
+    .sheet { box-shadow: none; }
+  }
+</style>
+</head>
+<body class="{% if clean %}clean{% endif %}">
+
+<div class="screen-tools">
+  <div class="tool-group">
+    <a href="/">← Back to dashboard</a>
+    <span class="tool-note">A3 portrait · 297 × 420 mm · capture at 100% zoom</span>
+  </div>
+  <div class="tool-group">
+    {% if clean %}
+    <a class="tool-btn" href="/admin/poster">Show controls</a>
+    {% else %}
+    <a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a>
+    {% endif %}
+    <button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button>
+  </div>
+</div>
+
+<div class="stage">
+  <article class="sheet" aria-label="A3 platform overview poster">
+
+    <div class="band-top">
+      <span>MIT World Peace University · Student Analytics Platform</span>
+      <span class="band-right"><span class="band-dot"></span> Platform Overview · 2026</span>
+    </div>
+
+    <div class="inner">
+
+      <header class="masthead">
+        <div>
+          <div class="brand-row">
+            <img class="brand-mark" src="{{ url_for('static', path='/Favicon.png') }}" alt="MIT-WPU Student Analytics logo">
+            <div>
+              <span class="brand-uni">MIT World Peace University</span>
+              <span class="brand-prod">Student Analytics Platform</span>
+            </div>
+          </div>
+          <div class="kicker">One verified fleet · every coding signal</div>
+          <h1>Every commit.<br>One campus <em>dashboard</em>.</h1>
+          <p class="deck">
+            A self-updating analytics platform that turns verified student accounts into live GitHub,
+            HackerRank, AutoCAD and certificate insights — with role-aware dashboards for students,
+            faculty and administrators.
+          </p>
+        </div>
+        <aside class="mast-right">
+          <div class="live-card">
+            <div class="live-label"><span class="live-dot"></span> Live deployment</div>
+            <div class="live-url">student-analytics-iota.vercel.app</div>
+          </div>
+          <div class="meta-lines">
+            <div><span>Format</span><strong>A3 · 297 × 420 mm</strong></div>
+            <div><span>Session</span><strong>HMAC-signed · 7 days</strong></div>
+            <div><span>Storage</span><strong>Neon Postgres / SQLite</strong></div>
+            <div><span>Deploy</span><strong>Vercel + GitHub Actions</strong></div>
+          </div>
+        </aside>
+      </header>
+
+      <div class="stats">
+        <div class="stat accent"><strong>03</strong><span>Role-aware views<br>student · faculty · admin</span></div>
+        <div class="stat"><strong>09</strong><span>Workspace pages<br>one filtered sidebar</span></div>
+        <div class="stat"><strong>06</strong><span>Leaderboards<br>GitHub + HackerRank</span></div>
+        <div class="stat"><strong>05</strong><span>Auto-sync paths<br>cron · Actions · login</span></div>
+      </div>
+
+      <div class="body">
+
+        <div class="col">
+
+          <section class="panel-poster">
+            <div class="sec-head"><span class="sec-num">01</span><h2>The platform</h2><span class="rule"></span></div>
+            <p class="lede">
+              Sign up with a college address, submit your academic identity, get approved by faculty —
+              and the platform does the rest. Each approved account becomes a live snapshot of public
+              coding work, rendered through the same dashboards the whole campus can use. No roster
+              uploads, no spreadsheet surgery, no manual refresh.
+            </p>
+            <ul class="points">
+              <li><span class="tick">✓</span><span><b>Verified by design.</b> College-domain signup, PRN de-duplication and faculty approval before any sync runs.</span></li>
+              <li><span class="tick">✓</span><span><b>Self-updating.</b> Nightly cron, daily Actions runs and login self-sync keep snapshots fresh; tokens rotate and wait out GitHub limits.</span></li>
+              <li><span class="tick">✓</span><span><b>One source of truth.</b> Every page reads the same approved account fleet, so students and staff see consistent numbers.</span></li>
+              <li><span class="tick">✓</span><span><b>Built to be checked.</b> Audit log, route-level RBAC, magic-byte upload validation and a public privacy policy.</span></li>
+            </ul>
+          </section>
+
+          <section class="panel-poster">
+            <div class="sec-head"><span class="sec-num">02</span><h2>Who it is for</h2><span class="rule"></span></div>
+            <div class="roles">
+              <div class="role student">
+                <div class="role-head"><span class="role-name">Student</span><span class="role-tag">self-serve</span></div>
+                <p>See your own GitHub and HackerRank footprint, explore the fleet, climb six leaderboards, submit certificates and AutoCAD work, and raise support tickets.</p>
+              </div>
+              <div class="role faculty">
+                <div class="role-head"><span class="role-name">Faculty</span><span class="role-tag">cohort scope</span></div>
+                <p>Review onboarding for the classes you teach, verify certificates in your cohorts, filter every page by your divisions and batches, moderate boards and answer tickets.</p>
+              </div>
+              <div class="role admin">
+                <div class="role-head"><span class="role-name">Admin</span><span class="role-tag">full control</span></div>
+                <p>Approve the fleet, mint faculty invites, run every sync, moderate all boards and certificates, and inspect audit, storage and deployment health.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-poster">
+            <div class="sec-head"><span class="sec-num">03</span><h2>How it works</h2><span class="rule"></span></div>
+            <div class="flow">
+              <div class="step">
+                <span class="step-num">1</span>
+                <div><h3>Join</h3><p>College email + password or Google sign-in. The domain allowlist is re-checked server-side on every signup and OAuth callback.</p></div>
+              </div>
+              <div class="step">
+                <span class="step-num">2</span>
+                <div><h3>Get verified</h3><p>Add PRN, degree, division, practical batch and semester; link GitHub once. Faculty or admin approves from the registrar ledger.</p></div>
+              </div>
+              <div class="step">
+                <span class="step-num">3</span>
+                <div><h3>Sync automatically</h3><p>Approved handles become snapshots: repos, stars, commits, PRs, followers and HackerRank stats — rate-limit aware and resumable.</p></div>
+              </div>
+              <div class="step">
+                <span class="step-num">4</span>
+                <div><h3>Explore</h3><p>Overview, Students, Repositories, Leaderboards, Verification, AutoCAD and Support — all fed by the same fleet.</p></div>
+              </div>
+              <div class="step">
+                <span class="step-num">5</span>
+                <div><h3>Improve</h3><p>Tickets, moderation, live notifications and CSV/XLSX exports close the loop between students and staff.</p></div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <div class="col">
+
+          <section class="panel-poster">
+            <div class="sec-head"><span class="sec-num">04</span><h2>The workspace</h2><span class="rule"></span></div>
+            <div class="pages">
+              <div class="page-row"><span class="page-num">01</span><div><div class="page-name">Overview</div><div class="page-desc">Fleet KPIs, class radar, commit trend, language mix and top performers. ECharts drawn from server-side payloads.</div></div></div>
+              <div class="page-row"><span class="page-num">02</span><div><div class="page-name">Onboarding</div><div class="page-desc">Academic identity form plus a searchable registrar ledger: approve, reject, edit or remove submissions.</div></div></div>
+              <div class="page-row"><span class="page-num">03</span><div><div class="page-name">Verification</div><div class="page-desc">Certificate queue with proof files and reviewer notes; faculty see their cohorts, admins see every application.</div></div></div>
+              <div class="page-row"><span class="page-num">04</span><div><div class="page-name">Students</div><div class="page-desc">Searchable fleet profiles with divisions, batches, semesters, linked identities and CSV/XLSX export.</div></div></div>
+              <div class="page-row"><span class="page-num">05</span><div><div class="page-name">Repositories</div><div class="page-desc">Every public repo in the fleet with language, stars, forks and activity — exportable to CSV or XLSX.</div></div></div>
+              <div class="page-row"><span class="page-num">06</span><div><div class="page-name">AutoCAD</div><div class="page-desc">Students upload .dwg files up to 4 MB; faculty and admins get a recent-submissions download inbox.</div></div></div>
+              <div class="page-row"><span class="page-num">07</span><div><div class="page-name">Leaderboards</div><div class="page-desc">Active repos, commits, stars, top repos, HackerRank solved and practice score — six boards with cohort filters and blacklist.</div></div></div>
+              <div class="page-row"><span class="page-num">08</span><div><div class="page-name">Support</div><div class="page-desc">Ticket threads with validated image attachments and Open → In Progress → Follow up → Resolved states.</div></div></div>
+              <div class="page-row"><span class="page-num">09</span><div><div class="page-name">Settings + My Profile</div><div class="page-desc">Theme, academic record, linked GitHub/LinkedIn, profile photo source, privacy controls and data tools.</div></div></div>
+            </div>
+          </section>
+
+          <section class="panel-poster">
+            <div class="sec-head"><span class="sec-num">05</span><h2>Under the hood</h2><span class="rule"></span></div>
+            <div class="pipeline">
+              <div class="layer">
+                <div class="layer-head"><span class="layer-tag">01 SOURCES</span><span class="layer-title">Public signals + uploads</span></div>
+                <p>GitHub REST (repos, stars, commits, PRs, followers) · HackerRank profiles · AutoCAD .dwg files · certificate proof files.</p>
+              </div>
+              <div class="arrow">▼</div>
+              <div class="layer">
+                <div class="layer-head"><span class="layer-tag">02 SYNC</span><span class="layer-title">Scheduled, resumable sweeps</span></div>
+                <p>Vercel Cron: nightly accounts + Sunday weekly. Actions: Heavy Sync 00:00 UTC, HackerRank 00:00 IST, weekly announcements. Login self-sync and admin force refresh.</p>
+              </div>
+              <div class="arrow">▼</div>
+              <div class="layer">
+                <div class="layer-head"><span class="layer-tag">03 STORE</span><span class="layer-title">Snapshots, tickets, audit</span></div>
+                <p>Neon Postgres with SQLite fallback: account_snapshots, hackerrank_snapshots, tickets, certificates and audit_log. Upstash Redis caches GitHub responses for one hour.</p>
+              </div>
+              <div class="arrow">▼</div>
+              <div class="layer">
+                <div class="layer-head"><span class="layer-tag">04 RENDER</span><span class="layer-title">Thin, server-rendered UI</span></div>
+                <p>FastAPI routes → views.py payloads → Jinja2 templates → ECharts + Server-Sent Events. Deployed on Vercel; guarded by pytest and CodeQL.</p>
+              </div>
+            </div>
+            <div class="guardrails">
+              <span class="guardrails-label">Guardrails</span>
+              <span class="chip">HMAC sessions</span>
+              <span class="chip">Route-level RBAC</span>
+              <span class="chip">Domain allowlist</span>
+              <span class="chip">Magic-byte uploads</span>
+              <span class="chip">Token rotation</span>
+              <span class="chip">Rate-limit waits</span>
+              <span class="chip">Audit log</span>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <div class="tech">
+        <span class="tech-label">Built with</span>
+        <div class="tech-list">
+          <span class="tech-chip">Python 3.11+</span>
+          <span class="tech-chip">FastAPI</span>
+          <span class="tech-chip">Uvicorn</span>
+          <span class="tech-chip">Jinja2</span>
+          <span class="tech-chip">ECharts</span>
+          <span class="tech-chip">SSE</span>
+          <span class="tech-chip">pandas</span>
+          <span class="tech-chip">Authlib</span>
+          <span class="tech-chip">Neon Postgres</span>
+          <span class="tech-chip">SQLite</span>
+          <span class="tech-chip">Upstash Redis</span>
+          <span class="tech-chip">Vercel</span>
+          <span class="tech-chip">GitHub Actions</span>
+          <span class="tech-chip">pytest</span>
+          <span class="tech-chip">CodeQL</span>
+        </div>
+      </div>
+
+      <footer class="foot">
+        <div class="foot-left">
+          <b>No spreadsheet surgery.</b>
+          Student Analytics Platform · MIT World Peace University, Pune
+        </div>
+        <div class="foot-right">
+          <span class="live-line">LIVE · student-analytics-iota.vercel.app</span><br>
+          <strong>747 tests green</strong> · 10 skipped · suite audited 16 Nov 2026
+        </div>
+      </footer>
+
+    </div>
+  </article>
+</div>
+
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('clean') === '1') document.body.classList.add('clean');
+  })();
+</script>
+</body>
+</html>
