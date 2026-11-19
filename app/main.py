@@ -5254,6 +5254,26 @@ def api_download_db(request: Request):
     return JSONResponse(status_code=404, content={"detail": "Database not found"})
 
 
+@app.get("/admin/poster", response_class=HTMLResponse)
+def admin_poster(request: Request, clean: str = ""):
+    """Admin-only A3 platform poster.
+
+    A single, print-ready page that explains the whole product. It is rendered
+    outside the app shell so a browser screenshot (or ``?clean=1``) captures
+    only the 297 x 420 mm sheet.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "").lower() != "admin":
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "pages/admin_poster.html",
+        {"clean": (clean or "").strip() == "1"},
+    )
+
+
 @app.get("/{slug}", response_class=HTMLResponse)
 def placeholder_page(request: Request, slug: str):
     for name, (icon, title, message, needs_run) in PAGE_PLACEHOLDERS.items():
