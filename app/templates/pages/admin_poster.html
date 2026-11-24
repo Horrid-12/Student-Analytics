@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A3 Poster — Student Analytics</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', path='/Favicon.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/poster.css') }}">
+</head>
+<body class="poster-root{% if clean %} clean{% endif %}">
+<div class="tools">
+  <div class="tools-group">
+    <a href="/">← Back to dashboard</a>
+    <span class="hint">A3 portrait · 297 × 420 mm · one page</span>
+  </div>
+  <div class="tools-group">
+    <a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a>
+    <button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button>
+  </div>
+</div>
+
+<main class="stage">
+<article class="sheet" aria-label="A3 Student Analytics platform poster">
+
+  <div class="strip">
+    <span>MIT World Peace University · Student Analytics</span>
+    <span class="dots">• • •</span>
+    <span>One cohort. One clear picture.</span>
+  </div>
+
+  <div class="page">
+
+    <!-- A · HERO -------------------------------------------------------- -->
+    <header class="hero sec">
+      <div class="hero-copy">
+        <div class="brandrow">
+          <img src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
+          <div>
+            <div class="uni">MIT World Peace University · Pune</div>
+            <div class="product">Student Analytics Platform</div>
+          </div>
+        </div>
+        <h1>See the work.<br>Find your <em>next level.</em></h1>
+        <p class="hero-lede">GitHub projects, coding practice and semester context—<strong>brought into one shared view</strong> for students, faculty and administrators.</p>
+        <div class="hero-tags">
+          <span>GitHub</span><span>HackerRank</span><span>Cohort analytics</span><span>Role-based access</span>
+        </div>
+        <div class="burst">THE WHOLE<br>COHORT<br>AT A GLANCE</div>
+      </div>
+      <figure class="hero-shot">
+        <img src="{{ url_for('static', path='/poster-assets/app/overview.png') }}" alt="Student Analytics Overview dashboard showing cohort metrics and statistics">
+        <figcaption><b>01 / OVERVIEW</b><span>Metrics · statistics · signals</span></figcaption>
+      </figure>
+    </header>
+
+    <!-- B · PROBLEM ----------------------------------------------------- -->
+    <section class="problem sec" aria-label="The problem Student Analytics solves">
+      <div class="problem-lead">
+        <div class="sec-hd"><span class="sec-no">A</span><span class="sec-label">The problem</span><span class="sec-rule"></span></div>
+        <h2>Talent was everywhere.<br><em>Visibility</em> wasn’t.</h2>
+        <p>Progress existed—but only in fragments, and only one student at a time.</p>
+      </div>
+      <div class="problem-item"><b>Manual checks</b><span>Repositories and coding progress reviewed one profile at a time, every semester.</span></div>
+      <div class="problem-item"><b>Scattered signals</b><span>GitHub activity, HackerRank practice and class context did not sit together.</span></div>
+      <div class="problem-item"><b>Narrow view</b><span>Students saw their own work, but not what the rest of the cohort was building.</span></div>
+    </section>
+
+    <!-- C · WORKFLOW ---------------------------------------------------- -->
+    <section class="flow sec" aria-label="Six-stage workflow from sign-in to insight">
+      <div class="sec-hd"><span class="sec-no">B</span><span class="sec-label">How it works</span><span class="sec-rule"></span><span class="sec-note">Six stages · sign-in to insight</span></div>
+      <h2>From accounts to <em>answers</em>.</h2>
+      <div class="flow-grid">
+        <div class="flow-card"><div><span class="num">01</span><h3>Sign in</h3><p>Campus Google account. Access follows your <strong>role</strong>.</p></div><span class="chip">Campus account</span></div>
+        <div class="flow-card"><div><span class="num">02</span><h3>Verify</h3><p>Students submit academic identity; <strong>faculty or admin</strong> approves it.</p></div><span class="chip">Onboarding</span></div>
+        <div class="flow-card"><div><span class="num">03</span><h3>Connect</h3><p>Link a <strong>GitHub username</strong> and a HackerRank handle.</p></div><span class="chip">Linked handles</span></div>
+        <div class="flow-card"><div><span class="num">04</span><h3>Sync</h3><p>Account snapshots pull repos, activity and <strong>coding stats</strong>.</p></div><span class="chip">Hourly cache</span></div>
+        <div class="flow-card"><div><span class="num">05</span><h3>Understand</h3><p>Overview folds signals into <strong>cohort metrics</strong> and statistics.</p></div><span class="chip">Overview + stats</span></div>
+        <div class="flow-card"><div><span class="num">06</span><h3>Explore</h3><p>Filter, compare, open profiles and <strong>export</strong> what you need.</p></div><span class="chip">Filter · export</span></div>
+      </div>
+      <div class="flow-foot"><span><b>CACHED FOR ONE HOUR</b> · repeat views skip the API round-trip</span><span>SNAPSHOTS, NOT LIVE SCRAPING</span></div>
+    </section>
+
+    <!-- D · CAPABILITIES ------------------------------------------------ -->
+    <section class="offers sec" aria-label="Four capability groups in Student Analytics">
+      <div class="sec-hd"><span class="sec-no">C</span><span class="sec-label">Inside the platform</span><span class="sec-rule"></span><span class="sec-note">Four ways in</span></div>
+      <div class="offer-grid">
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/students.png') }}" alt="Student Explorer roster table"><span>Student Explorer</span></div>
+          <div class="offer-body">
+            <div class="tag">Directory</div>
+            <h3>Students</h3>
+            <p>Search the roster by name, ID or username. Filter by <strong>division, batch and semester</strong>; open a full profile.</p>
+            <div class="mini">CSV / XLSX export</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/repositories.png') }}" alt="Repositories page with project cards"><span>Repositories</span></div>
+          <div class="offer-body">
+            <div class="tag">Projects</div>
+            <h3>Repositories</h3>
+            <p>Browse public repos with language, activity, stars, forks and <strong>quality score</strong>. Grid or table view.</p>
+            <div class="mini">Search · filter · sort</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/leaderboards.png') }}" alt="Leaderboards page with ranked students"><span>Leaderboards</span></div>
+          <div class="offer-body">
+            <div class="tag">Compare</div>
+            <h3>Leaderboards</h3>
+            <p>Rank <strong>recent activity</strong> and public repositories across the cohort, on GitHub or HackerRank.</p>
+            <div class="mini">GitHub / HackerRank</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/profile.png') }}" alt="Student profile panel with certificates, GitHub and HackerRank tabs"><span>Student profile</span></div>
+          <div class="offer-body">
+            <div class="tag">Depth</div>
+            <h3>Profiles</h3>
+            <p>One panel for <strong>certificates, languages and activity</strong>, with GitHub and HackerRank tabs.</p>
+            <div class="mini">Context behind the numbers</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- E · PERSPECTIVES ------------------------------------------------ -->
+    <section class="roles sec" aria-label="How each role uses the platform">
+      <div class="sec-hd"><span class="sec-no">D</span><span class="sec-label">Three perspectives</span><span class="sec-rule"></span><span class="sec-note">Same data · different questions</span></div>
+      <div class="role-grid">
+        <article class="role"><span class="role-mark">01</span><div class="tag">Student</div><h3>Find your next step</h3><p>See your work beside the cohort. <strong>Find peers with the same goals</strong> and aim higher.</p></article>
+        <article class="role"><span class="role-mark">02</span><div class="tag">Faculty</div><h3>Guide the class</h3><p>Filter by division, batch and semester. <strong>Spot who needs attention</strong> and follow progress.</p></article>
+        <article class="role"><span class="role-mark">03</span><div class="tag">Admin</div><h3>Keep it running</h3><p>Manage accounts and approvals, <strong>oversee sync</strong> and review the audit trail.</p></article>
+      </div>
+    </section>
+
+    <!-- F · OUTCOME ----------------------------------------------------- -->
+    <section class="outcome sec" aria-label="Outcome">
+      <div class="outcome-copy">
+        <small>The result</small>
+        <h2>Less checking.<br>More seeing.</h2>
+        <p>One shared, evidence-based picture of student work—easier to guide, easier to act on.</p>
+      </div>
+      <div class="outcome-arrow" aria-hidden="true">↗</div>
+    </section>
+
+    <!-- G · FOOTER ------------------------------------------------------ -->
+    <footer class="foot sec">
+      <div class="foot-brand">
+        <img class="logo" src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
+        <img class="mit" src="{{ url_for('static', path='/mit-wpu-logo-600.webp') }}" alt="MIT World Peace University">
+        <div class="who"><b>Student Analytics</b>MIT World Peace University, Pune</div>
+      </div>
+      <div class="foot-links">
+        <div class="link"><span>Live</span><a href="https://student-analytics-iota.vercel.app/">student-analytics-iota.vercel.app</a></div>
+        <div class="link"><img src="{{ url_for('static', path='/poster-assets/github-mark.png') }}" alt=""><span>Source</span><a href="https://github.com/Horrid-12/Student-Analytics">github.com/Horrid-12/Student-Analytics</a></div>
+        <div class="note">Screenshots show sample data for illustration. Scan for the live site.</div>
+      </div>
+      <div class="qr"><img src="{{ url_for('static', path='/poster-assets/qr-live-site.svg') }}" alt="QR code linking to the live Student Analytics site"></div>
+    </footer>
+
+  </div>
+</article>
+</main>
+
+<script>
+(function () {
+  if (new URLSearchParams(window.location.search).get('clean') === '1') {
+    document.body.classList.add('clean');
+  }
+})();
+</script>
+</body>
+</html>

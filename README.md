@@ -59,6 +59,7 @@
 - Navigation includes **Overview**, **Onboarding**, **Students**, **Repositories**, **AutoCAD**, **Leaderboards**, **Support**, **Settings**, and **My Profile** — plus the same profile panel behind the sidebar avatar at `/me`. Faculty and admins also have the certificate **Verification** page (admins review all applications, faculty review their assigned cohorts).
 - AutoCAD currently accepts student `.dwg` uploads up to 4 MB and gives faculty/admin a recent-submissions download inbox. Browser previews, assignment grouping, grades, and remarks are planned follow-up work; see [`documentation/AutoCAD Submissions.md`](./documentation/AutoCAD%20Submissions.md).
 - Pages render from the synced account fleet — no upload required — and the Students and Repositories tables export CSV or XLSX.
+- Admins get a print-ready A3 platform poster at `/admin/poster` (`?clean=1` hides the screen controls) for orientation boards, screenshots and PDF export; Settings → Admin Tools links to it.
 - Repos and followers are also reported per year of account age (`Repos_Per_Account_Year`, `Followers_Per_Account_Year`) so newer accounts are not punished.
 
 ### Leaderboards with moderation
