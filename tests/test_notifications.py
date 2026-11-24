@@ -168,3 +168,15 @@ class TestNotificationBell:
         body = client.get("/support", headers={"Accept": "text/html"}).text
         assert "<script>alert('xss')</script>" not in body
         assert "&lt;script&gt;alert" in body
+
+    def test_announcement_notification_accepts_null_ticket(self, client):
+        """BUG-143: weekly announcements have no support ticket on either backend."""
+        email = self._login(client, "student", OWN_EMAIL)
+        created = support.create_notification(
+            email, None, "WEEKLY_TOP_STUDENT", "Top student", "well done"
+        )
+        assert created is not None
+        assert created["ticket_id"] is None
+        rows = [n for n in support.list_notifications(email)
+                if n["type"] == "WEEKLY_TOP_STUDENT"]
+        assert rows and rows[-1]["ticket_id"] is None

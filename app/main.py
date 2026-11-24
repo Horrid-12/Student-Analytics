@@ -1974,7 +1974,7 @@ from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
 def auth_github(request: Request, mode: str = "link"):
-    if mode not in ("link", "signuplink"):
+    if mode not in ("link", "signuplink", "settingslink"):
         mode = "link"
     if mode == "signuplink":
         progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
@@ -1991,6 +1991,12 @@ def auth_github(request: Request, mode: str = "link"):
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
+
+
+@app.get("/auth/github/login")
+def auth_github_login_redirect():
+    """Alias for settings/profile linking so legacy or direct links do not 404."""
+    return RedirectResponse("/auth/github?mode=settingslink", status_code=302)
 
 @app.get("/auth/github/callback")
 async def auth_github_callback(request: Request, state: str = "", error: str = ""):
@@ -2022,7 +2028,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
             return reject("error")
         if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
             return reject("error")
-    elif mode != "link" or not user:
+    elif mode not in ("link", "settingslink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?github=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -2051,7 +2057,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
             httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
         )
         return response
-    if mode == "link" and user:
+    if mode in ("link", "settingslink") and user:
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
         # 4.11 (e): persist the fetched candidate (login + avatar) for user
@@ -2070,7 +2076,8 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
                 await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
         except Exception:
             logger.exception("Post-link sync failed for %s", user["email"])
-        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=github", status_code=302)
+        target = "/settings?linked=github" if mode == "settingslink" else ("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=github")
+        response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -2078,7 +2085,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
 
 @app.get("/auth/linkedin")
 def auth_linkedin(request: Request, mode: str = "link"):
-    if mode not in ("link", "signuplink"):
+    if mode not in ("link", "signuplink", "settingslink"):
         mode = "link"
     if mode == "signuplink":
         progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
@@ -2095,6 +2102,12 @@ def auth_linkedin(request: Request, mode: str = "link"):
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
+
+
+@app.get("/auth/linkedin/login")
+def auth_linkedin_login_redirect():
+    """Alias for settings/profile linking so legacy or direct links do not 404."""
+    return RedirectResponse("/auth/linkedin?mode=settingslink", status_code=302)
 
 @app.get("/auth/linkedin/callback")
 async def auth_linkedin_callback(request: Request, state: str = "", error: str = ""):
@@ -2126,7 +2139,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             return reject("error")
         if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
             return reject("error")
-    elif mode != "link" or not user:
+    elif mode not in ("link", "settingslink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?linkedin=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -2156,7 +2169,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
         )
         return response
-    if mode == "link" and user:
+    if mode in ("link", "settingslink") and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
         # 4.11 (e): persist the fetched candidate (name + picture) for user
         # confirmation on onboarding.
@@ -2164,7 +2177,8 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             user["email"], "linkedin", claims.get("name"), claims.get("picture")
         )
         _db_log_event("linkedin_linked", user["email"])
-        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=linkedin", status_code=302)
+        target = "/settings?linked=linkedin" if mode == "settingslink" else ("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=linkedin")
+        response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response

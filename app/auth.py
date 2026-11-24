@@ -1893,10 +1893,12 @@ def set_user_role(email: str, role: str) -> bool:
 
 
 def _clean_avatar(url: str) -> str:
-    """Accept only http(s) avatar URLs so a hostile provider payload can never
-    turn the sidebar <img> into a javascript:/data: vector."""
+    """Accept only http(s) avatar URLs or data:image/ URIs so a hostile provider payload
+    can never turn the sidebar <img> into a javascript:/data:text vector."""
     url = (url or "").strip()
-    return url if url.startswith(("https://", "http://")) else ""
+    if url.startswith(("https://", "http://")) or url.startswith("data:image/"):
+        return url
+    return ""
 
 
 def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bool:

@@ -267,7 +267,7 @@
         </form>
       {% else %}
         <div style="font-size:13px; color:var(--muted); margin-bottom:8px;">No GitHub profile linked.</div>
-        <a href="/auth/github/login" class="btn">Link GitHub</a>
+        <a href="/auth/github?mode=settingslink" class="btn">Link GitHub</a>
       {% endif %}
     </div>
     {% endif %}
@@ -276,11 +276,14 @@
     <div style="padding-top:16px; border-top:1px solid var(--border); margin-bottom:16px;">
       <div style="font-size:14px; font-weight:600; margin-bottom:4px;">LinkedIn</div>
       {% if link_profile.linkedin.handle %}
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-          {% if link_profile.linkedin.avatar %}
-            <img src="{{ link_profile.linkedin.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
-          {% endif %}
-          <span style="font-size:13px;">Linked as <strong>{{ link_profile.linkedin.handle }}</strong></span>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            {% if link_profile.linkedin.avatar %}
+              <img src="{{ link_profile.linkedin.avatar }}" alt="" style="width:24px; height:24px; border-radius:50%;">
+            {% endif %}
+            <span style="font-size:13px;">Linked as <strong>{{ link_profile.linkedin.handle }}</strong></span>
+          </div>
+          <a href="/auth/linkedin?mode=settingslink" class="btn btn-sm" style="font-size:12px; padding:4px 10px;">Re-link / Refresh</a>
         </div>
       {% elif linked_flag == "linkedin" %}
         <form action="/profile/confirm" method="POST" style="margin-top:8px;">
@@ -295,7 +298,7 @@
         </form>
       {% else %}
         <div style="font-size:13px; color:var(--muted); margin-bottom:8px;">No LinkedIn profile linked.</div>
-        <a href="/auth/linkedin/login" class="btn">Link LinkedIn</a>
+        <a href="/auth/linkedin?mode=settingslink" class="btn">Link LinkedIn</a>
       {% endif %}
     </div>
     {% endif %}

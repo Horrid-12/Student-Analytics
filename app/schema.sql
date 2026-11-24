@@ -391,16 +391,21 @@ ALTER TABLE account_snapshots ADD COLUMN IF NOT EXISTS team_repos_json JSONB NOT
 --     deployments keep the orphan table; no code reads it anymore.)
 
 -- 14. Notifications (Real-time student alerts for support ticket updates)
+--     ticket_id is nullable: weekly announcements are fan-out notifications
+--     with no ticket (BUG-143); ticket notifications still carry a real id.
 CREATE TABLE IF NOT EXISTS notifications (
     id          SERIAL PRIMARY KEY,
     user_id     TEXT NOT NULL,
-    ticket_id   INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    ticket_id   INTEGER REFERENCES support_tickets(id) ON DELETE CASCADE,
     type        TEXT NOT NULL,
     title       TEXT NOT NULL,
     message     TEXT NOT NULL,
     is_read     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- BUG-143: relax existing deployments (CREATE TABLE IF NOT EXISTS cannot
+-- change a column's nullability). Announcements insert ticket_id NULL.
+ALTER TABLE notifications ALTER COLUMN ticket_id DROP NOT NULL;
 
 -- 15. Fleet-mode fix: blacklist/hidden/workflow keys are TEXT ('fleet' + roster
 --     UUIDs), not UUID FKs. Fresh tables above are already TEXT; these migrate
