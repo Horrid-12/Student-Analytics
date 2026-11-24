@@ -1,43 +1,173 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>A3 Poster — Student Analytics Platform</title>
-<link rel="icon" type="image/png" href="../../../static/Favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
-<style>
-:root{--paper:#eee9df;--card:#f5f1e9;--ink:#142235;--muted:#566271;--red:#be342b;--blue:#60738a;--green:#21845d;--gold:#d5a344;--line:rgba(20,34,53,.24);--sans:Inter,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
-*{box-sizing:border-box}html,body{margin:0;padding:0}body{background:#cbc5ba;color:var(--ink);font-family:var(--sans);-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.tools{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 18px;background:rgba(20,34,53,.96);color:var(--card);font:11px var(--mono)}.tools a{color:inherit;text-decoration:none}.tools-group{display:flex;align-items:center;gap:14px}.tool-btn{border:1px solid rgba(245,241,233,.45);border-radius:999px;padding:7px 12px;background:transparent;color:inherit;font:inherit;cursor:pointer}.tool-btn.primary{background:var(--red);border-color:var(--red)}body.clean .tools{display:none}body.clean{background:var(--paper)}
-.stage{display:flex;justify-content:center;padding:20px}.sheet{position:relative;width:297mm;height:420mm;flex:0 0 auto;overflow:hidden;background:var(--paper) url("../../../static/paper-fiber-texture.webp") repeat; background-size: 300px auto;box-shadow:0 20px 65px rgba(20,34,53,.25);display:flex;flex-direction:column}.sheet:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(110mm 80mm at 100% 4%,rgba(190,52,43,.08),transparent 70%),radial-gradient(130mm 120mm at 0% 100%,rgba(96,115,138,.08),transparent 70%)}.sheet>*{position:relative;z-index:1}
-.topbar{height:9mm;flex:0 0 9mm;background:var(--red);color:var(--card);display:flex;align-items:center;justify-content:space-between;padding:0 12mm;font:600 7pt var(--mono);letter-spacing:.13em;text-transform:uppercase}.topbar .right{display:flex;align-items:center;gap:2mm}.dot{width:1.7mm;height:1.7mm;border-radius:50%;background:var(--card)}
-.inner{flex:1;min-height:0;padding:7mm 12mm;display:flex;flex-direction:column;gap:3.2mm}.mast{flex:0 0 auto;display:grid;grid-template-columns:1fr 62mm;gap:8mm;align-items:center}.brand{display:flex;align-items:center;gap:3mm;margin-bottom:2.2mm}.brand img{width:12mm;height:12mm;object-fit:contain}.uni{font:6.6pt var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}.product{font-size:9pt;font-weight:800;margin-top:.7mm}.kicker{font:600 7pt var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--red);margin:0 0 1.5mm}.mast h1{margin:0;font-size:32pt;line-height:.93;letter-spacing:-.05em;font-weight:900}.mast h1 em{color:var(--red);font-style:normal}.mast p{margin:2.2mm 0 0;color:var(--muted);font-size:9pt;line-height:1.35;max-width:145mm}.urlbox{background:var(--ink);color:var(--card);border-radius:2.2mm;padding:4mm;box-shadow:2mm 2mm 0 rgba(20,34,53,.12)}.url-label{font:6.2pt var(--mono);letter-spacing:.13em;text-transform:uppercase;color:#c9c3b8}.url{font:600 8.2pt var(--mono);margin-top:2mm;word-break:break-word}.urlbox strong{display:block;color:#f0b1a9;font-size:7pt;margin-top:2.2mm}
-.chapter{flex:0 0 auto;display:flex;align-items:center;gap:2mm;font:600 6.7pt var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--red)}.chapter:after{content:"";height:1px;background:var(--line);flex:1}
-.flashback{display:grid;grid-template-columns:1fr 1fr;gap:3mm;flex:0 0 68mm}.scene{position:relative;display:grid;grid-template-columns:1fr 42mm;align-items:center;gap:2mm;overflow:hidden;padding:3mm;background:var(--card);border:1.3px solid var(--ink);border-radius:0;box-shadow:1.5mm 1.5mm 0 rgba(20,34,53,.10)}.scene:first-child{background:repeating-linear-gradient(135deg,#f5f1e9 0 3mm,#eee9df 3mm 3.4mm)}.scene:last-child{background:radial-gradient(circle at 80% 25%,rgba(190,52,43,.12),transparent 38%),var(--card)}.scene-copy{position:relative;z-index:2}.scene-tag{display:inline-block;background:var(--ink);color:var(--card);padding:1mm 2mm;font:600 6pt var(--mono);letter-spacing:.1em;text-transform:uppercase}.scene h2{font-size:15pt;line-height:1.02;letter-spacing:-.03em;margin:2.4mm 0 1.7mm}.scene p{margin:0;color:var(--muted);font-size:7.5pt;line-height:1.32}.scene-photo{margin:0;width:100%;height:54mm;align-self:end;position:relative;border:1.4mm solid var(--card);box-shadow:0 0 0 .45mm var(--ink);transform:rotate(1.5deg);overflow:hidden}.scene-photo img{width:100%;height:100%;display:block;object-fit:cover;filter:grayscale(1) contrast(1.12)}.scene-photo:after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(20,34,53,.38) .45px,transparent .8px);background-size:3px 3px;opacity:.28;mix-blend-mode:multiply}.scene-photo figcaption{position:absolute;bottom:0;left:0;right:0;padding:1mm 1.5mm;background:rgba(20,34,53,.82);color:white;font:5pt var(--mono);letter-spacing:.04em}.impact{position:absolute;right:3mm;top:2mm;color:rgba(190,52,43,.16);font-size:22pt;font-weight:900;font-style:italic;transform:rotate(-9deg)}
-.story{flex:1 1 130mm;min-height:125mm;display:grid;grid-template-columns:1.08fr .92fr;background:var(--ink);border:2mm solid var(--ink);border-radius:0;overflow:hidden;color:var(--card)}.art{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;background:radial-gradient(circle at 50% 48%,#31465d 0,#1e3045 58%,#142235 100%);overflow:hidden}.art:before{content:"";position:absolute;inset:0;opacity:.18;background-image:radial-gradient(#f5f1e9 .55px,transparent .7px);background-size:3px 3px;mask-image:linear-gradient(135deg,#000 0 18%,transparent 48% 52%,#000 82%)}.photo-wall{position:relative;width:100%;height:100%;padding:6mm;display:grid;grid-template-columns:1.1fr .9fr;grid-template-rows:repeat(3,1fr);gap:3mm;align-content:center}.photo-card{margin:0;position:relative;overflow:hidden;border:1mm solid var(--card);box-shadow:0 0 0 .5mm var(--ink),2mm 2mm 0 rgba(0,0,0,.22);background:var(--card)}.photo-card img{width:100%;height:100%;display:block;object-fit:cover;filter:grayscale(1) contrast(1.15)}.photo-card:after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(20,34,53,.38) .45px,transparent .8px);background-size:3px 3px;opacity:.25;mix-blend-mode:multiply}.photo-card.lead{grid-row:1 / 4;transform:rotate(-2deg)}.photo-card:nth-child(2){transform:rotate(1.5deg)}.photo-card:nth-child(3){transform:rotate(-1deg)}.photo-card figcaption{position:absolute;left:0;right:0;bottom:0;padding:1.4mm 2mm;background:rgba(20,34,53,.86);color:#fff;font:600 5.5pt var(--mono);letter-spacing:.08em;text-transform:uppercase}.logo-ribbon{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:4mm;padding:2.2mm 3mm;background:rgba(245,241,233,.8);border:1px solid var(--line);border-radius:0}.logo-caption{max-width:35mm;font:600 6pt var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red);line-height:1.25}.logos{display:flex;align-items:center;justify-content:space-around;gap:4mm;flex:1}.logos img{display:block;object-fit:contain;max-width:22mm;max-height:10mm}.logos .mit-mark{max-width:27mm;max-height:13mm}.logos .github{width:10mm;height:10mm}.logos .hr{width:23mm;height:8mm}.logos .small-mark{width:8mm;height:8mm}.photo-credit{font:5pt var(--mono);color:var(--muted)}.story-copy{padding:5mm 6mm;display:flex;flex-direction:column;justify-content:space-between;gap:2mm;position:relative;background-image:radial-gradient(rgba(245,241,233,.10) .45px,transparent .7px);background-size:3mm 3mm}.story-copy:before{content:"";position:absolute;left:-9mm;top:18mm;width:18mm;height:18mm;background:var(--ink);transform:rotate(45deg)}.japan-mark{position:absolute;right:3mm;top:3mm;writing-mode:vertical-rl;font:900 22pt "Noto Sans JP",sans-serif;letter-spacing:.05em;color:rgba(240,177,169,.24)}.peer-stamp{position:relative;display:grid;grid-template-columns:12mm 1fr;align-items:center;gap:2mm;padding:2mm 2.5mm;background:var(--red);color:#fff8ef;border:1.2mm solid #fff8ef;box-shadow:0 0 0 .45mm var(--red);transform:rotate(-1deg)}.peer-stamp .jp{font:900 18pt "Noto Sans JP",sans-serif;line-height:1}.peer-stamp b{display:block;font-size:8pt;line-height:1.1;letter-spacing:.02em}.peer-stamp small{display:block;margin-top:1mm;font:5.7pt var(--mono);letter-spacing:.07em;text-transform:uppercase;color:#f7d8d3}.signal-strip{display:flex;align-items:center;justify-content:space-between;gap:2mm;padding-top:1.6mm;border-top:1px solid rgba(245,241,233,.35);color:#c9c3b8;font:600 5.6pt var(--mono);letter-spacing:.08em;text-transform:uppercase}.signal-strip img{width:auto;height:6mm;max-width:20mm;object-fit:contain;background:var(--paper);padding:1mm;border-radius:1mm}.story-kicker{font:600 6.5pt var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#f0b1a9}.story-copy h2{position:relative;margin:3mm 0;font-size:25pt;line-height:.97;letter-spacing:-.045em}.story-copy h2 em{color:#f0b1a9;font-style:normal}.story-copy p{position:relative;margin:0;color:#d1d7df;font-size:9pt;line-height:1.45}.bubble{position:relative;margin-top:0;align-self:flex-start;padding:2.5mm 3.4mm;background:var(--paper);color:var(--ink);border-radius:8mm 8mm 8mm 1mm;font-size:8pt;font-weight:800;box-shadow:1mm 1mm 0 rgba(0,0,0,.2)}.bubble:after{content:"";position:absolute;bottom:-2.5mm;left:4mm;border-width:3mm 3mm 0 0;border-style:solid;border-color:var(--paper) transparent transparent transparent}.wordmark{position:absolute;bottom:4mm;right:5mm;font:600 6pt var(--mono);letter-spacing:.1em;color:rgba(245,241,233,.58);text-transform:uppercase}
-.benefits{flex:0 0 auto;display:flex;flex-direction:column;gap:2mm}.benefits-head{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:1.4mm}.benefits-head h2{margin:0;font-size:12pt;letter-spacing:-.03em}.benefits-head span{font:600 6pt var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red)}.benefit-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.benefit-card{padding:2mm 2.5mm;background:rgba(245,241,233,.88);border:1px solid var(--ink);border-left:1.8mm solid var(--red);border-radius:0}.benefit-card.students{border-left-color:var(--blue)}.benefit-title{font:700 7pt var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--red);margin-bottom:1.1mm}.benefit-card.students .benefit-title{color:var(--blue)}.benefit-card p{margin:0;color:var(--muted);font-size:7.5pt;line-height:1.24}.benefit-card strong{color:var(--ink)}
-.bottom{flex:0 0 auto;display:grid;grid-template-columns:1.08fr .92fr;gap:3mm}.how{padding:3mm 4mm;background:var(--card);border:1px solid var(--ink);border-radius:0}.how-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm}.how-head b{font-size:9pt}.how-head span{font:6pt var(--mono);color:var(--red);letter-spacing:.1em;text-transform:uppercase}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm}.step{display:flex;align-items:center;gap:1.8mm;font-size:7pt;line-height:1.2;font-weight:700}.step i{display:grid;place-items:center;width:7mm;height:7mm;flex:0 0 7mm;border-radius:50%;background:var(--red);color:white;font:700 7pt var(--mono);font-style:normal}.step:not(:last-child):after{content:"›";color:var(--red);font-size:15pt;margin-left:auto}.goal{position:relative;overflow:hidden;padding:4mm 5mm;background:var(--red);color:#fff8ef;border-radius:0;display:flex;flex-direction:column;justify-content:center}.goal:after{content:"↑";position:absolute;right:4mm;bottom:-9mm;font-size:51pt;line-height:1;font-weight:900;color:rgba(255,255,255,.18)}.goal small{font:600 6pt var(--mono);letter-spacing:.12em;text-transform:uppercase}.goal strong{position:relative;z-index:1;font-size:13pt;line-height:1.08;margin-top:1mm;max-width:75mm}.goal span{position:relative;z-index:1;font-size:7pt;line-height:1.25;margin-top:1.2mm;max-width:78mm;color:#f8dcd7}.foot{flex:0 0 auto;padding-top:2mm;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:5mm;color:var(--muted);font-size:6.5pt}.foot strong{color:var(--ink);font-size:7pt}.foot-right{font:600 6pt var(--mono);letter-spacing:.04em;text-align:right;color:var(--red)}
-@page{size:A3 portrait;margin:0}@media print{body{background:var(--paper)}.tools{display:none!important}.stage{padding:0}.sheet{box-shadow:none}}@media(max-width:800px){.stage{justify-content:flex-start;overflow:auto;padding:8px}.tools{position:static;flex-wrap:wrap}}
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A3 Poster — Student Analytics</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', path='/Favicon.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='/poster.css') }}">
 </head>
-<body>
-<div class="tools"><div class="tools-group"><a href="/">← Back to dashboard</a><span>A3 portrait · manga poster</span></div><div class="tools-group"><a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a><button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button></div></div>
-<main class="stage"><article class="sheet" aria-label="A3 Student Analytics manga-style poster">
-<div class="topbar"><span>MIT World Peace University · Student Analytics</span><span class="right"><i class="dot"></i> A clearer view of growth</span></div>
-<div class="inner">
-<header class="mast"><div><div class="brand"><img src="../../../static/Favicon.png" alt=""><div><div class="uni">MIT World Peace University</div><div class="product">Student Analytics Platform</div></div></div><p class="kicker">A campus full of talent. One shared view.</p><h1>See the work.<br>Find your <em>next level.</em></h1><p>Projects, coding practice and semester progress—together, so students can grow and faculty can guide.</p></div><aside class="urlbox"><div class="url-label">Explore the live platform</div><div class="url">student-analytics-iota.vercel.app</div><strong>Track progress · discover peers · aim higher</strong></aside></header>
-<section class="logo-ribbon" aria-label="Platforms represented in Student Analytics"><div class="logo-caption">The tools behind<br>student progress</div><div class="logos"><img class="mit-mark" src="../../../static/mit-wpu-logo-600.webp" alt="MIT World Peace University"><img class="github" src="../../../static/poster-assets/github-mark.png" alt="GitHub"><img class="hr" src="../../../static/poster-assets/hackerrank-logo.png" alt="HackerRank"><img class="small-mark" src="../../../static/poster-assets/autocad.svg" alt="AutoCAD"><img class="small-mark" src="../../../static/poster-assets/linkedin.svg" alt="LinkedIn"><img class="small-mark" src="../../../static/poster-assets/google.svg" alt="Google"></div></section>
-<div class="chapter">Before the shared view</div>
-<section class="flashback" aria-label="The problem before Student Analytics">
-<article class="scene"><div class="scene-copy"><span class="scene-tag">Faculty · every semester</span><h2>One laptop<br>at a time.</h2><p>Checking every student’s GitHub repos and HackerRank progress took hours. Monitoring each semester exam meant repeating the same manual rounds.</p></div><figure class="scene-photo"><img src="../../../static/poster-assets/computer-lab.jpg" alt="One lab · many students"><figcaption>One lab · many students</figcaption></figure><span class="impact">AGAIN?!</span></article>
-<article class="scene"><div class="scene-copy"><span class="scene-tag">Students · narrow view</span><h2>Only your<br>friend group?</h2><p>Hard to know how your batch was really doing—or who else shared your goals for great projects and good placements.</p></div><figure class="scene-photo"><img src="../../../static/poster-assets/library-study.jpg" alt="A student studying at a library table"><figcaption>Individual effort adds up</figcaption></figure><span class="impact">SMALL CIRCLE</span></article>
-</section>
-<div class="chapter">Now: the whole cohort comes into view</div>
-<section class="story" aria-label="Student Analytics brings cohort progress together"><div class="art"><div class="photo-wall"><figure class="photo-card lead"><img src="../../../static/poster-assets/shared-laptops.jpg" alt="Students working together at laptops"><figcaption>Peer projects · shared ambition</figcaption></figure><figure class="photo-card"><img src="../../../static/poster-assets/students-collaborating.jpg" alt="A diverse group collaborating around a laptop"><figcaption>Every student · every semester</figcaption></figure><figure class="photo-card"><img src="../../../static/poster-assets/campus-graduates.jpg" alt="Graduates celebrating their achievement"><figcaption>Build toward your next step</figcaption></figure><figure class="photo-card"><img src="../../../static/poster-assets/student-coding.jpg" alt="A student building skills independently"><figcaption>Skills grow with practice</figcaption></figure></div></div><div class="story-copy"><div class="story-kicker">第 01 話 · Campus rivals <span lang="ja" class="japan-mark">挑戦</span></div><h2>Meet the people<br>who share your <em>goal.</em></h2><p>Compare with batchmates and students across campus chasing the same goals: ambitious projects and strong placements. See the level around you through GitHub, HackerRank and semester progress—then turn that energy into your next move.</p><div class="bubble">Your next idea could be your best one yet.</div><div class="peer-stamp"><span class="jp" lang="ja">挑戦</span><div><b>YOUR PEER GROUP IS THE WHOLE CAMPUS.</b><small>Batchmates · project builders · placement aspirants</small></div></div><div class="signal-strip"><span>Progress signals</span><img src="../../../static/poster-assets/github-mark.png" alt="GitHub"><img src="../../../static/poster-assets/hackerrank-logo.png" alt="HackerRank"><span>Semester view</span></div><div class="wordmark">Student Analytics · MIT-WPU</div></div></section>
-<section class="benefits" aria-label="What changes for faculty and students"><div class="benefits-head"><h2>What changes on campus</h2><span>One shared view · two perspectives</span></div><div class="benefit-grid"><article class="benefit-card"><div class="benefit-title">Faculty · cohort monitoring</div><p>Replace the laptop-by-laptop tour with a view across <strong>GitHub repos and HackerRank progress</strong>. Compare semester-by-semester signals, prepare a clearer exam review, and focus check-ins where support will help most.</p></article><article class="benefit-card students"><div class="benefit-title">Students · a wider field</div><p>Look beyond your friends. Compare with <strong>batchmates and peers across campus</strong> who share your goals for stronger projects and placements. Discover what the cohort is building, then choose a clear next step.</p></article></div></section>
-<section class="bottom" aria-label="How Student Analytics helps"><div class="how"><div class="how-head"><b>From scattered checks to a shared picture</b><span>One connected view</span></div><div class="steps"><div class="step"><i>1</i><span>Link learning<br>signals</span></div><div class="step"><i>2</i><span>See semester<br>progress</span></div><div class="step"><i>3</i><span>Set your next<br>goal</span></div></div></div><div class="goal"><small>For faculty and students</small><strong>Less time checking.<br>More room to grow.</strong><span>Faculty can follow cohort progress. Students can compare, collaborate and aim for stronger projects and placements.</span></div></section>
-<footer class="foot"><div><strong>Students · Faculty · Shared momentum</strong><br>MIT World Peace University, Pune</div><div class="foot-right">LIVE · STUDENT-ANALYTICS-IOTA.VERCEL.APP<br><span class="photo-credit">Photos: Unsplash contributors · logos: respective owners</span></div></footer>
-</div></article></main>
-<script>(function(){if(new URLSearchParams(window.location.search).get('clean')==='1')document.body.classList.add('clean')})();</script>
-</body></html>
+<body class="poster-root{% if clean %} clean{% endif %}">
+<div class="tools">
+  <div class="tools-group">
+    <a href="/">← Back to dashboard</a>
+    <span class="hint">A3 portrait · 297 × 420 mm · one page</span>
+  </div>
+  <div class="tools-group">
+    <a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a>
+    <button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button>
+  </div>
+</div>
+
+<main class="stage">
+<article class="sheet" aria-label="A3 Student Analytics platform poster">
+
+  <div class="strip">
+    <span>MIT World Peace University · Student Analytics</span>
+    <span class="dots">• • •</span>
+    <span>One cohort. One clear picture.</span>
+  </div>
+
+  <div class="page">
+
+    <!-- A · HERO -------------------------------------------------------- -->
+    <header class="hero sec">
+      <div class="hero-copy">
+        <div class="brandrow">
+          <img src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
+          <div>
+            <div class="uni">MIT World Peace University · Pune</div>
+            <div class="product">Student Analytics Platform</div>
+          </div>
+        </div>
+        <h1>See the work.<br>Find your <em>next level.</em></h1>
+        <p class="hero-lede">GitHub projects, coding practice and semester context—<strong>brought into one shared view</strong> for students, faculty and administrators.</p>
+        <div class="hero-tags">
+          <span>GitHub</span><span>HackerRank</span><span>Cohort analytics</span><span>Role-based access</span>
+        </div>
+        <div class="burst">THE WHOLE<br>COHORT<br>AT A GLANCE</div>
+      </div>
+      <figure class="hero-shot">
+        <img src="{{ url_for('static', path='/poster-assets/app/overview.png') }}" alt="Student Analytics Overview dashboard showing cohort metrics and statistics">
+        <figcaption><b>01 / OVERVIEW</b><span>Metrics · statistics · signals</span></figcaption>
+      </figure>
+    </header>
+
+    <!-- B · PROBLEM ----------------------------------------------------- -->
+    <section class="problem sec" aria-label="The problem Student Analytics solves">
+      <div class="problem-lead">
+        <div class="sec-hd"><span class="sec-no">A</span><span class="sec-label">The problem</span><span class="sec-rule"></span></div>
+        <h2>Talent was everywhere.<br><em>Visibility</em> wasn’t.</h2>
+        <p>Progress existed—but only in fragments, and only one student at a time.</p>
+      </div>
+      <div class="problem-item"><b>Manual checks</b><span>Repositories and coding progress reviewed one profile at a time, every semester.</span></div>
+      <div class="problem-item"><b>Scattered signals</b><span>GitHub activity, HackerRank practice and class context did not sit together.</span></div>
+      <div class="problem-item"><b>Narrow view</b><span>Students saw their own work, but not what the rest of the cohort was building.</span></div>
+    </section>
+
+    <!-- C · WORKFLOW ---------------------------------------------------- -->
+    <section class="flow sec" aria-label="Six-stage workflow from sign-in to insight">
+      <div class="sec-hd"><span class="sec-no">B</span><span class="sec-label">How it works</span><span class="sec-rule"></span><span class="sec-note">Six stages · sign-in to insight</span></div>
+      <h2>From accounts to <em>answers</em>.</h2>
+      <div class="flow-grid">
+        <div class="flow-card"><div><span class="num">01</span><h3>Sign in</h3><p>Campus Google account. Access follows your <strong>role</strong>.</p></div><span class="chip">Campus account</span></div>
+        <div class="flow-card"><div><span class="num">02</span><h3>Verify</h3><p>Students submit academic identity; <strong>faculty or admin</strong> approves it.</p></div><span class="chip">Onboarding</span></div>
+        <div class="flow-card"><div><span class="num">03</span><h3>Connect</h3><p>Link a <strong>GitHub username</strong> and a HackerRank handle.</p></div><span class="chip">Linked handles</span></div>
+        <div class="flow-card"><div><span class="num">04</span><h3>Sync</h3><p>Account snapshots pull repos, activity and <strong>coding stats</strong>.</p></div><span class="chip">Hourly cache</span></div>
+        <div class="flow-card"><div><span class="num">05</span><h3>Understand</h3><p>Overview folds signals into <strong>cohort metrics</strong> and statistics.</p></div><span class="chip">Overview + stats</span></div>
+        <div class="flow-card"><div><span class="num">06</span><h3>Explore</h3><p>Filter, compare, open profiles and <strong>export</strong> what you need.</p></div><span class="chip">Filter · export</span></div>
+      </div>
+      <div class="flow-foot"><span><b>CACHED FOR ONE HOUR</b> · repeat views skip the API round-trip</span><span>SNAPSHOTS, NOT LIVE SCRAPING</span></div>
+    </section>
+
+    <!-- D · CAPABILITIES ------------------------------------------------ -->
+    <section class="offers sec" aria-label="Four capability groups in Student Analytics">
+      <div class="sec-hd"><span class="sec-no">C</span><span class="sec-label">Inside the platform</span><span class="sec-rule"></span><span class="sec-note">Four ways in</span></div>
+      <div class="offer-grid">
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/students.png') }}" alt="Student Explorer roster table"><span>Student Explorer</span></div>
+          <div class="offer-body">
+            <div class="tag">Directory</div>
+            <h3>Students</h3>
+            <p>Search the roster by name, ID or username. Filter by <strong>division, batch and semester</strong>; open a full profile.</p>
+            <div class="mini">CSV / XLSX export</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/repositories.png') }}" alt="Repositories page with project cards"><span>Repositories</span></div>
+          <div class="offer-body">
+            <div class="tag">Projects</div>
+            <h3>Repositories</h3>
+            <p>Browse public repos with language, activity, stars, forks and <strong>quality score</strong>. Grid or table view.</p>
+            <div class="mini">Search · filter · sort</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/leaderboards.png') }}" alt="Leaderboards page with ranked students"><span>Leaderboards</span></div>
+          <div class="offer-body">
+            <div class="tag">Compare</div>
+            <h3>Leaderboards</h3>
+            <p>Rank <strong>recent activity</strong> and public repositories across the cohort, on GitHub or HackerRank.</p>
+            <div class="mini">GitHub / HackerRank</div>
+          </div>
+        </article>
+        <article class="offer">
+          <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/profile.png') }}" alt="Student profile panel with certificates, GitHub and HackerRank tabs"><span>Student profile</span></div>
+          <div class="offer-body">
+            <div class="tag">Depth</div>
+            <h3>Profiles</h3>
+            <p>One panel for <strong>certificates, languages and activity</strong>, with GitHub and HackerRank tabs.</p>
+            <div class="mini">Context behind the numbers</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- E · PERSPECTIVES ------------------------------------------------ -->
+    <section class="roles sec" aria-label="How each role uses the platform">
+      <div class="sec-hd"><span class="sec-no">D</span><span class="sec-label">Three perspectives</span><span class="sec-rule"></span><span class="sec-note">Same data · different questions</span></div>
+      <div class="role-grid">
+        <article class="role"><span class="role-mark">01</span><div class="tag">Student</div><h3>Find your next step</h3><p>See your work beside the cohort. <strong>Find peers with the same goals</strong> and aim higher.</p></article>
+        <article class="role"><span class="role-mark">02</span><div class="tag">Faculty</div><h3>Guide the class</h3><p>Filter by division, batch and semester. <strong>Spot who needs attention</strong> and follow progress.</p></article>
+        <article class="role"><span class="role-mark">03</span><div class="tag">Admin</div><h3>Keep it running</h3><p>Manage accounts and approvals, <strong>oversee sync</strong> and review the audit trail.</p></article>
+      </div>
+    </section>
+
+    <!-- F · OUTCOME ----------------------------------------------------- -->
+    <section class="outcome sec" aria-label="Outcome">
+      <div class="outcome-copy">
+        <small>The result</small>
+        <h2>Less checking.<br>More seeing.</h2>
+        <p>One shared, evidence-based picture of student work—easier to guide, easier to act on.</p>
+      </div>
+      <div class="outcome-arrow" aria-hidden="true">↗</div>
+    </section>
+
+    <!-- G · FOOTER ------------------------------------------------------ -->
+    <footer class="foot sec">
+      <div class="foot-brand">
+        <img class="logo" src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
+        <img class="mit" src="{{ url_for('static', path='/mit-wpu-logo-600.webp') }}" alt="MIT World Peace University">
+        <div class="who"><b>Student Analytics</b>MIT World Peace University, Pune</div>
+      </div>
+      <div class="foot-links">
+        <div class="link"><span>Live</span><a href="https://student-analytics-iota.vercel.app/">student-analytics-iota.vercel.app</a></div>
+        <div class="link"><img src="{{ url_for('static', path='/poster-assets/github-mark.png') }}" alt=""><span>Source</span><a href="https://github.com/Horrid-12/Student-Analytics">github.com/Horrid-12/Student-Analytics</a></div>
+        <div class="note">Screenshots show sample data for illustration. Scan for the live site.</div>
+      </div>
+      <div class="qr"><img src="{{ url_for('static', path='/poster-assets/qr-live-site.svg') }}" alt="QR code linking to the live Student Analytics site"></div>
+    </footer>
+
+  </div>
+</article>
+</main>
+
+<script>
+(function () {
+  if (new URLSearchParams(window.location.search).get('clean') === '1') {
+    document.body.classList.add('clean');
+  }
+})();
+</script>
+</body>
+</html>

@@ -119,7 +119,7 @@
 
 | 88 | Settings Page | Rework Faculty Settings |
 
-| 89 | ✅ Admin A3 Platform Poster | Print-ready 297 × 420 mm overview page for screenshots, print and orientation | P2 — Medium | IMPLEMENTED: admin-only `/admin/poster` renders a self-contained A3 sheet (no app shell) covering the role model, lifecycle, all nine workspace pages, data pipeline and guardrails; `?clean=1` hides the screen controls, `@page size: A3` drives Print / Save PDF, and Settings → Admin Tools links to it. |
+| 89 | ✅ Admin A3 Platform Poster | Print-ready 297 × 420 mm neo-brutalist academic poster for screenshots, print and orientation | P2 — Medium | IMPLEMENTED (redesigned 2026-11-24, BUG-160): admin-only `/admin/poster` renders one self-contained A3 portrait sheet (no app shell) with seven numbered sections — hero, problem, six-stage workflow, four capability groups, three perspectives, outcome and a footer with both logos, live URL, GitHub link and a working QR. Real dashboard screenshots (overview, students, repositories, leaderboards, profile) replace stock imagery; copy describes only shipped features. Isolated `static/poster.css` and self-hosted display fonts; `?clean=1` hides the screen toolbar, `@page size: A3 portrait` drives Print / Save PDF (verified as exactly one page, 297 × 420 mm), and Settings → Admin Tools links to it. |
 
 ## Recommended Development Order
 

@@ -21,3 +21,11 @@ All six photographs are listed as free to use under the Unsplash License on thei
 - MIT-WPU logo and paper texture come from the project's existing `static/` assets.
 
 Logos are displayed as provided and remain the property of their respective owners.
+
+## Current poster (A3 redesign, 2026-11-24)
+
+The redesigned poster no longer uses the photographs above; that section is kept only to credit the older iteration. Its imagery is now:
+
+- `app/*.png` — screenshots of the running Student Analytics app, captured locally with synthetic demo data seeded by `scripts/seed_poster_demo.py`. No real student records appear. The poster labels them as sample data.
+- `qr-live-site.svg` — generated with [segno](https://github.com/heuer/segno) by `scripts/generate_poster_qr.py`; it encodes `https://student-analytics-iota.vercel.app/` and was verified by decoding the rendered SVG with jsQR.
+- `fonts/*.woff2` — Archivo, Archivo Black and IBM Plex Mono from Google Fonts (SIL Open Font License 1.1), self-hosted so A3 printing does not depend on a live font CDN.
