@@ -282,3 +282,66 @@ def test_weekly_sync_script_execution():
     parser = weekly_sync.parse_args([])
     assert hasattr(parser, "app_url")
     assert hasattr(parser, "secret")
+    assert parser.max_passes == 20
+    assert parser.sleep == 2.0
+
+
+def test_weekly_sync_script_loop_until_complete(monkeypatch):
+    import importlib.util
+    script_path = Path(__file__).resolve().parent.parent / ".github" / "scripts" / "weekly_sync.py"
+    spec = importlib.util.spec_from_file_location("weekly_sync", str(script_path))
+    weekly_sync = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(weekly_sync)
+
+    calls = []
+
+    def fake_trigger(app_url, secret, timeout=60.0):
+        calls.append(app_url)
+        if len(calls) == 1:
+            return 200, {
+                "week_id": "2026-W47",
+                "label": "Week of Nov 17",
+                "status": "partial",
+                "published": False,
+                "counted": 5,
+                "budget_exhausted": True,
+            }
+        return 200, {
+            "week_id": "2026-W47",
+            "label": "Week of Nov 17",
+            "status": "complete",
+            "published": True,
+            "counted": 3,
+            "top_github": {"kind": "winner", "commits": 10, "entries": [{"name": "A", "username": "a", "student_id": "1"}]},
+        }
+
+    monkeypatch.setattr(weekly_sync, "trigger_weekly_sync", fake_trigger)
+    rc = weekly_sync.main(["--app-url", "http://testserver", "--sleep", "0"])
+    assert rc == 0
+    assert len(calls) == 2
+
+
+def test_weekly_sync_script_loop_stops_on_stall(monkeypatch):
+    import importlib.util
+    script_path = Path(__file__).resolve().parent.parent / ".github" / "scripts" / "weekly_sync.py"
+    spec = importlib.util.spec_from_file_location("weekly_sync", str(script_path))
+    weekly_sync = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(weekly_sync)
+
+    calls = []
+
+    def fake_trigger(app_url, secret, timeout=60.0):
+        calls.append(app_url)
+        return 200, {
+            "week_id": "2026-W47",
+            "label": "Week of Nov 17",
+            "status": "partial",
+            "published": False,
+            "counted": 0,
+            "budget_exhausted": False,
+        }
+
+    monkeypatch.setattr(weekly_sync, "trigger_weekly_sync", fake_trigger)
+    rc = weekly_sync.main(["--app-url", "http://testserver", "--sleep", "0", "--max-passes", "5"])
+    assert rc == 1
+    assert len(calls) == 1
