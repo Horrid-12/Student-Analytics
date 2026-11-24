@@ -116,10 +116,23 @@
   {# Feature 85: choose which linked photo is displayed everywhere. Lives
      inside the Profile panel so settings keeps a single identity card. #}
   <div class="pfp-select-section" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">
-    <div class="pfp-select-title">
-      <span class="main-label">Profile Picture</span>
-      <span class="sub-label">Choose which photo is displayed across your profile, cards, and leaderboards.</span>
+    <div class="pfp-select-title" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+      <div>
+        <span class="main-label">Profile Picture</span>
+        <span class="sub-label">Choose which photo is displayed across your profile, cards, and leaderboards.</span>
+      </div>
+      {% if linkedin_configured %}
+      <a href="/auth/linkedin?mode=settingslink" class="btn" style="font-size:12px; padding:6px 12px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.2a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/></svg>
+        Re-link LinkedIn
+      </a>
+      {% endif %}
     </div>
+    {% if linked_flag == "linkedin" %}
+    <div class="badge-green" style="display:inline-block; margin-bottom:14px;">LinkedIn account re-linked successfully. Profile picture updated.</div>
+    {% elif linked_flag == "github" %}
+    <div class="badge-green" style="display:inline-block; margin-bottom:14px;">GitHub account re-linked successfully.</div>
+    {% endif %}
     {% if pfp_status == "saved" %}
     <div class="badge-green" style="display:inline-block; margin-bottom:14px;">Profile picture updated.</div>
     {% elif pfp_status == "invalid" %}
@@ -164,6 +177,9 @@
           <div class="pfp-info">
             <span class="pfp-platform">LinkedIn</span>
             <span class="pfp-handle">{{ pfp_options.linkedin.handle or 'LinkedIn' }}</span>
+            {% if not pfp_options.linkedin.avatar %}
+            <span style="font-size:11px; color:var(--muted); display:block; margin-top:2px;">No photo found · <a href="/auth/linkedin?mode=settingslink" style="color:var(--blue); text-decoration:underline;">re-link</a></span>
+            {% endif %}
           </div>
           <span class="pfp-radio-circle" aria-hidden="true"></span>
         </label>
@@ -179,7 +195,29 @@
 
 {% if auth_role == "Student" %}
 <section class="panel">
-  <div class="panel-title">LinkedIn Profile</div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+    <div class="panel-title" style="margin-bottom:0;">LinkedIn Profile</div>
+    {% if linkedin_configured %}
+    <a href="/auth/linkedin?mode=settingslink" class="btn" style="font-size:12px; padding:6px 12px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.2a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/></svg>
+      Re-link LinkedIn Account
+    </a>
+    {% endif %}
+  </div>
+  {% if linked_flag == "linkedin" %}
+  <div class="badge-green" style="display:inline-block; margin-bottom:12px;">LinkedIn account re-linked successfully. Profile picture updated.</div>
+  {% endif %}
+  {% if link_profile.linkedin.handle %}
+  <div style="font-size:13px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+    <span style="color:var(--muted);">OAuth Account:</span>
+    <strong>{{ link_profile.linkedin.handle }}</strong>
+    {% if link_profile.linkedin.avatar %}
+    <span style="color:var(--green); font-size:12px;">(Photo synced)</span>
+    {% else %}
+    <span style="color:var(--accent-red); font-size:12px;">(No photo found — re-link to fetch)</span>
+    {% endif %}
+  </div>
+  {% endif %}
   {# BUG-141: LinkedIn sign-in only shares a display name, so the public
      profile slug is captured from the student here (and in sign-up phase 3). #}
   {% if linkedin_status == "saved" %}
