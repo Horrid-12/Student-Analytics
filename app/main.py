@@ -2838,6 +2838,20 @@ def autocad_page(
             email = str(submission.get("student_email") or "").strip().lower()
             account = account_by_email.get(email) or {}
             submission["degree_branch"] = str(account.get("degree_branch") or "").strip()
+            profile_source = str(account.get("profile_source") or "").strip().lower()
+            avatar_url = (
+                str(account.get("linked_linkedin_avatar") or "").strip()
+                if profile_source == "linkedin"
+                else ""
+            )
+            if not avatar_url:
+                github_username = str(
+                    account.get("linked_github_username") or account.get("github_username") or ""
+                ).strip()
+                avatar_url = str(account.get("linked_github_avatar") or "").strip()
+                if not avatar_url and github_username:
+                    avatar_url = f"https://github.com/{github_username}.png"
+            submission["avatar_url"] = avatar_url
             submission["division"] = str(account.get("division") or "").strip()
             submission["batch"] = str(account.get("practical_batch") or "").strip()
             submission["semester"] = str(account.get("semester") or "").strip()

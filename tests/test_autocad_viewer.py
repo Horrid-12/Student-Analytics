@@ -38,6 +38,8 @@ def test_autocad_staff_submissions_render_as_onboarding_profile_cards(monkeypatc
         lambda: [{
             "email": "student@college.edu",
             "degree_branch": "Computer Engineering",
+            "profile_source": "github",
+            "linked_github_avatar": "https://avatars.githubusercontent.com/u/123?v=4",
             "division": "A",
             "practical_batch": "2",
             "semester": "Semester 4",
@@ -57,4 +59,6 @@ def test_autocad_staff_submissions_render_as_onboarding_profile_cards(monkeypatc
     assert "Practical batch" in response.text
     assert "Semester 4" in response.text
     assert "floor-plan.dwg" in response.text
+    assert 'href="/students?student=1234567890&amp;mine=1"' in response.text
+    assert 'src="https://avatars.githubusercontent.com/u/123' in response.text
     assert "DWG submission" in response.text
