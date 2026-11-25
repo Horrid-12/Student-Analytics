@@ -34,3 +34,5 @@ documentation/Lag Fix.md
 documentation/Bridge.md
 graphify-out/
 scripts/run_heavy_sync.py
+PROJECT_CONTEXT.md
+node_modules/
