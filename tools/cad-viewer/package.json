@@ -1,0 +1,23 @@
+{
+  "name": "student-analytics-cad-viewer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Build-only project that bundles the read-only DWG viewer into static/cad-viewer/. The deployed site loads only the built files; node_modules stays out of Git.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@mlightcad/cad-simple-viewer": "1.7.8",
+    "@mlightcad/data-model": "1.15.21",
+    "@mlightcad/libredwg-converter": "3.15.21",
+    "@mlightcad/mtext-parser": "1.5.7",
+    "@mlightcad/mtext-renderer": "0.13.7",
+    "@mlightcad/three-renderer": "1.7.8",
+    "lodash-es": "4.17.21",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

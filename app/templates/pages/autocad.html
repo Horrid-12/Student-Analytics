@@ -18,12 +18,32 @@
   .autocad-table th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
   .autocad-file{color:var(--blue);font-weight:700;text-decoration:none;overflow-wrap:anywhere}
   .autocad-file:hover{text-decoration:underline}
+  .autocad-file-cell{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .autocad-view-btn{border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:5px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .autocad-view-btn:hover{border-color:var(--blue);color:var(--blue)}
   .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
   .filter-bar{align-items:flex-end;margin:0 0 16px}
   .filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
   .filter-field .filter-select{min-width:140px}
   .filter-field.search-box-row{flex:1 1 320px}
   .filter-label{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  /* Read-only DWG viewer modal */
+  .cad-viewer-modal{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(12,20,32,.62);padding:20px}
+  .cad-viewer-modal[hidden]{display:none}
+  .cad-viewer-dialog{display:flex;flex-direction:column;width:min(1180px,100%);height:min(78vh,820px);background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 18px 48px rgba(10,18,30,.35)}
+  .cad-viewer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .cad-viewer-title{font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cad-viewer-tools{display:flex;gap:8px;flex-shrink:0}
+  .cad-viewer-tool{border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:7px 13px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .cad-viewer-tool:hover{border-color:var(--blue);color:var(--blue)}
+  .cad-viewer-stage{position:relative;flex:1;min-height:0;min-width:0;background:#f4f6f8}
+  html[data-theme="dark"] .cad-viewer-stage{background:#10161f}
+  .cad-viewer-canvas{position:absolute;inset:0;overflow:hidden}
+  .cad-viewer-status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;font-size:14px;color:var(--muted);background:inherit}
+  .cad-viewer-status[hidden]{display:none}
+  .cad-viewer-status.is-error{color:var(--red)}
+  .cad-viewer-spinner{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:cad-spin .8s linear infinite}
+  @keyframes cad-spin{to{transform:rotate(360deg)}}
   @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}}
 </style>
 {% endblock %}
@@ -52,7 +72,7 @@
   {% if can_upload %}
   <section class="autocad-panel" aria-labelledby="autocad-upload-title">
     <h2 id="autocad-upload-title">Submit a DWG file</h2>
-    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Your faculty can download it from this page. Browser preview, assignment grouping, grades, and remarks are not included yet.</p>
+    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Your faculty can download it from this page, and any submission can be opened in the browser viewer. Assignment grouping, grades, and remarks are not included yet.</p>
     <form class="autocad-form" method="post" action="/autocad/upload" enctype="multipart/form-data">
       <input type="file" name="file" accept=".dwg,application/acad" required aria-label="Choose a DWG file">
       <button class="autocad-submit" type="submit">Upload DWG</button>
@@ -61,7 +81,7 @@
   {% elif is_staff %}
   <section class="autocad-panel">
     <h2>Faculty submission inbox</h2>
-    <p class="autocad-muted">This inbox shows up to the latest 500 uploads. Use the class filters to narrow the list; DWG previews, grades, and remarks can be added in a later phase.</p>
+    <p class="autocad-muted">This inbox shows up to the latest 500 uploads. Use the class filters to narrow the list; every submission opens in the browser viewer. Grades and remarks can be added in a later phase.</p>
   </section>
   {% endif %}
 
@@ -94,7 +114,12 @@
           {% for submission in submissions %}
           <tr>
             {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td><td>{{ submission.division or '—' }}</td><td>{{ submission.batch or '—' }}</td><td>{{ submission.semester or '—' }}</td>{% endif %}
-            <td><a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a></td>
+            <td>
+              <div class="autocad-file-cell">
+                <a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a>
+                <button type="button" class="autocad-view-btn" data-file-url="/autocad/submissions/{{ submission.id }}/file" data-file-name="{{ submission.filename }}">View</button>
+              </div>
+            </td>
             <td>{{ '%.1f'|format(submission.file_size / 1048576) }} MB</td>
             <td>{{ submission.created_at|replace('T', ' ') }}</td>
           </tr>
@@ -107,4 +132,123 @@
     {% endif %}
   </section>
 </div>
+
+{# Read-only in-browser DWG viewer. The heavy bundle is imported lazily the
+   first time a View button is clicked, so normal page loads stay light. #}
+<div class="cad-viewer-modal" id="cadViewerModal" hidden>
+  <div class="cad-viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="cadViewerTitle">
+    <div class="cad-viewer-head">
+      <span class="cad-viewer-title" id="cadViewerTitle">Drawing</span>
+      <div class="cad-viewer-tools">
+        <button type="button" class="cad-viewer-tool" id="cadViewerFit">Fit view</button>
+        <button type="button" class="cad-viewer-tool" id="cadViewerClose">Close</button>
+      </div>
+    </div>
+    <div class="cad-viewer-stage" id="cadViewerStage">
+      <div class="cad-viewer-canvas" id="cadViewerCanvas"></div>
+      <div class="cad-viewer-status" id="cadViewerStatus" role="status" aria-live="polite" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var BUNDLE_URL = {{ url_for('static', path='/cad-viewer/cad-viewer.js') | string | tojson }};
+  var modal = document.getElementById('cadViewerModal');
+  var canvasHost = document.getElementById('cadViewerCanvas');
+  var stage = document.getElementById('cadViewerStage');
+  var statusEl = document.getElementById('cadViewerStatus');
+  var titleEl = document.getElementById('cadViewerTitle');
+  var fitBtn = document.getElementById('cadViewerFit');
+  var closeBtn = document.getElementById('cadViewerClose');
+  if (!modal || !canvasHost || !statusEl) return;
+
+  var viewerModule = null;
+  var openToken = 0;
+  var lastTrigger = null;
+
+  var ERRORS = {
+    'viewer-assets-missing': 'The drawing viewer could not load its engine files. Refresh the page and try again.',
+    'viewer-webgl-missing': 'This browser cannot render drawings because WebGL is unavailable.',
+    'viewer-parse-failed': 'This drawing could not be opened. The file may use an unsupported DWG version.',
+    'viewer-open-failed': 'This drawing could not be opened.',
+    'file-fetch': 'The drawing file could not be loaded. Please try again.',
+    'bundle': 'The drawing viewer failed to load. Refresh the page and try again.'
+  };
+
+  function showStatus(message, isError) {
+    statusEl.hidden = false;
+    statusEl.classList.toggle('is-error', !!isError);
+    statusEl.textContent = '';
+    if (!isError) {
+      var spin = document.createElement('div');
+      spin.className = 'cad-viewer-spinner';
+      statusEl.appendChild(spin);
+    }
+    var text = document.createElement('span');
+    text.textContent = message;
+    statusEl.appendChild(text);
+  }
+
+  function closeModal() {
+    openToken += 1;
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    if (lastTrigger) { lastTrigger.focus(); lastTrigger = null; }
+  }
+
+  function openModal(fileName) {
+    titleEl.textContent = fileName || 'Drawing';
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    closeBtn.focus();
+  }
+
+  function loadViewer(btn) {
+    var token = ++openToken;
+    var url = btn.getAttribute('data-file-url');
+    var fileName = btn.getAttribute('data-file-name') || 'drawing.dwg';
+    lastTrigger = btn;
+    openModal(fileName);
+    showStatus('Loading viewer…', false);
+    (async function () {
+      if (!viewerModule) {
+        viewerModule = await import(BUNDLE_URL);
+      }
+      if (token !== openToken) return;
+      showStatus('Loading drawing…', false);
+      var response = await fetch(url, { credentials: 'same-origin' });
+      if (!response.ok) throw new Error('file-fetch');
+      var buffer = await response.arrayBuffer();
+      if (token !== openToken) return;
+      await viewerModule.openDrawing({
+        container: canvasHost,
+        host: stage,
+        fileName: fileName,
+        buffer: buffer
+      });
+      if (token !== openToken) return;
+      statusEl.hidden = true;
+    })().catch(function (error) {
+      if (token !== openToken) return;
+      console.error('DWG viewer error:', error);
+      var code = (error && error.message) || 'bundle';
+      showStatus(ERRORS[code] || ERRORS.bundle, true);
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var viewBtn = event.target && event.target.closest ? event.target.closest('.autocad-view-btn') : null;
+    if (viewBtn) { event.preventDefault(); loadViewer(viewBtn); return; }
+    if (event.target === closeBtn || event.target === modal) closeModal();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !modal.hidden) closeModal();
+  });
+  fitBtn.addEventListener('click', function () {
+    if (viewerModule && typeof viewerModule.fitDrawing === 'function') viewerModule.fitDrawing();
+  });
+})();
+</script>
 {% endblock %}
