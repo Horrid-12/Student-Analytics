@@ -34,6 +34,21 @@
   .autocad-file-size{color:var(--muted);font-size:12px}
   .autocad-view-btn{width:100%;min-height:40px;border:0;border-radius:6px;background:var(--blue);color:#fff;padding:8px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
   .autocad-view-btn:hover{filter:brightness(.95)}
+  .autocad-remark-toggle{width:100%;min-height:40px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);padding:8px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .autocad-remark-toggle:hover{border-color:var(--blue);color:var(--blue)}
+  .autocad-remark-display,.autocad-remark-editor{grid-column:1/-1;min-width:0;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card-soft)}
+  .autocad-remark-display{border-left:3px solid var(--blue)}
+  .autocad-remark-title{color:var(--text);font-size:12px;font-weight:750}
+  .autocad-remark-text{margin:6px 0 0;color:var(--text);font-size:13px;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere}
+  .autocad-remark-meta{margin-top:7px;color:var(--muted);font-size:11px}
+  .autocad-remark-editor{display:flex;flex-direction:column;gap:9px}
+  .autocad-remark-editor[hidden]{display:none}
+  .autocad-remark-editor label{color:var(--text);font-size:12px;font-weight:700}
+  .autocad-remark-editor textarea{width:100%;min-height:100px;box-sizing:border-box;resize:vertical;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);padding:11px 12px;font:inherit;font-size:13px;line-height:1.5}
+  .autocad-remark-editor textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-active-bg)}
+  .autocad-remark-footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .autocad-remark-hint{color:var(--muted);font-size:11px}
+  .autocad-remark-save{min-height:38px;border:0;border-radius:6px;background:var(--blue);color:#fff;padding:8px 14px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
   .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
   .filter-bar{align-items:flex-end;margin:0 0 16px}
   .filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -78,17 +93,23 @@
 
   {% if notice == 'uploaded' %}
   <div class="autocad-alert success" role="status">Your DWG file was uploaded successfully.</div>
+  {% elif remark_saved %}
+  <div class="autocad-alert success" role="status">The remark was saved.</div>
   {% endif %}
   {% if error %}
   <div class="autocad-alert error" role="alert">
-    {% if error == 'save_failed' %}The file could not be saved. Please try again.{% else %}{{ error }}{% endif %}
+    {% if error == 'save_failed' %}The file could not be saved. Please try again.
+    {% elif error == 'remark_required' %}Please write a remark before saving.
+    {% elif error == 'remark_too_long' %}Remarks must be 1,000 characters or fewer.
+    {% elif error == 'remark_save_failed' %}The remark could not be saved. Please try again.
+    {% else %}{{ error }}{% endif %}
   </div>
   {% endif %}
 
   {% if can_upload %}
   <section class="autocad-panel" aria-labelledby="autocad-upload-title">
     <h2 id="autocad-upload-title">Submit a DWG file</h2>
-    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Your faculty can download it from this page, and any submission can be opened in the browser viewer. Assignment grouping, grades, and remarks are not included yet.</p>
+    <p class="autocad-muted">Upload one <code>.dwg</code> file, up to 4 MB. Faculty can download and view it in the browser, then leave a remark on the submission. Assignment grouping, grades, and reply threads are not included.</p>
     <form class="autocad-form" method="post" action="/autocad/upload" enctype="multipart/form-data">
       <input type="file" name="file" accept=".dwg,application/acad" required aria-label="Choose a DWG file">
       <button class="autocad-submit" type="submit">Upload DWG</button>
@@ -97,7 +118,7 @@
   {% elif is_staff %}
   <section class="autocad-panel">
     <h2>Faculty submission inbox</h2>
-    <p class="autocad-muted">This inbox shows up to the latest 500 uploads. Use the class filters to narrow the list; every submission opens in the browser viewer. Grades and remarks can be added in a later phase.</p>
+    <p class="autocad-muted">This inbox shows up to the latest 500 uploads. Use the class filters to narrow the list; open each drawing in the viewer or leave a short remark for the student. Grading and reply threads are not included.</p>
   </section>
   {% endif %}
 
@@ -147,7 +168,27 @@
           <a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a>
           <span class="autocad-file-size">{{ '%.1f'|format(submission.file_size / 1048576) }} MB</span>
           <button type="button" class="autocad-view-btn" data-file-url="/autocad/submissions/{{ submission.id }}/file" data-file-name="{{ submission.filename }}">View</button>
+          {% if is_staff %}
+          <button type="button" class="autocad-remark-toggle" data-remark-target="autocad-remark-editor-{{ submission.id }}" aria-controls="autocad-remark-editor-{{ submission.id }}" aria-expanded="false">Remarks</button>
+          {% endif %}
         </aside>
+        {% if submission.remark %}
+        <section class="autocad-remark-display" aria-label="Faculty remark">
+          <div class="autocad-remark-title">Teacher remark</div>
+          <p class="autocad-remark-text">{{ submission.remark }}</p>
+          {% if submission.remark_updated_at %}<div class="autocad-remark-meta">Updated {{ submission.remark_updated_at[:16]|replace('T', ' ') }}</div>{% endif %}
+        </section>
+        {% endif %}
+        {% if is_staff %}
+        <form class="autocad-remark-editor" id="autocad-remark-editor-{{ submission.id }}" method="post" action="/autocad/submissions/{{ submission.id }}/remark{% if return_query %}?{{ return_query }}{% endif %}" hidden>
+          <label for="autocad-remark-text-{{ submission.id }}">Teacher remark</label>
+          <textarea id="autocad-remark-text-{{ submission.id }}" name="remark" maxlength="{{ max_remark_chars }}" required placeholder="Write a short remark for this submission…">{{ submission.remark or '' }}</textarea>
+          <div class="autocad-remark-footer">
+            <span class="autocad-remark-hint">Visible to the student · up to {{ max_remark_chars }} characters</span>
+            <button type="submit" class="autocad-remark-save">Save remark</button>
+          </div>
+        </form>
+        {% endif %}
       </article>
       {% endfor %}
     </div>
@@ -288,6 +329,15 @@
   }
 
   document.addEventListener('click', function (event) {
+    var remarkBtn = event.target && event.target.closest ? event.target.closest('.autocad-remark-toggle') : null;
+    if (remarkBtn) {
+      var editor = document.getElementById(remarkBtn.getAttribute('data-remark-target'));
+      if (!editor) return;
+      editor.hidden = !editor.hidden;
+      remarkBtn.setAttribute('aria-expanded', editor.hidden ? 'false' : 'true');
+      if (!editor.hidden) editor.querySelector('textarea').focus();
+      return;
+    }
     var viewBtn = event.target && event.target.closest ? event.target.closest('.autocad-view-btn') : null;
     if (viewBtn) { event.preventDefault(); loadViewer(viewBtn); return; }
     if (event.target === closeBtn || event.target === modal) closeModal();
