@@ -289,26 +289,26 @@ body.clean { background: var(--paper); }
 
 /* Capabilities ------------------------------------------------------------ */
 .capabilities { height: 62mm; flex: 0 0 62mm; }
-.offer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; height: calc(100% - 8.2mm); }
+.offer-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3mm; height: calc(100% - 8.2mm); }
 .offer {
     min-width: 0; background: var(--card); border: var(--outline); box-shadow: var(--hard);
     display: flex; flex-direction: column; overflow: hidden;
 }
-.offer-shot { position: relative; height: 32mm; flex: 0 0 32mm; overflow: hidden; border-bottom: var(--outline); background: var(--paper); }
+.offer-shot { position: relative; height: 25mm; flex: 0 0 25mm; overflow: hidden; border-bottom: var(--outline); background: var(--paper); }
 .offer-shot img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: top left; }
 .offer-shot span {
     position: absolute; left: 0; bottom: 0; padding: .8mm 1.8mm;
-    background: var(--ink); color: var(--card); font: 600 7pt/1 var(--mono);
+    background: var(--ink); color: var(--card); font: 600 7.6pt/1 var(--mono);
     letter-spacing: .1em; text-transform: uppercase;
 }
-.offer-body { padding: 1.7mm 2.2mm 1.4mm; display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.offer-body .tag { font: 600 7.4pt/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
-.offer-body h3 { margin: 1.2mm 0 1mm; font: 400 15pt/.98 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
-.offer-body p { margin: 0; font: 8.6pt/1.22 var(--body); color: var(--slate); }
+.offer-body { padding: 1.9mm 2.2mm 1.5mm; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.offer-body .tag { font: 600 8pt/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.offer-body h3 { margin: 1.3mm 0 1.1mm; font: 400 16.5pt/.98 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
+.offer-body p { margin: 0; font: 9.8pt/1.2 var(--body); color: var(--slate); }
 .offer-body p strong { color: var(--ink); font-weight: 700; }
 .offer-body .mini {
     margin-top: auto; padding-top: 1.2mm; border-top: .5mm solid var(--line);
-    font: 500 7pt/1.1 var(--mono); color: var(--steel); text-transform: uppercase; letter-spacing: .05em;
+    font: 500 7.6pt/1.1 var(--mono); color: var(--steel); text-transform: uppercase; letter-spacing: .05em;
 }
 
 /* Print ------------------------------------------------------------------- */
