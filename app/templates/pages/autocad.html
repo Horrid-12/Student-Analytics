@@ -154,7 +154,7 @@
 <script>
 (function () {
   'use strict';
-  var BUNDLE_URL = {{ url_for('static', path='/cad-viewer/cad-viewer.js') | tojson }};
+  var BUNDLE_URL = {{ url_for('static', path='/cad-viewer/cad-viewer.js') | string | tojson }};
   var modal = document.getElementById('cadViewerModal');
   var canvasHost = document.getElementById('cadViewerCanvas');
   var stage = document.getElementById('cadViewerStage');
