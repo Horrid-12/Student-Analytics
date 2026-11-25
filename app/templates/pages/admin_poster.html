@@ -11,16 +11,18 @@
 <div class="tools">
   <div class="tools-group">
     <a href="/">← Back to dashboard</a>
-    <span class="hint">A3 portrait · 297 × 420 mm · one page</span>
+    <span class="hint">A3 landscape · 420 × 297 mm · one page</span>
   </div>
   <div class="tools-group">
     <a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a>
+    <a class="tool-btn" href="{{ url_for('static', path='/poster-assets/poster-a3.png') }}" download="Student-Analytics-Poster-A3.png">Save PNG · A3</a>
+    <a class="tool-btn" href="{{ url_for('static', path='/poster-assets/poster-a4.png') }}" download="Student-Analytics-Poster-A4.png">Save PNG · A4</a>
     <button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button>
   </div>
 </div>
 
 <main class="stage">
-<article class="sheet" aria-label="A3 Student Analytics platform poster">
+<article class="sheet" aria-label="A3 landscape Student Analytics platform poster">
 
   <div class="strip">
     <span>MIT World Peace University · Student Analytics</span>
@@ -33,6 +35,7 @@
     <!-- A · HERO -------------------------------------------------------- -->
     <header class="hero sec">
       <div class="hero-copy">
+        <div class="sec-hd"><span class="sec-no">A</span><span class="sec-label">The platform</span><span class="sec-rule"></span></div>
         <div class="brandrow">
           <img src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
           <div>
@@ -41,10 +44,8 @@
           </div>
         </div>
         <h1>See the work.<br>Find your <em>next level.</em></h1>
-        <p class="hero-lede">GitHub projects, coding practice and semester context—<strong>brought into one shared view</strong> for students, faculty and administrators.</p>
-        <div class="hero-tags">
-          <span>GitHub</span><span>HackerRank</span><span>Cohort analytics</span><span>Role-based access</span>
-        </div>
+        <p class="hero-lede">GitHub projects, coding practice and semester context—<strong>one shared view</strong> for students, faculty and administrators.</p>
+        <div class="hero-tags"><span>GitHub</span><span>HackerRank</span><span>Cohort analytics</span><span>Role-based access</span></div>
         <div class="burst">THE WHOLE<br>COHORT<br>AT A GLANCE</div>
       </div>
       <figure class="hero-shot">
@@ -53,110 +54,93 @@
       </figure>
     </header>
 
-    <!-- B · PROBLEM ----------------------------------------------------- -->
-    <section class="problem sec" aria-label="The problem Student Analytics solves">
-      <div class="problem-lead">
-        <div class="sec-hd"><span class="sec-no">A</span><span class="sec-label">The problem</span><span class="sec-rule"></span></div>
-        <h2>Talent was everywhere.<br><em>Visibility</em> wasn’t.</h2>
-        <p>Progress existed—but only in fragments, and only one student at a time.</p>
-      </div>
-      <div class="problem-item"><b>Manual checks</b><span>Repositories and coding progress reviewed one profile at a time, every semester.</span></div>
-      <div class="problem-item"><b>Scattered signals</b><span>GitHub activity, HackerRank practice and class context did not sit together.</span></div>
-      <div class="problem-item"><b>Narrow view</b><span>Students saw their own work, but not what the rest of the cohort was building.</span></div>
-    </section>
+    <div class="middle">
+      <div class="left-stack">
 
-    <!-- C · WORKFLOW ---------------------------------------------------- -->
-    <section class="flow sec" aria-label="Six-stage workflow from sign-in to insight">
-      <div class="sec-hd"><span class="sec-no">B</span><span class="sec-label">How it works</span><span class="sec-rule"></span><span class="sec-note">Six stages · sign-in to insight</span></div>
-      <h2>From accounts to <em>answers</em>.</h2>
-      <div class="flow-grid">
-        <div class="flow-card"><div><span class="num">01</span><h3>Sign in</h3><p>Campus Google account. Access follows your <strong>role</strong>.</p></div><span class="chip">Campus account</span></div>
-        <div class="flow-card"><div><span class="num">02</span><h3>Verify</h3><p>Students submit academic identity; <strong>faculty or admin</strong> approves it.</p></div><span class="chip">Onboarding</span></div>
-        <div class="flow-card"><div><span class="num">03</span><h3>Connect</h3><p>Link a <strong>GitHub username</strong> and a HackerRank handle.</p></div><span class="chip">Linked handles</span></div>
-        <div class="flow-card"><div><span class="num">04</span><h3>Sync</h3><p>Account snapshots pull repos, activity and <strong>coding stats</strong>.</p></div><span class="chip">Hourly cache</span></div>
-        <div class="flow-card"><div><span class="num">05</span><h3>Understand</h3><p>Overview folds signals into <strong>cohort metrics</strong> and statistics.</p></div><span class="chip">Overview + stats</span></div>
-        <div class="flow-card"><div><span class="num">06</span><h3>Explore</h3><p>Filter, compare, open profiles and <strong>export</strong> what you need.</p></div><span class="chip">Filter · export</span></div>
+        <!-- B · PROBLEM -------------------------------------------------- -->
+        <section class="problem sec" aria-label="The problem Student Analytics solves">
+          <div class="sec-hd"><span class="sec-no">B</span><span class="sec-label">The problem</span><span class="sec-rule"></span></div>
+          <h2>Talent was everywhere.<br><em>Visibility</em> wasn’t.</h2>
+          <p class="problem-lead">Progress existed—but only in fragments, one student at a time.</p>
+          <div class="problem-items">
+            <div class="problem-item"><b>Manual checks</b><span>Repo-by-repo, student-by-student reviews each semester.</span></div>
+            <div class="problem-item"><b>Scattered signals</b><span>GitHub, HackerRank and class context lived apart.</span></div>
+            <div class="problem-item"><b>Narrow view</b><span>Students saw their own work, not the cohort’s.</span></div>
+          </div>
+        </section>
+
+        <!-- E · PERSPECTIVES --------------------------------------------- -->
+        <section class="roles sec" aria-label="How each role uses the platform">
+          <div class="sec-hd"><span class="sec-no">E</span><span class="sec-label">Three perspectives</span><span class="sec-rule"></span><span class="sec-note">Same data</span></div>
+          <div class="role-grid">
+            <article class="role"><span class="role-mark">01</span><div class="tag">Student</div><h3>Find your next step</h3><p>Compare your work with the cohort. <strong>Find peers with the same goals.</strong></p></article>
+            <article class="role"><span class="role-mark">02</span><div class="tag">Faculty</div><h3>Guide the class</h3><p>Filter by division, batch and semester. <strong>Spot who needs attention.</strong></p></article>
+            <article class="role"><span class="role-mark">03</span><div class="tag">Admin</div><h3>Keep it running</h3><p>Manage accounts and approvals, <strong>oversee sync</strong> and the audit trail.</p></article>
+          </div>
+        </section>
+
+        <!-- F · OUTCOME -------------------------------------------------- -->
+        <section class="outcome sec" aria-label="Outcome">
+          <div class="outcome-copy"><small>The result</small><h2>Less checking.<br>More seeing.</h2><p>One shared picture of student work—easier to guide, easier to act on.</p></div>
+          <div class="outcome-arrow" aria-hidden="true">↗</div>
+        </section>
+
       </div>
-      <div class="flow-foot"><span><b>CACHED FOR ONE HOUR</b> · repeat views skip the API round-trip</span><span>SNAPSHOTS, NOT LIVE SCRAPING</span></div>
-    </section>
+      <div class="right-stack">
+
+        <!-- C · WORKFLOW -------------------------------------------------- -->
+        <section class="flow sec" aria-label="Six-stage workflow from sign-in to insight">
+          <div class="sec-hd"><span class="sec-no">C</span><span class="sec-label">How it works</span><span class="sec-rule"></span><span class="sec-note">Six stages · sign-in to insight</span></div>
+          <h2>From accounts to <em>answers</em>.</h2>
+          <div class="flow-grid">
+            <div class="flow-card"><div><span class="num">01</span><h3>Sign in</h3><p>Campus Google sign-in. Access follows your <strong>role</strong>.</p></div><span class="chip">Campus account</span></div>
+            <div class="flow-card"><div><span class="num">02</span><h3>Verify</h3><p>Students submit identity; <strong>faculty or admin</strong> approves it.</p></div><span class="chip">Onboarding</span></div>
+            <div class="flow-card"><div><span class="num">03</span><h3>Connect</h3><p>Link a <strong>GitHub username</strong> and HackerRank handle.</p></div><span class="chip">Linked handles</span></div>
+            <div class="flow-card"><div><span class="num">04</span><h3>Sync</h3><p>Snapshots pull repos, activity and <strong>coding stats</strong>.</p></div><span class="chip">Hourly cache</span></div>
+            <div class="flow-card"><div><span class="num">05</span><h3>Understand</h3><p>Overview rolls signals into <strong>cohort metrics</strong>.</p></div><span class="chip">Overview + stats</span></div>
+            <div class="flow-card"><div><span class="num">06</span><h3>Explore</h3><p>Filter, compare, open profiles and <strong>export</strong>.</p></div><span class="chip">Filter · export</span></div>
+          </div>
+          <div class="flow-foot"><span><b>CACHED FOR ONE HOUR</b> · repeat views skip the API round-trip</span><span>SNAPSHOTS, NOT LIVE SCRAPING</span></div>
+        </section>
+
+        <!-- TECH STACK --------------------------------------------------- -->
+        <section class="tech sec" aria-label="Technical architecture and stack">
+          <div class="sec-hd"><span class="sec-no">T</span><span class="sec-label">Under the hood</span><span class="sec-rule"></span><span class="sec-note">What it is built with</span></div>
+          <div class="tech-grid">
+            <article class="tech-tile"><span class="corner">01</span><div class="tag">Runtime</div><h3>FastAPI + Jinja2</h3><p>Native ASGI on Vercel’s Python runtime; Uvicorn locally.</p></article>
+            <article class="tech-tile"><span class="corner">02</span><div class="tag">Data</div><h3>Postgres-first</h3><p><code>psycopg3</code> pool on Neon; SQLite fallback; idempotent <code>schema.sql</code>.</p></article>
+            <article class="tech-tile"><span class="corner">03</span><div class="tag">Client</div><h3>Vanilla + ECharts</h3><p>Server-rendered templates, ECharts, self-hosted fonts, CSV/XLSX exports.</p></article>
+            <article class="tech-tile"><span class="corner">04</span><div class="tag">Integration</div><h3>GitHub + HackerRank</h3><p>REST via <code>httpx</code>, retry/backoff, 1 h cache (Upstash or memory).</p></article>
+            <article class="tech-tile"><span class="corner">05</span><div class="tag">Access</div><h3>Roles + audit</h3><p>Google OAuth + college email; admin / faculty / student roles; audit log.</p></article>
+            <article class="tech-tile"><span class="corner">06</span><div class="tag">Delivery</div><h3>Tested parity</h3><p><code>pytest</code> suite across the frozen legacy and ported services.</p></article>
+          </div>
+        </section>
+
+      </div>
+    </div>
 
     <!-- D · CAPABILITIES ------------------------------------------------ -->
-    <section class="offers sec" aria-label="Four capability groups in Student Analytics">
-      <div class="sec-hd"><span class="sec-no">C</span><span class="sec-label">Inside the platform</span><span class="sec-rule"></span><span class="sec-note">Four ways in</span></div>
+    <section class="capabilities sec" aria-label="Four capability groups in Student Analytics">
+      <div class="sec-hd"><span class="sec-no">D</span><span class="sec-label">Inside the platform</span><span class="sec-rule"></span><span class="sec-note">Four ways in · sample data</span></div>
       <div class="offer-grid">
         <article class="offer">
           <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/students.png') }}" alt="Student Explorer roster table"><span>Student Explorer</span></div>
-          <div class="offer-body">
-            <div class="tag">Directory</div>
-            <h3>Students</h3>
-            <p>Search the roster by name, ID or username. Filter by <strong>division, batch and semester</strong>; open a full profile.</p>
-            <div class="mini">CSV / XLSX export</div>
-          </div>
+          <div class="offer-body"><div class="tag">Directory</div><h3>Students</h3><p>Search by name, ID or username. Filter by <strong>division, batch and semester</strong>.</p><div class="mini">CSV / XLSX export</div></div>
         </article>
         <article class="offer">
           <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/repositories.png') }}" alt="Repositories page with project cards"><span>Repositories</span></div>
-          <div class="offer-body">
-            <div class="tag">Projects</div>
-            <h3>Repositories</h3>
-            <p>Browse public repos with language, activity, stars, forks and <strong>quality score</strong>. Grid or table view.</p>
-            <div class="mini">Search · filter · sort</div>
-          </div>
+          <div class="offer-body"><div class="tag">Projects</div><h3>Repositories</h3><p>Public repos with language, activity, stars, forks and <strong>quality score</strong>.</p><div class="mini">Grid + table views</div></div>
         </article>
         <article class="offer">
           <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/leaderboards.png') }}" alt="Leaderboards page with ranked students"><span>Leaderboards</span></div>
-          <div class="offer-body">
-            <div class="tag">Compare</div>
-            <h3>Leaderboards</h3>
-            <p>Rank <strong>recent activity</strong> and public repositories across the cohort, on GitHub or HackerRank.</p>
-            <div class="mini">GitHub / HackerRank</div>
-          </div>
+          <div class="offer-body"><div class="tag">Compare</div><h3>Leaderboards</h3><p>Rank <strong>recent activity</strong> and public repos on GitHub or HackerRank.</p><div class="mini">GitHub / HackerRank</div></div>
         </article>
         <article class="offer">
           <div class="offer-shot"><img src="{{ url_for('static', path='/poster-assets/app/profile.png') }}" alt="Student profile panel with certificates, GitHub and HackerRank tabs"><span>Student profile</span></div>
-          <div class="offer-body">
-            <div class="tag">Depth</div>
-            <h3>Profiles</h3>
-            <p>One panel for <strong>certificates, languages and activity</strong>, with GitHub and HackerRank tabs.</p>
-            <div class="mini">Context behind the numbers</div>
-          </div>
+          <div class="offer-body"><div class="tag">Depth</div><h3>Profiles</h3><p><strong>Certificates, languages and activity</strong>, with GitHub and HackerRank tabs.</p><div class="mini">Context behind the numbers</div></div>
         </article>
       </div>
     </section>
-
-    <!-- E · PERSPECTIVES ------------------------------------------------ -->
-    <section class="roles sec" aria-label="How each role uses the platform">
-      <div class="sec-hd"><span class="sec-no">D</span><span class="sec-label">Three perspectives</span><span class="sec-rule"></span><span class="sec-note">Same data · different questions</span></div>
-      <div class="role-grid">
-        <article class="role"><span class="role-mark">01</span><div class="tag">Student</div><h3>Find your next step</h3><p>See your work beside the cohort. <strong>Find peers with the same goals</strong> and aim higher.</p></article>
-        <article class="role"><span class="role-mark">02</span><div class="tag">Faculty</div><h3>Guide the class</h3><p>Filter by division, batch and semester. <strong>Spot who needs attention</strong> and follow progress.</p></article>
-        <article class="role"><span class="role-mark">03</span><div class="tag">Admin</div><h3>Keep it running</h3><p>Manage accounts and approvals, <strong>oversee sync</strong> and review the audit trail.</p></article>
-      </div>
-    </section>
-
-    <!-- F · OUTCOME ----------------------------------------------------- -->
-    <section class="outcome sec" aria-label="Outcome">
-      <div class="outcome-copy">
-        <small>The result</small>
-        <h2>Less checking.<br>More seeing.</h2>
-        <p>One shared, evidence-based picture of student work—easier to guide, easier to act on.</p>
-      </div>
-      <div class="outcome-arrow" aria-hidden="true">↗</div>
-    </section>
-
-    <!-- G · FOOTER ------------------------------------------------------ -->
-    <footer class="foot sec">
-      <div class="foot-brand">
-        <img class="logo" src="{{ url_for('static', path='/Favicon.png') }}" alt="Student Analytics logo">
-        <img class="mit" src="{{ url_for('static', path='/mit-wpu-logo-600.webp') }}" alt="MIT World Peace University">
-        <div class="who"><b>Student Analytics</b>MIT World Peace University, Pune</div>
-      </div>
-      <div class="foot-links">
-        <div class="link"><span>Live</span><a href="https://student-analytics-iota.vercel.app/">student-analytics-iota.vercel.app</a></div>
-        <div class="link"><img src="{{ url_for('static', path='/poster-assets/github-mark.png') }}" alt=""><span>Source</span><a href="https://github.com/Horrid-12/Student-Analytics">github.com/Horrid-12/Student-Analytics</a></div>
-        <div class="note">Screenshots show sample data for illustration. Scan for the live site.</div>
-      </div>
-      <div class="qr"><img src="{{ url_for('static', path='/poster-assets/qr-live-site.svg') }}" alt="QR code linking to the live Student Analytics site"></div>
-    </footer>
 
   </div>
 </article>
