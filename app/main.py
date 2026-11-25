@@ -4015,6 +4015,7 @@ def students_page(
             "privacy": _privacy,
             "own_sid": _own_sid,
             "mask_privacy": _student_viewer,
+            **_bell_context(request, view, roster),
         },
     )
 

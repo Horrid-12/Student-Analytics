@@ -272,6 +272,45 @@ def test_bell_and_toast_in_template_with_dark_and_light_theme(tmp_path, monkeypa
     assert 'href="/students?select=PRN-102"' in page
 
 
+def test_weekly_announcement_visible_on_students_tab(monkeypatch):
+    """The Students tab includes the bell partial, so it must receive the
+    bell context too — otherwise the weekly toast silently disappears there."""
+    import pandas as pd
+
+    import app.main as main
+
+    monkeypatch.setenv("ALLOWED_OAUTH_DOMAINS", "c.edu")
+    view = {
+        "roster_id": "fleet",
+        "records": [],
+        "state": {"status": "complete"},
+        "students": pd.DataFrame(columns=[
+            "Student_ID", "Student Name", "GitHub_Username", "LinkedIn_Username",
+            "HackerRank_Username", "Division", "Batch", "Academic_Year", "Semester",
+        ]),
+        "repos": pd.DataFrame(),
+        "team_repos": pd.DataFrame(),
+        "issues": pd.DataFrame(),
+    }
+    monkeypatch.setattr(main, "_analysis_view", lambda rid: view)
+
+    client = TestClient(app)
+    auth.create_user("student2@c.edu", "secret123", "student", "Student Two")
+    support.create_notification(
+        "student2@c.edu", 0, weekly.WEEKLY_TYPE, "Top student of Week of Sep 21",
+        '<a href="/students?select=PRN-101" class="notif-student-link">@dev1</a> topped the week.',
+    )
+    login_resp = client.post("/login", data={"email": "student2@c.edu", "password": "secret123"})
+    assert login_resp.status_code in (200, 302)
+
+    page = client.get("/students?roster=fleet").text
+    assert '<div class="topbar-title">Students</div>' in page
+    assert '<details class="notif-bell"' in page
+    assert '<aside class="weekly-toast-banner"' in page
+    assert "Top student of Week of Sep 21" in page
+    assert 'href="/students?select=PRN-101"' in page
+
+
 def test_weekly_sync_script_execution():
     import importlib.util
     script_path = Path(__file__).resolve().parent.parent / ".github" / "scripts" / "weekly_sync.py"
