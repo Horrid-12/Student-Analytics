@@ -1,6 +1,7 @@
 """Admin A3 poster page: access control and print-ready markup."""
 
 import uuid
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -22,19 +23,22 @@ def test_admin_poster_renders_a3_sheet():
     response = client.get("/admin/poster")
     assert response.status_code == 200
     body = response.text
-    assert "Every commit." in body
-    assert "width: 297mm" in body
-    assert "height: 420mm" in body
-    assert "The workspace" in body
+    assert "Class Metrics Radar" in body
+    assert "radar-svg" in body
     assert "Under the hood" in body
     assert "student-analytics-iota.vercel.app" in body
+    poster_css = (Path(__file__).resolve().parent.parent / "static" / "poster.css").read_text(encoding="utf-8")
+    assert "width: 420mm" in poster_css
+    assert "height: 297mm" in poster_css
 
 
 def test_admin_poster_clean_mode_hides_controls():
     client = make_client("admin")
     body = client.get("/admin/poster?clean=1").text
-    assert '<body class="clean">' in body
-    assert "Screenshot mode" not in body
+    assert '<body class="poster-root clean">' in body
+    assert "Screenshot mode" in body
+    poster_css = (Path(__file__).resolve().parent.parent / "static" / "poster.css").read_text(encoding="utf-8")
+    assert "body.clean .tools { display: none !important; }" in poster_css
 
 
 def test_admin_poster_redirects_students_home():
