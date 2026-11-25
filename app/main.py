@@ -4015,6 +4015,7 @@ def students_page(
             "privacy": _privacy,
             "own_sid": _own_sid,
             "mask_privacy": _student_viewer,
+            **_bell_context(request, view, roster),
         },
     )
 
@@ -5274,7 +5275,7 @@ def admin_poster(request: Request, clean: str = ""):
 
     A single, print-ready page that explains the whole product. It is rendered
     outside the app shell so a browser screenshot (or ``?clean=1``) captures
-    only the 297 x 420 mm sheet.
+    only the 420 x 297 mm landscape sheet.
     """
     user = getattr(request.state, "user", None)
     if not user:
