@@ -26,7 +26,7 @@
 
   <div class="strip">
     <span>MIT World Peace University · Student Analytics</span>
-    <span class="dots">• • •</span>
+    <a class="strip-url" href="https://student-analytics-iota.vercel.app/">student-analytics-iota.vercel.app</a>
     <span>One cohort. One clear picture.</span>
   </div>
 
@@ -46,11 +46,40 @@
         <h1>See the work.<br>Find your <em>next level.</em></h1>
         <p class="hero-lede">GitHub projects, coding practice and semester context—<strong>one shared view</strong> for students, faculty and administrators.</p>
         <div class="hero-tags"><span>GitHub</span><span>HackerRank</span><span>AutoCAD DWG</span><span>Cohort analytics</span><span>Role-based access</span></div>
-        <div class="burst">THE WHOLE<br>COHORT<br>AT A GLANCE</div>
       </div>
-      <figure class="hero-shot">
-        <img src="{{ url_for('static', path='/poster-assets/app/overview.png') }}" alt="Student Analytics Overview dashboard showing cohort metrics and statistics">
-        <figcaption><b>01 / OVERVIEW</b><span>Metrics · statistics · signals</span></figcaption>
+      <figure class="hero-shot radar-figure" aria-label="Class metrics radar comparing two batches">
+        <div class="radar-head">
+          <span class="radar-title">Class Metrics Radar</span>
+          <div class="chips"><span class="c-div12a">My Classes</span><span>All students</span><span class="c-div12a">Division 12 · Batch 1</span><span class="c-div3">Division 3 · Batch 3</span></div>
+          <span class="compare">Compare ▾</span>
+          <span class="clear-filters">× Clear Filters</span>
+        </div>
+        <div class="radar-body">
+          <svg class="radar-svg" viewBox="0 8 210 150" role="img" aria-label="Radar of average repositories, contributor rate, quality, collaboration and pull requests">
+            <polygon points="105.0,70.0 120.2,81.1 114.4,98.9 95.6,98.9 89.8,81.1" class="ring"/>
+            <polygon points="105.0,54.0 135.4,76.1 123.8,111.9 86.2,111.9 74.6,76.1" class="ring"/>
+            <polygon points="105.0,38.0 150.7,71.2 133.2,124.8 76.8,124.8 59.3,71.2" class="ring"/>
+            <polygon points="105.0,22.0 165.9,66.2 142.6,137.8 67.4,137.8 44.1,66.2" class="ring"/>
+            <line x1="105" y1="86" x2="105" y2="22" class="spoke"/>
+            <line x1="105" y1="86" x2="165.9" y2="66.2" class="spoke"/>
+            <line x1="105" y1="86" x2="142.6" y2="137.8" class="spoke"/>
+            <line x1="105" y1="86" x2="67.4" y2="137.8" class="spoke"/>
+            <line x1="105" y1="86" x2="44.1" y2="66.2" class="spoke"/>
+            <polygon points="105.0,60.4 151.3,71.0 116.3,101.5 99.0,94.3 94.0,82.4" class="poly c-div3"/>
+            <polygon points="105.0,63.0 153.1,70.4 115.2,100.0 103.1,88.6 65.4,73.1" class="poly c-div12a"/>
+
+            <text x="105" y="13" text-anchor="middle">AVG REPOS</text>
+            <text x="205" y="59" text-anchor="end">ACTIVE CONTRIB.</text>
+            <text x="205" y="150" text-anchor="end">QUALITY SCORE</text>
+            <text x="5" y="150" text-anchor="start">COLLABORATION</text>
+            <text x="5" y="59" text-anchor="start">PULL REQUESTS</text>
+          </svg>
+          <div class="metric-cards">
+            <article class="metric-card c-div12a"><h4>Division 12 · Batch 1</h4><div class="metric-row"><div><b>2.5</b><span>Avg repositories</span></div><div><b>24.6</b><span>Avg quality score</span></div></div></article>
+            <article class="metric-card c-div3"><h4>Division 3 · Batch 3</h4><div class="metric-row"><div><b>4.7</b><span>Avg repositories</span></div><div><b>29.1</b><span>Avg quality score</span></div></div></article>
+          </div>
+        </div>
+        <figcaption><b>01 / CLASS METRICS</b><span>Radar · batch comparison</span></figcaption>
       </figure>
     </header>
 
