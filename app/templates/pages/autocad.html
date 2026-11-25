@@ -49,6 +49,7 @@
   .cad-viewer-tools{display:flex;gap:8px;flex-shrink:0}
   .cad-viewer-tool{border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:7px 13px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
   .cad-viewer-tool:hover{border-color:var(--blue);color:var(--blue)}
+  .cad-viewer-tool[aria-pressed="true"]{border-color:var(--blue);background:var(--blue);color:#fff}
   .cad-viewer-stage{position:relative;flex:1;min-height:0;min-width:0;background:#f4f6f8}
   html[data-theme="dark"] .cad-viewer-stage{background:#10161f}
   .cad-viewer-canvas{position:absolute;inset:0;overflow:hidden}
@@ -163,6 +164,7 @@
     <div class="cad-viewer-head">
       <span class="cad-viewer-title" id="cadViewerTitle">Drawing</span>
       <div class="cad-viewer-tools">
+        <button type="button" class="cad-viewer-tool" id="cadViewerGrid" aria-pressed="false" title="Toggle CAD grid">Grid off</button>
         <button type="button" class="cad-viewer-tool" id="cadViewerClose">Close</button>
       </div>
     </div>
@@ -182,6 +184,7 @@
   var stage = document.getElementById('cadViewerStage');
   var statusEl = document.getElementById('cadViewerStatus');
   var titleEl = document.getElementById('cadViewerTitle');
+  var gridBtn = document.getElementById('cadViewerGrid');
   var closeBtn = document.getElementById('cadViewerClose');
   if (!modal || !canvasHost || !statusEl) return;
 
@@ -189,6 +192,7 @@
   var viewerModulePromise = null;
   var openToken = 0;
   var lastTrigger = null;
+  var gridVisible = false;
 
   function loadViewerModule() {
     if (!viewerModulePromise) {
@@ -265,6 +269,7 @@
       var results = await Promise.all([modulePromise, bufferPromise]);
       if (token !== openToken) return;
       viewerModule = results[0];
+      viewerModule.setGridVisible(gridVisible);
       showStatus('Rendering drawing…', false);
       await viewerModule.openDrawing({
         container: canvasHost,
@@ -286,6 +291,12 @@
     var viewBtn = event.target && event.target.closest ? event.target.closest('.autocad-view-btn') : null;
     if (viewBtn) { event.preventDefault(); loadViewer(viewBtn); return; }
     if (event.target === closeBtn || event.target === modal) closeModal();
+  });
+  gridBtn.addEventListener('click', function () {
+    gridVisible = !gridVisible;
+    gridBtn.setAttribute('aria-pressed', gridVisible ? 'true' : 'false');
+    gridBtn.textContent = gridVisible ? 'Grid on' : 'Grid off';
+    if (viewerModule) viewerModule.setGridVisible(gridVisible);
   });
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && !modal.hidden) closeModal();

@@ -15,6 +15,7 @@ def test_autocad_page_renders_the_viewer_bundle_url():
     assert 'id="cadViewerModal"' in response.text
     assert 'id="cadViewerFit"' not in response.text
     assert "Fit view" not in response.text
+    assert 'id="cadViewerGrid"' in response.text
 
 
 def test_autocad_staff_submissions_render_as_onboarding_profile_cards(monkeypatch):
