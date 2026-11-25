@@ -12,15 +12,28 @@
   .autocad-alert{padding:12px 15px;border-radius:10px;margin:0 0 18px;font-size:14px}
   .autocad-alert.success{background:rgba(30,140,90,.1);color:#16734a}
   .autocad-alert.error{background:rgba(190,55,45,.1);color:var(--red)}
-  .autocad-table-wrap{overflow:auto}
-  .autocad-table{width:100%;border-collapse:collapse;min-width:600px}
-  .autocad-table th,.autocad-table td{text-align:left;padding:13px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
-  .autocad-table th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-  .autocad-file{color:var(--blue);font-weight:700;text-decoration:none;overflow-wrap:anywhere}
+  .autocad-submissions{display:flex;flex-direction:column;gap:14px}
+  .autocad-submission-card{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:22px;align-items:stretch;margin:0;padding:20px}
+  .autocad-submission-profile{min-width:0}
+  .autocad-submission-identity{display:flex;align-items:center;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+  .autocad-submission-identity-main{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+  .autocad-submission-avatar{display:grid;place-items:center;width:48px;height:48px;flex:none;border-radius:14px;background:var(--card-soft);color:var(--blue);font-size:18px;font-weight:700}
+  .autocad-submission-name{margin:0;color:var(--text);font-size:18px}
+  .autocad-submission-email{margin-top:3px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+  .autocad-submission-date{display:flex;align-items:baseline;gap:6px;flex:none;align-self:flex-end;margin-left:auto;padding-bottom:2px;color:var(--muted);text-align:right;white-space:nowrap}
+  .autocad-submission-date span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .autocad-submission-date time{color:var(--muted);font-size:12px;font-weight:500}
+  .autocad-submission-details{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 18px}
+  .autocad-submission-detail{min-width:0}
+  .autocad-submission-detail span{display:block;margin-bottom:4px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .autocad-submission-detail strong{display:block;overflow-wrap:anywhere;color:var(--text);font-size:13px;font-weight:600}
+  .autocad-submission-actions{display:flex;flex-direction:column;justify-content:center;gap:9px;padding-left:20px;border-left:1px solid var(--border)}
+  .autocad-file{display:block;overflow-wrap:anywhere;color:var(--blue);font-size:13px;font-weight:700;text-decoration:none}
   .autocad-file:hover{text-decoration:underline}
-  .autocad-file-cell{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-  .autocad-view-btn{border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:5px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
-  .autocad-view-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .autocad-file-label{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .autocad-file-size{color:var(--muted);font-size:12px}
+  .autocad-view-btn{width:100%;min-height:40px;border:0;border-radius:6px;background:var(--blue);color:#fff;padding:8px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .autocad-view-btn:hover{filter:brightness(.95)}
   .autocad-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:14px}
   .filter-bar{align-items:flex-end;margin:0 0 16px}
   .filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -44,6 +57,8 @@
   .cad-viewer-status.is-error{color:var(--red)}
   .cad-viewer-spinner{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:cad-spin .8s linear infinite}
   @keyframes cad-spin{to{transform:rotate(360deg)}}
+  @media(max-width:760px){.autocad-submission-card{grid-template-columns:1fr;gap:16px}.autocad-submission-details{grid-template-columns:repeat(2,minmax(0,1fr))}.autocad-submission-actions{flex-direction:row;flex-wrap:wrap;padding:14px 0 0;border-left:0;border-top:1px solid var(--border)}.autocad-submission-actions>*{flex:1 1 130px}.autocad-view-btn{width:auto}.autocad-submission-identity{align-items:flex-start}}
+  @media(max-width:440px){.autocad-submission-identity{flex-wrap:wrap;gap:10px}.autocad-submission-date{align-self:flex-end;margin-left:60px;text-align:left}}
   @media(max-width:700px){.autocad-page{padding-top:16px}.autocad-panel{padding:17px}.autocad-form{align-items:stretch;flex-direction:column}.autocad-submit{width:100%}}
 </style>
 {% endblock %}
@@ -102,30 +117,38 @@
   <section class="autocad-panel" aria-labelledby="autocad-submissions-title">
     <h2 id="autocad-submissions-title">{{ 'Recent submissions' if is_staff else 'My submissions' }}</h2>
     {% if submissions %}
-    <div class="autocad-table-wrap">
-      <table class="autocad-table">
-        <thead>
-          <tr>
-            {% if is_staff %}<th>Student</th><th>PRN</th><th>Division</th><th>Batch</th><th>Semester</th>{% endif %}
-            <th>File</th><th>Size</th><th>Uploaded</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for submission in submissions %}
-          <tr>
-            {% if is_staff %}<td>{{ submission.student_name or 'Student' }}<br><span class="autocad-muted">{{ submission.student_email }}</span></td><td>{{ submission.student_id or '—' }}</td><td>{{ submission.division or '—' }}</td><td>{{ submission.batch or '—' }}</td><td>{{ submission.semester or '—' }}</td>{% endif %}
-            <td>
-              <div class="autocad-file-cell">
-                <a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a>
-                <button type="button" class="autocad-view-btn" data-file-url="/autocad/submissions/{{ submission.id }}/file" data-file-name="{{ submission.filename }}">View</button>
+    <div class="autocad-submissions">
+      {% for submission in submissions %}
+      <article class="autocad-panel autocad-submission-card">
+        <div class="autocad-submission-profile">
+          <div class="autocad-submission-identity">
+            <div class="autocad-submission-identity-main">
+              <div class="autocad-submission-avatar" aria-hidden="true">{{ (submission.student_name or submission.student_email or 'S')[:1]|upper }}</div>
+              <div style="min-width:0;flex:1;">
+                <h3 class="autocad-submission-name">{{ submission.student_name or 'Student' }}</h3>
+                <div class="autocad-submission-email">{{ submission.student_email }}</div>
               </div>
-            </td>
-            <td>{{ '%.1f'|format(submission.file_size / 1048576) }} MB</td>
-            <td>{{ submission.created_at|replace('T', ' ') }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            </div>
+            <div class="autocad-submission-date"><span>Submitted</span><time>{{ submission.created_at[:16]|replace('T', ' ') if submission.created_at else '—' }}</time></div>
+          </div>
+          <div class="autocad-submission-details">
+            <div class="autocad-submission-detail"><span>PRN</span><strong>{{ submission.student_id or '—' }}</strong></div>
+            {% if is_staff %}
+            <div class="autocad-submission-detail"><span>Branch</span><strong>{{ submission.degree_branch or '—' }}</strong></div>
+            <div class="autocad-submission-detail"><span>Division</span><strong>{{ submission.division or '—' }}</strong></div>
+            <div class="autocad-submission-detail"><span>Practical batch</span><strong>{{ submission.batch or '—' }}</strong></div>
+            <div class="autocad-submission-detail"><span>Semester</span><strong>{{ submission.semester or '—' }}</strong></div>
+            {% endif %}
+          </div>
+        </div>
+        <aside class="autocad-submission-actions" aria-label="DWG file actions for {{ submission.student_name or submission.filename }}">
+          <span class="autocad-file-label">DWG submission</span>
+          <a class="autocad-file" href="/autocad/submissions/{{ submission.id }}/file">{{ submission.filename }}</a>
+          <span class="autocad-file-size">{{ '%.1f'|format(submission.file_size / 1048576) }} MB</span>
+          <button type="button" class="autocad-view-btn" data-file-url="/autocad/submissions/{{ submission.id }}/file" data-file-name="{{ submission.filename }}">View</button>
+        </aside>
+      </article>
+      {% endfor %}
     </div>
     {% else %}
     <div class="autocad-empty">{% if is_staff %}No submissions match the current filters.{% else %}You have not uploaded a DWG file yet.{% endif %}</div>
@@ -140,7 +163,6 @@
     <div class="cad-viewer-head">
       <span class="cad-viewer-title" id="cadViewerTitle">Drawing</span>
       <div class="cad-viewer-tools">
-        <button type="button" class="cad-viewer-tool" id="cadViewerFit">Fit view</button>
         <button type="button" class="cad-viewer-tool" id="cadViewerClose">Close</button>
       </div>
     </div>
@@ -160,7 +182,6 @@
   var stage = document.getElementById('cadViewerStage');
   var statusEl = document.getElementById('cadViewerStatus');
   var titleEl = document.getElementById('cadViewerTitle');
-  var fitBtn = document.getElementById('cadViewerFit');
   var closeBtn = document.getElementById('cadViewerClose');
   if (!modal || !canvasHost || !statusEl) return;
 
@@ -268,9 +289,6 @@
   });
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && !modal.hidden) closeModal();
-  });
-  fitBtn.addEventListener('click', function () {
-    if (viewerModule && typeof viewerModule.fitDrawing === 'function') viewerModule.fitDrawing();
   });
 })();
 </script>

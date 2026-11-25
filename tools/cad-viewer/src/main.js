@@ -8,7 +8,7 @@
  * to a CDN or any other external host.
  *
  * No UI plugins are registered on purpose: the host page owns the modal,
- * the loading/error states, and the only action we expose is Fit.
+ * the loading/error states, and the viewer is limited to read-only navigation.
  */
 import {
   AcApDocManager,
@@ -185,17 +185,6 @@ export function openDrawing(options) {
   const operation = drawingQueue.catch(() => {}).then(() => openDrawingNow(options))
   drawingQueue = operation
   return operation
-}
-
-/** Frame the whole drawing (ZOOM Extents). Safe to call any time. */
-export function fitDrawing() {
-  const manager = AcApDocManager.instance
-  if (!manager) return
-  try {
-    manager.sendStringToExecute('zoom extents')
-  } catch (error) {
-    console.warn('Fit view failed:', error)
-  }
 }
 
 export { AcApDocManager }

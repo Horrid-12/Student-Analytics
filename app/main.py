@@ -2836,6 +2836,7 @@ def autocad_page(
         for submission in submissions:
             email = str(submission.get("student_email") or "").strip().lower()
             account = account_by_email.get(email) or {}
+            submission["degree_branch"] = str(account.get("degree_branch") or "").strip()
             submission["division"] = str(account.get("division") or "").strip()
             submission["batch"] = str(account.get("practical_batch") or "").strip()
             submission["semester"] = str(account.get("semester") or "").strip()
