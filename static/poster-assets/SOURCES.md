@@ -31,3 +31,7 @@ The poster no longer uses the photographs above; that section is kept only to cr
 - `fonts/*.woff2` — Archivo, Archivo Black and IBM Plex Mono from Google Fonts (SIL Open Font License 1.1), self-hosted so printing does not depend on a live font CDN.
 
 `scripts/export_poster_pdf.py` prints the page through Chromium (text stays vector) and then removes **every** stream filter with pikepdf — images, page content and font programs. The result is ~38 MB, one A3 landscape page (420.2 × 297 mm), with zero compressed streams and no lossy JPEG. Pass `--keep-compressed` for a ~5 MB Flate variant. Screenshots are pre-cropped to the meaningful region of each page and matched to the larger thumbnail boxes so they stay sharp and aligned; the poster's footer was removed on request to free space for them.
+
+For printers that cannot take A3, the browser-generated 103 MB PDF can be rasterised losslessly to PNG with `pypdfium2` at 600 dpi and downsampled to A4 landscape: `Student-Analytics-Poster-A3-600dpi.png`, `Student-Analytics-Poster-A4-600dpi.png` and `Student-Analytics-Poster-A4-300dpi.png` in the workspace root. PNG keeps the image lossless (text becomes pixels, so it is no longer selectable); the A4 600 dpi file still carries ~424 dpi of the original A3 detail.
+
+The same two 600 dpi PNGs are copied to `poster-a3.png` and `poster-a4.png` here and exposed as **Save PNG · A3 / A4** download links in the poster toolbar. `scripts/generate_poster_png.py --pdf <file>` regenerates both from a print-ready PDF after any design change.

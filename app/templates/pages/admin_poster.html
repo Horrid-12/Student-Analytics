@@ -15,6 +15,8 @@
   </div>
   <div class="tools-group">
     <a class="tool-btn" href="/admin/poster?clean=1">Screenshot mode</a>
+    <a class="tool-btn" href="{{ url_for('static', path='/poster-assets/poster-a3.png') }}" download="Student-Analytics-Poster-A3.png">Save PNG · A3</a>
+    <a class="tool-btn" href="{{ url_for('static', path='/poster-assets/poster-a4.png') }}" download="Student-Analytics-Poster-A4.png">Save PNG · A4</a>
     <button class="tool-btn primary" type="button" onclick="window.print()">Print / Save PDF</button>
   </div>
 </div>
