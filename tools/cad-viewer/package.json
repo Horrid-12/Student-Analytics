@@ -14,7 +14,7 @@
     "@mlightcad/mtext-parser": "1.5.7",
     "@mlightcad/mtext-renderer": "0.13.7",
     "@mlightcad/three-renderer": "1.7.8",
-    "lodash-es": "4.17.21",
+    "lodash-es": "4.18.1",
     "three": "0.186.1"
   },
   "devDependencies": {
