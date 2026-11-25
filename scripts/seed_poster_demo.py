@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
 
-from app import accounts, auth  # noqa: E402
+from app import accounts, auth, autocad  # noqa: E402
 
 random.seed(2147)
 
@@ -61,6 +61,17 @@ STUDENTS = [
     ("aisha.shaikh@mitwpu.edu.in", "Aisha Shaikh", "2024040222", "4", "B", "Semester 5", "aisha-s", "aisha_s"),
     ("reyansh.jain@mitwpu.edu.in", "Reyansh Jain", "2024040323", "4", "C", "Semester 5", "reyansh-j", "reyansh_j"),
     ("myra.chavan@mitwpu.edu.in", "Myra Chavan", "2024040324", "4", "C", "Semester 5", "myra-c", "myra_c"),
+]
+
+AUTOCAD_FILES = [
+    ("aarav.sharma@mitwpu.edu.in", "2024010101", "Aarav Sharma", "sharma-floor-plan-level-2.dwg", 1_182_464),
+    ("isha.patil@mitwpu.edu.in", "2024010102", "Isha Patil", "patil-site-plan-annex-b.dwg", 684_032),
+    ("rohan.mehta@mitwpu.edu.in", "2024010203", "Rohan Mehta", "mehta-column-layout.dwg", 421_888),
+    ("saanvi.iyer@mitwpu.edu.in", "2024010204", "Saanvi Iyer", "iyer-staircase-section.dwg", 356_352),
+    ("kabir.nair@mitwpu.edu.in", "2024010305", "Kabir Nair", "nair-electrical-schematic.dwg", 942_080),
+    ("meera.joshi@mitwpu.edu.in", "2024010306", "Meera Joshi", "joshi-plumbing-layout.dwg", 512_000),
+    ("aditya.rao@mitwpu.edu.in", "2024020107", "Aditya Rao", "rao-parking-plan.dwg", 774_144),
+    ("diya.kulkarni@mitwpu.edu.in", "2024020108", "Diya Kulkarni", "kulkarni-elevation-front.dwg", 288_768),
 ]
 
 REPO_POOL = [
@@ -320,6 +331,22 @@ def upsert_student(email, name, prn, division, batch, semester, username, hr):
         )
 
 
+def seed_autocad():
+    """A handful of DWG rows so the staff inbox renders with real table content."""
+    if autocad.list_submissions(limit=1):
+        return 0
+    for email, prn, name, filename, size in AUTOCAD_FILES:
+        unit = b"AC1032" + b"poster-demo-dwg-" + filename.encode() + b"-payload-"
+        payload = (unit * (size // len(unit) + 2))[:size]
+        autocad.create_submission(email, prn, name, filename, payload)
+    with sqlite3.connect(ROOT / "autocad.db") as conn:
+        ids = [row[0] for row in conn.execute("SELECT id FROM autocad_submissions ORDER BY id")]
+        for i, submission_id in enumerate(ids):
+            stamp = (datetime.now(timezone.utc) - timedelta(hours=5 + i * 23)).strftime("%Y-%m-%dT%H:%M:%S")
+            conn.execute("UPDATE autocad_submissions SET created_at=? WHERE id=?", (stamp, submission_id))
+    return len(ids)
+
+
 def main():
     now = datetime.now(timezone.utc)
     auth.init_db()
@@ -350,6 +377,7 @@ def main():
 
     print(f"seeded {len(STUDENTS)} students + admin {ADMIN_EMAIL} | password {PASSWORD}")
     print("snapshots:", len(accounts.list_snapshots()))
+    print("autocad submissions:", seed_autocad())
 
 
 if __name__ == "__main__":

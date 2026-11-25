@@ -244,43 +244,43 @@ body.clean { background: var(--paper); }
 .flow .sec-label { color: #f3a79f; }
 .flow .sec-rule { border-top-color: rgba(245, 241, 233, .58); }
 .flow .sec-note { color: #c3cdd6; }
-.flow h2 { margin: .6mm 0 2.6mm; font: 400 22pt/.98 var(--display); letter-spacing: -.03em; text-transform: uppercase; }
+.flow h2 { margin: .6mm 0 2mm; font: 400 24pt/.98 var(--display); letter-spacing: -.03em; text-transform: uppercase; }
 .flow h2 em { color: #f3a79f; font-style: normal; }
 .flow-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3.2mm; }
 .flow-card {
-    position: relative; min-width: 0; padding: 2.2mm 1.9mm;
+    position: relative; min-width: 0; padding: 2.4mm 2mm;
     background: var(--card); color: var(--ink); border: .7mm solid var(--ink);
     box-shadow: 1.6mm 1.6mm 0 var(--red);
     display: flex; flex-direction: column; justify-content: center;
 }
 .flow-card:not(:last-child)::after {
     content: "»"; position: absolute; right: -4.9mm; top: 50%; transform: translateY(-54%); z-index: 3;
-    color: #f3a79f; font: 400 15pt/1 var(--display);
+    color: #f3a79f; font: 400 17pt/1 var(--display);
 }
-.flow-card .num { font: 600 17pt/1 var(--mono); color: var(--red); letter-spacing: -.06em; }
-.flow-card h3 { margin: 2.2mm 0 1.2mm; font: 700 10.5pt/1.08 var(--body); text-transform: uppercase; }
-.flow-card p { margin: 0; font: 8.5pt/1.26 var(--body); color: var(--slate); }
+.flow-card .num { font: 600 20pt/1 var(--mono); color: var(--red); letter-spacing: -.06em; }
+.flow-card h3 { margin: 2.4mm 0 1.4mm; font: 700 12.5pt/1.05 var(--body); text-transform: uppercase; }
+.flow-card p { margin: 0; font: 10pt/1.26 var(--body); color: var(--slate); }
 .flow-card p strong { color: var(--ink); font-weight: 700; }
 .flow-card .chip {
-    position: absolute; left: 1.9mm; right: 1.9mm; bottom: 2mm;
-    padding-top: 1.1mm; border-top: .5mm solid var(--line);
-    font: 600 7pt/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--red);
+    position: absolute; left: 2mm; right: 2mm; bottom: 2.2mm;
+    padding-top: 1.2mm; border-top: .5mm solid var(--line);
+    font: 600 8pt/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--red);
 }
 .flow-foot {
-    margin-top: 3mm; padding-top: 1.8mm; border-top: .5mm solid rgba(245, 241, 233, .5);
+    margin-top: 2.4mm; padding-top: 1.6mm; border-top: .5mm solid rgba(245, 241, 233, .5);
     display: flex; align-items: center; justify-content: space-between; gap: 4mm;
-    font: 500 8pt/1.2 var(--mono); color: #c3cdd6; letter-spacing: .02em;
+    font: 500 8.6pt/1.2 var(--mono); color: #c3cdd6; letter-spacing: .02em;
 }
 .flow-foot b { color: #f3a79f; font-weight: 600; }
 
 .tech { flex: 1 1 auto; min-height: 0; }
-.tech-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2mm; height: calc(100% - 8.2mm); }
+.tech-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2mm; height: calc(100% - 8.2mm); }
 .tech-tile {
     position: relative; overflow: hidden; padding: 1.6mm 2.2mm;
     background: var(--card); border: .7mm solid var(--ink); box-shadow: 1.4mm 1.4mm 0 rgba(20, 34, 53, .22);
 }
-.tech-tile:nth-child(3n+2) { box-shadow: 1.4mm 1.4mm 0 var(--steel); }
-.tech-tile:nth-child(3n) { box-shadow: 1.4mm 1.4mm 0 var(--amber); }
+.tech-tile:nth-child(4n+2) { box-shadow: 1.4mm 1.4mm 0 var(--steel); }
+.tech-tile:nth-child(4n+3) { box-shadow: 1.4mm 1.4mm 0 var(--amber); }
 .tech-tile .tag { font: 600 7.4pt/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--red); }
 .tech-tile h3 { margin: 1mm 0 .7mm; font: 400 12.5pt/1 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
 .tech-tile p { margin: 0; font: 8.2pt/1.2 var(--body); color: var(--slate); }
@@ -289,26 +289,26 @@ body.clean { background: var(--paper); }
 
 /* Capabilities ------------------------------------------------------------ */
 .capabilities { height: 62mm; flex: 0 0 62mm; }
-.offer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; height: calc(100% - 8.2mm); }
+.offer-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3mm; height: calc(100% - 8.2mm); }
 .offer {
     min-width: 0; background: var(--card); border: var(--outline); box-shadow: var(--hard);
     display: flex; flex-direction: column; overflow: hidden;
 }
-.offer-shot { position: relative; height: 32mm; flex: 0 0 32mm; overflow: hidden; border-bottom: var(--outline); background: var(--paper); }
+.offer-shot { position: relative; height: 25mm; flex: 0 0 25mm; overflow: hidden; border-bottom: var(--outline); background: var(--paper); }
 .offer-shot img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: top left; }
 .offer-shot span {
     position: absolute; left: 0; bottom: 0; padding: .8mm 1.8mm;
-    background: var(--ink); color: var(--card); font: 600 7pt/1 var(--mono);
+    background: var(--ink); color: var(--card); font: 600 7.6pt/1 var(--mono);
     letter-spacing: .1em; text-transform: uppercase;
 }
-.offer-body { padding: 1.7mm 2.2mm 1.4mm; display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.offer-body .tag { font: 600 7.4pt/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
-.offer-body h3 { margin: 1.2mm 0 1mm; font: 400 15pt/.98 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
-.offer-body p { margin: 0; font: 8.6pt/1.22 var(--body); color: var(--slate); }
+.offer-body { padding: 1.9mm 2.2mm 1.5mm; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.offer-body .tag { font: 600 8pt/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.offer-body h3 { margin: 1.3mm 0 1.1mm; font: 400 16.5pt/.98 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
+.offer-body p { margin: 0; font: 9.8pt/1.2 var(--body); color: var(--slate); }
 .offer-body p strong { color: var(--ink); font-weight: 700; }
 .offer-body .mini {
     margin-top: auto; padding-top: 1.2mm; border-top: .5mm solid var(--line);
-    font: 500 7pt/1.1 var(--mono); color: var(--steel); text-transform: uppercase; letter-spacing: .05em;
+    font: 500 7.6pt/1.1 var(--mono); color: var(--steel); text-transform: uppercase; letter-spacing: .05em;
 }
 
 /* Print ------------------------------------------------------------------- */
