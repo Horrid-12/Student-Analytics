@@ -14,11 +14,15 @@
   .autocad-alert.error{background:rgba(190,55,45,.1);color:var(--red)}
   .autocad-submissions{display:flex;flex-direction:column;gap:14px}
   .autocad-submission-card{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:22px;align-items:stretch;margin:0;padding:20px}
+  .autocad-submission-unremarked{border:2px solid var(--badge-amber-color,#d97706);box-shadow:0 0 0 3px rgba(217,119,6,.1)}
   .autocad-submission-profile{min-width:0}
   .autocad-submission-identity{display:flex;align-items:center;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--border)}
   .autocad-submission-identity-main{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
-  .autocad-submission-avatar{display:grid;place-items:center;width:48px;height:48px;flex:none;border-radius:14px;background:var(--card-soft);color:var(--blue);font-size:18px;font-weight:700}
+  .autocad-submission-avatar-link{display:block;width:48px;height:48px;flex:none;border-radius:14px;text-decoration:none}
+  .autocad-submission-avatar{display:grid;place-items:center;width:48px;height:48px;box-sizing:border-box;flex:none;border-radius:14px;background:var(--card-soft);color:var(--blue);font-size:18px;font-weight:700;object-fit:cover}
   .autocad-submission-name{margin:0;color:var(--text);font-size:18px}
+  .autocad-submission-name-link{color:inherit;text-decoration:none}
+  .autocad-submission-name-link:hover{color:var(--blue);text-decoration:underline}
   .autocad-submission-email{margin-top:3px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
   .autocad-submission-date{display:flex;align-items:baseline;gap:6px;flex:none;align-self:flex-end;margin-left:auto;padding-bottom:2px;color:var(--muted);text-align:right;white-space:nowrap}
   .autocad-submission-date span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
@@ -141,13 +145,18 @@
     {% if submissions %}
     <div class="autocad-submissions">
       {% for submission in submissions %}
-      <article class="autocad-panel autocad-submission-card">
+      {% set profile_key = submission.student_id or submission.student_email %}
+      {% set student_profile_url = "/students?student=" ~ (profile_key|string|urlencode) ~ "&mine=" ~ (mine|string) %}
+      <article class="autocad-panel autocad-submission-card{% if not (submission.remark or '').strip() %} autocad-submission-unremarked{% endif %}">
         <div class="autocad-submission-profile">
           <div class="autocad-submission-identity">
             <div class="autocad-submission-identity-main">
-              <div class="autocad-submission-avatar" aria-hidden="true">{{ (submission.student_name or submission.student_email or 'S')[:1]|upper }}</div>
+              <a class="autocad-submission-avatar-link" href="{{ student_profile_url }}" aria-label="View profile of {{ submission.student_name or submission.student_email }}">
+                {% if submission.avatar_url %}<img class="autocad-submission-avatar" src="{{ submission.avatar_url|avatar }}" loading="lazy" decoding="async" alt="">
+                {% else %}<span class="autocad-submission-avatar" aria-hidden="true">{{ (submission.student_name or submission.student_email or 'S')[:1]|upper }}</span>{% endif %}
+              </a>
               <div style="min-width:0;flex:1;">
-                <h3 class="autocad-submission-name">{{ submission.student_name or 'Student' }}</h3>
+                <h3 class="autocad-submission-name"><a class="autocad-submission-name-link" href="{{ student_profile_url }}">{{ submission.student_name or 'Student' }}</a></h3>
                 <div class="autocad-submission-email">{{ submission.student_email }}</div>
               </div>
             </div>

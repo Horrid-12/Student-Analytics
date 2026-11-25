@@ -41,6 +41,14 @@ def test_staff_can_edit_remark_and_student_can_only_read_it(tmp_path, monkeypatc
     monkeypatch.setattr(autocad, "DB_PATH", tmp_path / "autocad.db")
     student_client = TestClient(app)
     student_email = make_user(student_client, role="student")
+    unremarked = autocad.create_submission(
+        student_email,
+        "1234567890",
+        "Test Student",
+        "needs-remark.dwg",
+        b"AC1018",
+    )
+    assert unremarked
     submission = autocad.create_submission(
         student_email,
         "1234567890",
@@ -61,6 +69,8 @@ def test_staff_can_edit_remark_and_student_can_only_read_it(tmp_path, monkeypatc
     assert "Check the stair dimensions." in faculty_page
     assert 'class="autocad-remark-toggle"' in faculty_page
     assert 'name="remark" maxlength="1000" required' in faculty_page
+    assert 'class="autocad-panel autocad-submission-card autocad-submission-unremarked"' in faculty_page
+    assert faculty_page.index("needs-remark.dwg") < faculty_page.index("floor-plan.dwg")
 
     edited = faculty_client.post(url, data={"remark": "Please revise the stair dimensions."}, follow_redirects=False)
     assert edited.status_code == 303
