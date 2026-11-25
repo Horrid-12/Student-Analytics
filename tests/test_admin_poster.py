@@ -62,10 +62,11 @@ def test_admin_settings_links_to_poster():
     assert 'href="/admin/poster"' in body
 
 
-def test_admin_overview_links_to_poster():
+def test_admin_overview_does_not_link_to_poster():
     client = make_client("admin")
     body = client.get("/").text
-    assert 'href="/admin/poster"' in body
+    assert "A3 Poster" not in body
+    assert 'href="/admin/poster"' not in body
 
 
 def test_student_settings_hides_poster_link():
