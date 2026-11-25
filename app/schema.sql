@@ -287,7 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_certificates_student_email ON certificates (lower
 CREATE INDEX IF NOT EXISTS idx_certificates_student_id ON certificates (student_id);
 CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates (status);
 
--- 20. Student AutoCAD DWG uploads (metadata + file, no grading in the MVP).
+-- 20. Student AutoCAD DWG uploads (metadata, one staff remark, and file; no grading).
 CREATE TABLE IF NOT EXISTS autocad_submissions (
     id              SERIAL PRIMARY KEY,
     student_email   TEXT NOT NULL,
@@ -296,8 +296,15 @@ CREATE TABLE IF NOT EXISTS autocad_submissions (
     filename        TEXT NOT NULL,
     file_size       INTEGER NOT NULL,
     file_data       BYTEA NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    remark          TEXT NOT NULL DEFAULT '',
+    remark_updated_at TIMESTAMPTZ,
+    remark_updated_by TEXT NOT NULL DEFAULT ''
 );
+
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS remark TEXT NOT NULL DEFAULT '';
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS remark_updated_at TIMESTAMPTZ;
+ALTER TABLE autocad_submissions ADD COLUMN IF NOT EXISTS remark_updated_by TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_autocad_submissions_email
     ON autocad_submissions (lower(student_email));

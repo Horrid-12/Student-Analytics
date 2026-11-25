@@ -2936,7 +2936,8 @@ def count_certificates(status: Optional[str] = None) -> int:
 # ---------------------------------------------------------------------------
 
 _AUTOCAD_COLUMNS = (
-    "id, student_email, student_id, student_name, filename, file_size, created_at"
+    "id, student_email, student_id, student_name, filename, file_size, created_at, "
+    "remark, remark_updated_at, remark_updated_by"
 )
 
 
@@ -2944,9 +2945,10 @@ def _format_autocad_submission(row: dict | None) -> dict | None:
     if not row:
         return None
     data = dict(row)
-    created = data.get("created_at")
-    if created is not None and not isinstance(created, str):
-        data["created_at"] = created.isoformat()
+    for field in ("created_at", "remark_updated_at"):
+        value = data.get(field)
+        if value is not None and not isinstance(value, str):
+            data[field] = value.isoformat()
     data["file_size"] = int(data.get("file_size") or 0)
     return data
 
@@ -3008,6 +3010,23 @@ def get_autocad_submission(submission_id: int) -> Optional[dict]:
     except Exception as exc:
         logger.warning("db.get_autocad_submission failed: %s", exc)
         return None
+
+
+def update_autocad_submission_remark(submission_id: int, remark: str, updated_by: str) -> bool:
+    try:
+        with database.conn() as c:
+            if c is None:
+                return False
+            cur = c.execute(
+                "UPDATE autocad_submissions "
+                "SET remark = %s, remark_updated_at = NOW(), remark_updated_by = %s "
+                "WHERE id = %s RETURNING id",
+                (remark, updated_by, submission_id),
+            )
+            return cur.fetchone() is not None
+    except Exception as exc:
+        logger.warning("db.update_autocad_submission_remark failed: %s", exc)
+        return False
 
 
 def get_autocad_submission_file(submission_id: int) -> Optional[tuple[str, bytes]]:

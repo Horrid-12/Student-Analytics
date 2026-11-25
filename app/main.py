@@ -2805,6 +2805,7 @@ def autocad_page(
     request: Request,
     notice: str = "",
     error: str = "",
+    remark: str = "",
     q: str = "",
     division: str = "All",
     batch: str = "All",
@@ -2836,6 +2837,7 @@ def autocad_page(
         for submission in submissions:
             email = str(submission.get("student_email") or "").strip().lower()
             account = account_by_email.get(email) or {}
+            submission["degree_branch"] = str(account.get("degree_branch") or "").strip()
             submission["division"] = str(account.get("division") or "").strip()
             submission["batch"] = str(account.get("practical_batch") or "").strip()
             submission["semester"] = str(account.get("semester") or "").strip()
@@ -2900,7 +2902,10 @@ def autocad_page(
         "can_upload": role == "student",
         "notice": notice,
         "error": error,
+        "remark_saved": remark == "saved",
+        "return_query": request.url.query,
         "max_upload_bytes": autocad.MAX_UPLOAD_BYTES,
+        "max_remark_chars": autocad.MAX_REMARK_CHARS,
         "payload": payload,
         "q": q,
         "teaching_active": teaching_active,
@@ -2944,6 +2949,44 @@ async def autocad_upload(request: Request, file: UploadFile = File(...)):
 
     _db_log_event("autocad_submission_created", f"{student_email}:{submission.get('id')}:{filename}")
     return RedirectResponse("/autocad?notice=uploaded", status_code=303)
+
+
+def _autocad_redirect(request: Request, **updates: str) -> RedirectResponse:
+    flash_keys = {"notice", "error", "remark"} | set(updates)
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(request.url.query, keep_blank_values=True)
+        if key not in flash_keys
+    ]
+    pairs.extend((key, value) for key, value in updates.items())
+    return RedirectResponse("/autocad?" + urlencode(pairs), status_code=303)
+
+
+@app.post("/autocad/submissions/{submission_id}/remark")
+def autocad_submission_remark(
+    request: Request,
+    submission_id: int,
+    remark: str = Form(""),
+):
+    """Create or replace a short staff remark; students can only read it."""
+    user = getattr(request.state, "user", None) or {}
+    role = (user.get("role") or "").lower()
+    if role not in _STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only staff can update submission remarks.")
+    if not autocad.get_submission(submission_id):
+        raise HTTPException(status_code=404, detail="Submission not found.")
+
+    text = (remark or "").strip()
+    if not text:
+        return _autocad_redirect(request, error="remark_required")
+    if len(text) > autocad.MAX_REMARK_CHARS:
+        return _autocad_redirect(request, error="remark_too_long")
+
+    staff_email = (user.get("email") or "").strip().lower()
+    if not autocad.update_submission_remark(submission_id, text, staff_email):
+        return _autocad_redirect(request, error="remark_save_failed")
+    _db_log_event("autocad_submission_remark_updated", f"{staff_email}:{submission_id}")
+    return _autocad_redirect(request, remark="saved")
 
 
 @app.get("/autocad/submissions/{submission_id}/file")
