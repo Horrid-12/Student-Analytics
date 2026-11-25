@@ -49,7 +49,7 @@ def test_autocad_staff_submissions_render_as_onboarding_profile_cards(monkeypatc
         response = client.get("/autocad")
 
     assert response.status_code == 200
-    assert 'class="autocad-panel autocad-submission-card"' in response.text
+    assert 'class="autocad-panel autocad-submission-card autocad-submission-unremarked"' in response.text
     assert 'class="autocad-submission-avatar"' in response.text
     assert "Test Student" in response.text
     assert "1234567890" in response.text

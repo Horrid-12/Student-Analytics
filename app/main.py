@@ -2893,6 +2893,10 @@ def autocad_page(
         )
         payload["showing"] = len(submissions)
 
+    # Keep the existing newest-first order within each group, but surface
+    # submissions that still need faculty feedback before completed remarks.
+    submissions.sort(key=lambda row: bool(str(row.get("remark") or "").strip()))
+
     ctx = _base_context(request, "AutoCAD")
     ctx.update({
         "page_name": "AutoCAD",
