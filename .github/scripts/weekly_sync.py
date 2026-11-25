@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -37,6 +38,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=60.0,
         help="HTTP request timeout in seconds (default 60)",
+    )
+    parser.add_argument(
+        "--max-passes",
+        type=int,
+        default=20,
+        help="Maximum sequential sync passes if status remains partial (default 20)",
+    )
+    parser.add_argument(
+        "--sleep",
+        type=float,
+        default=2.0,
+        help="Seconds to wait between consecutive passes (default 2.0)",
     )
     return parser.parse_args(argv)
 
@@ -77,19 +90,49 @@ def trigger_weekly_sync(app_url: str, secret: str, timeout: float = 60.0) -> tup
         return 0, {"detail": str(exc)}
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     if not args.app_url:
         print("::error::Missing --app-url or APP_URL environment variable")
         return 1
 
     print(f"Triggering weekly announcement sync at: {args.app_url}/sync/weekly")
-    code, summary = trigger_weekly_sync(args.app_url, args.secret, args.timeout)
+    max_passes = max(1, args.max_passes)
+    summary: dict = {}
+    code = 0
+    status = ""
 
-    print(f"HTTP Response: {code}")
-    if code != 200:
-        print(f"::error::Weekly sync failed with HTTP {code}: {summary.get('detail', summary)}")
-        return 1
+    for pass_num in range(1, max_passes + 1):
+        if pass_num > 1:
+            print(f"\n--- Pass {pass_num}/{max_passes}: Resuming partial sync... ---")
+
+        code, summary = trigger_weekly_sync(args.app_url, args.secret, args.timeout)
+        print(f"HTTP Response: {code}")
+        if code != 200:
+            print(f"::error::Weekly sync failed with HTTP {code}: {summary.get('detail', summary)}")
+            return 1
+
+        status = summary.get("status", "")
+        published = summary.get("published", False)
+        counted = summary.get("counted", 0)
+        attempted = summary.get("attempted", 0)
+        skipped_done = summary.get("skipped_done", 0)
+        failed = summary.get("failed", 0)
+
+        print(
+            f"Pass {pass_num} progress: status={status} | published={published} | "
+            f"counted={counted} | attempted={attempted} | done={skipped_done} | failed={failed}"
+        )
+
+        if status in ("complete", "already_published"):
+            break
+
+        if not summary.get("budget_exhausted") and counted == 0:
+            print("No further accounts could be counted in this pass; stopping loop.")
+            break
+
+        if pass_num < max_passes and args.sleep > 0:
+            time.sleep(args.sleep)
 
     week_id = summary.get("week_id", "unknown")
     label = summary.get("label", "")
@@ -148,7 +191,7 @@ def main() -> int:
         return 0
     else:
         print(f"⚠️ Weekly sync ended with partial status: {status}")
-        return 0
+        return 1
 
 
 if __name__ == "__main__":

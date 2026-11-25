@@ -356,3 +356,24 @@ class TestAccountSnapshots:
         assert snap["status"] == "ok"
         assert snap["repos"][0]["License"] is None
         assert snap["repos"][1]["License"] == "MIT"
+
+
+def test_announcement_notification_allows_null_ticket():
+    """BUG-143: Postgres must accept ticket-less weekly announcements.
+
+    Before the fix the NOT NULL constraint raised 23502 inside
+    db.create_notification and the error was swallowed, so no weekly bell
+    was ever delivered on Postgres.
+    """
+    email = "weekly-null-ticket@test.invalid"
+    created = db.create_notification(
+        email, None, "WEEKLY_TOP_STUDENT", "Top student", "well done"
+    )
+    assert created is not None
+    assert created["ticket_id"] is None
+    try:
+        rows = db.list_notifications(email)
+        assert any(n.get("type") == "WEEKLY_TOP_STUDENT" for n in rows)
+    finally:
+        with database.conn() as c:
+            c.execute("DELETE FROM notifications WHERE user_id = %s", (email,))

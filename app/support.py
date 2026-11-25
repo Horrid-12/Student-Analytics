@@ -181,7 +181,7 @@ _NOTIF_SCHEMA = """
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
-    ticket_id INTEGER NOT NULL,
+    ticket_id INTEGER,
     type TEXT NOT NULL,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
@@ -191,7 +191,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 """
 
 # Weekly top-student producer state (announcements themselves reuse the
-# notifications table with ticket_id 0 — SQLite enforces no ticket FK).
+# notifications table with a NULL ticket_id - SQLite enforces no ticket FK).
+# Both backends accept ticket_id=None for ticket-less announcements (BUG-143).
 _WEEKLY_SCHEMA = """
 CREATE TABLE IF NOT EXISTS weekly_commits (
     week_id TEXT NOT NULL,
@@ -589,10 +590,12 @@ def create_notification(user_id: str, ticket_id: int, type: str, title: str, mes
     if not user_id or not message:
         return None
     now = _now()
-    try:
-        ticket_id = int(ticket_id)
-    except (TypeError, ValueError):
-        return None
+    # Announcements carry no ticket (BUG-143): keep NULL instead of rejecting it.
+    if ticket_id is not None:
+        try:
+            ticket_id = int(ticket_id)
+        except (TypeError, ValueError):
+            return None
     try:
         with closing(_connect()) as conn:
             _ensure_schema(conn)

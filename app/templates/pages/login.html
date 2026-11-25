@@ -18,6 +18,8 @@
   <div class="banner-error">That Google account isn't a college address ({{ oauth_domains_text }}).</div>
   {% elif oauth_message == "error" %}
   <div class="banner-error">Google sign-in failed — please try again.</div>
+  {% elif oauth_message == "misconfigured" %}
+  <div class="banner-error">Google sign-in is temporarily unavailable — please use the college email form below.</div>
   {% elif oauth_message == "unconfigured" %}
   <div class="banner-error">Google sign-in isn't configured yet — please use the college email form below.</div>
   {% elif oauth_message == "link_required" %}

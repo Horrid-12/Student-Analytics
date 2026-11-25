@@ -1472,7 +1472,7 @@ def save_linked_profile(email: str, source: str, handle: str, avatar: str) -> bo
     if not handle or not email:
         return False
     avatar = (avatar or "").strip()
-    if avatar and not avatar.startswith(("https://", "http://")):
+    if avatar and not (avatar.startswith(("https://", "http://")) or avatar.startswith("data:image/")):
         avatar = ""
     handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
     avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"
@@ -2080,8 +2080,8 @@ def create_notification(user_id: str, ticket_id: int, type: str, title: str, mes
     user_id = (user_id or "").strip()
     if not user_id or not message:
         return None
-    # Announcements carry no ticket: NULL is allowed (FK only constrains
-    # non-null refs); ticket rows still require a real id.
+    # Announcements carry no ticket: store NULL. The FK only constrains
+    # non-null refs; ticket notifications still carry a real id (BUG-143).
     if ticket_id is None:
         ticket_value = None
     else:
@@ -2419,7 +2419,7 @@ def save_faculty_linked_profile(email: str, source: str, handle: str, avatar: st
     if not handle or not email:
         return False
     avatar = (avatar or "").strip()
-    if avatar and not avatar.startswith(("https://", "http://")):
+    if avatar and not (avatar.startswith(("https://", "http://")) or avatar.startswith("data:image/")):
         avatar = ""
     handle_col = "linked_github_username" if source == "github" else "linked_linkedin_name"
     avatar_col = "linked_github_avatar" if source == "github" else "linked_linkedin_avatar"

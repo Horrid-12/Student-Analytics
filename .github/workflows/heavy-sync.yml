@@ -11,8 +11,8 @@
 name: Heavy Sync
 
 on:
-  schedule:
-    - cron: '0 0 * * *'   # once a day (storage protection)
+  # schedule:
+  #   - cron: '0 0 * * *'   # once a day (storage protection)
   workflow_dispatch:          # manual trigger from Actions tab
     inputs:
       start_at:

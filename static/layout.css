@@ -6,7 +6,7 @@ body {
   line-height: 1.6;
   background-image:
     linear-gradient(rgba(245, 241, 233, 0.16), rgba(245, 241, 233, 0.16)),
-    url("/static/paper-fiber-texture.png");
+    url("/static/paper-fiber-texture.webp");
   background-position: center;
   background-size: cover;
   /* Attachment stays `fixed` on purpose (BUG-127). The texture is 1254x1254;
@@ -57,7 +57,7 @@ button {
   padding: 1.5rem 1.5rem;
   background-image:
     linear-gradient(rgba(232, 226, 215, 0.3), rgba(232, 226, 215, 0.3)),
-    url("/static/paper-fiber-texture.png");
+    url("/static/paper-fiber-texture.webp");
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
@@ -333,7 +333,7 @@ button {
   background-color: rgba(249, 247, 241, 0.6);
   background-image:
     linear-gradient(rgba(249, 247, 241, 0.38), rgba(249, 247, 241, 0.38)),
-    url("/static/paper-fiber-texture.png");
+    url("/static/paper-fiber-texture.webp");
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
@@ -359,7 +359,7 @@ button {
   background-color: rgba(249, 247, 241, 0.56);
   background-image:
     linear-gradient(rgba(249, 247, 241, 0.35), rgba(249, 247, 241, 0.35)),
-    url("/static/paper-fiber-texture.png");
+    url("/static/paper-fiber-texture.webp");
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
@@ -1726,7 +1726,7 @@ button {
   background-color: rgba(249, 247, 241, 0.56);
   background-image:
     linear-gradient(rgba(249, 247, 241, 0.36), rgba(249, 247, 241, 0.36)),
-    url("/static/paper-fiber-texture.png");
+    url("/static/paper-fiber-texture.webp");
   background-position: center;
   background-size: cover;
   background-attachment: fixed;
@@ -2893,10 +2893,7 @@ button {
 [data-theme="dark"] .main-content,
 [data-theme="dark"] .content {
   background-color: var(--bg);
-  background-image:
-    linear-gradient(rgba(44, 44, 44, 0.5), rgba(44, 44, 44, 0.5)),
-    url("/static/paper-fiber-texture-dark.png");
-  background-image: url("/static/paper-fiber-texture-dark.png");
+  background-image: url("/static/paper-fiber-texture-dark.webp");
 }
 
 [data-theme="dark"] .app-sidebar,
@@ -2905,21 +2902,15 @@ button {
 [data-theme="dark"] .panel {
   background-color: var(--card);
   background-image:
-    linear-gradient(rgba(58, 58, 62, 0.5), rgba(58, 58, 62, 0.5)),
-    url("/static/paper-fiber-texture-dark.png");
-  background-image:
     linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)),
-    url("/static/paper-fiber-texture-dark.png");
+    url("/static/paper-fiber-texture-dark.webp");
 }
 
 [data-theme="dark"] .app-sidebar {
   background-color: var(--sidebar);
   background-image:
-    linear-gradient(rgba(51, 51, 54, 0.5), rgba(51, 51, 54, 0.5)),
-    url("/static/paper-fiber-texture-dark.png");
-  background-image:
     linear-gradient(rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025)),
-    url("/static/paper-fiber-texture-dark.png");
+    url("/static/paper-fiber-texture-dark.webp");
 }
 
 /* Shared student profile component (4.11: extracted from students.html so
@@ -3726,6 +3717,10 @@ button {
   border-radius: 10px;
   font-size: 13.5px;
   margin-bottom: 14px;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 .cert-alert.is-success {
   background: rgba(34, 197, 94, 0.1);
@@ -3759,6 +3754,8 @@ button {
   font-size: 12.5px;
   margin-bottom: 14px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
   box-sizing: border-box;
 }
 .cert-review-svg {
@@ -3775,6 +3772,8 @@ button {
   margin-bottom: 14px;
   flex-wrap: wrap;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .cert-panel-heading {
   display: flex;
@@ -3819,6 +3818,8 @@ button {
   padding: 16px;
   margin-bottom: 16px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
   box-sizing: border-box;
 }
 .cert-form-header {
@@ -3917,6 +3918,8 @@ button {
   flex-direction: column;
   gap: 14px;
   max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .cert-item {
   border: 1px solid var(--border);

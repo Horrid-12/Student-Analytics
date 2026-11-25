@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
 import json
 import logging
 import mimetypes
@@ -1398,7 +1397,8 @@ async def signup_phase_2_submit(
             return fail("specialisation")
     elif (specialisation or "").strip():
         return fail("specialisation")
-    if (division or "").strip() not in auth.SIGNUP_DIVISIONS:
+    division = auth.normalize_division(division)
+    if division not in auth.SIGNUP_DIVISIONS:
         return fail("division")
     if not auth.valid_signup_practical_batch(practical_batch, division):
         return fail("batch")
@@ -1408,7 +1408,7 @@ async def signup_phase_2_submit(
         "semester": (semester or "").strip(),
         "branch": (branch or "").strip(),
         "specialisation": (specialisation or "").strip(),
-        "division": (division or "").strip(),
+        "division": division,
         "practical_batch": (practical_batch or "").strip(),
     })
     token = auth.save_signup_progress(progress)
@@ -1858,13 +1858,24 @@ async def auth_google_callback(request: Request, state: str = "", error: str = "
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("Google OAuth state mismatch (or expired nonce)")
         return reject("error")
 
     redirect_uri = _oauth_base_url(request) + "/auth/google/callback"
     try:
         claims = await google_oauth.exchange_code(str(request.url), state, redirect_uri)
+    except google_oauth.CredentialsRejected:
+        # BUG-157: Google refused the deployment's client secret. Retrying can
+        # never help — surface a distinct banner instead of "please try again"
+        # and make the operator-facing log line actionable.
+        logger.error(
+            "Google OAuth credentials rejected (invalid_client) — "
+            "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET on this deployment are stale "
+            "or mismatched; reset the secret in Google Cloud Console and update "
+            "the Vercel env var"
+        )
+        return reject("misconfigured")
     except Exception:
         logger.exception("Google OAuth code exchange failed")
         return reject("error")
@@ -1963,7 +1974,7 @@ from app import github_oauth, linkedin_oauth
 
 @app.get("/auth/github")
 def auth_github(request: Request, mode: str = "link"):
-    if mode not in ("link", "signuplink"):
+    if mode not in ("link", "signuplink", "settingslink"):
         mode = "link"
     if mode == "signuplink":
         progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
@@ -1980,6 +1991,12 @@ def auth_github(request: Request, mode: str = "link"):
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
+
+
+@app.get("/auth/github/login")
+def auth_github_login_redirect():
+    """Alias for settings/profile linking so legacy or direct links do not 404."""
+    return RedirectResponse("/auth/github?mode=settingslink", status_code=302)
 
 @app.get("/auth/github/callback")
 async def auth_github_callback(request: Request, state: str = "", error: str = ""):
@@ -2000,7 +2017,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("GitHub OAuth state mismatch")
         return reject("error")
 
@@ -2011,7 +2028,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
             return reject("error")
         if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
             return reject("error")
-    elif mode != "link" or not user:
+    elif mode not in ("link", "settingslink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?github=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -2040,7 +2057,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
             httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
         )
         return response
-    if mode == "link" and user:
+    if mode in ("link", "settingslink") and user:
         # Profile linking — save the GitHub username to the logged-in user
         auth.link_github_username(user["email"], claims.get("login", ""))
         # 4.11 (e): persist the fetched candidate (login + avatar) for user
@@ -2059,7 +2076,8 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
                 await asyncio.to_thread(sync.sync_one, linked, oauth_tok)
         except Exception:
             logger.exception("Post-link sync failed for %s", user["email"])
-        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=github", status_code=302)
+        target = "/settings?linked=github" if mode == "settingslink" else ("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=github")
+        response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -2067,7 +2085,7 @@ async def auth_github_callback(request: Request, state: str = "", error: str = "
 
 @app.get("/auth/linkedin")
 def auth_linkedin(request: Request, mode: str = "link"):
-    if mode not in ("link", "signuplink"):
+    if mode not in ("link", "signuplink", "settingslink"):
         mode = "link"
     if mode == "signuplink":
         progress = auth.load_signup_progress(request.cookies.get(auth._SIGNUP_COOKIE))
@@ -2084,6 +2102,12 @@ def auth_linkedin(request: Request, mode: str = "link"):
     response.set_cookie(auth._OAUTH_STATE_COOKIE, state, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     response.set_cookie("gsad_oauth_mode", mode, max_age=auth._OAUTH_STATE_TTL_SECONDS, httponly=True, secure=auth._SECURE_COOKIES, samesite="lax")
     return response
+
+
+@app.get("/auth/linkedin/login")
+def auth_linkedin_login_redirect():
+    """Alias for settings/profile linking so legacy or direct links do not 404."""
+    return RedirectResponse("/auth/linkedin?mode=settingslink", status_code=302)
 
 @app.get("/auth/linkedin/callback")
 async def auth_linkedin_callback(request: Request, state: str = "", error: str = ""):
@@ -2104,7 +2128,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
 
     if error:
         return reject("error")
-    if not expected or not hmac.compare_digest(state or "", expected):
+    if not expected or not auth.constant_time_equals(state or "", expected):
         logger.warning("LinkedIn OAuth state mismatch")
         return reject("error")
 
@@ -2115,7 +2139,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             return reject("error")
         if user and (user.get("email") or "").strip().lower() != (signup_progress.get("email") or "").strip().lower():
             return reject("error")
-    elif mode != "link" or not user:
+    elif mode not in ("link", "settingslink") or not user:
         target = "/login?oauth=link_required" if user is None else "/onboarding?linkedin=link_required"
         response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
@@ -2145,7 +2169,7 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             httponly=True, secure=auth._SECURE_COOKIES, samesite="lax",
         )
         return response
-    if mode == "link" and user:
+    if mode in ("link", "settingslink") and user:
         auth.link_linkedin_sub(user["email"], claims.get("sub", ""))
         # 4.11 (e): persist the fetched candidate (name + picture) for user
         # confirmation on onboarding.
@@ -2153,7 +2177,8 @@ async def auth_linkedin_callback(request: Request, state: str = "", error: str =
             user["email"], "linkedin", claims.get("name"), claims.get("picture")
         )
         _db_log_event("linkedin_linked", user["email"])
-        response = RedirectResponse("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=linkedin", status_code=302)
+        target = "/settings?linked=linkedin" if mode == "settingslink" else ("/signup?phase=3" if mode == "signuplink" else "/onboarding?linked=linkedin")
+        response = RedirectResponse(target, status_code=302)
         response.delete_cookie(auth._OAUTH_STATE_COOKIE)
         response.delete_cookie("gsad_oauth_mode")
         return response
@@ -2182,6 +2207,12 @@ def _post_login_destination(user: dict | None, next_dest: str = "/") -> str:
         email = str(user.get("email") or "").strip().lower()
         if email and not auth.get_faculty_teaching(email):
             return "/faculty-setup?phase=2"
+    # BUG-147: the `next` form field is attacker-controlled. Route it through
+    # the same allowlist sanitiser as every other post-action redirect, so
+    # `next=https://evil.example` or `next=//evil.example` can never be used as
+    # an open redirect. An untrusted value collapses to "/" and falls through
+    # to the role landing below.
+    next_dest = _safe_redirect_url(next_dest, default="/") if next_dest else "/"
     if next_dest and next_dest not in ("", "/", "/onboarding"):
         return next_dest
     if (user.get("role") or "") == "student":
@@ -2266,12 +2297,16 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
         support_notifs = _memo(f"bell:notifs:{email}", lambda: _list_notifications(email)) if email else []
         unread_support = sum(1 for n in support_notifs if not n.get("is_read"))
         if not support_notifs:
-            return {"notifications": [], "notif_count": 0, "notif_empty": "No notifications - all clear."}
+            # No student notifications means no bell at all (BUG-130). Staff
+            # still get the persistent bell below, since ticket alerts are
+            # their primary inbox.
+            return {"notifications": [], "notif_count": 0, "notif_empty": None}
         notifications = [
             {
                 "id": n.get("id"),
                 "issue": n.get("title") or "Support Update",
                 "sub": n.get("message") or "",
+                "sub_is_html": n.get("type") in ("WEEKLY_TOP_STUDENT", "WEEKLY_TOP_HACKERRANK"),
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank"
                 if n.get("type") == "WEEKLY_TOP_HACKERRANK"
@@ -2311,6 +2346,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
                 "id": n.get("id"),
                 "issue": n.get("title") or "Weekly update",
                 "sub": n.get("message") or "",
+                "sub_is_html": True,
                 "time": views.friendly_timestamp(n.get("created_at") or ""),
                 "fix_url": "/leaderboards?platform=hackerrank" if n.get("type") == "WEEKLY_TOP_HACKERRANK" else "/leaderboards",
                 "link_label": "View",
@@ -2325,6 +2361,7 @@ def _bell_context(request: Request, view=None, roster: str = "", tickets: list[d
             {
                 "issue": alert["subject"],
                 "sub": f"{alert['student']} • {alert['status']}" if alert["student"] else alert["status"],
+                "sub_is_html": False,
                 "time": views.friendly_timestamp(alert["updated_at"]),
                 "fix_url": alert["fix_url"],
                 "link_label": "Fix",
@@ -2474,7 +2511,7 @@ def _faculty_can_review_student(faculty_email: str, student_email: str) -> bool:
         student = auth.get_user(student_email) or {}
         division = str(student.get("division") or "").strip()
         batch = str(student.get("practical_batch") or "").strip()
-        return batch in assignments.get(division, [])
+        return auth.teaching_includes(assignments, division, batch)
     except Exception:
         return False
 
@@ -2495,6 +2532,12 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         _rows = auth.get_onboarding_users()
         ctx["onboarding_total"] = len(_rows)
         ctx["onboarding_users"] = _filter_onboarding_rows(_rows, q)
+        ctx["teaching_scope"] = {}
+        ctx["q"] = q
+        ctx["action"] = action
+        ctx["action_email"] = email
+        ctx["error"] = error
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif role == "faculty":
         try:
             teaching = auth.get_faculty_teaching(user.get("email", ""))
@@ -2517,7 +2560,8 @@ def onboarding(request: Request, saved: str = "", error: str = "", action: str =
         ctx["q"] = q
         ctx["action"] = action
         ctx["action_email"] = email
-        return templates.TemplateResponse(request, "pages/faculty_onboarding.html", ctx)
+        ctx["error"] = error
+        return templates.TemplateResponse(request, "pages/onboarding_review.html", ctx)
     elif user:
         try:
             ctx["submission"] = auth.get_user(user.get("email", "")) or {}
@@ -3236,6 +3280,27 @@ def api_certificates(request: Request, student_id: str = "", student_email: str 
     return JSONResponse({"status": "ok", "certificates": items})
 
 
+def _cron_authorized(request: Request) -> bool:
+    """True when the request carries the configured ``CRON_SECRET``.
+
+    The secret is accepted as ``X-Cron-Secret`` or ``Authorization: Bearer``
+    (the latter is what Vercel Cron sends automatically). The comparison is
+    constant-time and never raises: Starlette decodes header bytes as
+    latin-1, so a raw non-ASCII byte reaches us as a non-ASCII ``str`` that
+    ``hmac.compare_digest`` refuses to compare — an uncaught ``TypeError``
+    that turned a rejected request into an HTTP 500 (BUG-152).
+    """
+    configured_secret = os.environ.get("CRON_SECRET") or ""
+    if not configured_secret:
+        return False
+    supplied = request.headers.get("x-cron-secret") or ""
+    if not auth.constant_time_equals(supplied, configured_secret):
+        bearer = request.headers.get("authorization") or ""
+        if bearer.lower().startswith("bearer "):
+            supplied = bearer[7:]
+    return auth.constant_time_equals(supplied, configured_secret)
+
+
 @app.api_route("/sync/accounts", methods=["GET", "POST"])
 async def sync_accounts(request: Request, force: bool = False):
     """Phase 5.1: refresh every approved account's analytics snapshot.
@@ -3247,14 +3312,7 @@ async def sync_accounts(request: Request, force: bool = False):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     token = github_client.load_token()
@@ -3279,14 +3337,7 @@ async def sync_weekly(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     token = github_client.load_token()
@@ -3461,14 +3512,7 @@ async def sync_hackerrank(
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     batch = max(1, min(int(batch or 0), HR_SYNC_BATCH_MAX))
@@ -3537,15 +3581,7 @@ def _sync_authorized(request: Request) -> bool:
     user = getattr(request.state, "user", None)
     if user and user.get("role") in ("admin", "faculty"):
         return True
-    configured_secret = os.environ.get("CRON_SECRET") or ""
-    if not configured_secret:
-        return False
-    supplied = request.headers.get("x-cron-secret") or ""
-    if not hmac.compare_digest(supplied, configured_secret):
-        bearer = request.headers.get("authorization") or ""
-        if bearer.lower().startswith("bearer "):
-            supplied = bearer[7:]
-    return hmac.compare_digest(supplied, configured_secret)
+    return _cron_authorized(request)
 
 
 @app.get("/api/hackerrank/handles")
@@ -3627,11 +3663,7 @@ async def sync_heavy_next_endpoint(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            if token == os.environ.get("CRON_SECRET"):
-                authorized = True
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
@@ -3647,14 +3679,7 @@ async def sync_single_student(email: str, request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
@@ -3704,14 +3729,7 @@ async def get_approved_users_list(request: Request):
     user = getattr(request.state, "user", None)
     authorized = bool(user and user.get("role") in ("admin", "faculty"))
     if not authorized:
-        configured_secret = os.environ.get("CRON_SECRET") or ""
-        if configured_secret:
-            supplied = request.headers.get("x-cron-secret") or ""
-            if not hmac.compare_digest(supplied, configured_secret):
-                bearer = request.headers.get("authorization") or ""
-                if bearer.lower().startswith("bearer "):
-                    supplied = bearer[7:]
-            authorized = hmac.compare_digest(supplied, configured_secret)
+        authorized = _cron_authorized(request)
     if not authorized:
         return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     
@@ -5248,6 +5266,26 @@ def api_download_db(request: Request):
     if storage.DB_PATH.exists():
         return FileResponse(storage.DB_PATH, media_type="application/octet-stream", filename="gsad_users.db")
     return JSONResponse(status_code=404, content={"detail": "Database not found"})
+
+
+@app.get("/admin/poster", response_class=HTMLResponse)
+def admin_poster(request: Request, clean: str = ""):
+    """Admin-only A3 platform poster.
+
+    A single, print-ready page that explains the whole product. It is rendered
+    outside the app shell so a browser screenshot (or ``?clean=1``) captures
+    only the 297 x 420 mm sheet.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if (user.get("role") or "").lower() != "admin":
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "pages/admin_poster.html",
+        {"clean": (clean or "").strip() == "1"},
+    )
 
 
 @app.get("/{slug}", response_class=HTMLResponse)

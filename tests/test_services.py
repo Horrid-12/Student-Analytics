@@ -2,6 +2,7 @@ import io
 import os
 import subprocess
 import sys
+from typing import Callable
 
 import pandas as pd
 import pytest
@@ -9,6 +10,32 @@ import pytest
 import services
 import app.services as app_services
 from services import EXCEL_COLUMNS, GITHUB_API_BASE, GITHUB_COL, REQUIRED_EXCEL_COLUMNS, STUDENT_ID_COL
+
+#: True when ``services`` is aliased to the ported ``app/services.py`` (see
+#: ``tests/conftest.py``). The two implementations share the contracts asserted
+#: in this file, but each has its own transport library and its own quality
+#: rubric, so a handful of pins have to be scoped to one side or the other.
+PORT_UNDER_TEST = os.environ.get("MODULE_UNDER_TEST", "").strip() == "app.services"
+
+
+def _transport_exceptions() -> tuple[Callable[[], Exception], Callable[[], Exception]]:
+    """(timeout, connection) exception factories for the module under test.
+
+    The frozen legacy ``services.py`` predates the httpx migration and
+    classifies ``requests`` exceptions; ``app/services.py`` classifies httpx
+    transport exceptions. Both honour the same error-kind contract, so the
+    shared test exercises the taxonomy the module actually implements.
+    """
+    if hasattr(services, "httpx"):
+        import httpx
+
+        return (
+            lambda: httpx.TimeoutException("timeout"),
+            lambda: httpx.ConnectError("connection failed"),
+        )
+    import requests
+
+    return (lambda: requests.Timeout(), lambda: requests.ConnectionError())
 
 
 def make_roster_xlsx(rows: list[dict]) -> io.BytesIO:
@@ -293,10 +320,10 @@ class TestRateLimit:
 
 class TestErrorClassification:
     def test_kinds(self):
-        import requests
+        timeout_exc, connection_exc = _transport_exceptions()
 
-        assert services.classify_api_error(exc=requests.Timeout()) == "timeout"
-        assert services.classify_api_error(exc=requests.ConnectionError()) == "network"
+        assert services.classify_api_error(exc=timeout_exc()) == "timeout"
+        assert services.classify_api_error(exc=connection_exc()) == "network"
         assert services.classify_api_error(status_code=401) == "auth"
         assert services.classify_api_error(status_code=503) == "server"
         assert services.classify_api_error(status_code=403) == "rate_limit"
@@ -592,17 +619,29 @@ class TestOwnedCommitData:
     def test_empty_repos(self):
         out, enriched, unavailable = services.fetch_owned_commit_data(pd.DataFrame(), None)
         assert unavailable == []
-        assert list(out.columns) == ["Username", "Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d"]
+        # Both sides expose the same windowed counters; the port additionally
+        # tracks the owned-active-day list the streak widget reads.
+        expected = ["Username", "Owned_Commits", "Owned_Commits_30d", "Owned_Commits_90d"]
+        if PORT_UNDER_TEST:
+            expected.append("Owned_Active_Dates")
+        assert list(out.columns) == expected
 
 
 class TestQualityMetrics:
-    def test_bands(self):
+    """Contract shared by both scoring rubrics.
+
+    Only the *maintenance status* (recency bucket) is a shared contract. The
+    score itself and the band it maps to are rubric-specific: the frozen
+    legacy copy uses the 4-category rubric pinned below, the port uses the
+    9-category one pinned by ``TestAntiGamingScoring``.
+    """
+
+    @staticmethod
+    def _repo_df():
         # Relative dates (immune to wall-clock decay): 10d ago is Active,
-        # 400d ago is Stale. Expectations follow the frozen legacy strict
-        # rubric (recency 15 + description 5 + license 5 + stars 15 +
-        # forks 5 + commits 15 = 60).
+        # 400d ago is Stale.
         now = pd.Timestamp.now(tz="UTC")
-        repo_df = pd.DataFrame(
+        return pd.DataFrame(
             [
                 {"Username": "u", "Updated": (now - pd.Timedelta(days=10)).isoformat(),
                  "Description": "x", "Language": "Py", "License": "MIT",
@@ -611,8 +650,19 @@ class TestQualityMetrics:
                  "Description": None, "Language": None, "License": None},
             ]
         )
-        out = services.add_repository_quality_metrics(repo_df)
+
+    def test_maintenance_status(self):
+        out = services.add_repository_quality_metrics(self._repo_df())
         assert list(out["Maintenance_Status"]) == ["Active", "Stale"]
+
+    @pytest.mark.skipif(
+        PORT_UNDER_TEST,
+        reason="score/band expectations follow the frozen legacy strict rubric "
+               "(recency 15 + description 5 + license 5 + stars 15 + forks 5 + "
+               "commits 15 = 60); the port's rubric is pinned by TestAntiGamingScoring",
+    )
+    def test_bands(self):
+        out = services.add_repository_quality_metrics(self._repo_df())
         assert out["Repository_Quality_Score"].tolist() == [60, 0]
         assert list(out["Quality_Band"]) == ["Strong Signals", "Needs Attention"]
 
@@ -816,12 +866,19 @@ class TestLegacyStrictScoring:
     """Smoke pins for the frozen legacy strict rubric (``services``).
 
     The live pipeline moved on to the anti-gaming rubric above; this just
-    guards the frozen reference against accidental edits."""
+    guards the frozen reference against accidental edits. The class-level
+    ``services`` alias is the *ported* module in ``MODULE_UNDER_TEST`` mode,
+    so the rubric-specific pin below is legacy-only."""
 
     def test_minimum_all_zero_is_zero(self):
         row = _quality_row(200)
         assert int(services.add_repository_quality_metrics(pd.DataFrame([row])).iloc[0]["Repository_Quality_Score"]) == 0
 
+    @pytest.mark.skipif(
+        PORT_UNDER_TEST,
+        reason="the strict 4-category rubric lives only in the frozen legacy "
+               "services.py; the port's 9-category rubric is pinned by TestAntiGamingScoring",
+    )
     def test_maximum_strict_components_is_100(self):
         row = _quality_row(
             0,

@@ -386,6 +386,61 @@ class TestLogin:
         assert "Welcome back" in body  # bounced back to the login page
 
 
+class TestPostLoginRedirect:
+    """BUG-147: the `next` form field must never become an open redirect.
+
+    ``_post_login_destination`` used to return the raw value, so
+    ``POST /login {next: https://evil.example}`` answered
+    ``302 Location: https://evil.example`` (CWE-601). The value now goes
+    through ``_safe_redirect_url`` (allowlisted internal paths only).
+    """
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            "https://evil.example/steal",
+            "http://evil.example",
+            "//evil.example/steal",
+            "/\\evil.example/steal",
+            "\\\\evil.example",
+            "javascript:alert(1)",
+        ],
+    )
+    def test_hostile_next_collapses_to_root(self, hostile):
+        from app.main import _post_login_destination
+
+        assert _post_login_destination({"role": "admin"}, hostile) == "/"
+
+    def test_allowed_internal_next_is_honored(self):
+        from app.main import _post_login_destination
+
+        assert _post_login_destination({"role": "admin"}, "/students") == "/students"
+        assert (
+            _post_login_destination({"role": "admin"}, "/students?roster=abc&q=alice")
+            == "/students?roster=abc&q=alice"
+        )
+
+    def test_login_form_cannot_redirect_offsite(self, client):
+        assert auth.create_user("admin@college.edu", "secret123", "admin", "Admin")
+        r = client.post(
+            "/login",
+            data={"email": "admin@college.edu", "password": "secret123", "next": "https://evil.example/steal"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/"
+
+    def test_login_form_still_follows_internal_next(self, client):
+        assert auth.create_user("admin@college.edu", "secret123", "admin", "Admin")
+        r = client.post(
+            "/login",
+            data={"email": "admin@college.edu", "password": "secret123", "next": "/settings"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/settings"
+
+
 class TestSignupOnlyCreatesStudents:
     def test_role_dropdown_is_not_a_real_input(self, client):
         """Even if a student forces a role param, the server hardcodes student."""
