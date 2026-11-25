@@ -110,6 +110,18 @@ function ensureManager(container, host) {
   return managerPromise
 }
 
+/** Initialize the local viewer engine while the selected DWG is downloading. */
+export async function prepareViewer({ container, host }) {
+  if (!container) {
+    throw new Error('viewer-open-failed')
+  }
+  if (typeof WebGLRenderingContext === 'undefined') {
+    throw new Error('viewer-webgl-missing')
+  }
+  await ensureManager(container, host || container)
+  return true
+}
+
 /**
  * Open a DWG drawing inside the given container.
  *
@@ -136,6 +148,8 @@ async function openDrawingNow({ container, host, fileName, buffer }) {
     opened = await manager.openDocument(fileName, buffer, {
       mode: AcEdOpenMode.Read,
       minimumChunkSize: 1000,
+      // Keep the host loading overlay up until the full scene is ready.
+      progressiveRendering: false,
     })
   } catch (error) {
     console.error('DWG open failed:', error)
@@ -145,6 +159,24 @@ async function openDrawingNow({ container, host, fileName, buffer }) {
     throw new Error('viewer-parse-failed')
   }
   hasOpenDrawing = true
+
+  // openDocument() confirms the file parsed, but CAD entity conversion and
+  // deferred text/INSERT geometry can still be running. Do not dismiss the
+  // host's loading overlay until both queues settle; otherwise a first open
+  // can expose a partial frame. Then do an awaited final fit against the full
+  // scene extents instead of relying on the open-time fire-and-forget fit.
+  const view = manager.curView
+  const idle = await view.waitUntilIdle(90_000)
+  if (!idle) {
+    throw new Error('viewer-render-timeout')
+  }
+  try {
+    await view.zoomToSmartExtents(30_000)
+  } catch (error) {
+    console.warn('Smart extents failed; using drawing extents:', error)
+    view.zoomToFitDrawing(30_000)
+  }
+  view.isDirty = true
   return true
 }
 

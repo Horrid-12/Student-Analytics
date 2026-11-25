@@ -165,13 +165,28 @@
   if (!modal || !canvasHost || !statusEl) return;
 
   var viewerModule = null;
+  var viewerModulePromise = null;
   var openToken = 0;
   var lastTrigger = null;
+
+  function loadViewerModule() {
+    if (!viewerModulePromise) {
+      viewerModulePromise = import(BUNDLE_URL).then(function (module) {
+        viewerModule = module;
+        return module;
+      }).catch(function (error) {
+        viewerModulePromise = null;
+        throw error;
+      });
+    }
+    return viewerModulePromise;
+  }
 
   var ERRORS = {
     'viewer-assets-missing': 'The drawing viewer could not load its engine files. Refresh the page and try again.',
     'viewer-webgl-missing': 'This browser cannot render drawings because WebGL is unavailable.',
     'viewer-parse-failed': 'This drawing could not be opened. The file may use an unsupported DWG version.',
+    'viewer-render-timeout': 'This drawing is taking too long to render. Please retry or download the file to inspect it.',
     'viewer-open-failed': 'This drawing could not be opened.',
     'file-fetch': 'The drawing file could not be loaded. Please try again.',
     'bundle': 'The drawing viewer failed to load. Refresh the page and try again.'
@@ -211,22 +226,30 @@
     var fileName = btn.getAttribute('data-file-name') || 'drawing.dwg';
     lastTrigger = btn;
     openModal(fileName);
-    showStatus('Loading viewer…', false);
+    showStatus('Loading viewer and drawing…', false);
     (async function () {
-      if (!viewerModule) {
-        viewerModule = await import(BUNDLE_URL);
-      }
+      // Download the viewer bundle and DWG at the same time. Once the bundle
+      // arrives, initialize its local workers/renderer while the file body is
+      // still downloading instead of paying those costs serially on first open.
+      var modulePromise = loadViewerModule().then(function (module) {
+        if (token !== openToken) return module;
+        return module.prepareViewer({ container: canvasHost, host: stage }).then(function () {
+          return module;
+        });
+      });
+      var bufferPromise = fetch(url, { credentials: 'same-origin' }).then(function (response) {
+        if (!response.ok) throw new Error('file-fetch');
+        return response.arrayBuffer();
+      });
+      var results = await Promise.all([modulePromise, bufferPromise]);
       if (token !== openToken) return;
-      showStatus('Loading drawing…', false);
-      var response = await fetch(url, { credentials: 'same-origin' });
-      if (!response.ok) throw new Error('file-fetch');
-      var buffer = await response.arrayBuffer();
-      if (token !== openToken) return;
+      viewerModule = results[0];
+      showStatus('Rendering drawing…', false);
       await viewerModule.openDrawing({
         container: canvasHost,
         host: stage,
         fileName: fileName,
-        buffer: buffer
+        buffer: results[1]
       });
       if (token !== openToken) return;
       statusEl.hidden = true;
