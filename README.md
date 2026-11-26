@@ -28,6 +28,7 @@
   <a href="#troubleshooting">Troubleshooting</a> ·
   <a href="#status">Status</a> ·
   <a href="#contributing">Contributing</a> ·
+  <a href="#sponsorship">Sponsorship</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -99,6 +100,7 @@ sign-up / OAuth → onboarding approval → sync (cron + Actions + on login)
 ```
 
 - Feature inventory: [`documentation/Features List.md`](./documentation/Features%20List.md)
+- Code audit: [`documentation/ANALYSIS.md`](./documentation/ANALYSIS.md)
 - Roadmap and bug log: [`documentation/Taskflow.md`](./documentation/Taskflow.md) · [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md)
 
 ```
@@ -350,6 +352,12 @@ The app runs on [Vercel](https://vercel.com) with the Python runtime — `vercel
 3. After every change: keep [`documentation/Features List.md`](./documentation/Features%20List.md) in sync with what shipped, and log any fixed bug in [`documentation/Bug Tracker.md`](./documentation/Bug%20Tracker.md).
 4. Never commit student data files, tokens, or `.streamlit/secrets.toml` — rosters (`*.xlsx`) and env files are gitignored on purpose.
 5. Report security issues per [`SECURITY.md`](./SECURITY.md) — not through public issues.
+
+---
+
+## Sponsorship
+
+The sponsorship record — current status, the supporting institution, and the forms of support that are welcome — lives in [`documentation/Internships-and-Sponsorship.md`](./documentation/Internships-and-Sponsorship.md). GitHub surfaces that file through the **Sponsor** button on this repository page, wired by `.github/FUNDING.yml`; GitHub only creates README tabs for its fixed set of community files, so there is no separate Sponsorship tab.
 
 ---
 

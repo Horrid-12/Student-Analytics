@@ -1,0 +1,7 @@
+# GitHub turns this file into a "Sponsor" button in the repository header and a
+# "Sponsor this project" entry in the sidebar (it is NOT a README tab — GitHub
+# only creates tabs for its fixed set of community files). The button points at
+# the repo's sponsorship record: current status, supporting institution and the
+# forms of support that are welcome.
+custom:
+  - "https://github.com/Horrid-12/Student-Analytics/blob/main/documentation/Internships-and-Sponsorship.md"
