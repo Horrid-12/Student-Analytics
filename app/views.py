@@ -1000,7 +1000,297 @@ def _hr_summary(students, hr_snapshots: dict | None) -> dict:
     return summary
 
 
-def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False, hr_snapshots: dict | None = None) -> dict:
+def _insight_number(value, default: float = 0.0) -> float:
+    """NaN-safe float for the student insight cards."""
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _insight_int(value) -> int:
+    return int(round(_insight_number(value)))
+
+
+def _insight_truthy(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return _insight_number(value) > 0
+
+
+def _insight_date(value):
+    """Parse a single timestamp (UTC) without raising on mixed/legacy values."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    try:
+        ts = pd.to_datetime(value, errors="coerce", utc=True, format="mixed")
+    except Exception:
+        try:
+            ts = pd.to_datetime(value, errors="coerce", utc=True)
+        except Exception:
+            return None
+    return None if pd.isna(ts) else ts
+
+
+def _insight_user_frame(frame, username: str) -> pd.DataFrame:
+    """Rows belonging to one GitHub login (case-insensitive, @ tolerated)."""
+    user = str(username or "").strip().lstrip("@").lower()
+    if frame is None or frame.empty or not user or "Username" not in frame.columns:
+        return pd.DataFrame()
+    try:
+        mask = frame["Username"].astype(str).str.strip().str.lstrip("@").str.lower() == user
+        return frame[mask].copy()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _insight_own_student_row(students, own_row) -> dict:
+    """Resolve the signed-in student inside the (already class-scoped) frame."""
+    if own_row is None:
+        return {}
+    if students is None or students.empty:
+        return dict(own_row) if hasattr(own_row, "keys") else {}
+    try:
+        for col in (STUDENT_ID_COL, "GitHub_Username"):
+            value = own_row.get(col) if hasattr(own_row, "get") else None
+            if value is None or col not in students.columns:
+                continue
+            needle = str(value).strip().lower()
+            if not needle or needle in {"nan", "none"}:
+                continue
+            matches = students[students[col].astype(str).str.strip().str.lower() == needle]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
+    except Exception:
+        pass
+    return dict(own_row) if hasattr(own_row, "keys") else {}
+
+
+def _insight_quality_map(repos) -> dict:
+    """username (lowercase) -> mean owned-repo quality score."""
+    if repos is None or repos.empty or not {"Username", "Repository_Quality_Score"}.issubset(repos.columns):
+        return {}
+    try:
+        frame = repos[["Username", "Repository_Quality_Score"]].copy()
+        frame["_user"] = frame["Username"].astype(str).str.strip().str.lstrip("@").str.lower()
+        frame["_score"] = pd.to_numeric(frame["Repository_Quality_Score"], errors="coerce")
+        frame = frame.dropna(subset=["_score"])
+        return frame.groupby("_user")["_score"].mean().to_dict()
+    except Exception:
+        return {}
+
+
+def _insight_activity(own_repos, own_team_repos) -> dict:
+    """Bucket recorded repo activity into weekly and monthly student series.
+
+    The stored per-repo timestamps are the only history available, so each
+    repository contributes its recorded commits / PRs to its last-active
+    bucket. The chart is labelled as activity (not a reconstructed daily log).
+    """
+    events: list[tuple] = []
+
+    def _add(value, commits, prs):
+        ts = _insight_date(value)
+        if ts is None:
+            return
+        events.append((ts, 1, _insight_number(commits), _insight_number(prs)))
+
+    if own_repos is not None and not own_repos.empty:
+        for _, row in own_repos.iterrows():
+            stamp = row.get("Updated")
+            if _insight_date(stamp) is None:
+                stamp = row.get("Created")
+            _add(
+                stamp,
+                row.get("Commits", row.get("Total_Commits", 0)),
+                row.get("Pull_Requests", 0),
+            )
+    if own_team_repos is not None and not own_team_repos.empty:
+        for _, row in own_team_repos.iterrows():
+            stamp = row.get("Last_Active_At")
+            if _insight_date(stamp) is None:
+                stamp = row.get("Updated")
+            _add(stamp, row.get("Commits", 0), row.get("PR_Events", 0))
+
+    def _bucket(kind: str) -> dict:
+        buckets: dict[str, dict] = {}
+        for ts, repos_count, commits, prs in events:
+            key = _iso_week_label(ts) if kind == "weekly" else ts.strftime("%Y-%m")
+            bucket = buckets.setdefault(key, {"sort": ts, "repos": 0, "commits": 0, "prs": 0})
+            bucket["repos"] += repos_count
+            bucket["commits"] += commits
+            bucket["prs"] += prs
+        ordered = sorted(buckets.items(), key=lambda item: item[1]["sort"])[-12:]
+        return {
+            "labels": [key for key, _ in ordered],
+            "repos": [int(bucket["repos"]) for _, bucket in ordered],
+            "commits": [int(round(bucket["commits"])) for _, bucket in ordered],
+            "prs": [int(round(bucket["prs"])) for _, bucket in ordered],
+        }
+
+    return {"views": {"weekly": _bucket("weekly"), "monthly": _bucket("monthly")}}
+
+
+def student_overview_insights(view, own_row) -> dict:
+    """Build the six student-only Overview displays from a class-scoped view.
+
+    Every number comes from the student's own roster row / repositories, with
+    class benchmarks measured from the same class-scoped view. No other
+    student's name or identity is ever included in this payload.
+    """
+    own = _insight_own_student_row(view.get("students"), own_row)
+    username = str(own.get("GitHub_Username") or "").strip().lstrip("@")
+    students = _with_combined_metrics(view.get("students")) if view.get("students") is not None else pd.DataFrame()
+    repos = view.get("repos") if view.get("repos") is not None else pd.DataFrame()
+    team_repos = view.get("team_repos") if view.get("team_repos") is not None else pd.DataFrame()
+    own_repos = _insight_user_frame(repos, username)
+    own_team_repos = _insight_user_frame(team_repos, username)
+
+    # 1 — Your activity over time.
+    activity = _insight_activity(own_repos, own_team_repos)
+
+    # 2 — Where you stand: paired bars normalised to the class best so four
+    # differently-scaled metrics can share one axis. Tooltips carry raw values.
+    quality_map = _insight_quality_map(repos)
+    own_quality = _insight_number(quality_map.get(username.lower()), 0.0)
+
+    def _column_values(column: str):
+        if students.empty or column not in students.columns:
+            return pd.Series(dtype=float)
+        return pd.to_numeric(students[column], errors="coerce").dropna()
+
+    def _benchmark(column: str, own_value: float) -> tuple[float, float, float]:
+        values = _column_values(column)
+        if values.empty:
+            return own_value, 0.0, own_value
+        avg = float(values.mean())
+        best = float(values.max())
+        return own_value, avg, best
+
+    class_scores = [float(v) for v in quality_map.values() if pd.notna(v)]
+    class_quality_avg = float(sum(class_scores) / len(class_scores)) if class_scores else 0.0
+    class_quality_best = float(max(class_scores)) if class_scores else 0.0
+
+    raw_metrics = [
+        ("Repositories", "Combined_Repos", _insight_int(own.get("Combined_Repos")), 0),
+        ("Quality score", "_quality", own_quality, 1),
+        ("Pull requests", "Pull_Requests", _insight_int(own.get("Pull_Requests")), 0),
+        ("Followers", "Followers", _insight_int(own.get("Followers")), 0),
+    ]
+    stand_metrics = []
+    for name, column, own_value, decimals in raw_metrics:
+        if column == "_quality":
+            avg, best = class_quality_avg, class_quality_best
+        else:
+            _, avg, best = _benchmark(column, own_value)
+        ceiling = max(best, avg, own_value, 0.0)
+        stand_metrics.append({
+            "name": name,
+            "you": round(own_value, decimals),
+            "avg": round(avg, decimals),
+            "best": round(best, decimals),
+            "decimals": decimals,
+            "you_pct": round(100 * own_value / ceiling, 1) if ceiling > 0 else 0.0,
+            "avg_pct": round(100 * avg / ceiling, 1) if ceiling > 0 else 0.0,
+        })
+
+    # 3 — Your language mix.
+    language_counts = []
+    if not own_repos.empty and "Language" in own_repos.columns:
+        known = _known_languages(own_repos["Language"])
+        if not known.empty:
+            counts = known.value_counts().head(6)
+            language_counts = [{"name": str(lang), "value": int(count)} for lang, count in counts.items()]
+
+    # 4 — Contribution breakdown.
+    contributed_count = _insight_int(own.get("Contributed_Repos_Count"))
+    if own_team_repos.empty and contributed_count == 0:
+        contributed_count = len(own_team_repos)
+    contribution = [
+        {"name": "Repositories", "owned": len(own_repos), "team": contributed_count},
+        {"name": "Pull requests", "owned": _insight_int(own.get("Pull_Requests")), "team": 0},
+        {"name": "Issues opened", "owned": _insight_int(own.get("Issues_Opened")), "team": 0},
+        {"name": "Commits", "owned": _insight_int(own.get("Owned_Commits")), "team": _insight_int(own.get("Team_Commits"))},
+    ]
+    if not any(item["owned"] or item["team"] for item in contribution):
+        contribution = []
+
+    # 5 — Class quality-score distribution with the student's marker.
+    bins = [
+        {"label": "0–19", "count": 0},
+        {"label": "20–39", "count": 0},
+        {"label": "40–59", "count": 0},
+        {"label": "60–79", "count": 0},
+        {"label": "80–99", "count": 0},
+        {"label": "100", "count": 0},
+    ]
+    for score in class_scores:
+        bins[min(int(score // 20), 5)]["count"] += 1
+    own_bin = min(int(own_quality // 20), 5) if username.lower() in quality_map else None
+    distribution = {
+        "bins": bins,
+        "own_score": round(own_quality, 1),
+        "own_bin": own_bin,
+        "class_avg": round(class_quality_avg, 1),
+        "students": len(class_scores),
+    }
+    if distribution["students"] == 0:
+        distribution = {}
+
+    # 6 — Next best actions: repo-quality gaps first, then account gaps.
+    now = pd.Timestamp.now(tz="UTC")
+    readme_missing = 0
+    stale = 0
+    low_quality = 0
+    for _, row in own_repos.iterrows():
+        if not _insight_truthy(row.get("Has_README")):
+            readme_missing += 1
+        stamp = _insight_date(row.get("Updated"))
+        status = str(row.get("Maintenance_Status") or "").strip().lower()
+        if status in {"aging", "stale", "inactive"} or (stamp is not None and (now - stamp).days > 180):
+            stale += 1
+        score = _insight_number(row.get("Repository_Quality_Score"), -1)
+        if 0 <= score < 50 or str(row.get("Quality_Band") or "").strip().lower() == "needs attention":
+            low_quality += 1
+    hr_blank = not str(own.get("HackerRank_Username") or "").strip() or str(own.get("HackerRank_Username")).strip().lower() in {"nan", "none"}
+    actions = []
+
+    def _action(title, detail, tone, badge):
+        if len(actions) < 4:
+            actions.append({"title": title, "detail": detail, "tone": tone, "badge": badge})
+
+    if readme_missing:
+        _action("Add a README", f"{readme_missing} repo{'s' if readme_missing != 1 else ''} still need a README.", "amber", "Docs")
+    else:
+        _action("Keep READMEs current", "Every owned repo already has a README.", "green", "Docs")
+    if stale:
+        _action("Refresh stale repos", f"{stale} repo{'s' if stale != 1 else ''} have been quiet for over 180 days.", "red", "Maintenance")
+    else:
+        _action("Maintenance looks good", "No stale repositories found in your own work.", "green", "Maintenance")
+    if low_quality:
+        _action("Improve repo quality", f"{low_quality} repo{'s' if low_quality != 1 else ''} fall below the 50-point quality mark.", "amber", "Quality")
+    else:
+        _action("Quality scores look healthy", "None of your owned repos are in the needs-attention band.", "green", "Quality")
+    if hr_blank:
+        _action("Link HackerRank", "Connect your profile to bring practice scores onto your dashboard.", "blue", "Account")
+    elif _insight_int(own.get("Pull_Requests")) == 0 or contributed_count == 0:
+        _action("Open a pull request", "Collaborate on a teammate's repo to grow your contribution mix.", "purple", "Collaboration")
+    else:
+        _action("Keep building", "No urgent gaps — a new project or PR is your next step.", "green", "Momentum")
+
+    return {
+        "activity": activity,
+        "stand": stand_metrics,
+        "languages": language_counts,
+        "contribution": contribution,
+        "distribution": distribution,
+        "actions": actions,
+    }
+
+
+def overview_payload(view, query="", division="All", batch="All", semester="All", overall_view: dict | None = None, my_classes_view: dict | None = None, pairs="All", privacy_map: dict | None = None, scoped: bool = False, hr_snapshots: dict | None = None, student_class_label: str | None = None, own_student_row: dict | None = None) -> dict:
     _orig_students = view["students"].copy() if view.get("students") is not None else view["students"]
     students = _with_combined_metrics(_orig_students) if _orig_students is not None else _orig_students
     # Unfiltered copy: the "Overall Average" benchmark and every selectable
@@ -1420,7 +1710,9 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
     _filtered = _class_selected
     if radar_students is not None and not radar_students.empty:
         # 1. "My Classes": the faculty's taught classes (page filters apply).
-        _current_label = "My Classes"
+        # Students never get the faculty label — their single scoped cohort is
+        # labelled as their own class, and no other cohort series are offered.
+        _current_label = student_class_label or "My Classes"
         if _filtered:
             _pair_bits = [
                 f"Div {normalize_division(d) or d} · Batch {b}"
@@ -1432,44 +1724,48 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         _radar_series.append({"key": "current", "kind": "current", "label": _current_label, "values": _radar_metric_values(radar_students, radar_score_repos)})
         _radar_active.append("current")
         _has_current = True
-    # 2. "All students": the whole-roster baseline. Always pre-applied so the
-    #    radar opens with a visible shape; users can clear it via the Clear
-    #    Filters button.
-    _overall_score = _overall_score_repos if _overall_score_repos is not None else _all_score_repos
-    _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_overall_students, _overall_score)})
-    _radar_active.append("overall")
-    # 3. Every selectable cohort, measured with the same formulas.
-    for _c in _cohort_rows:
-        try:
-            _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c["users"])].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
-            _radar_series.append({"key": _c["key"], "kind": "cohort", "group": _c["group"], "name": _c["name"], "label": _c["label"], "values": _radar_metric_values(_c["students"], _c_score)})
-        except Exception:
-            continue
-
-    # Semester cohorts: one comparable series per semester present, measured
-    # with the same formulas. Keys are namespaced so they never collide with
-    # the batch|division cohort keys.
-    _sem_cohorts = []
-    if _all_students is not None and not _all_students.empty and "Semester" in _all_students.columns:
-        try:
-            _sem_vals = sorted(
-                {str(v).strip() for v in _all_students["Semester"].dropna().astype(str).tolist()},
-                key=_sem_sort_key,
-            )
-        except Exception:
-            _sem_vals = []
-        for _sem in _sem_vals:
-            if not _sem or _sem.lower() in {"nan", "none", "unknown"}:
-                continue
+    # A student gets exactly one radar series — their own class. The whole-
+    # roster baseline, every other cohort and the semester picker are faculty/
+    # admin-only, so no other class can be reached from the student Overview.
+    _sem_cohorts: list[dict] = []
+    if not student_class_label:
+        # 2. "All students": the whole-roster baseline. Always pre-applied so the
+        #    radar opens with a visible shape; users can clear it via the Clear
+        #    Filters button.
+        _overall_score = _overall_score_repos if _overall_score_repos is not None else _all_score_repos
+        _radar_series.append({"key": "overall", "kind": "overall", "label": "All students", "values": _radar_metric_values(_overall_students, _overall_score)})
+        _radar_active.append("overall")
+        # 3. Every selectable cohort, measured with the same formulas.
+        for _c in _cohort_rows:
             try:
-                _sem_slice = _all_students[_all_students["Semester"].astype(str).str.strip() == _sem]
-                _sem_users = _cohort_usernames(_sem_slice)
-                _sem_key = f"semester|{_sem}"
-                _sem_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_sem_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
-                _radar_series.append({"key": _sem_key, "kind": "cohort", "group": "Semester", "name": _sem, "label": _sem, "values": _radar_metric_values(_sem_slice, _sem_score)})
-                _sem_cohorts.append({"key": _sem_key, "name": _sem})
+                _c_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_c["users"])].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+                _radar_series.append({"key": _c["key"], "kind": "cohort", "group": _c["group"], "name": _c["name"], "label": _c["label"], "values": _radar_metric_values(_c["students"], _c_score)})
             except Exception:
                 continue
+
+        # Semester cohorts: one comparable series per semester present, measured
+        # with the same formulas. Keys are namespaced so they never collide with
+        # the batch|division cohort keys.
+        if _all_students is not None and not _all_students.empty and "Semester" in _all_students.columns:
+            try:
+                _sem_vals = sorted(
+                    {str(v).strip() for v in _all_students["Semester"].dropna().astype(str).tolist()},
+                    key=_sem_sort_key,
+                )
+            except Exception:
+                _sem_vals = []
+            for _sem in _sem_vals:
+                if not _sem or _sem.lower() in {"nan", "none", "unknown"}:
+                    continue
+                try:
+                    _sem_slice = _all_students[_all_students["Semester"].astype(str).str.strip() == _sem]
+                    _sem_users = _cohort_usernames(_sem_slice)
+                    _sem_key = f"semester|{_sem}"
+                    _sem_score = _all_score_repos[_all_score_repos["Username"].astype(str).isin(_sem_users)].copy() if _all_score_repos is not None and not _all_score_repos.empty else pd.DataFrame()
+                    _radar_series.append({"key": _sem_key, "kind": "cohort", "group": "Semester", "name": _sem, "label": _sem, "values": _radar_metric_values(_sem_slice, _sem_score)})
+                    _sem_cohorts.append({"key": _sem_key, "name": _sem})
+                except Exception:
+                    continue
 
     # Picker model for the custom Compare dropdown: divisions (clean values
     # only) with the batch buttons offered per division, plus the semester
@@ -1480,19 +1776,20 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
 
     _compare_divisions = []
     _compare_index: dict[str, dict] = {}
-    for _c in _cohort_rows:
-        if not _c.get("div") or not _c.get("batch"):
-            continue
-        entry = _compare_index.get(_c["div"])
-        if entry is None:
-            entry = {"division": f"Division {_c['div']}", "batches": []}
-            _compare_index[_c["div"]] = entry
-            _compare_divisions.append(entry)
-        if not any(b["batch"] == _c["batch"] for b in entry["batches"]):
-            entry["batches"].append({"batch": _c["batch"], "key": _c["key"]})
-    _compare_divisions.sort(key=lambda e: _div_sort_key(e["division"]))
-    for entry in _compare_divisions:
-        entry["batches"].sort(key=lambda b: _batch_sort_key(b["batch"]))
+    if not student_class_label:
+        for _c in _cohort_rows:
+            if not _c.get("div") or not _c.get("batch"):
+                continue
+            entry = _compare_index.get(_c["div"])
+            if entry is None:
+                entry = {"division": f"Division {_c['div']}", "batches": []}
+                _compare_index[_c["div"]] = entry
+                _compare_divisions.append(entry)
+            if not any(b["batch"] == _c["batch"] for b in entry["batches"]):
+                entry["batches"].append({"batch": _c["batch"], "key": _c["key"]})
+        _compare_divisions.sort(key=lambda e: _div_sort_key(e["division"]))
+        for entry in _compare_divisions:
+            entry["batches"].sort(key=lambda b: _batch_sort_key(b["batch"]))
 
     # Axis normalization: percentage axes are exact 0–100; count axes scale to
     # 1.5× the largest value seen across all series (with a readable floor).
@@ -1516,6 +1813,12 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "has_current": _has_current,
         "current_label": _current_label,
     }
+
+    student_insights = (
+        student_overview_insights(view, own_student_row)
+        if own_student_row is not None and student_class_label
+        else None
+    )
 
     return {
         "total": total,
@@ -1556,6 +1859,7 @@ def overview_payload(view, query="", division="All", batch="All", semester="All"
         "statistics_lists": statistics_lists,
         "need_attention_students": need_attention_students,
         "radar_data": radar_data,
+        "student_insights": student_insights,
         "api_status": "Healthy" if not errors and not state.get("repo_unavailable") else "Issues detected",
         "status": run_outcome(state),
         "valid_users": valid,
@@ -2383,6 +2687,56 @@ def filter_view_by_teaching(view: dict | None, teaching: dict | None) -> dict | 
         return {**view, "students": kept, "records": kept_records, "state": state}
     except Exception:
         return view
+
+
+def filter_view_by_class(view: dict | None, division: str, batch: str) -> dict | None:
+    """Restrict a fleet-shaped view to ONE (Division, Batch) class.
+
+    Student-facing counterpart of :func:`filter_view_by_teaching`. Unlike the
+    faculty scope this fails CLOSED: when the class cannot be resolved the
+    caller gets an empty view, never the whole college. Division is compared
+    canonically (``"1"`` == ``"Division 1"``) so every classmate is kept.
+
+    Returns a NEW dict — fleet/analysis views are memoised and shared across
+    roles, so the input is never mutated.
+    """
+    want_div = normalize_division(division)
+    want_batch = str(batch or "").strip()
+    empty_state = {**(view.get("state") or {}), "status": "complete",
+                   "valid": 0, "invalid": 0, "errors": 0} if isinstance(view, dict) else {"status": "complete"}
+
+    def _empty() -> dict:
+        base = dict(view) if isinstance(view, dict) else {}
+        students = base.get("students")
+        base.update({
+            "students": students.iloc[0:0].copy() if students is not None else None,
+            "records": [],
+            "state": dict(empty_state),
+        })
+        return base
+
+    if not view or not want_div or not want_batch:
+        return _empty()
+    students = view.get("students")
+    if students is None or students.empty or not {"Division", "Batch"}.issubset(students.columns):
+        return _empty()
+    try:
+        divs = students["Division"].map(normalize_division)
+        bats = students["Batch"].astype(str).str.strip()
+        kept = students[divs.eq(want_div) & bats.eq(want_batch)].copy()
+        records = view.get("records")
+        kept_records = []
+        if isinstance(records, list):
+            for row in records:
+                row = row or {}
+                if (normalize_division(row.get("Division")) == want_div
+                        and str(row.get("Batch") or "").strip() == want_batch):
+                    kept_records.append(row)
+        state = dict(view.get("state") or {})
+        state.update({"valid": len(kept), "invalid": 0, "errors": 0, "status": "complete"})
+        return {**view, "students": kept, "records": kept_records, "state": state}
+    except Exception:
+        return _empty()
 
 
 def export_query_str(roster_id="", q="", division="All", batch="All", year="All", semester="All", status="", pairs="All") -> str:

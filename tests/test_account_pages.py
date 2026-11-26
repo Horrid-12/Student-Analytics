@@ -108,7 +108,10 @@ class TestStudentPages:
         assert r.status_code == 200
         html = r.text
         assert "Class Metrics Radar" in html
-        assert 'value="1|1"' in html
+        # Students are locked to their own class: no cohort filter controls.
+        assert 'value="1|1"' not in html
+        assert "Showing your class:" in html
+        assert "Division 1" in html and "Batch 1" in html
         assert "Commit &amp; Activity Trend" in html
         assert "Analysis Results" not in html
         assert "Number of Students" in html
@@ -117,13 +120,15 @@ class TestStudentPages:
         assert "Total Forks" in html
         assert "data-active-number" in html
         assert "data-active-value" in html
-        # Division/Batch/Semester filters (no search on Overview).
+        # Division/Batch/Semester filters are hidden for students (no search
+        # on Overview either) — the only scope is their own class.
         assert 'name="q"' not in html
         assert 'student-search' not in html
-        assert 'name="pair"' in html
-        assert 'name="semester"' in html
-        assert 'id="cf-btn"' in html
-        assert 'id="cf-panel"' in html
+        assert 'name="pair"' not in html
+        assert 'name="semester"' not in html
+        assert 'id="cf-btn"' not in html
+        assert 'id="cf-panel"' not in html
+        assert 'id="radar-compare-btn"' not in html
         # Labels live in pills below the numbers; no badges above them.
         assert 'metric-pill' in html
         assert '<span class="badge-blue">Students</span>' not in html
@@ -131,7 +136,7 @@ class TestStudentPages:
         assert '<span class="badge-amber">Stars</span>' not in html
         assert '<span class="badge-purple">Forks</span>' not in html
 
-    def test_overview_filters_narrow_cohort(self):
+    def test_overview_ignores_filters_for_students(self):
         seeded_account()
         sync.sync_all(force=True)
         client, _ = make_client("student", email="alice@college.edu")
@@ -143,10 +148,12 @@ class TestStudentPages:
                 f'<div class="metric-label"><span class="badge-blue metric-pill">Number of Students</span></div>'
             ) in compact
 
+        # Cohort query params are ignored: a student's scope is fixed to
+        # their own class, never filterable to another one (or empty).
         assert students_metric(client.get("/overview").text, 1)
-        assert students_metric(client.get("/overview?division=2").text, 0)
+        assert students_metric(client.get("/overview?division=2").text, 1)
         assert students_metric(client.get("/overview?division=1").text, 1)
-        assert students_metric(client.get("/overview?q=nosuchstudent").text, 0)
+        assert students_metric(client.get("/overview?q=nosuchstudent").text, 1)
 
     def test_overview_shows_primary_language(self):
         seeded_account()

@@ -1077,3 +1077,468 @@ window.__EC_THEME = (function () {
 </div>
 {% endif %}
 {% endmacro %}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   STUDENT INSIGHTS  (only rendered for a signed-in student)
+   All five charts use the same 380px ECharts box and theme bridge as the
+   existing Overview charts — no separate visual language or sizing.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{% macro _insight_empty(message) %}
+<div class="insight-empty">
+  <div>
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:0.5;"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    <div>{{ message }}</div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro student_activity(id, data) %}
+{{ _theme_bridge() }}
+{% if data and data.views and (data.views.weekly.labels or data.views.monthly.labels) %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+  var period = 'weekly';
+
+  function view() {
+    return (raw.views && raw.views[period]) || { labels: [], repos: [], commits: [], prs: [] };
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var v = view();
+    return {
+      color: [p.accent, p.success, p.warning],
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'axis',
+        axisPointer: { type: 'cross', label: { backgroundColor: p.muted } }
+      }),
+      legend: {
+        data: ['Active repos', 'Commits', 'Pull requests'],
+        top: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 16
+      },
+      grid: { left: 52, right: 22, top: 44, bottom: 38 },
+      xAxis: {
+        type: 'category',
+        data: v.labels,
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: p.border } },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        name: 'Activity',
+        nameTextStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        splitLine: { lineStyle: { color: p.grid } }
+      },
+      series: [
+        {
+          name: 'Active repos', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+          lineStyle: { width: 3 }, areaStyle: { opacity: 0.14 }, data: v.repos
+        },
+        {
+          name: 'Commits', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+          lineStyle: { width: 2 }, data: v.commits
+        },
+        {
+          name: 'Pull requests', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+          lineStyle: { width: 2 }, data: v.prs
+        }
+      ]
+    };
+  }
+
+  function render() { chart.setOption(opts(), { notMerge: true }); }
+  render();
+  window.__chartBridge = window.__chartBridge || {};
+  window.__chartBridge['{{ id }}'] = {
+    setPeriod: function (next) {
+      if (!raw.views || !raw.views[next]) return;
+      period = next;
+      render();
+    },
+    getPeriod: function () { return period; }
+  };
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% else %}
+{{ _insight_empty('No dated repository activity is available yet.') }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro student_stand(id, data) %}
+{{ _theme_bridge() }}
+{% if data %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function fmt(value, decimals) {
+    return Number(value || 0).toFixed(Number(decimals) || 0);
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    var metrics = raw || [];
+    return {
+      color: [p.accent, p.purple],
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: function (items) {
+          if (!items || !items.length) return '';
+          var m = metrics[items[0].dataIndex] || {};
+          return '<b>' + esc(m.name) + '</b><br/>' +
+                 'You: ' + fmt(m.you, m.decimals) + '<br/>' +
+                 'Class average: ' + fmt(m.avg, m.decimals) + '<br/>' +
+                 'Class best: ' + fmt(m.best, m.decimals);
+        }
+      }),
+      legend: {
+        data: ['You', 'Class average'],
+        top: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 16
+      },
+      grid: { left: 112, right: 46, top: 44, bottom: 28 },
+      xAxis: {
+        type: 'value',
+        max: 100,
+        min: 0,
+        axisLabel: {
+          color: p.textSoft, fontFamily: 'Inter', fontSize: 11,
+          formatter: function (value) { return value + '%'; }
+        },
+        splitLine: { lineStyle: { color: p.grid } }
+      },
+      yAxis: {
+        type: 'category',
+        inverse: true,
+        data: metrics.map(function (m) { return m.name; }),
+        axisLine: { lineStyle: { color: p.border } },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 }
+      },
+      series: [
+        {
+          name: 'You', type: 'bar', barWidth: 14,
+          itemStyle: { color: p.accent, borderRadius: [0, 6, 6, 0] },
+          data: metrics.map(function (m) { return m.you_pct; })
+        },
+        {
+          name: 'Class average', type: 'bar', barWidth: 14,
+          itemStyle: { color: p.purple, borderRadius: [0, 6, 6, 0] },
+          data: metrics.map(function (m) { return m.avg_pct; })
+        }
+      ]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% else %}
+{{ _insight_empty('No class comparison data is available yet.') }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro student_language(id, data) %}
+{{ _theme_bridge() }}
+{% if data %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+  var total = 0;
+  raw.forEach(function (d) { total += Number(d.value) || 0; });
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'item',
+        formatter: function (info) {
+          var pct = total > 0 ? (Number(info.value) / total * 100).toFixed(1) : '0';
+          return '<b>' + esc(info.name) + '</b><br/>' +
+                 'Repositories: ' + info.value + '<br/>' +
+                 'Share: ' + pct + '%';
+        }
+      }),
+      legend: {
+        bottom: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 14,
+        type: 'scroll'
+      },
+      series: [{
+        type: 'pie',
+        radius: ['48%', '70%'],
+        center: ['50%', '44%'],
+        data: raw.map(function (d, i) {
+          return {
+            name: d.name,
+            value: d.value,
+            itemStyle: {
+              color: p.series[i % p.series.length],
+              borderColor: p.card,
+              borderWidth: 2
+            }
+          };
+        }),
+        label: {
+          color: p.text,
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: 600,
+          formatter: function (info) {
+            var pct = total > 0 ? (info.value / total * 100).toFixed(0) : '0';
+            return info.name + '\n' + pct + '%';
+          },
+          lineHeight: 17
+        },
+        labelLine: { lineStyle: { color: p.muted } },
+        animationDuration: 600,
+        animationEasing: 'cubicOut'
+      }],
+      graphic: [{
+        type: 'text', left: 'center', top: '38%', silent: true, z: 10,
+        style: { text: String(total), fill: p.text, font: '700 28px Inter, sans-serif' }
+      }, {
+        type: 'text', left: 'center', top: '49%', silent: true, z: 10,
+        style: { text: 'repos', fill: p.textSoft, font: '600 12px Inter, sans-serif' }
+      }]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% else %}
+{{ _insight_empty('No languages detected in your repositories yet.') }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro student_contribution(id, data) %}
+{{ _theme_bridge() }}
+{% if data %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    return {
+      color: [p.accent, p.success],
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: function (items) {
+          if (!items || !items.length) return '';
+          var row = raw[items[0].dataIndex] || {};
+          var owned = Number(row.owned) || 0;
+          var team = Number(row.team) || 0;
+          return '<b>' + esc(row.name) + '</b><br/>' +
+                 'Owned: ' + owned + '<br/>' +
+                 'Team / contributed: ' + team + '<br/>' +
+                 'Total: ' + (owned + team);
+        }
+      }),
+      legend: {
+        data: ['Owned', 'Team / contributed'],
+        top: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 16
+      },
+      grid: { left: 116, right: 30, top: 44, bottom: 28 },
+      xAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        splitLine: { lineStyle: { color: p.grid } }
+      },
+      yAxis: {
+        type: 'category',
+        inverse: true,
+        data: raw.map(function (row) { return row.name; }),
+        axisLine: { lineStyle: { color: p.border } },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 }
+      },
+      series: [
+        {
+          name: 'Owned', type: 'bar', stack: 'total', barWidth: 18,
+          itemStyle: { color: p.accent },
+          data: raw.map(function (row) { return Number(row.owned) || 0; })
+        },
+        {
+          name: 'Team / contributed', type: 'bar', stack: 'total', barWidth: 18,
+          itemStyle: { color: p.success, borderRadius: [0, 6, 6, 0] },
+          data: raw.map(function (row) { return Number(row.team) || 0; })
+        }
+      ]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% else %}
+{{ _insight_empty('No contribution activity has been recorded yet.') }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro student_distribution(id, data) %}
+{{ _theme_bridge() }}
+{% if data and data.bins and data.students %}
+<div id="{{ id }}" class="echart-box" style="height:380px;"></div>
+<script>
+(function () {
+  'use strict';
+  var el = document.getElementById('{{ id }}');
+  var raw = {{ data | tojson }};
+  var chart = echarts.init(el);
+  var bins = raw.bins || [];
+  var counts = bins.map(function (bin) { return Number(bin.count) || 0; });
+  var marker = (raw.own_bin === null || raw.own_bin === undefined)
+    ? []
+    : [[Number(raw.own_bin), (counts[Number(raw.own_bin)] || 0) + 1]];
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function opts() {
+    var p = window.__EC_THEME.get();
+    return {
+      tooltip: window.__EC_THEME.tooltip({
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: function (info) {
+          if (!info) return '';
+          if (info.seriesName === 'You') {
+            return '<b>You</b><br/>Quality score: ' + Number(raw.own_score || 0).toFixed(1) +
+                   '<br/>Band: ' + esc(bins[info.data[0]].label);
+          }
+          return '<b>' + esc(info.name) + '</b><br/>Students: ' + info.value;
+        }
+      }),
+      legend: {
+        data: ['Students', 'You'],
+        top: 0,
+        textStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 12 },
+        icon: 'circle',
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 16
+      },
+      grid: { left: 48, right: 24, top: 44, bottom: 38 },
+      xAxis: {
+        type: 'category',
+        data: bins.map(function (bin) { return bin.label; }),
+        axisLine: { lineStyle: { color: p.border } },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11, interval: 0 }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        name: 'Students',
+        nameTextStyle: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        axisLabel: { color: p.textSoft, fontFamily: 'Inter', fontSize: 11 },
+        splitLine: { lineStyle: { color: p.grid } }
+      },
+      series: [
+        {
+          name: 'Students', type: 'bar', barWidth: '58%',
+          itemStyle: { color: p.secondary, borderRadius: [6, 6, 0, 0] },
+          data: counts
+        },
+        {
+          name: 'You', type: 'scatter', symbol: 'pin', symbolSize: 30,
+          itemStyle: { color: p.danger },
+          label: {
+            show: true, position: 'top', formatter: 'You',
+            color: p.text, fontFamily: 'Inter', fontSize: 11, fontWeight: 700
+          },
+          data: marker
+        }
+      ],
+      graphic: [
+        {
+          type: 'text', right: 12, top: 4, silent: true, z: 10,
+          style: { text: 'Your score: ' + Number(raw.own_score || 0).toFixed(1), fill: p.textSoft, font: '600 11px Inter, sans-serif' }
+        },
+        {
+          type: 'text', right: 12, top: 22, silent: true, z: 10,
+          style: { text: 'Class avg: ' + Number(raw.class_avg || 0).toFixed(1), fill: p.muted, font: '500 11px Inter, sans-serif' }
+        }
+      ]
+    };
+  }
+
+  chart.setOption(opts());
+  window.__EC_THEME.register(chart, opts);
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+{% else %}
+{{ _insight_empty('No class quality scores are available yet.') }}
+{% endif %}
+{% endmacro %}

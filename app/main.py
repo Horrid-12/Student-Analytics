@@ -2401,13 +2401,38 @@ def overview(
     _fc = _filter_context(request, division, batch, pair, semester)
     ctx.update(_fc)
     ctx["teaching_active"] = False
+    ctx["student_class"] = None
+    _own_student_row = None
     view = _analysis_view(roster) if roster else (_fleet_view(request) or _account_view(request))
+    user = getattr(request.state, "user", None)
+    # Students only ever see their own class on Overview. Scope the view
+    # itself (not just the payload) so the headline cards, every graph, the
+    # radar and the profile popup all use the same single cohort; every
+    # cohort filter is hidden in the template. filter_view_by_class fails
+    # closed, so an unresolvable class can never fall back to the whole
+    # college. The memoised fleet frame is never mutated.
+    if _is_student_viewer(request) and view is not None and _is_complete(view):
+        own = views.find_own_student_row(view.get("students"), (user or {}).get("email", ""))
+        if own is not None:
+            _own_student_row = own
+            _div = str(own.get("Division") or "").strip()
+            _bat = str(own.get("Batch") or "").strip()
+            if _div and _bat:
+                _div_label = views.normalize_division(_div) or _div
+                ctx["student_class"] = f"Division {_div_label} · Batch {_bat}"
+                view = views.filter_view_by_class(view, _div, _bat)
+        # Ignore any cohort query params a student sends by hand — the class
+        # scope is fixed to their own record, never filterable.
+        ctx["divisions"], ctx["batches"], ctx["pairs"] = [], [], []
+        ctx["division"] = ctx["batch"] = ctx["pair"] = "All"
+        ctx["semester"] = "All"
+        ctx["selected_semesters"] = []
+        ctx["q"] = ""
     # Faculty "My Classes" toggle (fleet views only — an explicitly attached
     # roster is its own dataset): ON by default, restricts the dashboard to
     # the taught (division, batch) pairs. The memoised fleet frame is never
     # mutated; the filter returns a per-request copy. No teaching saved yet ->
     # full fleet + nudge (no toggle to show).
-    user = getattr(request.state, "user", None)
     ctx["teaching_scope"] = ""
     ctx["teaching_empty"] = False
     ctx["taught_map"] = {}
@@ -2447,13 +2472,17 @@ def overview(
             except Exception:
                 _hr_state = {}
             ctx["payload"] = views.overview_payload(
-                view, query=q or "", division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
-                semester=ctx["semester"] or "All", overall_view=_overall_view,
-                my_classes_view=_taught_view_for_radar, pairs=ctx["pairs"] or "All",
+                view, query=ctx["q"], division=ctx["divisions"] or "All", batch=ctx["batches"] or "All",
+                semester=ctx["semester"] or "All",
+                overall_view=None if ctx["student_class"] else _overall_view,
+                my_classes_view=None if ctx["student_class"] else _taught_view_for_radar,
+                pairs=ctx["pairs"] or "All",
                 privacy_map=_privacy or None,
-                scoped=bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
+                scoped=bool(ctx["student_class"]) or bool(ctx["show_my_classes"] and ctx["my_classes_on"]),
                 # Feature 87: HackerRank side of the Overview platform toggle.
                 hr_snapshots=_hr_state,
+                student_class_label=(f"Your Class · {ctx['student_class']}" if ctx["student_class"] else None),
+                own_student_row=_own_student_row if ctx["student_class"] else None,
             )
         except Exception:
             ctx["view"] = None
