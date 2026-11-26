@@ -1,8 +1,8 @@
-"""Student AutoCAD DWG submissions.
+"""Student AutoCAD DWG submissions and staff remarks.
 
-Submission metadata and file bytes use Neon Postgres when configured, with a
-local SQLite fallback for development. The first release intentionally stores
-one uploaded file per row and leaves grading and browser previews for later.
+Submission metadata, the single editable staff remark, and file bytes use Neon
+Postgres when configured, with a local SQLite fallback. Each upload remains an
+independent record; grading and remark reply threads are not supported.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ DB_PATH = Path(__file__).resolve().parent.parent / "autocad.db"
 # Vercel Functions reject request bodies above 4.5 MB. Leave room for the
 # multipart form envelope, so the file itself is capped at 4 MiB for now.
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+MAX_REMARK_CHARS = 1000
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS autocad_submissions (
@@ -35,7 +36,10 @@ CREATE TABLE IF NOT EXISTS autocad_submissions (
     filename TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     file_data BLOB NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    remark TEXT NOT NULL DEFAULT '',
+    remark_updated_at TEXT,
+    remark_updated_by TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_autocad_submissions_email
     ON autocad_submissions (student_email);
@@ -56,6 +60,26 @@ def _connect() -> sqlite3.Connection:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA)
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(autocad_submissions)")}
+    migrations = (
+        ("remark", "TEXT NOT NULL DEFAULT ''"),
+        ("remark_updated_at", "TEXT"),
+        ("remark_updated_by", "TEXT NOT NULL DEFAULT ''"),
+    )
+    for name, definition in migrations:
+        if name not in columns:
+            try:
+                conn.execute(f"ALTER TABLE autocad_submissions ADD COLUMN {name} {definition}")
+            except sqlite3.OperationalError as exc:
+                # Another request may have added this column after our PRAGMA.
+                if "duplicate column name" not in str(exc).lower():
+                    raise
+
+
+_SUBMISSION_COLUMNS = (
+    "id, student_email, student_id, student_name, filename, file_size, created_at, "
+    "remark, remark_updated_at, remark_updated_by"
+)
 
 
 def clean_filename(filename: str) -> str:
@@ -83,9 +107,10 @@ def _format_row(row: dict | None) -> dict | None:
     if not row:
         return None
     data = dict(row)
-    created = data.get("created_at")
-    if created is not None and not isinstance(created, str):
-        data["created_at"] = created.isoformat()
+    for field in ("created_at", "remark_updated_at"):
+        value = data.get(field)
+        if value is not None and not isinstance(value, str):
+            data[field] = value.isoformat()
     data["file_size"] = int(data.get("file_size") or 0)
     return data
 
@@ -137,13 +162,13 @@ def list_submissions(student_email: str = "", limit: int = 200) -> list[dict]:
             _ensure_schema(conn)
             if student_email:
                 rows = conn.execute(
-                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    f"SELECT {_SUBMISSION_COLUMNS} "
                     "FROM autocad_submissions WHERE lower(student_email) = ? ORDER BY id DESC LIMIT ?",
                     (student_email, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                    f"SELECT {_SUBMISSION_COLUMNS} "
                     "FROM autocad_submissions ORDER BY id DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
@@ -164,7 +189,7 @@ def get_submission(submission_id: int) -> Optional[dict]:
         with closing(_connect()) as conn:
             _ensure_schema(conn)
             row = conn.execute(
-                "SELECT id, student_email, student_id, student_name, filename, file_size, created_at "
+                f"SELECT {_SUBMISSION_COLUMNS} "
                 "FROM autocad_submissions WHERE id = ?",
                 (submission_id,),
             ).fetchone()
@@ -172,6 +197,33 @@ def get_submission(submission_id: int) -> Optional[dict]:
     except (sqlite3.Error, OSError) as exc:
         logger.warning("AutoCAD submission lookup failed: %s", exc)
         return None
+
+
+def update_submission_remark(submission_id: int, remark: str, updated_by: str) -> bool:
+    """Set or replace a staff remark on one submission."""
+    try:
+        submission_id = int(submission_id)
+    except (TypeError, ValueError):
+        return False
+    remark = (remark or "").strip()
+    updated_by = (updated_by or "").strip().lower()
+    if not remark or len(remark) > MAX_REMARK_CHARS or not updated_by:
+        return False
+    if database.db_configured():
+        return db.update_autocad_submission_remark(submission_id, remark, updated_by)
+    try:
+        with closing(_connect()) as conn:
+            _ensure_schema(conn)
+            with conn:
+                cur = conn.execute(
+                    "UPDATE autocad_submissions "
+                    "SET remark = ?, remark_updated_at = ?, remark_updated_by = ? WHERE id = ?",
+                    (remark, _now(), updated_by, submission_id),
+                )
+                return cur.rowcount > 0
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("AutoCAD remark update failed: %s", exc)
+        return False
 
 
 def get_submission_file(submission_id: int) -> Optional[tuple[str, bytes]]:

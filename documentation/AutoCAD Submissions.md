@@ -46,14 +46,18 @@ Student /autocad page
 Faculty/admin /autocad page
   → latest 500 submissions
   → Repositories-style class/semester/search filters
+  → View button opens the self-hosted read-only DWG viewer
   → GET /autocad/submissions/{id}/file
   → ownership-or-staff authorization
-  → attachment download
+  → authenticated file bytes passed to the browser viewer
+  → direct link remains available for attachment download
 ```
 
 The current upload limit is **4 MiB**. DWG file contents are stored with their metadata in `autocad_submissions`; the browser never supplies the student email or PRN. Those identity values come from the signed-in account and its account row. The stored file is only returned by an authenticated download route. A student's list is filtered to that student's email. Staff see up to the latest 500 uploads; the Division/Batch picker, Semester select, and search filter that list. Faculty with teaching assignments start in **My Classes** scope and can switch to **All students**, matching the Repositories page; admins can filter across all classes.
 
-The page supports a basic student upload and faculty download inbox. It does not yet create assignments, render DWG files in a browser, allow deletion, or record grades and remarks. Each upload is an independent row, so repeated uploads do not overwrite earlier files. Class filtering currently reads the student's current division, practical batch, and semester from their account record; future assignments should store the assigned cohort on the assignment/submission so class changes cannot move historical work into a different class.
+The page supports student uploads, a faculty inbox, a read-only browser preview, and one editable faculty remark per submission. Remarks are stored on the submission, visible to both faculty and its owner, and can be replaced by staff; there are no reply threads or attachments. The viewer is bundled and served from `static/cad-viewer/`; DWG parsing, workers, WebAssembly, font catalog, fonts, and drawing template are self-hosted, with no runtime CDN dependency. `tools/cad-viewer/` contains the pinned build project; run `npm ci` and `npm run build` there to rebuild the bundle and worker files. Do not commit `node_modules/`. Each upload is an independent row, so repeated uploads do not overwrite earlier files. Class filtering currently reads the student's current division, practical batch, and semester from their account record; future assignments should store the assigned cohort on the assignment/submission so class changes cannot move historical work into a different class.
+
+The viewer is view-only: it opens drawings in read mode and supports zoom and pan, plus an optional CAD-style grid toggle. The drawing is framed automatically after it finishes rendering. It does not provide editing, save, or export features. The DWG parser (`@mlightcad/libredwg-converter` / LibreDWG) is GPL-3.0; review distribution and source-offer obligations before deploying the bundled viewer. The CAD font/template files are vendored from `mlightcad/cad-data`, whose README warns that font licensing may require purchase; verify redistribution rights for the chosen assets before public deployment.
 
 ## Why the initial limit and storage choice are small
 
@@ -66,7 +70,7 @@ Postgres `BYTEA` and the local SQLite BLOB make the first pass self-contained an
 1. Add assignment records and associate each submission with an assignment ID; preserve the student identity fields and keep authorization checks in the route and persistence query.
 2. Add a faculty-to-course/class mapping before restricting or delegating grading. Until that relationship exists, faculty can see all submissions.
 3. Keep submission versions immutable. Store grades and remarks against the reviewed submission (or in a separate review history) so later resubmissions do not erase prior feedback.
-4. For in-browser CAD review, add private-file authorization and an Autodesk Platform Services translation/viewer workflow. Do not expose storage credentials or make student DWGs public to embed a viewer.
+4. Keep browser CAD review read-only and serve drawings only through the existing authenticated file endpoint. The self-hosted MLightCAD/LibreDWG viewer is now the preview path; do not make student DWGs public or expose storage credentials.
 5. If files grow beyond the MVP limit, upload directly to private object storage and keep only file metadata plus a storage key in Postgres/SQLite. Validate the completed upload server-side before making it visible to faculty.
 6. Add retention/deletion policy, upload quotas, and optional malware scanning before accepting high-volume or externally shared files.
 
