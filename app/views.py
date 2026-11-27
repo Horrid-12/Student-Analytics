@@ -1133,6 +1133,55 @@ def _insight_activity(own_repos, own_team_repos) -> dict:
     return {"views": {"weekly": _bucket("weekly"), "monthly": _bucket("monthly")}}
 
 
+def _insight_action_repo(row) -> dict:
+    """One owned repo, normalized for a Next-best-actions drill-down.
+
+    Uses the same cleaning rules as the flat repository list (_repo_card) plus
+    the flags the action cards filter on. Deliberately carries no owner
+    identity: this payload is student-only and must never name a classmate.
+    """
+    updated = _insight_date(row.get("Updated"))
+    score = _repo_number(row.get("Repository_Quality_Score"), float)
+    band, band_tone = _repo_band(row, score)
+    url = _repo_clean(row.get("Repository_URL"))
+    if not url.lower().startswith(("http://", "https://")):
+        url = ""
+    lang = _repo_clean(row.get("Language"))
+    if lang.lower() == "unknown":
+        lang = ""
+    try:
+        days_stale = int((pd.Timestamp.now(tz="UTC") - updated).days) if updated is not None else None
+    except (TypeError, ValueError):
+        days_stale = None
+    return {
+        "name": _repo_clean(row.get("Repository")),
+        "url": url,
+        "language": lang,
+        "stars": int(_repo_number(row.get("Stars"), float) or 0),
+        "commits": _insight_int(row.get("Commits", row.get("Total_Commits", 0))),
+        "prs": _insight_int(row.get("Pull_Requests")),
+        "score": round(score, 1) if score is not None else None,
+        "band": band,
+        "band_tone": band_tone,
+        "updated": updated.strftime("%Y-%m-%d") if updated is not None else _repo_clean(row.get("Updated"))[:10],
+        "days_stale": days_stale,
+        "readme": _insight_truthy(row.get("Has_README")),
+        "status": _repo_clean(row.get("Maintenance_Status")),
+    }
+
+
+def _insight_action_stats(repos: list[dict]) -> dict:
+    """Aggregate statistics for the repos behind one action card."""
+    scores = [repo["score"] for repo in repos if repo["score"] is not None]
+    return {
+        "count": len(repos),
+        "stars": sum(repo["stars"] for repo in repos),
+        "commits": sum(repo["commits"] for repo in repos),
+        "prs": sum(repo["prs"] for repo in repos),
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+    }
+
+
 def student_overview_insights(view, own_row) -> dict:
     """Build the six student-only Overview displays from a class-scoped view.
 
@@ -1240,45 +1289,76 @@ def student_overview_insights(view, own_row) -> dict:
         distribution = {}
 
     # 6 — Next best actions: repo-quality gaps first, then account gaps.
+    # Each card keeps the concrete repos behind its count so the Overview can
+    # expand it in place. Only the signed-in student's own repos go into this
+    # payload — teammates' repo identities are never exposed here.
     now = pd.Timestamp.now(tz="UTC")
-    readme_missing = 0
-    stale = 0
-    low_quality = 0
+    all_action_repos: list[dict] = []
+    readme_repos: list[dict] = []
+    stale_repos: list[dict] = []
+    low_quality_repos: list[dict] = []
     for _, row in own_repos.iterrows():
-        if not _insight_truthy(row.get("Has_README")):
-            readme_missing += 1
+        detail = _insight_action_repo(row)
+        all_action_repos.append(detail)
         stamp = _insight_date(row.get("Updated"))
         status = str(row.get("Maintenance_Status") or "").strip().lower()
+        if not detail["readme"]:
+            readme_repos.append(detail)
         if status in {"aging", "stale", "inactive"} or (stamp is not None and (now - stamp).days > 180):
-            stale += 1
+            stale_repos.append(detail)
         score = _insight_number(row.get("Repository_Quality_Score"), -1)
         if 0 <= score < 50 or str(row.get("Quality_Band") or "").strip().lower() == "needs attention":
-            low_quality += 1
+            low_quality_repos.append(detail)
+
+    readme_repos.sort(key=lambda r: (-r["stars"], r["name"]))
+    stale_repos.sort(key=lambda r: r["updated"] or "9999-99-99")
+    low_quality_repos.sort(key=lambda r: (r["score"] if r["score"] is not None else 999, r["name"]))
+    # The collaboration/momentum card lists the student's own repos with the
+    # fewest PRs — the places a contribution could start — rather than naming
+    # any teammate's repo.
+    pr_gap_repos = sorted(all_action_repos, key=lambda r: (r["prs"], r["name"]))[:12]
+
+    readme_missing = len(readme_repos)
+    stale = len(stale_repos)
+    low_quality = len(low_quality_repos)
     hr_blank = not str(own.get("HackerRank_Username") or "").strip() or str(own.get("HackerRank_Username")).strip().lower() in {"nan", "none"}
     actions = []
+    collab_note = (
+        "Teammate repositories are not named for privacy — these are your own repos, "
+        "ordered by fewest pull requests."
+    )
 
-    def _action(title, detail, tone, badge):
+    def _action(title, detail, tone, badge, repos, empty_message, note=""):
         if len(actions) < 4:
-            actions.append({"title": title, "detail": detail, "tone": tone, "badge": badge})
+            actions.append({
+                "title": title,
+                "detail": detail,
+                "tone": tone,
+                "badge": badge,
+                "repos": repos,
+                "stats": _insight_action_stats(repos),
+                "empty_message": empty_message,
+                "note": note,
+            })
 
     if readme_missing:
-        _action("Add a README", f"{readme_missing} repo{'s' if readme_missing != 1 else ''} still need a README.", "amber", "Docs")
+        _action("Add a README", f"{readme_missing} repo{'s' if readme_missing != 1 else ''} still need a README.", "amber", "Docs", readme_repos, "No repository is missing a README.")
     else:
-        _action("Keep READMEs current", "Every owned repo already has a README.", "green", "Docs")
+        _action("Keep READMEs current", "Every owned repo already has a README.", "green", "Docs", [], "Every owned repo already has a README — nothing to fix here.")
     if stale:
-        _action("Refresh stale repos", f"{stale} repo{'s' if stale != 1 else ''} have been quiet for over 180 days.", "red", "Maintenance")
+        _action("Refresh stale repos", f"{stale} repo{'s' if stale != 1 else ''} have been quiet for over 180 days.", "red", "Maintenance", stale_repos, "No stale repositories found in your own work.")
     else:
-        _action("Maintenance looks good", "No stale repositories found in your own work.", "green", "Maintenance")
+        _action("Maintenance looks good", "No stale repositories found in your own work.", "green", "Maintenance", [], "No stale repositories found in your own work.")
     if low_quality:
-        _action("Improve repo quality", f"{low_quality} repo{'s' if low_quality != 1 else ''} fall below the 50-point quality mark.", "amber", "Quality")
+        _action("Improve repo quality", f"{low_quality} repo{'s' if low_quality != 1 else ''} fall below the 50-point quality mark.", "amber", "Quality", low_quality_repos, "None of your owned repos are in the needs-attention band.")
     else:
-        _action("Quality scores look healthy", "None of your owned repos are in the needs-attention band.", "green", "Quality")
+        _action("Quality scores look healthy", "None of your owned repos are in the needs-attention band.", "green", "Quality", [], "None of your owned repos are in the needs-attention band.")
     if hr_blank:
-        _action("Link HackerRank", "Connect your profile to bring practice scores onto your dashboard.", "blue", "Account")
+        _action("Link HackerRank", "Connect your profile to bring practice scores onto your dashboard.", "blue", "Account", pr_gap_repos, "No owned repos are synced yet.")
     elif _insight_int(own.get("Pull_Requests")) == 0 or contributed_count == 0:
-        _action("Open a pull request", "Collaborate on a teammate's repo to grow your contribution mix.", "purple", "Collaboration")
+        _action("Open a pull request", "Collaborate on a teammate's repo to grow your contribution mix.", "purple", "Collaboration", pr_gap_repos, "No owned repos are synced yet.", collab_note)
     else:
-        _action("Keep building", "No urgent gaps — a new project or PR is your next step.", "green", "Momentum")
+        _action("Keep building", "No urgent gaps — a new project or PR is your next step.", "green", "Momentum", pr_gap_repos, "No owned repos are synced yet.", collab_note)
 
     return {
         "activity": activity,

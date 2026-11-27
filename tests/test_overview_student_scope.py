@@ -184,3 +184,65 @@ def test_student_insights_use_only_own_repositories(fleet):
     # No classmate names or handles leak into any student-only data.
     assert "Bob" not in str(insights)
     assert "bob-dev" not in str(insights)
+
+
+def test_student_actions_carry_repo_drilldown(fleet):
+    from app import views
+
+    view = _fleet()
+    own = views.find_own_student_row(view["students"], "alice@college.edu")
+    insights = views.student_overview_insights(view, own)
+    by_title = {action["title"]: action for action in insights["actions"]}
+    assert len(by_title) == 4
+
+    docs = by_title["Add a README"]
+    assert [repo["name"] for repo in docs["repos"]] == ["alice-dev/notes-app"]
+    assert docs["repos"][0]["readme"] is False
+    assert docs["stats"] == {
+        "count": 1, "stars": 8, "commits": 24, "prs": 2, "avg_score": 62.0,
+    }
+
+    maintenance = by_title["Refresh stale repos"]
+    assert [repo["name"] for repo in maintenance["repos"]] == ["alice-dev/cli-tool"]
+    assert maintenance["repos"][0]["status"] == "Aging"
+
+    quality = by_title["Quality scores look healthy"]
+    assert quality["repos"] == [] and quality["stats"]["count"] == 0
+    assert quality["empty_message"]
+
+    link = by_title["Link HackerRank"]
+    assert [repo["prs"] for repo in link["repos"]] == [1, 2]
+    # Contributed repo identities never enter this student-only payload.
+    assert "bob-dev" not in str(insights)
+
+    # With HackerRank linked and no PRs, the fourth card becomes Collaboration
+    # and still carries the same repo drill-down plus a privacy note.
+    linked = _fleet()
+    own_mask = linked["students"]["GitHub_Username"] == "alice-dev"
+    linked["students"].loc[own_mask, "HackerRank_Username"] = "alice-hr"
+    linked["students"].loc[own_mask, "Pull_Requests"] = 0
+    linked_own = views.find_own_student_row(linked["students"], "alice@college.edu")
+    linked_actions = {a["title"]: a for a in views.student_overview_insights(linked, linked_own)["actions"]}
+    collab = linked_actions["Open a pull request"]
+    assert len(collab["repos"]) == 2
+    assert "teammate" in collab["note"].lower()
+    assert "bob-dev" not in str(collab)
+
+
+def test_student_action_cards_expand_to_repo_tables(fleet, tmp_path, monkeypatch):
+    client = _login(tmp_path, monkeypatch, "alice@college.edu", "student")
+    body = client.get("/overview").text
+
+    assert body.count("data-insight-action=") == 4
+    assert body.count('id="insight-action-panel-') == 4
+    assert 'aria-controls="insight-action-panel-1"' in body
+    assert 'id="insight-action-panel-1"' in body
+    assert "View 1 repo" in body
+    assert "alice-dev/notes-app" in body
+    assert "alice-dev/cli-tool" in body
+    assert "README missing" in body
+    assert "<strong>8</strong> stars" in body
+    assert "Refresh stale repos" in body
+    assert "have been quiet for over 180 days" in body
+    assert "bob-dev/api" not in body
+    assert "Bob Other" not in body
