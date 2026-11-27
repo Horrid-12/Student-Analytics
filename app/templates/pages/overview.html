@@ -649,6 +649,154 @@
   .student-modal-close:hover {
     border-color: var(--blue);
   }
+  /* Student insights reuse the standard 380px chart box; only the empty
+     state and the action-card text need page-local rules. */
+  .insight-empty {
+    height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .insight-empty > div {
+    text-align: center;
+  }
+  .insight-actions .metric-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 146px;
+  }
+  .insight-action-badge {
+    align-self: flex-start;
+    font-size: 11px;
+    line-height: 1.2;
+    padding: 4px 10px;
+  }
+  .insight-action-title {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+  .insight-action-detail {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  /* Next best actions: each card expands into its own repo/statistics panel. */
+  .insight-action-toggle {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .insight-action-toggle:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 4px;
+    border-radius: 8px;
+  }
+  .insight-action-toggle .insight-action-title,
+  .insight-action-toggle .insight-action-detail {
+    display: block;
+  }
+  .insight-action-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--blue);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .insight-action-chevron {
+    display: inline-block;
+    transition: transform 160ms ease;
+  }
+  .insight-action-toggle[aria-expanded="true"] .insight-action-chevron {
+    transform: rotate(180deg);
+  }
+  .insight-action-panel {
+    margin-top: 14px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-soft);
+  }
+  .insight-action-panel[hidden] { display: none; }
+  .insight-action-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .insight-action-panel-title { color: var(--text); font-size: 15px; font-weight: 800; }
+  .insight-action-panel-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .insight-action-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .insight-action-stats strong { color: var(--text); }
+  .insight-action-note { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .insight-action-table-wrap {
+    max-height: 340px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+  }
+  .insight-action-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .insight-action-table th,
+  .insight-action-table td {
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+  }
+  .insight-action-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--card-soft);
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .insight-action-table tbody tr:last-child td { border-bottom: 0; }
+  .insight-action-table a { color: var(--blue); font-weight: 700; text-decoration: none; }
+  .insight-action-table a:hover { text-decoration: underline; }
+  .insight-action-repo-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+  .insight-action-empty {
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .badge-muted { color: var(--muted); background: var(--icon-bg); border-color: var(--icon-border); }
+  @media (max-width: 760px) {
+    .insight-action-table-wrap { overflow-x: auto; }
+    .insight-action-table { min-width: 620px; }
+  }
+
   @media (max-width: 1100px) {
     .stats-grid {
       grid-template-columns: 1fr;
@@ -684,7 +832,13 @@
     <div style="font-size: 13px; color: var(--text);">Showing the whole fleet — <a href="/onboarding" style="color: var(--blue); font-weight: 600;">set the divisions and batches you teach</a> to personalize this dashboard.</div>
 </div>
 {% endif %}
+{% if student_class %}
+<div class="auth-notice" style="margin-bottom: 20px; display: flex; align-items: center; gap: 12px; background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); padding: 12px 16px; border-radius: 8px;">
+    <div style="font-size: 13px; color: var(--text);">Showing your class: <strong>{{ student_class }}</strong> — every number and graph below is limited to this class.</div>
+</div>
+{% endif %}
 {% if complete and payload %}
+{% if not student_class %}
 <form class="filter-bar" method="get">
   <input type="hidden" name="roster" value="{{ roster_id }}">
   <input type="hidden" name="mine" value="{{ mine }}">
@@ -702,6 +856,7 @@
   <button class="btn" type="submit">Apply</button>
   <a class="btn" href="/overview?roster={{ roster_id }}">Clear</a>
 </form>
+{% endif %}
 <div id="previous-results">
 <section class="panel">
   <div class="overview-title-row">
@@ -981,6 +1136,7 @@
     <div id="radar-legend-box" class="radar-legend-box">
       <div id="radar-legend" class="radar-legend"></div>
     </div>
+    {% if not student_class %}
     <div class="radar-controls">
       <button type="button" id="radar-compare-btn" class="radar-compare-btn" aria-haspopup="true" aria-expanded="false">
         Compare
@@ -1013,6 +1169,7 @@
       </button>
       <div id="radar-hint" class="radar-hint">Maximum 4 classes can be compared at the same time.</div>
     </div>
+    {% endif %}
   </div>
   <div class="radar-grid">
     <div>
@@ -1039,6 +1196,8 @@
 <script>
   (function () {
     // Class Metrics Radar: cohort comparison picker + interactive pill legend.
+    // Students see a single fixed class series — no picker and no removable pill.
+    var STUDENT_SCOPE = {{ 'true' if student_class else 'false' }};
     function byId(id) { return document.getElementById(id); }
     var compareBtn = byId('radar-compare-btn');
     var comparePanel = byId('radar-compare-panel');
@@ -1181,7 +1340,7 @@
 
     // Pill ✕ buttons remove the cohort from the comparison.
     document.addEventListener('click', function (event) {
-      if (!bridge) return;
+      if (!bridge || STUDENT_SCOPE) return;
       var x = event.target.closest ? event.target.closest('.radar-x') : null;
       if (!x) return;
       bridge.removeSeries(x.getAttribute('data-key'));
@@ -1280,6 +1439,168 @@
     });
   })();
 </script>
+
+{% if student_class and payload.student_insights %}
+{% set si = payload.student_insights %}
+<section class="panel student-insights">
+  <div class="trend-header">
+    <div class="panel-title">Your activity over time</div>
+    <div class="activity-tabs" role="group" aria-label="Your activity period">
+      <button type="button" class="activity-tab" data-student-activity="weekly" aria-pressed="true">Weekly</button>
+      <button type="button" class="activity-tab" data-student-activity="monthly" aria-pressed="false">Monthly</button>
+    </div>
+  </div>
+  {{ ec.student_activity('student-activity', si.activity) }}
+</section>
+
+<section class="panel student-insights">
+  <div class="panel-title">Your progress</div>
+  <div class="two-col-grid">
+    <div>
+      <div class="panel-minor-title">Where you stand</div>
+      {{ ec.student_stand('student-stand', si.stand) }}
+    </div>
+    <div>
+      <div class="panel-minor-title">Your language mix</div>
+      {{ ec.student_language('student-language', si.languages) }}
+    </div>
+    <div>
+      <div class="panel-minor-title">Contribution breakdown</div>
+      {{ ec.student_contribution('student-contribution', si.contribution) }}
+    </div>
+    <div>
+      <div class="panel-minor-title">Class distribution + your marker</div>
+      {{ ec.student_distribution('student-distribution', si.distribution) }}
+    </div>
+  </div>
+</section>
+
+<section class="panel student-insights">
+  <div class="panel-title">Next best actions</div>
+  <div class="metric-grid metric-grid-4 insight-actions">
+    {% for action in si.actions %}
+    <div class="metric-card insight-action">
+      <button type="button" class="insight-action-toggle" data-insight-action="{{ loop.index }}"
+              aria-expanded="false" aria-controls="insight-action-panel-{{ loop.index }}">
+        <span class="badge badge-{{ action.tone }} insight-action-badge">{{ action.badge }}</span>
+        <span>
+          <span class="insight-action-title">{{ action.title }}</span>
+          <span class="insight-action-detail">{{ action.detail }}</span>
+          <span class="insight-action-cta">
+            {% if action.stats.count %}View {{ action.stats.count }} repo{{ '' if action.stats.count == 1 else 's' }}{% else %}No repos to show{% endif %}
+            <span class="insight-action-chevron" aria-hidden="true">&#9662;</span>
+          </span>
+        </span>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="insight-action-panels">
+    {% for action in si.actions %}
+    <div class="insight-action-panel" id="insight-action-panel-{{ loop.index }}"
+         data-insight-panel="{{ loop.index }}" hidden>
+      <div class="insight-action-panel-head">
+        <div>
+          <div class="insight-action-panel-title">{{ action.title }}</div>
+          <div class="insight-action-panel-sub">{{ action.detail }}</div>
+        </div>
+        {% if action.stats.count %}
+        <div class="insight-action-stats">
+          <span><strong>{{ action.stats.count }}</strong> repo{{ '' if action.stats.count == 1 else 's' }}</span>
+          <span><strong>{{ action.stats.stars }}</strong> stars</span>
+          <span><strong>{{ action.stats.commits }}</strong> commits</span>
+          <span><strong>{{ action.stats.prs }}</strong> PRs</span>
+          {% if action.stats.avg_score is not none %}<span>avg quality <strong>{{ action.stats.avg_score }}</strong></span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if action.note %}<div class="insight-action-note">{{ action.note }}</div>{% endif %}
+      {% if action.repos %}
+      <div class="insight-action-table-wrap">
+        <table class="insight-action-table">
+          <thead>
+            <tr>
+              <th>Repository</th>
+              <th>Quality</th>
+              <th>Stars</th>
+              <th>Commits</th>
+              <th>PRs</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for repo in action.repos %}
+            <tr>
+              <td>
+                {% if repo.url %}<a href="{{ repo.url }}" target="_blank" rel="noopener noreferrer">{{ repo.name or 'Repository' }}</a>{% else %}{{ repo.name or 'Repository' }}{% endif %}
+                <span class="insight-action-repo-sub">
+                  {% if repo.language %}{{ repo.language }} &middot; {% endif %}
+                  {% if repo.readme %}README{% else %}README missing{% endif %}
+                  {% if repo.status %} &middot; {{ repo.status }}{% endif %}
+                  {% if repo.days_stale is not none and repo.days_stale > 180 %} &middot; quiet {{ repo.days_stale }} days{% endif %}
+                </span>
+              </td>
+              <td>
+                {% if repo.band %}<span class="badge badge-{{ repo.band_tone }}">{{ repo.band }}</span>{% endif %}
+                {% if repo.score is not none %}<span class="insight-action-repo-sub">{{ repo.score }} / 100</span>{% endif %}
+              </td>
+              <td>{{ repo.stars }}</td>
+              <td>{{ repo.commits }}</td>
+              <td>{{ repo.prs }}</td>
+              <td>{{ repo.updated or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="insight-action-empty">{{ action.empty_message }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+<script>
+  (function () {
+    // Student activity: same capsule toggle behaviour as the class trend chart.
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('[data-student-activity]') : null;
+      if (!btn) return;
+      var group = btn.closest('.activity-tabs');
+      if (!group) return;
+      group.querySelectorAll('[data-student-activity]').forEach(function (other) {
+        other.setAttribute('aria-pressed', other === btn ? 'true' : 'false');
+      });
+      var bridge = window.__chartBridge && window.__chartBridge['student-activity'];
+      if (bridge && bridge.setPeriod) bridge.setPeriod(btn.getAttribute('data-student-activity'));
+    });
+  })();
+
+  (function () {
+    // Next best actions: one accordion panel at a time, collapsed by default.
+    var cards = document.querySelectorAll('[data-insight-action]');
+    var panels = document.querySelectorAll('[data-insight-panel]');
+    if (!cards.length || !panels.length) return;
+    function closeAll() {
+      panels.forEach(function (panel) { panel.hidden = true; });
+      cards.forEach(function (card) { card.setAttribute('aria-expanded', 'false'); });
+    }
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest ? event.target.closest('[data-insight-action]') : null;
+      if (!btn) return;
+      var id = btn.getAttribute('data-insight-action');
+      var panel = document.querySelector('[data-insight-panel="' + id + '"]');
+      if (!panel) return;
+      var wasOpen = !panel.hidden;
+      closeAll();
+      if (!wasOpen) {
+        panel.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  })();
+</script>
+{% endif %}
 
 {% if profile %}
   {% set p = profile %}

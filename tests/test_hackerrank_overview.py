@@ -139,7 +139,11 @@ class TestOverviewToggle:
         assert "Avg Practice Score" in grid
         assert "Avg Problems Solved" in grid
         assert "Badges Earned" in grid
-        assert ">700.0<" in grid and ">40.0<" in grid and ">8<" in grid
+        # Logged-in student A is scoped to their own class (Division 3,
+        # Batch 1), so only their HackerRank snapshot contributes — not the
+        # whole two-student fleet.
+        assert ">500.0<" in grid and ">50.0<" in grid and ">3<" in grid
+        assert "Showing your class:" in body and "Division 3" in body
         # Inactive by default; the client-side script reveals it on switch.
         assert 'data-platform-grid="hackerrank" hidden' in body
 
